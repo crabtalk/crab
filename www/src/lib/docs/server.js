@@ -112,7 +112,7 @@ export async function read(slug) {
 		.use(contents, toc)
 		.use(rehypeAutolinkHeadings, { behavior: 'wrap' })
 		.use(rehypeShiki, {
-			themes: { dark: 'github-dark' },
+			themes: { light: 'github-light', dark: 'github-dark' },
 			defaultColor: false,
 			// A fence with no language is skipped outright without this pair.
 			defaultLanguage: 'text',

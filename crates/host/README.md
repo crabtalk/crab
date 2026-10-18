@@ -8,9 +8,10 @@ per-service databases, a log of each call, and usage accounting. The daemon
 authenticates callers and serves its own routes.
 
 Implement `Env` to supply HTTP transport, image fetching, peer calls, secret
-resolution, admission policy, and the clock. Pass those implementations as
-`Edges` to `Host::open`, then call `Host::boot` inside a Tokio runtime to
-restore services and start background work.
+resolution, an invocation observer, and the clock. Pass those implementations,
+an optional proxy, and the layers put around every call from outside as `Edges`
+to `Host::open`, then call `Host::boot` inside a Tokio runtime to restore
+services and start background work.
 
 The `test` feature adds `berm_host::test`: a host whose edges a test holds,
 running a service's built image under the real engine. Fetches answer what the

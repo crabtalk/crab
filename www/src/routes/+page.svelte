@@ -10,30 +10,28 @@
 	// Marked by hand and rendered with `{@html}`, so a `pre` never inherits the
 	// template's indentation and Svelte never reads a brace in the source as an
 	// expression.
-	const rust = `<span class="mark">let</span> berm = Berm::load(&amp;engine, &amp;wasm, &amp;[])?;
+	const rust = `<span class="mark">let</span> berm = Berm::new(&amp;engine, calls, vec![], storage::Memory::new());
+berm.deploy(<span class="s">"example"</span>, &amp;wasm)?;
 
-<span class="mark">match</span> berm.call(<span class="s">"echo"</span>, <span class="s">br#"{"query":"hello"}"#</span>.to_vec())? {
+<span class="mark">match</span> berm.call(None, <span class="s">"example"</span>, <span class="s">"echo"</span>, <span class="s">br#"{"query":"hello"}"#</span>.to_vec()).<span class="mark">await</span>?.result {
     Ok(result) =&gt; println!(<span class="s">"{result}"</span>),
     Err(failure) =&gt; eprintln!(<span class="s">"{failure}"</span>),
 }`;
 
 	const digest = '222890c498ed28f4bf60670a223141489d9879020bd1890111b8c11ac79fa31d';
 
-	const console_ = `<span class="c">$</span> crab ls
-NAME     DIGEST        TOOLS
-fixture  <span class="mark">${digest.slice(0, 12)}</span>  echo
+	const console_ = `<span class="c">$</span> curl -s localhost:7777/programs/fixture/idl | jq -r .digest
+<span class="mark">${digest}</span>
 
 <span class="c">$</span> shasum -a256 ./fixture.wasm
 <span class="mark">${digest}</span>  ./fixture.wasm`;
 
 	const running = `<span class="c">$</span> bermd &amp;
-<span class="c">$</span> crab deploy
-<span class="c">$</span> crab ls`;
+<span class="c">$</span> curl -X PUT --data-binary @example.wasm <span class="s">'localhost:7777/programs/example?public=echo'</span>
+<span class="c">$</span> curl localhost:7777/programs`;
 
-	const moving = `<span class="c">$</span> cat berm.toml
-name = <span class="s">"example"</span>
-image = <span class="s">"ghcr.io/org/example"</span>
-<span class="c">$</span> crab deploy --context cloud`;
+	const moving = `<span class="mark">let</span> registry = Registry::open(&amp;reference, Access::Write)?;
+registry.push(<span class="s">"v1"</span>, &amp;wasm, &amp;manifest)?;`;
 
 	// What berm is, in its own terms — the README and the book already argue
 	// these. Reasons to reach for it, not a list of what is in the box.
@@ -48,7 +46,7 @@ image = <span class="s">"ghcr.io/org/example"</span>
 		},
 		{
 			title: 'berm has no host',
-			body: 'berm ships no syscalls at all. What a filesystem is bounded by, and where bytes persist, are decisions about a host — so they belong to whoever is building one.'
+			body: 'berm serves calls between programs and the facts of a call — its caller, its user, the clock. State, HTTP, a database and wakes are decisions about a host, so berm builds the syscalls and leaves what they act on to whoever is building one.'
 		},
 		{
 			title: 'Read it without running it',
@@ -107,7 +105,7 @@ image = <span class="s">"ghcr.io/org/example"</span>
 		<p class="facts">
 			<span><strong>Apache-2.0</strong> licensed</span>
 			<span>Compiled by <strong>Cranelift</strong></span>
-			<span>Served over <strong>MCP</strong></span>
+			<span>Served over <strong>HTTP</strong> and <strong>MCP</strong></span>
 		</p>
 	</div>
 
@@ -143,7 +141,7 @@ image = <span class="s">"ghcr.io/org/example"</span>
 			<span class="light close" aria-hidden="true"></span>
 			<span class="light minimise" aria-hidden="true"></span>
 			<span class="light zoom" aria-hidden="true"></span>
-			<span class="title">crab ls</span>
+			<span class="title">bermd</span>
 		</div>
 		<div class="code-block">
 			<pre><code>{@html console_}</code></pre>
@@ -173,8 +171,8 @@ image = <span class="s">"ghcr.io/org/example"</span>
 <section class="cli">
 	<div class="column">
 		<h2>Running</h2>
-		<p><code>bermd</code> serves every deployed program on one MCP endpoint, with tools named
-			<code>{'{program}'}.{'{tool}'}</code>.</p>
+		<p><code>bermd</code> serves every deployed program's tools over HTTP, and its
+			<code>#[anonymous]</code> tools on one MCP endpoint, named <code>{'{program}'}.{'{tool}'}</code>.</p>
 		<div class="code-block">
 			<pre><code>{@html running}</code></pre>
 			<button class="copy" type="button" aria-label="Copy commands">
@@ -186,8 +184,8 @@ image = <span class="s">"ghcr.io/org/example"</span>
 	<div class="column">
 		<h2>Moving</h2>
 		<p>
-			A program is one file, so it travels as one OCI layer: <code>deploy</code> pushes it to
-			the <code>image</code> its <code>berm.toml</code> names when the host pulls from a registry.
+			A program is one file, so it travels as one OCI layer: <code>berm-oci</code> pushes it to a
+			registry, and a host that pulls from one deploys it by reference.
 		</p>
 		<div class="code-block">
 			<pre><code>{@html moving}</code></pre>
@@ -262,12 +260,12 @@ image = <span class="s">"ghcr.io/org/example"</span>
 	.button.primary {
 		background: var(--text);
 		border-color: var(--text);
-		color: #000;
+		color: var(--bg);
 	}
 
 	.button.primary:hover {
-		background: #fff;
-		border-color: #fff;
+		background: var(--strong);
+		border-color: var(--strong);
 	}
 
 	h1 {
@@ -376,7 +374,7 @@ image = <span class="s">"ghcr.io/org/example"</span>
 		border-radius: 12px;
 		overflow: hidden;
 		background: var(--panel);
-		box-shadow: 0 40px 90px -30px rgb(0 0 0 / 0.9);
+		box-shadow: 0 40px 90px -30px var(--shadow);
 	}
 
 	.titlebar {

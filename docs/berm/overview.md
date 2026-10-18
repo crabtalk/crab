@@ -7,10 +7,12 @@ instantiates it per invocation: arguments go in through host calls, the result
 comes back out through one, and nothing survives the call.
 
 ```rust,ignore
-let berm = Berm::new(&engine, call::DEFAULT_CALL_DEPTH, vec![]);
+let calls = Calls::by_name(call::DEFAULT_CALL_DEPTH);
+let berm = Berm::new(&engine, calls, vec![], storage::Memory::new());
 berm.deploy("example", &wasm)?;
 
-match berm.call(None, "example", "echo", br#"{"query":"hello"}"#.to_vec()).await? {
+let outcome = berm.call(None, "example", "echo", br#"{"query":"hello"}"#.to_vec()).await?;
+match outcome.result {
     Ok(result) => println!("{result}"),
     Err(failure) => eprintln!("{failure}"),
 }
@@ -18,8 +20,9 @@ match berm.call(None, "example", "echo", br#"{"query":"hello"}"#.to_vec()).await
 
 Two levels of result, because two things can go wrong and they are not the same
 thing. The outer one is the host's: no such tool, a trap, a broken image. The
-inner one is the program reporting failure through the ABI — which is a result
-the model should see and react to, not an error the host should swallow.
+inner one, `Outcome::result`, is the program reporting failure through the ABI —
+which is a result the model should see and react to, not an error the host
+should swallow.
 
 ## Nothing survives the call
 
@@ -38,10 +41,12 @@ and that list is the linker it is instantiated with. A call to anything else
 traps because nothing is registered for the number naming it — not because a
 check ran and said no. There is no check to write, and none to forget.
 
-berm ships none. What a filesystem is bounded by, what shape a command's result
-takes, where bytes persist — each is a decision about a host, and berm has no
-host. An embedder passes `System` values to `Berm::new`, and that list is the
-whole of what a guest can reach.
+berm serves `berm.call` itself, against the programs it holds, and the
+reads of the call's own context: its caller, its user, its client, the time,
+`berm.trace` and `berm.deny`. Everything else — state, logs, HTTP, a database, wakes — is a
+`Syscall` the embedder passes to `Berm::new`, and that list is the whole of
+what a guest can reach. berm's `syscall` module builds the standard ones, and
+the embedder supplies what they act on.
 
 ## Where wasmtime stops and berm starts
 

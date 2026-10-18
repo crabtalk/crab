@@ -23,25 +23,29 @@ for tool in &manifest.tools {
 
 A `ToolSpec` carries the tool's name, the description a model reads, a JSON
 Schema for its arguments, and optionally `returns`, a JSON Schema for its
-result, and `"query": true` for a read-only tool. `events` lists the typed logs
-the program emits, each with a name, a description and a JSON Schema of its
-`fields`. They are rendered at compile time from the `Schema` impls of the
-types the tools and events name. A tool's arguments are an object without a
-title; every other object schema carries the struct's name as `title`, and a
-string enum its enum's name. A tool or
-event marked `#[deprecated]` carries `"deprecated": true`, and `version` is the
-crate's version when it was built.
+result. Its flags are the tool's attributes: `public`, `anonymous`, `query`,
+`cron`, `stripe` and `deprecated`, and `callers`, `services` or `accounts` when
+a public tool takes only one kind. `events` lists the typed logs the program
+emits, each with a name, a description and a JSON Schema of its `fields`, and
+`database` the migrations of the database it keeps. The schemas are rendered at
+compile time from the `Schema` impls of the types the tools and events name. A
+tool's arguments are an object without a title; every other object schema
+carries the struct's name as `title`, and a string enum its enum's name.
+`version` is the crate's version when it was built.
 
 ## Compatibility
 
 `Manifest::breaks(next)` lists every way `next` breaks a caller of this
-manifest: a tool or event removed, a tool no longer a query, an argument newly
-required, a result or event field no longer always present, a changed type, an
-unsigned integer becoming signed, an argument taking fewer strings or a result
-written with more. Arguments are compared as the new program
-reads them, results and events as old callers read them; added fields break
-nothing. bermd refuses a redeploy that breaks a tool or event a caller used in
-the last 30 days, unless the deploy says `force=true`, and reports the rest.
+manifest's public tools, its Stripe tool and its events: a tool or event
+removed; a tool no longer public, no longer a query, no longer taking anonymous
+calls, taking fewer kinds of caller, or no longer taking Stripe events; an
+argument newly required; a result no longer declared; a result or event field no
+longer always present; a changed type; an unsigned integer becoming signed; an
+argument taking fewer strings or a result written with more. Arguments are
+compared as the new program reads them, results and events as old callers read
+them; added fields break nothing. The host refuses a redeploy that breaks a tool
+or event a caller used in the last 30 days, unless the deploy is forced, and
+reports the rest.
 
 ## Package
 
@@ -57,6 +61,7 @@ when the crate sets none.
     programs = ["weather"],
     syscalls = { "berm.get", "berm.http.fetch" = ["api.example.com"] },
     secrets = ["example"],
+    database = "migrations",
 )]
 ```
 
@@ -65,15 +70,16 @@ name, syscalls it makes beyond the ABI's own, each beside what it reaches
 through that call, and secrets it names as `{secret:NAME}` in a header. The
 manifest carries them as
 `"deps": {"programs": [...], "syscalls": {"name": [...]}, "secrets": [...]}`.
+`database` names a directory of migrations, read at compile time, and adds
+`berm.sql` to the syscalls.
 
 `berm.http.fetch` holds a program to them: a host it does not declare, or a
 secret it does not declare, is refused before anything is sent.
 `berm.http.proxy` does the same for the hosts declared under it, and sends
 through the host's proxy. `berm.call`
 reaches the program itself and the programs it declares, and refuses any other
-name. A declared
-secret is substituted by the host for the chain's caller, and the guest never
-holds its value. These are runtime
+name. A declared secret is substituted by the host with the value it granted the
+program, and the guest never holds it. These are runtime
 and resolved wherever the image lands: nothing here is fetched, installed, or
 compiled in, which is what separates them from the crate's own
 `[dependencies]`.
@@ -83,27 +89,25 @@ the program computes at the call is invisible to any scan — a list built that
 way would be quietly short, and the runtime `Refused` would still be needed
 underneath it.
 
-A declared program not deployed refuses nothing: `crab deploy` says so and
-carries on, and `crab inspect` marks it. A syscall the host does not serve
+A declared program not deployed refuses nothing: the deploy goes on, and the
+program's runtime lists it as unresolved. A syscall the host does not serve
 refuses the deploy. What a served syscall reaches through it is that syscall's
 to grant.
 Refusing would make deploy order significant, and a restart brings programs
 back in whatever order the filesystem lists them — two that name each other
 could then never come up at all.
 
-## Two checks at load
+## Checks at load
 
-`Berm::deploy` refuses an image on two grounds before it can ever be offered to a
-model.
+`Berm::deploy` refuses an image before it can ever be offered to a model when:
 
-A manifest built against a different `abi_version` is refused outright, rather
-than dispatched into a syscall its author did not mean.
+- its manifest was built against a different `abi_version`;
+- it exports no tools;
+- its manifest declares a tool the image does not export, matched by the
+  `berm_tool_` prefix;
+- it declares more than one `#[stripe]` tool;
+- a `#[cron]` or `#[stripe]` tool is `#[public]`;
+- an `#[anonymous]` tool is not `#[public]`, or is `#[callers(services)]`.
 
-A manifest that declares a tool the image does not export is also refused. The
-symbol table and the manifest are both in hand at load, so the disagreement is
-caught there instead of surfacing mid-conversation as a missing symbol. Exports
-are matched by the `berm_tool_` prefix.
-
-Both are the same idea as compiling at deploy rather than on first call: a
-broken image should fail for whoever introduced it, not for whoever happens to
-use it next.
+A broken image fails for whoever deployed it, not for whoever happens to use it
+next.

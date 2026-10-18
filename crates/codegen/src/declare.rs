@@ -1,6 +1,6 @@
 //! `declare_program!` — typed calls and types from another program's IDL.
 //!
-//! The IDL is the JSON `crab idl` writes: a deployed program as the control API
+//! The IDL is the JSON a host serves for a program: a deployed program as the control API
 //! reports it. It is read from `idls/{name}.json` in the crate's directory or
 //! the nearest ancestor that has one.
 
@@ -228,7 +228,7 @@ fn find(name: &Ident) -> syn::Result<PathBuf> {
         .ok_or_else(|| {
             syn::Error::new(
                 name.span(),
-                format!("no idls/{file} in {root} or above it; write one with `crab idl {name}`"),
+                format!("no idls/{file} in {root} or above it; save the IDL of the program deployed as `{name}` there"),
             )
         })
 }

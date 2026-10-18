@@ -1,8 +1,8 @@
 # berm-lang
 
-Build a program for [Crabtalk](https://github.com/crabtalk/crabtalk).
+Build a program for [berm](https://berm.run).
 
-A program is code the daemon schedules: one WebAssembly module, confined to its own memory, reaching the world only through the host calls it was given. This crate owns the ABI, so you never see a call number or a pointer pair.
+A program is one WebAssembly module, confined to its own memory, reaching the world only through the host calls it was given. This crate owns the ABI, so you never see a call number or a pointer pair.
 
 ```rust
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
@@ -46,11 +46,16 @@ serde impls, in any module or crate.
 
 **A tool is internal unless marked `#[public]`.** Only the host calls an internal tool, for the program's own wakes, crons and Stripe events. A `#[public]` tool can be called by any account the host authenticates and any program allowed to reach it, with arguments the caller chooses. `berm_lang::caller()` says who called, as the host set it; a tool that limits its callers checks it.
 
-Off the guest's target this is an ordinary binary, which is why the `cfg_attr`
-above is worth copying: tools then run under `cargo test` with no wasm
-toolchain and no daemon. See `berm_lang::test`.
+Off the guest's target this is an ordinary library, which is why the
+`cfg_attr` above is worth copying: tools then run under `cargo test` with no
+wasm toolchain and no daemon. See `berm_lang::test`.
 
 ## Building
+
+The tools live in the library, and a bin target that does nothing but
+`extern crate` them is what builds the image.
+[Writing a Program](https://berm.run/docs/berm/writing-a-program/#building)
+has the layout.
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -63,18 +68,9 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 ## Reaching a runtime
 
-This crate owns the ABI and declares no syscall of its own. What a
-program can reach is whatever its host registered, so naming any of it here
-would be the SDK deciding what a host must serve.
-
-A program running under the Crabtalk daemon adds
-[`berm-crabtalk`](https://crates.io/crates/berm-crabtalk), which declares the
-`crabtalk` namespace — files, commands, HTTP, the runtime — and carries the
-message types.
-
-## Design
-
-[RFC 0205 — Berm](https://crabtalk.github.io/crabtalk/rfcs/0205-berm.html).
+Past its arguments, a program reaches who called, its own state, a database,
+logs, HTTP, other programs, wakes and the clock, each through a syscall its host
+serves. [The Guest API](https://berm.run/docs/berm/guest-api/) covers each.
 
 ## License
 

@@ -1,4 +1,4 @@
-//! Build a Crabtalk program.
+//! Build a berm program.
 //!
 //! A program is code the daemon schedules: one WebAssembly module, confined to
 //! its own memory and reaching the world only through the host calls it was

@@ -1,6 +1,7 @@
 # berm-codegen
 
-The `#[program]` proc macro. Re-exported by
+The proc macros of a program: `#[program]`, `#[derive(Schema)]`, `#[event]`,
+`#[error_code]`, `declare_program!`, `syscalls!` and `hosts!`. Re-exported by
 [`berm-lang`](https://crates.io/crates/berm-lang) — depend on that, not on this.
 
 ```rust
@@ -25,9 +26,10 @@ arguments and the `Ok` of its `Result` is its reply, each typed by `Schema`.
 `#[derive(Schema)]`, `#[event]` and `#[error_code]` go on types anywhere in the
 crate.
 
-The expansion also carries the exports, the `.bss` argument buffer sized by
-`buffer = N`, and the `.berm.abi` manifest — which is what lets a host learn
-what a program is without running it.
+`#[program(...)]` takes `readme`, `database`, `programs`, `syscalls`,
+`secrets` and `buffer`. The expansion carries the exports, the `.bss` argument
+buffer sized by `buffer = N`, 16 KiB by default, and the `.berm.abi` manifest —
+which is what lets a host learn what a program is without running it.
 
 ## License
 

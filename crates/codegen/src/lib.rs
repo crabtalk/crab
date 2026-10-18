@@ -46,10 +46,9 @@ pub fn syscalls(input: TokenStream) -> TokenStream {
 /// berm_lang::declare_program!(hn);
 ///
 /// let lanes = hn::calls::lanes()?;
-/// match hn::events::Event::read(&logged) { … }
 /// ```
 ///
-/// Reads `idls/hn.json`, which `crab idl hn` writes, from the crate's
+/// Reads `idls/hn.json`, the IDL of the program deployed as `hn`, from the crate's
 /// directory or the nearest ancestor that has one. A call takes the tool's
 /// arguments in the IDL's key order, an optional one as an `Option`.
 #[proc_macro]
@@ -366,13 +365,13 @@ pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
             #[doc = #doc]
             #[unsafe(no_mangle)]
             pub extern "C" fn #symbol() {
-                let arguments = unsafe { &mut *::core::ptr::addr_of_mut!(_CRABTALK_ARGS) };
+                let arguments = unsafe { &mut *::core::ptr::addr_of_mut!(_BERM_ARGS) };
                 let length = ::berm_lang::abi::read_args(arguments);
-                if length > _CRABTALK_BUFFER {
+                if length > _BERM_BUFFER {
                     return ::berm_lang::abi::fail(b"arguments exceeded the input buffer");
                 }
                 match #module_ident::#dispatch(&arguments[..length]) {
-                    Ok(reply) if reply.len() > _CRABTALK_BUFFER => {
+                    Ok(reply) if reply.len() > _BERM_BUFFER => {
                         ::berm_lang::abi::fail(b"result exceeded the output buffer")
                     }
                     Ok(reply) => ::berm_lang::abi::done(&reply),
@@ -386,7 +385,7 @@ pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
     // the dependency visible so editing it rebuilds the program.
     let readme_rebuild = config.readme_file.as_ref().map(|path| {
         quote! {
-            const _CRABTALK_README: &str =
+            const _BERM_README: &str =
                 include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", #path));
         }
     });
@@ -408,8 +407,8 @@ pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
 
         #(#database_rebuild)*
 
-        const _CRABTALK_BUFFER: usize = #buffer;
-        static mut _CRABTALK_ARGS: [u8; _CRABTALK_BUFFER] = [0; _CRABTALK_BUFFER];
+        const _BERM_BUFFER: usize = #buffer;
+        static mut _BERM_ARGS: [u8; _BERM_BUFFER] = [0; _BERM_BUFFER];
 
         /// A program is a binary, and off a guest target a binary needs a
         /// `main` — which is what lets `cargo test` build one natively.

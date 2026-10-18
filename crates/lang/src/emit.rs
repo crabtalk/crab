@@ -1,7 +1,7 @@
 //! Logs, for whoever reads this program's logs.
 //!
-//! A log is kept only if the call the host started returns a result: a failed
-//! chain, or a failed call this one made, takes its logs with it.
+//! A host keeps each log beside the call it was emitted in, whatever that call
+//! ends as.
 
 use crate::abi::{self, host, host::CallError, wire};
 use alloc::vec::Vec;

@@ -1,12 +1,12 @@
 [package]
 name = "berm-lang"
-description = "Guest-side library for building Crabtalk programs"
+description = "Guest-side library for building berm programs"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-keywords = ["crabtalk", "program", "sandbox", "wasm"]
+keywords = ["berm", "program", "sandbox", "wasm"]
 readme = "README.md"
 
 [lib]

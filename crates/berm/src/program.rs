@@ -193,7 +193,7 @@ impl Program {
         &self.manifest
     }
 
-    /// Its IDL, deployed as `name`: the JSON `crab idl` writes.
+    /// Its IDL, deployed as `name`: the JSON a host serves for it.
     pub fn idl(&self, name: &str) -> berm_api::Program {
         let Manifest {
             abi_version: _,

@@ -42,6 +42,17 @@ pub struct Echo {
 Every `pub fn` in the module is a tool. Its doc comment is the description the
 model reads when deciding whether to call it, so write it for that reader.
 
+What a program reaches past its arguments — who called, state, a database,
+HTTP, other programs, wakes — is [the guest API](./guest-api.md).
+
+## Public tools
+
+A tool is internal unless marked `#[public]`: only its host calls it, for the
+program's own wakes, crons and Stripe events. A `#[public]` tool is called by
+callers from outside, as the host authenticates them, and by other programs
+through `berm_lang::call`. `#[callers(services)]` limits it to other programs,
+and `#[callers(accounts)]` to callers from outside.
+
 ## Arguments
 
 A tool's parameters are the properties of its arguments, a JSON object. A
@@ -69,14 +80,33 @@ with that message. `berm_lang::deny(message)` fails the call as denied.
 
 ## Building
 
-`crab new` writes the crate, so none of the ceremony below has to be typed:
+A program is a crate with one bin target and `berm-lang` as a dependency:
 
 ```sh
 rustup target add wasm32-unknown-unknown
-crab new my-program
+cargo new --lib my-program
 cd my-program
-cargo build --release --target wasm32-unknown-unknown
+cargo add berm-lang
 ```
+
+```toml
+[[bin]]
+name = "my-program"
+path = "src/bin/main.rs"
+```
+
+```rust,ignore
+// src/bin/main.rs
+#![cfg_attr(target_arch = "wasm32", no_std, no_main)]
+
+extern crate my_program as _;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {}
+```
+
+`cargo build --release --target wasm32-unknown-unknown` writes the image to
+`target/wasm32-unknown-unknown/release/my-program.wasm`.
 
 The tools live in `src/lib.rs` under a three-line
 `src/bin/main.rs` that does nothing but `extern crate` them, because cargo emits
@@ -93,8 +123,7 @@ rather than reading a plausible zero.
 image instead: the real engine and host, with fetches answered from what the
 test arranged, a clock the test sets, and wakes the test fires. A call's result
 and meter, the logs and state it committed, and the wakes it armed are read back
-from it. The services in [crabtalk/crab](https://github.com/crabtalk/crab) run
-against recorded feeds this way.
+from it.
 
 `berm-fixture` in this repository is the worked example — the smallest real
 program, and what berm's own tests run against.
@@ -117,17 +146,15 @@ for the host to commit. A host may serve it over `GET`.
 `#[cron]` marks a tool its host calls each time its cron expression fires,
 whatever the last call ended as, and not while its owner is held. A cron tool
 takes no parameters and is not `#[public]`. Its expression is five fields,
-minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it, from
-`[crons]` in `berm.toml`, or its owner does while it runs; until one is set it
-is not called.
+minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it, or its
+owner does while it runs; until one is set it is not called.
 
 ## Stripe events
 
 `#[stripe]` marks the tool its host calls with each Stripe event its daemon
 takes for the program, and not while its owner is held. The event object is the
 argument object, so the tool's parameters are the event's fields it reads. A
-program has at most one, and it is not `#[public]`. bermd takes events at
-`POST /programs/{name}/stripe`, unverified.
+program has at most one, and it is not `#[public]`.
 
 ## Events
 
@@ -140,8 +167,8 @@ Logs are what a program's developer reads to debug it: the host keeps each one b
 
 ## Calling another program
 
-`crab idl hn` writes the IDL of the program deployed as `hn` to `idls/hn.json`.
-`berm_lang::declare_program!(hn)` reads it from the crate's directory or the
+The IDL of the program deployed as `hn`, which its host serves, is saved as
+`idls/hn.json`. `berm_lang::declare_program!(hn)` reads it from the crate's directory or the
 nearest ancestor with an `idls/`, and generates:
 
 - `hn::types`: every titled object and string enum in its tools' arguments and
@@ -159,4 +186,4 @@ A tool's callers were built against its IDL. A change that breaks them — see
 [the manifest](manifest.md#compatibility) — keeps the old tool beside the new
 one, marked `#[deprecated]`, until no caller uses it.
 
-The IDL is a file in the crate; it changes only when `crab idl` is run again.
+The IDL is a file in the crate; it changes only when it is saved again.
