@@ -17,21 +17,26 @@ pub fn put(client: &Client, name: &str, secret: &str) -> Result<()> {
         bail!("no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret}`");
     }
     utils::wait(client.put_secret(name, secret, value))?;
-    println!("set {name} {secret}");
+    eprintln!("set {name} {secret}");
     Ok(())
 }
 
 /// Print `name`'s secrets, by name.
-pub fn ls(client: &Client, name: &str) -> Result<()> {
-    for secret in utils::wait(client.secrets(name))? {
+pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
+    let secrets = utils::wait(client.secrets(name))?;
+    if json {
+        return utils::json(&secrets);
+    }
+    for secret in &secrets {
         println!("{}", secret.name);
     }
     Ok(())
 }
 
 /// Revoke `name`'s secret `secret`.
-pub fn rm(client: &Client, name: &str, secret: &str) -> Result<()> {
+pub fn rm(client: &Client, name: &str, secret: &str, yes: bool) -> Result<()> {
+    utils::confirm(yes, &format!("revoke {name} {secret}"))?;
     utils::wait(client.delete_secret(name, secret))?;
-    println!("revoked {name} {secret}");
+    eprintln!("revoked {name} {secret}");
     Ok(())
 }

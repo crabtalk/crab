@@ -1,8 +1,12 @@
 //! `crab context` — name the hosts `crab` talks to, and pick one.
 
-use crate::context::{self, Context, Contexts};
+use crate::{
+    context::{self, Context, Contexts},
+    utils,
+};
 use anyhow::{Result, bail};
 use crabtalk_sdk::client::Owner;
+use serde::Serialize;
 
 /// Name `host` as `name`: a bermd, or with `owner`, Cloud.
 pub fn add(name: &str, host: &str, token: Option<&str>, owner: Option<Owner>) -> Result<()> {
@@ -25,7 +29,7 @@ pub fn add(name: &str, host: &str, token: Option<&str>, owner: Option<Owner>) ->
         },
     );
     contexts.save()?;
-    println!("added {name}");
+    eprintln!("added {name}");
     Ok(())
 }
 
@@ -35,11 +39,21 @@ pub fn use_(name: &str) -> Result<()> {
     contexts.get(Some(name))?;
     contexts.current = Some(name.to_owned());
     contexts.save()?;
-    println!("using {name}");
+    eprintln!("using {name}");
     Ok(())
 }
 
-pub fn ls() -> Result<()> {
+/// One context as `crab context ls --json` lists it, its token left out.
+#[derive(Serialize)]
+struct Listed<'a> {
+    name: &'a str,
+    host: &'a str,
+    owner: &'a Option<Owner>,
+    signed_in: bool,
+    current: bool,
+}
+
+pub fn ls(json: bool) -> Result<()> {
     let contexts = Contexts::load()?;
     let current = contexts.current.as_deref().unwrap_or(context::DEFAULT);
     let default = contexts.get(Some(context::DEFAULT))?;
@@ -49,6 +63,18 @@ pub fn ls() -> Result<()> {
             .iter()
             .map(|(name, at)| (name.as_str(), at)),
     );
+    if json {
+        let listed: Vec<Listed> = rows
+            .map(|(name, at)| Listed {
+                name,
+                host: &at.host,
+                owner: &at.owner,
+                signed_in: at.token.is_some(),
+                current: name == current,
+            })
+            .collect();
+        return utils::json(&listed);
+    }
     for (name, at) in rows {
         let mark = if name == current { "*" } else { " " };
         match &at.owner {
@@ -69,6 +95,6 @@ pub fn rm(name: &str) -> Result<()> {
         contexts.current = None;
     }
     contexts.save()?;
-    println!("removed {name}");
+    eprintln!("removed {name}");
     Ok(())
 }

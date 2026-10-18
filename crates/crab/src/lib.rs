@@ -2,5 +2,6 @@
 
 pub mod cmd;
 pub mod context;
+pub mod format;
 pub mod project;
 pub mod utils;

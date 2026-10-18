@@ -6,12 +6,18 @@ use berm_api::{Program, Runtime, Terms};
 use crabtalk_sdk::client::Client;
 use serde_json::Value;
 
-pub fn run(client: &Client, name: &str) -> Result<()> {
-    show(
-        &utils::wait(client.inspect(name))?,
-        &utils::wait(client.runtime(name))?,
-        &utils::wait(client.terms(name))?,
-    );
+pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
+    let program = utils::wait(client.inspect(name))?;
+    let runtime = utils::wait(client.runtime(name))?;
+    let terms = utils::wait(client.terms(name))?;
+    if json {
+        return utils::json(&serde_json::json!({
+            "program": program,
+            "runtime": runtime,
+            "terms": terms,
+        }));
+    }
+    show(&program, &runtime, &terms);
     Ok(())
 }
 

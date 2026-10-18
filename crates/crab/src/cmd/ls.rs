@@ -9,8 +9,11 @@ use crabtalk_sdk::client::Client;
 /// listing is for. `inspect` prints the whole one.
 const SHORT: usize = 12;
 
-pub fn run(client: &Client) -> Result<()> {
+pub fn run(client: &Client, json: bool) -> Result<()> {
     let programs = utils::wait(client.list())?;
+    if json {
+        return utils::json(&programs);
+    }
     if programs.is_empty() {
         println!("no programs deployed");
         return Ok(());

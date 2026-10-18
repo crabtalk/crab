@@ -48,9 +48,27 @@ crab context use default
 
 On Cloud, a program's secrets are its own: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one, and `deploy` names each secret the manifest declares that is not set. A bermd reads its secrets from `secrets.toml` under its root.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against bermd it sends the image itself. Cloud pulls it anonymously, so the package must be public. The key needs `deploy` scope. Account operations — orgs, keys, billing — are not here.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against bermd it sends the image itself. Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
 
 Contexts are kept in `~/.crab/contexts.toml`.
+
+## Cloud account
+
+`crab login` signs in to Cloud in the browser, keeps the session as the `cloud` context and uses it. A session reaches everything below; a deploy key is refused by all of it but `usage`.
+
+```sh
+crab login                     # --github for GitHub
+crab status
+crab usage                     # the account's services and its plan this period
+crab billing                   # plan, credit, refill, card
+crab billing plan pro          # plan, trial, credit and portal open Stripe
+crab key create ci --days 90
+crab app ls
+crab org create acme
+crab --org acme billing
+```
+
+A service's calls, cost, crons, wakes, visibility and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
 
 ## From a workflow
 
