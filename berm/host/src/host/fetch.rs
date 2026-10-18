@@ -1,5 +1,5 @@
 //! `berm.http.fetch` and `berm.http.proxy`, sent through the daemon's
-//! [`Env::Fetch`].
+//! [`Env::Fetch`]. Each request sent meters [`Meter::sent`].
 
 use crate::{
     env::{Env, Secrets},
@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use berm::{
-    Callsite, Syscall,
+    Callsite, Meter, Syscall,
     syscall::http::{self, Request},
 };
 use std::sync::Weak;
@@ -20,6 +20,10 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, proxied: b
     let send = move |at: Callsite, request: Request| {
         let fetch = fetch.clone();
         async move {
+            at.meter(Meter {
+                sent: request.size() as u64,
+                ..Meter::default()
+            });
             let host = request.host.clone();
             tokio::time::timeout_at(at.deadline.into(), fetch.oneshot(request))
                 .await

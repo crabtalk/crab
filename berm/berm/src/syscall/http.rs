@@ -24,6 +24,14 @@ pub struct Request {
     pub body: Vec<u8>,
 }
 
+impl Request {
+    /// Its bytes on the wire as metered: the URL, header names and values, and
+    /// body.
+    pub fn size(&self) -> usize {
+        self.url.len() + self.body.len() + headers(&self.headers)
+    }
+}
+
 /// What the host got back.
 #[derive(Debug)]
 pub struct Response {
@@ -115,7 +123,7 @@ where
                     substituted.push_str(rest);
                     *value = substituted;
                 }
-                let sent = request.url.len() + request.body.len() + headers(&request.headers);
+                let sent = request.size();
                 let answered = at
                     .dry
                     .as_deref()

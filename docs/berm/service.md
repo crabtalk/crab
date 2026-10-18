@@ -78,7 +78,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
   but `id` optional. bermd checks none of it. A call without one, or an app's
   call without a `user`, has no caller and reaches only `#[anonymous]` tools.
 - The answer carries `Berm-Meter`, what the call used across every program it
-  reached: `{"calls", "instructions", "memory", "read", "written", "proxied", "logged"}`.
+  reached: `{"calls", "instructions", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
   A deprecated tool's answer carries `Deprecation`, and `Sunset` once one is set.
 
 | Status | When |

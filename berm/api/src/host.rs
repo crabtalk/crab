@@ -447,6 +447,10 @@ pub struct Metered {
     /// refused through `berm.deny`.
     #[serde(default)]
     pub failed: u64,
+    /// Bytes sent off the host: the bodies of answers to outside callers, and
+    /// each request `berm.http.fetch` and `berm.http.proxy` sent.
+    #[serde(default)]
+    pub sent: u64,
     /// Bytes the service kept when the day was sampled: its database file,
     /// its write-ahead log, its state, its logs kept, and its image and
     /// compiled code.
@@ -464,5 +468,6 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.proxied += used.proxied;
         self.logged += used.logged;
         self.failed += used.failed;
+        self.sent += used.sent;
     }
 }

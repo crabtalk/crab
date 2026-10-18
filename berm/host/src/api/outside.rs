@@ -8,7 +8,7 @@ use crate::{
     record::usage,
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use berm::Dry;
+use berm::{Dry, Meter};
 use berm_api::{
     Output,
     host::{self as wire, Caller, Kind, Outcome, Source},
@@ -246,7 +246,7 @@ impl<E: Env> Host<E> {
         };
         let counts = dry.is_none();
         let started = self.calls.start();
-        let invoked = self
+        let mut invoked = self
             .invoke(
                 &program,
                 started.id,
@@ -265,6 +265,13 @@ impl<E: Env> Host<E> {
             )
             .await
             .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+        let (Output::Done(body) | Output::Failed(body)) = &invoked.result;
+        let answer = Meter {
+            sent: body.len() as u64,
+            ..Meter::default()
+        };
+        self.meters.record(&service, answer);
+        invoked.meter += answer;
         if counts {
             let outcome = Outcome::of(&invoked.result, invoked.denied);
             let (source, who) = counted(caller.as_ref());

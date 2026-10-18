@@ -274,8 +274,8 @@ pub const MAX_LOG: usize = 4096;
 
 /// What a call used of one program: its invocations, the wasm instructions
 /// they executed, the largest linear memory one reached, in bytes, the rows
-/// they read and wrote, the bytes sent and received through the proxy, and
-/// the bytes of the logs they emitted.
+/// they read and wrote, the bytes sent and received through the proxy, the
+/// bytes of the logs they emitted, and the bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meter {
@@ -289,6 +289,8 @@ pub struct Meter {
     pub logged: u64,
     #[serde(default)]
     pub failed: u64,
+    #[serde(default)]
+    pub sent: u64,
 }
 
 impl std::ops::AddAssign for Meter {
@@ -302,6 +304,7 @@ impl std::ops::AddAssign for Meter {
         self.proxied += other.proxied;
         self.logged += other.logged;
         self.failed += other.failed;
+        self.sent += other.sent;
     }
 }
 

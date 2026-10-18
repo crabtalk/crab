@@ -303,7 +303,7 @@ fn dry_run() -> Tool {
     });
     Tool::new(
         DRY_RUN,
-        "Runs a listed tool and keeps nothing it changes: no state, logs or database writes, no scheduled calls, in any program it reaches. Its requests to other sites are sent unless `answers` answers them or `offline` is set. Answers what the tool answered and what the call used: instructions, rows read and written, memory, bytes proxied, bytes logged.",
+        "Runs a listed tool and keeps nothing it changes: no state, logs or database writes, no scheduled calls, in any program it reaches. Its requests to other sites are sent unless `answers` answers them or `offline` is set. Answers what the tool answered and what the call used: instructions, rows read and written, memory, bytes proxied, bytes logged, bytes sent.",
         Arc::new(schema.as_object().cloned().unwrap_or_default()),
     )
 }

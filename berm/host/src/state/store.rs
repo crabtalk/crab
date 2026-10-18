@@ -37,6 +37,7 @@ const MIGRATIONS: &[&str] = &[
     // `log_bytes` is the bytes of `topics` and `data` over the service's
     // `service_logs` rows.
     include_str!("migrations/0019.sql"),
+    include_str!("migrations/0020.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.
