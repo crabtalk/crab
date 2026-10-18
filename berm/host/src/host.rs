@@ -4,6 +4,7 @@
 
 use crate::{
     Denied, calls,
+    cap::Caps,
     commit::{self, Commits},
     config::Config,
     cron, deny,
@@ -57,6 +58,8 @@ pub struct Host<E: Env> {
     /// Chains in flight. Each holds up to `depth + 1` guests, and a guest past
     /// `Config::instances` fails to instantiate.
     pub(crate) gate: Arc<Semaphore>,
+    /// Chains each scope may run at once, beside [`Self::gate`].
+    pub(crate) caps: Arc<Caps>,
     /// Wakes the timer.
     pub(crate) waking: Arc<Notify>,
     /// Uses not yet written.
@@ -101,6 +104,7 @@ impl<E: Env> Clone for Host<E> {
             store: self.store.clone(),
             berm: self.berm.clone(),
             gate: self.gate.clone(),
+            caps: self.caps.clone(),
             waking: self.waking.clone(),
             usage: self.usage.clone(),
             calls: self.calls.clone(),
@@ -349,6 +353,7 @@ impl<E: Env> Host<E> {
             store,
             berm,
             gate: Arc::new(Semaphore::new(chains as usize)),
+            caps: Arc::new(Caps::new(config.cap)),
             waking,
             usage,
             calls: ran,

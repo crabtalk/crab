@@ -20,6 +20,7 @@ pub use serve::{Named, router};
 pub use store::Store;
 
 mod call;
+mod cap;
 mod calls;
 mod commit;
 mod config;

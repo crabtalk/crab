@@ -170,6 +170,9 @@ impl<E: Env> Host<E> {
                 }
                 return Ok(());
             };
+            let Some(_capped) = self.caps.try_take(&wake.scope) else {
+                bail!("{} has as many calls running as it may", wake.scope);
+            };
             let _slot = self.gate.acquire().await?;
             let started = self.calls.start();
             let invoked = self

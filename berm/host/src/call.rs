@@ -15,6 +15,7 @@ use berm_api::{
     host::{self as wire, Link, Metered, Reply, Route, Usage, Used},
 };
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -397,6 +398,7 @@ impl<E: Env> Host<E> {
                 format!("{service} is held"),
             ));
         }
+        let _capped = self.caps.take(host::split(service).0).await;
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
         let invoked = self
@@ -471,6 +473,13 @@ impl<E: Env> Host<E> {
     /// Hold `routes` in place of the routes held.
     pub async fn route(&self, routes: Vec<Route>) -> Result<(), Denied> {
         Ok(self.routes.replace(routes).await?)
+    }
+
+    /// Cap each of `caps`, by scope, at that many chains at once, and every
+    /// other scope at `Config::cap`. A chain past its scope's cap is refused
+    /// from outside with `429`; a wake fires again later; a Stripe event waits.
+    pub fn cap(&self, caps: HashMap<String, u32>) {
+        self.caps.replace(caps);
     }
 
     /// Hold `scopes` in place of the scopes held. A held scope's services fire
