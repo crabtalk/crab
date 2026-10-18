@@ -452,6 +452,19 @@ impl Program {
             })
         }
         .await;
+        if matches!(
+            ended,
+            Err(_)
+                | Ok(Ended {
+                    result: Err(_),
+                    denied: false
+                })
+        ) {
+            site.meter(Meter {
+                failed: 1,
+                ..Meter::default()
+            });
+        }
         (self.invoked)(&site, tool, site.own.take());
         match &ended {
             Ok(Ended { result: Ok(_), .. }) => {

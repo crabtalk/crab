@@ -225,6 +225,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE service_terms DROP COLUMN price_micros;
     ALTER TABLE service_calls DROP COLUMN price_micros;
     ALTER TABLE service_meters DROP COLUMN overage;",
+    "ALTER TABLE service_meters ADD COLUMN failed INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// One connection, shared. Every statement runs off the async workers.

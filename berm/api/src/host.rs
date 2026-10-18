@@ -418,6 +418,10 @@ pub struct Metered {
     /// Bytes of the logs those invocations emitted.
     #[serde(default)]
     pub logged: u64,
+    /// Of `calls`, those that trapped or failed, but not those the tool
+    /// refused through `berm.deny`.
+    #[serde(default)]
+    pub failed: u64,
     /// Bytes the service kept when the day was sampled: its database file,
     /// its write-ahead log, its state, its logs kept, and its image and
     /// compiled code.

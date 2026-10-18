@@ -443,6 +443,8 @@ pub struct Meter {
     pub proxied: u64,
     #[serde(default)]
     pub logged: u64,
+    #[serde(default)]
+    pub failed: u64,
 }
 
 impl std::ops::AddAssign for Meter {
@@ -455,6 +457,7 @@ impl std::ops::AddAssign for Meter {
         self.written += other.written;
         self.proxied += other.proxied;
         self.logged += other.logged;
+        self.failed += other.failed;
     }
 }
 
