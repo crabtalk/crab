@@ -20,7 +20,7 @@
 //! `ask` calls `peek` and `echo` on `fixture` through it. `peek`
 //! is a query: it reads `note`, tries to write, emit, arm a wake and call
 //! `note` on `inner`, and answers what each was told.
-//! `crates/berm/examples/measure.rs` and `load.rs` read the numbers off them,
+//! `berm/berm/examples/measure.rs` and `load.rs` read the numbers off them,
 //! and `tests/tools.rs` is the only exercise the SDK's host-side `test::call`
 //! gets.
 

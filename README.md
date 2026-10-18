@@ -61,6 +61,12 @@ A program is one file, so it travels as one OCI layer with no tarball around it
 addresses it by is sha256 of the file. See
 [Publishing a Program](https://berm.run/docs/berm/publishing/).
 
+## Layout
+
+- `berm/` — the runtime and `bermd`, published as `berm-*`.
+- `crates/crab` — the `crab` CLI, for a local bermd and for CrabTalk Cloud.
+- `services/` — services, each deployed from its own directory.
+
 ## Documentation
 
 - **[Guide and design notes](https://berm.run/docs/)** — how it
@@ -73,8 +79,9 @@ addresses it by is sha256 of the file. See
 cargo test --workspace
 ```
 
-Rust 2024 edition, POSIX only. Building a program additionally needs the guest
-target:
+Rust 2024 edition, POSIX only. `crab` takes `crabtalk-sdk` from
+`crabtalk/cloud`, which needs read access to it. Building a program additionally
+needs the guest target:
 
 ```sh
 rustup target add wasm32-unknown-unknown

@@ -11,7 +11,7 @@
 //! to pull. That is what lets the engine register a table rather than a list
 //! of signatures: all three arrive as arguments to one import.
 //!
-//! The same hash is computed guest-side in `crates/lang/src/abi.rs`. The two
+//! The same hash is computed guest-side in `berm/lang/src/abi.rs`. The two
 //! must agree — and cannot drift quietly if they don't: a mismatched name
 //! hashes to a number no closure is registered for, so the first call traps
 //! as an unknown host call rather than reaching the wrong syscall.

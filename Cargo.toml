@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["berm/*", "crates/*", "services/*"]
 resolver = "3"
 
 [workspace.package]
@@ -13,13 +13,15 @@ keywords = ["wasm", "sandbox", "mcp", "agent"]
 categories = ["virtualization", "wasm"]
 
 [workspace.dependencies]
-berm = { path = "crates/berm", version = "0.0.8" }
-berm-api = { path = "crates/api", version = "0.0.8" }
-berm-codegen = { path = "crates/codegen", version = "0.0.8" }
-berm-host = { path = "crates/host", version = "0.0.8" }
-berm-lang = { path = "crates/lang", version = "0.0.8" }
-berm-oci = { path = "crates/oci", version = "0.0.8" }
-bermd = { path = "crates/daemon", version = "0.0.8" }
+berm = { path = "berm/berm", version = "0.0.8" }
+berm-api = { path = "berm/api", version = "0.0.8" }
+berm-codegen = { path = "berm/codegen", version = "0.0.8" }
+berm-host = { path = "berm/host", version = "0.0.8" }
+berm-lang = { path = "berm/lang", version = "0.0.8" }
+berm-oci = { path = "berm/oci", version = "0.0.8" }
+bermd = { path = "berm/daemon", version = "0.0.8" }
+# Cloud's API types and client, from `crabtalk/cloud`.
+crabtalk-sdk = { git = "https://github.com/crabtalk/cloud", branch = "main", features = ["client"] }
 
 # crates-io
 anyhow = "1.0"
@@ -67,6 +69,7 @@ tokio = { version = "1", features = [
     "time",
 ] }
 toml = "1"
+toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -96,3 +99,11 @@ debug = 0
 [patch.crates-io]
 rusqlite = { git = "https://github.com/crabtalk/rusqlite", branch = "rows-0.39" }
 libsqlite3-sys = { git = "https://github.com/crabtalk/rusqlite", branch = "rows-0.39" }
+
+# crabtalk-sdk from the local checkout of crabtalk/cloud beside this one.
+[patch."https://github.com/crabtalk/cloud"]
+crabtalk-sdk = { path = "../cloud/crates/api" }
+
+# What crabtalk-sdk takes from crabtalk/berm is this workspace's own.
+[patch."https://github.com/crabtalk/berm"]
+berm-api = { path = "berm/api" }

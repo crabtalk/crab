@@ -1,6 +1,6 @@
 //! The framing a syscall request and its reply share.
 //!
-//! The guest builds these in `crates/lang/src/wire.rs`: a flat sequence of
+//! The guest builds these in `berm/lang/src/wire.rs`: a flat sequence of
 //! `u32`-prefixed fields, one rule for every syscall. This is the only
 //! decoder, so a malformed request is rejected in one place rather than in
 //! each syscall's own hand-rolled parse — which is why it is public: an

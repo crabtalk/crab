@@ -1,0 +1,16 @@
+[package]
+name = "stripe"
+version.workspace = true
+description = "Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "stripe"
+path = "bin/main.rs"
+
+[dependencies]
+berm-lang.workspace = true

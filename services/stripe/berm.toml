@@ -1,0 +1,8 @@
+# The service this program deploys as. A product's services reach it by this
+# name.
+name = "stripe"
+# The registry repository Cloud pulls the image from, tagged with the crate's
+# version on each deploy.
+# image = "ghcr.io/<you>/stripe"
+# Tools this program may make public.
+public = ["checkout", "portal", "plan"]
