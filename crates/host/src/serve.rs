@@ -44,6 +44,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/tools/{tool}/dry", post(dry::<E>))
         .route("/tools/{tool}/budget", put(budget::<E>))
         .route("/tools/{tool}/cron", put(cron::<E>))
+        .route("/stripe", post(stripe::<E>))
         .with_state(host)
 }
 
@@ -232,6 +233,17 @@ async fn dry<E: Env>(
         )
         .await?;
     Ok((called.headers, Json(called.output)).into_response())
+}
+
+/// Hand a Stripe event to the service's `#[stripe]` tool, the body byte for
+/// byte as Stripe sent it.
+async fn stripe<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    event: Bytes,
+) -> Result<StatusCode, Denied> {
+    host.stripe(&service, event.to_vec()).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Set or clear a deprecated tool's sunset.

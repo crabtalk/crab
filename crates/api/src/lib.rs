@@ -363,7 +363,8 @@ pub struct ToolSpec {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deprecated: bool,
     /// Callable by accounts and other programs. A tool that is not is only
-    /// called by its host, for the program's own wakes and crons.
+    /// called by its host, for the program's own wakes, crons and Stripe
+    /// events.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub public: bool,
     /// Callable from outside with no caller: no account, or an app's call with
@@ -377,6 +378,11 @@ pub struct ToolSpec {
     /// sets fires. A cron tool is not public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cron: bool,
+    /// Called by its host with each Stripe event its daemon takes for the
+    /// service, the event as the argument object. Not public; a program has
+    /// at most one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stripe: bool,
 }
 
 /// One kind of caller.

@@ -47,7 +47,7 @@ impl Manifest {
     }
 
     /// Every way `next` breaks a caller of this manifest: its public tools,
-    /// and its events. Empty when it is compatible.
+    /// its stripe tool, and its events. Empty when it is compatible.
     pub fn breaks(&self, next: &Manifest) -> Vec<Break> {
         let mut breaks = Vec::new();
         for old in self.tools.iter().filter(|tool| tool.public) {
@@ -61,6 +61,14 @@ impl Manifest {
                 surface: surface.clone(),
                 reason,
             }));
+        }
+        if let Some(old) = self.tools.iter().find(|tool| tool.stripe)
+            && !next.tools.iter().any(|tool| tool.stripe)
+        {
+            breaks.push(Break {
+                surface: Surface::Tool(old.name.clone()),
+                reason: "no longer takes Stripe events".to_owned(),
+            });
         }
         for old in &self.events {
             let surface = Surface::Event(old.name.clone());

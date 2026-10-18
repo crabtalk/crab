@@ -365,6 +365,61 @@ impl<E: Env> Host<E> {
         })
     }
 
+    /// Call `service`'s `#[stripe]` tool with `event`, a Stripe event as its
+    /// daemon took it, with no caller, and commit what it did. The host reads
+    /// none of the event; the daemon verifies it. A held scope's services take
+    /// none, and a tool's failure is a `500` carrying its message.
+    pub async fn stripe(&self, service: &str, event: Vec<u8>) -> Result<(), Denied> {
+        let (program, _) = self.deployed(service).await?;
+        let Some(tool) = program
+            .manifest()
+            .tools
+            .iter()
+            .find(|spec| spec.stripe)
+            .map(|spec| spec.name.clone())
+        else {
+            return Err(deny(
+                StatusCode::NOT_FOUND,
+                "the service has no stripe tool",
+            ));
+        };
+        if self.holds.holds(host::split(service).0) {
+            self.usage.record(
+                service,
+                Kind::Tool,
+                &tool,
+                Source::Stripe,
+                "",
+                Outcome::Refused,
+            );
+            return Err(deny(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("{service} is held"),
+            ));
+        }
+        let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
+        let started = self.calls.start();
+        let invoked = self
+            .invoke(&program, started.id, None, None, None, &tool, event, None)
+            .await?;
+        let outcome = invoked.outcome();
+        self.usage
+            .record(service, Kind::Tool, &tool, Source::Stripe, "", outcome);
+        self.calls.record(
+            service,
+            started,
+            &tool,
+            Source::Stripe,
+            "",
+            outcome,
+            Some(invoked.meter),
+        );
+        invoked
+            .result
+            .map(drop)
+            .map_err(|failure| deny(StatusCode::INTERNAL_SERVER_ERROR, failure))
+    }
+
     /// `service`'s meters over the last 30 days, oldest first.
     pub async fn meters(&self, service: &str) -> Result<Vec<Metered>, Denied> {
         self.deployed(service).await?;

@@ -102,6 +102,9 @@ impl Program {
         if tools.is_empty() {
             bail!("program exports no tools");
         }
+        if manifest.tools.iter().filter(|tool| tool.stripe).count() > 1 {
+            bail!("program declares more than one stripe tool");
+        }
 
         // A program that advertises a tool it does not export would fail at
         // dispatch, on a model's turn, as a missing symbol. The export table
@@ -116,6 +119,12 @@ impl Program {
             }
             if tool.cron && tool.public {
                 bail!("tool {:?} is a cron tool, and cannot be public", tool.name);
+            }
+            if tool.stripe && tool.public {
+                bail!(
+                    "tool {:?} is a stripe tool, and cannot be public",
+                    tool.name
+                );
             }
             if tool.anonymous && (!tool.public || tool.callers == Some(Callers::Services)) {
                 bail!(

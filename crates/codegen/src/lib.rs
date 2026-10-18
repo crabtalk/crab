@@ -271,6 +271,8 @@ struct Tool {
     callers: Option<String>,
     /// From `#[cron]`.
     cron: bool,
+    /// From `#[stripe]`.
+    stripe: bool,
 }
 
 /// One parameter: a property of the tool's arguments.
@@ -305,7 +307,7 @@ struct Param {
 /// JSON, and `()` replies nothing.
 ///
 /// **A tool is internal unless marked `#[public]`.** An internal tool is only
-/// called by the host, for the program's own wakes and crons. A
+/// called by the host, for the program's own wakes, crons and Stripe events. A
 /// `#[public]` tool can be called by any account the host authenticates and
 /// any program allowed to reach this one, with arguments the caller chooses.
 /// `berm_lang::caller()` says who called. `#[callers(services)]` limits a
@@ -316,6 +318,11 @@ struct Param {
 /// `#[cron]` marks a tool its host calls when the cron expression its deploy
 /// or its owner sets fires. A cron tool takes no parameters and is not
 /// `#[public]`.
+///
+/// `#[stripe]` marks the tool its host calls with each Stripe event its
+/// daemon takes for the program: the event object is the argument object, so
+/// the tool's parameters are the event's fields it reads. A program has at
+/// most one, and it is not `#[public]`.
 #[proc_macro_attribute]
 pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
     let config = parse_macro_input!(args as Config);
@@ -473,6 +480,17 @@ fn collect(module: &mut ItemMod) -> syn::Result<Vec<Tool>> {
             "a program needs at least one `pub fn` to expose as a tool",
         ));
     }
+    if let [_, second, ..] = tools
+        .iter()
+        .filter(|tool| tool.stripe)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        return Err(syn::Error::new_spanned(
+            &second.ident,
+            "a program has at most one `#[stripe]` tool",
+        ));
+    }
     Ok(tools)
 }
 
@@ -483,6 +501,7 @@ fn tool(function: &mut ItemFn) -> syn::Result<Tool> {
     let mut anonymous = false;
     let mut callers = None;
     let mut cron = false;
+    let mut stripe = false;
     let deprecated = function
         .attrs
         .iter()
@@ -515,6 +534,10 @@ fn tool(function: &mut ItemFn) -> syn::Result<Tool> {
             attribute.meta.require_path_only()?;
             cron = true;
         }
+        if attribute.path().is_ident("stripe") {
+            attribute.meta.require_path_only()?;
+            stripe = true;
+        }
     }
 
     // These exist for this macro to read; leaving them would reach the
@@ -527,6 +550,7 @@ fn tool(function: &mut ItemFn) -> syn::Result<Tool> {
             "callers",
             "deprecated",
             "cron",
+            "stripe",
         ]
         .iter()
         .any(|name| a.path().is_ident(name))
@@ -565,6 +589,18 @@ fn tool(function: &mut ItemFn) -> syn::Result<Tool> {
             "a cron tool is called by its host, and cannot be `#[public]`",
         ));
     }
+    if stripe && public {
+        return Err(syn::Error::new_spanned(
+            &function.sig.ident,
+            "a stripe tool is called by its host, and cannot be `#[public]`",
+        ));
+    }
+    if stripe && cron {
+        return Err(syn::Error::new_spanned(
+            &function.sig.ident,
+            "a tool is `#[cron]` or `#[stripe]`, not both",
+        ));
+    }
     if anonymous && !public {
         return Err(syn::Error::new_spanned(
             &function.sig.ident,
@@ -596,6 +632,7 @@ fn tool(function: &mut ItemFn) -> syn::Result<Tool> {
         anonymous,
         callers,
         cron,
+        stripe,
     })
 }
 
@@ -759,6 +796,9 @@ fn manifest(config: &Config, tools: &[Tool]) -> Vec<proc_macro2::TokenStream> {
         }
         if tool.cron {
             out.text(r#","cron":true"#);
+        }
+        if tool.stripe {
+            out.text(r#","stripe":true"#);
         }
         out.text("}");
     }

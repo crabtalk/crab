@@ -40,6 +40,8 @@ pub(crate) enum Source {
     App,
     /// A call from outside without a caller.
     Anonymous,
+    /// A Stripe event its daemon took for the service.
+    Stripe,
 }
 
 impl Source {
@@ -49,6 +51,7 @@ impl Source {
             Source::Account => "account",
             Source::App => "app",
             Source::Anonymous => "anonymous",
+            Source::Stripe => "stripe",
         }
     }
 }

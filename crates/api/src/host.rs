@@ -163,8 +163,9 @@ pub struct Usage {
     /// `tool` or `event`.
     pub kind: String,
     pub item: String,
-    /// `service` (a service in the same scope), `account`, `app`, or
-    /// `anonymous` for a call from outside without a caller.
+    /// `service` (a service in the same scope), `account`, `app`,
+    /// `anonymous` for a call from outside without a caller, or `stripe` for a
+    /// Stripe event.
     pub source: String,
     /// The service's name, or the account or app.
     pub caller: String,

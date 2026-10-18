@@ -121,6 +121,14 @@ minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it, from
 `[crons]` in `berm.toml`, or its owner does while it runs; until one is set it
 is not called.
 
+## Stripe events
+
+`#[stripe]` marks the tool its host calls with each Stripe event its daemon
+takes for the program, and not while its owner is held. The event object is the
+argument object, so the tool's parameters are the event's fields it reads. A
+program has at most one, and it is not `#[public]`. bermd takes events at
+`POST /programs/{name}/stripe`, unverified.
+
 ## Events
 
 An `#[event]` struct anywhere in the program's crate is a typed log, and a
