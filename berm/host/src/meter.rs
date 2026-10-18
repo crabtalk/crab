@@ -176,6 +176,38 @@ pub(crate) async fn read(
         .await
 }
 
+/// Every service's meters on `since` and the days after, by service.
+pub(crate) async fn since(store: &Store, since: i32) -> Result<Vec<(String, Metered)>> {
+    store
+        .run(move |conn| {
+            let mut statement = conn.prepare(
+                "SELECT scope, name, day, calls, instructions, memory, read, written, proxied,
+                        stored, logged
+                   FROM service_meters
+                  WHERE day >= ?1",
+            )?;
+            let rows = statement.query_map(params![since], |row| {
+                let (scope, name): (String, String) = (row.get(0)?, row.get(1)?);
+                Ok((
+                    host::join(&scope, &name),
+                    Metered {
+                        day: row.get(2)?,
+                        calls: row.get::<_, i64>(3)? as u64,
+                        instructions: row.get::<_, i64>(4)? as u64,
+                        memory: row.get::<_, i64>(5)? as u64,
+                        read: row.get::<_, i64>(6)? as u64,
+                        written: row.get::<_, i64>(7)? as u64,
+                        proxied: row.get::<_, i64>(8)? as u64,
+                        stored: row.get::<_, i64>(9)? as u64,
+                        logged: row.get::<_, i64>(10)? as u64,
+                    },
+                ))
+            })?;
+            rows.collect()
+        })
+        .await
+}
+
 /// What `scope/name` used as written, since its first deploy and on `day`,
 /// counted from the Unix epoch.
 pub(crate) async fn used(

@@ -420,6 +420,12 @@ impl<E: Env> Host<E> {
             .map_err(|failure| deny(StatusCode::INTERNAL_SERVER_ERROR, failure))
     }
 
+    /// Every service's meters on yesterday and today, as written now.
+    pub async fn recent(&self) -> Result<Vec<(String, Metered)>, Denied> {
+        self.flush().await?;
+        Ok(meter::since(&self.store, self.today() - 1).await?)
+    }
+
     /// `service`'s meters over the last 30 days, oldest first.
     pub async fn meters(&self, service: &str) -> Result<Vec<Metered>, Denied> {
         self.deployed(service).await?;

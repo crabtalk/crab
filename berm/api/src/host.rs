@@ -398,7 +398,7 @@ pub struct Count {
 
 /// One day of a service's meter.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metered {
     /// Days since the Unix epoch.
     pub day: i32,
