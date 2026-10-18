@@ -1,7 +1,7 @@
 //! `#[derive(Schema)]`: a type's JSON Schema, and the serde impls that read
 //! and write it as that schema says.
 
-use crate::{docs, escape};
+use crate::utils;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, ext::IdentExt};
@@ -26,7 +26,7 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
             };
             let shapes = fields.named.iter().map(|field| {
                 let name = field.ident.as_ref().expect("named").unraw().to_string();
-                let description = escape(&docs(&field.attrs));
+                let description = utils::escape(&utils::docs(&field.attrs));
                 let ty = &field.ty;
                 quote! {
                     ::berm_lang::schema::Field {
@@ -129,7 +129,7 @@ pub fn event(mut item: syn::ItemStruct) -> syn::Result<TokenStream> {
         true => r#","deprecated":true"#,
         false => "",
     };
-    let description = docs(&item.attrs);
+    let description = utils::docs(&item.attrs);
     if description.is_empty() {
         return Err(syn::Error::new_spanned(
             &item.ident,
@@ -140,7 +140,7 @@ pub fn event(mut item: syn::ItemStruct) -> syn::Result<TokenStream> {
     let name = ident.to_string();
     let head = format!(
         r#"{{"event":{{"name":"{name}","description":"{}","fields":"#,
-        escape(&description)
+        utils::escape(&description)
     );
     let tail = format!("{deprecated}}}}}");
 

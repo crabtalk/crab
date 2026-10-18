@@ -1,0 +1,1 @@
+CREATE TABLE held_scopes (scope TEXT PRIMARY KEY);

@@ -215,6 +215,7 @@ dependencies = [
  "berm-api",
  "berm-codegen",
  "hex",
+ "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",
@@ -231,6 +232,7 @@ version = "0.0.8"
 dependencies = [
  "anyhow",
  "object 0.40.0",
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -321,6 +323,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "clap",
+ "parking_lot",
  "reqwest",
  "rmcp",
  "serde",

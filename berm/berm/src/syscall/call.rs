@@ -10,6 +10,7 @@ use crate::{
     wire,
 };
 use anyhow::{Result, bail};
+use berm_api::{Output, host::Outcome};
 use std::{
     future::Future,
     pin::Pin,
@@ -45,20 +46,9 @@ pub type Budgeted = Arc<dyn Fn(&str, &str) -> Option<Budget> + Send + Sync>;
 /// syscall, where an unwind aborts the process.
 pub type Now = Arc<dyn Fn() -> u64 + Send + Sync>;
 
-/// How a nested call to a deployed program's tool ended, as a host is told it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Called {
-    Done,
-    Failed,
-    /// The tool refused its caller, through `berm.deny`.
-    Denied,
-    /// berm refused it before the tool ran.
-    Refused,
-}
-
 /// Told of every nested call that reached a deployed program: the calling
 /// site, the deployed name, the tool, and how it ended.
-pub type Reported = Arc<dyn Fn(&Callsite, &str, &str, Called) + Send + Sync>;
+pub type Reported = Arc<dyn Fn(&Callsite, &str, &str, Outcome) + Send + Sync>;
 
 /// Told of every invocation once it ran, trapped or not: its site, the tool,
 /// and what it used itself, the programs it called left out.
@@ -244,7 +234,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     return answer(invoked);
                 };
                 let refuse = |message: String| -> Result<Vec<u8>> {
-                    called(&at, &deployed, tool, Called::Refused);
+                    called(&at, &deployed, tool, Outcome::Refused);
                     Err(Refused(message).into())
                 };
                 if !target.public(tool) {
@@ -288,12 +278,13 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
 fn answer(invoked: Result<Ended>) -> Result<Vec<u8>> {
     match invoked {
         Ok(Ended {
-            result: Ok(result), ..
+            result: Output::Done(result),
+            ..
         }) => Ok(result.into_bytes()),
         // The target ran and said no. Not a `Refused`: the caller is told the
         // difference, and may act on it.
         Ok(Ended {
-            result: Err(failure),
+            result: Output::Failed(failure),
             ..
         }) => bail!(failure),
         Err(error) => Err(error),
@@ -301,10 +292,9 @@ fn answer(invoked: Result<Ended>) -> Result<Vec<u8>> {
 }
 
 /// How an invocation ended, as [`Reported`] is told it.
-fn ended(invoked: &Result<Ended>) -> Called {
+fn ended(invoked: &Result<Ended>) -> Outcome {
     match invoked {
-        Ok(Ended { result: Ok(_), .. }) => Called::Done,
-        Ok(Ended { denied: true, .. }) => Called::Denied,
-        _ => Called::Failed,
+        Ok(Ended { result, denied }) => Outcome::of(result, *denied),
+        Err(_) => Outcome::Failed,
     }
 }

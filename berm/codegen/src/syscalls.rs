@@ -6,7 +6,7 @@
 //! guest builds `[path]` and the host reads `fields[0]`, in different crates,
 //! kept in step by memory. Here they come from one grammar.
 
-use crate::docs;
+use crate::utils;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -125,7 +125,7 @@ impl Parse for Module {
         }
 
         Ok(Self {
-            docs: docs(&attrs),
+            docs: utils::docs(&attrs),
             name,
             calls,
         })
@@ -167,7 +167,7 @@ impl Parse for Call {
         input.parse::<Token![;]>()?;
 
         Ok(Self {
-            docs: docs(&attrs),
+            docs: utils::docs(&attrs),
             name,
             params,
             tail,

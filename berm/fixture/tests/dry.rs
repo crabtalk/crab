@@ -2,7 +2,7 @@
 //! answers.
 
 use anyhow::Result;
-use berm_api::{Answer, Dry, host::Caller};
+use berm_api::{Answer, Dry, Output, host::Caller};
 use berm_host::test::{self, TestHost};
 
 const WORD: &[u8] = br#"{"word":"hi"}"#;
@@ -40,11 +40,11 @@ async fn a_dry_chain_reads_what_its_earlier_links_set() -> Result<()> {
         .await?;
 
     let dry = host.dry("inner", "relay", WORD, Dry::default()).await?;
-    assert_eq!(dry.result.as_deref(), Ok(r#""hi""#));
+    assert_eq!(dry.result, Output::Done(r#""hi""#.to_owned()));
     assert_eq!(host.state("inner", "note").await?, None);
 
     let real = host.call("inner", "relay", WORD).await?;
-    assert_eq!(real.result.as_deref(), Ok(r#""hi""#));
+    assert_eq!(real.result, Output::Done(r#""hi""#.to_owned()));
     Ok(())
 }
 
@@ -53,7 +53,7 @@ async fn a_dry_call_arms_no_wake() -> Result<()> {
     let host = deployed().await?;
     let delay = br#"{"delay":1000}"#;
     let dry = host.dry("fixture", "tick", delay, Dry::default()).await?;
-    assert!(dry.result.is_ok(), "{:?}", dry.result);
+    assert!(matches!(dry.result, Output::Done(_)), "{:?}", dry.result);
     assert!(host.wakes().await?.is_empty());
     assert_eq!(host.state("fixture", "ticks").await?, None);
 
@@ -80,7 +80,10 @@ async fn a_dry_fetch_is_answered_sent_or_refused() -> Result<()> {
     let ran = host
         .dry("fixture", "fetch", args.as_bytes(), answered)
         .await?;
-    assert_eq!(ran.result.as_deref(), Ok(r#"{"status":200,"bytes":5}"#));
+    assert_eq!(
+        ran.result,
+        Output::Done(r#"{"status":200,"bytes":5}"#.to_owned())
+    );
     assert!(host.fetched().is_empty());
 
     let offline = Dry {
@@ -90,7 +93,7 @@ async fn a_dry_fetch_is_answered_sent_or_refused() -> Result<()> {
     let ran = host
         .dry("fixture", "fetch", args.as_bytes(), offline)
         .await?;
-    assert!(ran.result.is_err());
+    assert!(matches!(ran.result, Output::Failed(_)));
     assert!(host.fetched().is_empty());
 
     // Unanswered and not offline, the request is sent as a call sends it.

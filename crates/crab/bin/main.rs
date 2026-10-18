@@ -4,20 +4,12 @@ use berm_api::{
     host::{Caller, User},
 };
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{
-    cmd,
-    context::{self, Contexts},
-    utils,
-};
+use crab_agent::{cmd, context::Contexts, utils};
 use crabtalk_sdk::{
     account::billing::PortalFlow,
     client::{Client, Owner},
 };
-use std::{
-    io::{IsTerminal, Read},
-    path::PathBuf,
-    process::ExitCode,
-};
+use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]
 #[command(
@@ -428,40 +420,21 @@ fn main() -> Result<ExitCode> {
     match &args.command {
         Command::Login { host, github, name } => cmd::login::run(name, host, *github)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
-        Command::Status => {
-            let contexts = Contexts::load()?;
-            let name = args
-                .context
-                .as_deref()
-                .or(contexts.current.as_deref())
-                .unwrap_or(context::DEFAULT)
-                .to_owned();
-            cmd::status::run(&client()?, &name, json)?
-        }
+        Command::Status => cmd::status::run(&client()?, args.context.as_deref(), json)?,
         Command::Context(ContextCommand::Add {
             name,
             host,
             token,
             token_stdin,
             user,
-        }) => {
-            let owner = match (&args.org, user) {
-                (Some(org), _) => Some(Owner::Org(org.clone())),
-                (_, Some(user)) => Some(Owner::User(user.clone())),
-                _ => None,
-            };
-            let token = match token_stdin {
-                true => {
-                    let mut token = String::new();
-                    std::io::stdin()
-                        .read_to_string(&mut token)
-                        .context("reading the key from stdin")?;
-                    Some(token.trim().to_owned())
-                }
-                false => token.clone(),
-            };
-            cmd::context::add(name, host, token.as_deref(), owner)?
-        }
+        }) => cmd::context::add(
+            name,
+            host,
+            token.as_deref(),
+            *token_stdin,
+            args.org.as_deref(),
+            user.as_deref(),
+        )?,
         Command::Context(ContextCommand::Use { name }) => cmd::context::use_(name)?,
         Command::Context(ContextCommand::Ls) => cmd::context::ls(json)?,
         Command::Context(ContextCommand::Rm { name }) => cmd::context::rm(name)?,

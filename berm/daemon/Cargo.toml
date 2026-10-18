@@ -20,6 +20,7 @@ berm.workspace = true
 berm-api.workspace = true
 berm-host.workspace = true
 clap.workspace = true
+parking_lot.workspace = true
 rmcp.workspace = true
 serde.workspace = true
 serde_json.workspace = true

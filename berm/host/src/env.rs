@@ -11,7 +11,7 @@ use berm_api::host::{Link, Reply, Used};
 use std::future::Future;
 
 /// One daemon's edges, as types.
-pub trait Env: Send + Sync + 'static {
+pub trait Env: Clone + Send + Sync + 'static {
     /// Sends `berm.http.fetch`, and `berm.http.proxy` through a proxy. Follows
     /// no redirects; the host bounds each request by its call's deadline.
     type Fetch: tower::Service<Request, Response = Response, Error = anyhow::Error, Future: Send + 'static>

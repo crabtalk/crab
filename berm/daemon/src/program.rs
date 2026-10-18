@@ -3,7 +3,7 @@
 use crate::Service;
 use axum::http::StatusCode;
 use berm::Program;
-use berm_api::{Break, host::Deploy};
+use berm_api::{Break, Output, host::Deploy};
 use berm_host::{Denied, deny};
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -23,7 +23,7 @@ impl Service {
     ) -> Result<(Arc<Program>, Vec<Break>), Denied> {
         validate(name)?;
         let replaced = self.get(name);
-        let digest = self.images.put(&image)?;
+        let digest = self.images.put(&image).await?;
         let program = self
             .host
             .deploy(
@@ -61,16 +61,10 @@ impl Service {
         Ok(removed)
     }
 
-    /// Run one public tool with no caller. The inner `Result` is the program's
-    /// own report.
-    pub async fn call(
-        &self,
-        name: &str,
-        tool: &str,
-        args: Vec<u8>,
-    ) -> Result<Result<String, String>, Denied> {
+    /// Run one public tool with no caller.
+    pub async fn call(&self, name: &str, tool: &str, args: Vec<u8>) -> Result<Output, Denied> {
         let (_, output) = self.host.call(name, None, tool, args, false).await?;
-        Ok(output.into())
+        Ok(output)
     }
 }
 

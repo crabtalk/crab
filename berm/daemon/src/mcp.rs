@@ -161,16 +161,20 @@ impl ServerHandler for Mcp {
         });
 
         match self.service.call(program, tool, args).await {
-            Ok(Ok(result)) if structured => match serde_json::from_str(&result) {
+            Ok(Output::Done(result)) if structured => match serde_json::from_str(&result) {
                 Ok(value) => Ok(CallToolResult::structured(value)),
                 Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                     "{program}.{tool} declares a result schema and answered something that is not JSON: {error}"
                 ))])),
             },
-            Ok(Ok(result)) => Ok(CallToolResult::success(vec![ContentBlock::text(result)])),
+            Ok(Output::Done(result)) => {
+                Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
+            }
             // The program ran and reported failure. That is a tool result the
             // model should see and react to, not a protocol error.
-            Ok(Err(failure)) => Ok(CallToolResult::error(vec![ContentBlock::text(failure)])),
+            Ok(Output::Failed(failure)) => {
+                Ok(CallToolResult::error(vec![ContentBlock::text(failure)]))
+            }
             Err(error) => Err(McpError::internal_error(format!("{error:#}"), None)),
         }
     }

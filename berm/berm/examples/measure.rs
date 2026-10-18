@@ -63,19 +63,12 @@ async fn main() -> Result<()> {
 
     // A payload in the range a real tool call carries.
     let args = format!(r#"{{"query":"{}"}}"#, "x".repeat(256));
-    let echoed = program
-        .call(None, "echo", args.as_bytes())
-        .await?
-        .result
+    let echoed = Result::from(program.call(None, "echo", args.as_bytes()).await?.result)
         .map_err(anyhow::Error::msg)?;
     assert_eq!(echoed, args, "round trip lost the payload");
     println!(
         "failure path:          {:?}",
-        program
-            .call(None, "boom", b"".to_vec())
-            .await?
-            .result
-            .unwrap_err()
+        Result::from(program.call(None, "boom", b"".to_vec()).await?.result,).unwrap_err()
     );
 
     let mut chatty = Vec::with_capacity(ROUNDS);

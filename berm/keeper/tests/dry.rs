@@ -2,7 +2,7 @@
 //! read by the links after it, and rolled back when the chain ends.
 
 use anyhow::Result;
-use berm_api::Dry;
+use berm_api::{Dry, Output};
 use berm_host::test::{self, TestHost};
 use serde_json::json;
 
@@ -16,7 +16,7 @@ async fn a_dry_chain_rolls_back_every_database_it_wrote() -> Result<()> {
     host.deploy("inner", &image).await?;
 
     let dry = host.dry("outer", "relay", WORD, Dry::default()).await?;
-    assert_eq!(dry.result.as_deref(), Ok("1"));
+    assert_eq!(dry.result, Output::Done("1".to_owned()));
     let words = host
         .sql("inner", "SELECT COUNT(*) FROM words", json!([]))
         .await?;
@@ -26,7 +26,7 @@ async fn a_dry_chain_rolls_back_every_database_it_wrote() -> Result<()> {
     assert!(host.logs("inner", None).await?.is_empty());
 
     let real = host.call("outer", "relay", WORD).await?;
-    assert_eq!(real.result.as_deref(), Ok("1"));
+    assert_eq!(real.result, Output::Done("1".to_owned()));
     assert_eq!(
         host.state("outer", "last").await?.as_deref(),
         Some(&b"hi"[..])

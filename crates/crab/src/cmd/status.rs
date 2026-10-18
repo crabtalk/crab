@@ -1,6 +1,9 @@
 //! `crab status` — where `crab` is talking, and as whom.
 
-use crate::{format, utils};
+use crate::{
+    context::{self, Contexts},
+    format, utils,
+};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 use serde::Serialize;
@@ -17,7 +20,13 @@ struct Status {
     plan: Option<String>,
 }
 
-pub fn run(client: &Client, context: &str, json: bool) -> Result<()> {
+/// Status of the context `named`, or of the one in use.
+pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
+    let contexts = Contexts::load()?;
+    let context = named
+        .or(contexts.current.as_deref())
+        .unwrap_or(context::DEFAULT)
+        .to_owned();
     let serving = utils::wait(client.health()).unwrap_or(false);
     let (account, plan) = match &client.owner {
         Some(owner) => {
@@ -27,7 +36,7 @@ pub fn run(client: &Client, context: &str, json: bool) -> Result<()> {
         None => (None, None),
     };
     let status = Status {
-        context: context.to_owned(),
+        context,
         host: client.base.clone(),
         serving,
         account,

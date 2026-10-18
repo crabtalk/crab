@@ -80,8 +80,7 @@ where
             Box::pin(async move {
                 let mut request = read(&request)?;
                 permitted(&at, name, &request.host)?;
-                for at_header in 0..request.headers.len() {
-                    let value = &request.headers[at_header].1;
+                for (_, value) in &mut request.headers {
                     if !value.contains(SECRET) {
                         continue;
                     }
@@ -114,7 +113,7 @@ where
                         rest = &after[end + 1..];
                     }
                     substituted.push_str(rest);
-                    request.headers[at_header].1 = substituted;
+                    *value = substituted;
                 }
                 let sent = request.url.len() + request.body.len() + headers(&request.headers);
                 let answered = at

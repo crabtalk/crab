@@ -2,10 +2,8 @@
 
 use anyhow::{Context, Result};
 use berm_host::Images;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
+use tokio::fs;
 
 /// What a digest opens with.
 const SHA256: &str = "sha256:";
@@ -23,14 +21,20 @@ impl Stored {
     }
 
     /// Keep `image`, answering with its digest.
-    pub fn put(&self, image: &[u8]) -> Result<String> {
+    pub async fn put(&self, image: &[u8]) -> Result<String> {
         let hex = berm::digest(image);
         let path = self.dir.join(&hex);
-        if !path.exists() {
-            fs::create_dir_all(&self.dir).context("failed to open the images directory")?;
+        if !fs::try_exists(&path).await.unwrap_or(false) {
+            fs::create_dir_all(&self.dir)
+                .await
+                .context("failed to open the images directory")?;
             let staging = path.with_extension("writing");
-            fs::write(&staging, image).context("failed to stage an image")?;
-            fs::rename(&staging, &path).context("failed to keep an image")?;
+            fs::write(&staging, image)
+                .await
+                .context("failed to stage an image")?;
+            fs::rename(&staging, &path)
+                .await
+                .context("failed to keep an image")?;
         }
         Ok(format!("{SHA256}{hex}"))
     }
@@ -41,6 +45,8 @@ impl Images for Stored {
         let hex = digest
             .strip_prefix(SHA256)
             .with_context(|| format!("{digest:?} is not a sha256 digest"))?;
-        fs::read(self.dir.join(hex)).with_context(|| format!("no image {digest} is kept"))
+        fs::read(self.dir.join(hex))
+            .await
+            .with_context(|| format!("no image {digest} is kept"))
     }
 }

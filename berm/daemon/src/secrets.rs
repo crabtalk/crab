@@ -9,16 +9,19 @@
 //! hosts = ["127.0.0.1"]
 //! ```
 //!
-//! Read at every lookup, so an edit applies to the next request. A grant is
-//! the program's whatever starts it.
+//! Parsed again when the file's modification time changes, so an edit applies
+//! to the next request. A grant is the program's whatever starts it.
 
 use anyhow::{Context, Result};
 use berm_host::Secrets;
+use parking_lot::Mutex;
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
-    fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
 };
 
 /// What the file is called under the service's root.
@@ -39,51 +42,77 @@ type Table = BTreeMap<String, BTreeMap<String, Grant>>;
 #[derive(Clone)]
 pub struct Grants {
     path: PathBuf,
+    parsed: Arc<Mutex<Option<Parsed>>>,
+}
+
+/// The table last parsed, and the file's modification time when it was.
+#[derive(Clone)]
+struct Parsed {
+    modified: SystemTime,
+    table: Arc<Table>,
 }
 
 impl Grants {
     pub fn open(root: &Path) -> Self {
         Self {
             path: root.join(FILE),
+            parsed: Arc::default(),
         }
     }
 
     /// Every grant, or none when the file is absent.
-    fn read(&self) -> Result<Table> {
-        let text = match fs::read_to_string(&self.path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Table::new());
-            }
-            Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to read {}", self.path.display()));
-            }
+    async fn read(&self) -> Result<Arc<Table>> {
+        let failed = || format!("failed to read {}", self.path.display());
+        let modified = match tokio::fs::metadata(&self.path).await {
+            Ok(metadata) => metadata.modified().with_context(failed)?,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Arc::default()),
+            Err(error) => return Err(error).with_context(failed),
         };
-        toml::from_str(&text).with_context(|| format!("{} is not valid", self.path.display()))
+        let parsed = self.parsed.lock().clone();
+        if let Some(parsed) = parsed
+            && parsed.modified == modified
+        {
+            return Ok(parsed.table);
+        }
+        let text = match tokio::fs::read_to_string(&self.path).await {
+            Ok(text) => text,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Arc::default()),
+            Err(error) => return Err(error).with_context(failed),
+        };
+        let table: Arc<Table> = Arc::new(
+            toml::from_str(&text)
+                .with_context(|| format!("{} is not valid", self.path.display()))?,
+        );
+        *self.parsed.lock() = Some(Parsed {
+            modified,
+            table: table.clone(),
+        });
+        Ok(table)
     }
 }
 
 impl Secrets for Grants {
     async fn grant(&self, program: &str, secret: &str, host: &str) -> Result<Option<String>> {
         Ok(self
-            .read()?
-            .remove(program)
-            .and_then(|mut granted| granted.remove(secret))
+            .read()
+            .await?
+            .get(program)
+            .and_then(|granted| granted.get(secret))
             .filter(|grant| {
                 grant
                     .hosts
                     .iter()
                     .any(|allowed| allowed.eq_ignore_ascii_case(host))
             })
-            .map(|grant| grant.value))
+            .map(|grant| grant.value.clone()))
     }
 
     async fn names(&self, program: &str) -> Result<Vec<String>> {
         Ok(self
-            .read()?
-            .remove(program)
-            .map(|granted| granted.into_keys().collect())
+            .read()
+            .await?
+            .get(program)
+            .map(|granted| granted.keys().cloned().collect())
             .unwrap_or_default())
     }
 }

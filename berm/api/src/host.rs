@@ -1,15 +1,15 @@
 //! What a host's daemons and peers send it, and what it answers with.
 
-use crate::Meter;
+use crate::{Meter, Output};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt};
 
 /// Header carrying a tool call's [`Meter`], summed over every
 /// program the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
-/// Header carrying how many calls a [`CallPage`]'s filters match, across
-/// every page.
+/// Header carrying how many calls a numbered [`CallPage`]'s filters match,
+/// across every page.
 pub const TOTAL: &str = "x-total-count";
 
 /// Header carrying the [`Caller`] a call to bermd is made as, as JSON. bermd
@@ -114,7 +114,7 @@ pub struct Link {
 /// How a call between hosts ended, when the called service ran.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reply {
-    pub result: Result<String, String>,
+    pub result: Output,
     /// The service refused its caller, through `berm.deny`.
     pub denied: bool,
     /// What the call used, by each service it reached.
@@ -122,15 +122,83 @@ pub struct Reply {
     pub meters: BTreeMap<String, Meter>,
 }
 
+/// What was used. Variants are in the order SQLite sorts their names.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Event,
+    Tool,
+}
+
+/// Who used it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    /// A service in the same scope.
+    Service,
+    Account,
+    /// An app a browser called through.
+    App,
+    /// A call from outside without a caller.
+    Anonymous,
+    /// A Stripe event its daemon took for the service.
+    Stripe,
+}
+
+/// How a use ended.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Outcome {
+    Done,
+    Failed,
+    /// The tool refused its caller.
+    Denied,
+    /// The host refused it before the tool ran.
+    Refused,
+}
+
+impl Outcome {
+    /// How a call that ran ended: `denied` is whether the tool refused its
+    /// caller.
+    pub fn of(result: &Output, denied: bool) -> Self {
+        match (result, denied) {
+            (Output::Done(_), _) => Self::Done,
+            (Output::Failed(_), true) => Self::Denied,
+            (Output::Failed(_), false) => Self::Failed,
+        }
+    }
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.serialize(f)
+    }
+}
+
+impl fmt::Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.serialize(f)
+    }
+}
+
+impl fmt::Display for Outcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.serialize(f)
+    }
+}
+
 /// Uses of a service counted on another host, for the host it runs on.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Used {
     pub service: String,
-    pub kind: String,
+    pub kind: Kind,
     pub item: String,
-    pub source: String,
+    pub source: Source,
     pub caller: String,
-    pub outcome: String,
+    pub outcome: Outcome,
     pub day: i32,
     pub calls: i64,
     pub last: i64,
@@ -160,18 +228,12 @@ pub struct ServedDay {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
-    /// `tool` or `event`.
-    pub kind: String,
+    pub kind: Kind,
     pub item: String,
-    /// `service` (a service in the same scope), `account`, `app`,
-    /// `anonymous` for a call from outside without a caller, or `stripe` for a
-    /// Stripe event.
-    pub source: String,
+    pub source: Source,
     /// The service's name, or the account or app.
     pub caller: String,
-    /// `done`, `failed`, `denied` (the tool refused its caller) or `refused`
-    /// (the host refused it before the tool ran).
-    pub outcome: String,
+    pub outcome: Outcome,
     pub calls: i64,
     /// The last call, in epoch seconds.
     pub last: i64,
@@ -192,15 +254,12 @@ pub struct Page {
     /// Only logs after this sequence number.
     #[serde(default)]
     pub after: i64,
-    /// Which run of `limit` logs, counting from 1.
-    #[serde(default = "first")]
-    pub page: i64,
+    /// Which run of `limit` logs, counting from 1. Without it, the first
+    /// `limit` logs after `after`, and no count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
     #[serde(default = "limit")]
     pub limit: i64,
-}
-
-fn first() -> i64 {
-    1
 }
 
 fn limit() -> i64 {
@@ -208,18 +267,31 @@ fn limit() -> i64 {
 }
 
 impl Page {
-    /// The `Link` header for this page of `total` logs.
+    /// The `Link` header for this numbered page of `total` logs.
     pub fn link(&self, total: i64) -> Option<String> {
-        link(self.page, self.limit, total, |page| {
+        link(self.page.unwrap_or(1), self.limit, total, |page| {
             serde_urlencoded::to_string(Page {
-                page,
+                page: Some(page),
                 ..self.clone()
             })
         })
     }
+
+    /// The `Link` header naming the logs after `seq` as `next`.
+    pub fn next(&self, seq: i64) -> String {
+        rel(
+            serde_urlencoded::to_string(Page {
+                after: seq,
+                page: None,
+                ..self.clone()
+            }),
+            "next",
+        )
+    }
 }
 
-/// `?tool=&event=&outcome=&since=&until=&page=&limit=` on a service's calls.
+/// `?tool=&event=&outcome=&since=&until=&before=&page=&limit=` on a service's
+/// calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
     /// Only calls of this tool.
@@ -228,31 +300,47 @@ pub struct CallPage {
     /// Only calls that emitted a log carrying this topic.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<String>,
-    /// Only calls that ended so: `done`, `failed`, `denied` or `refused`.
+    /// Only calls that ended so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outcome: Option<String>,
+    pub outcome: Option<Outcome>,
     /// Only calls begun at or after this, in epoch milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<u64>,
     /// Only calls begun before this, in epoch milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub until: Option<u64>,
-    /// Which run of `limit` calls, counting from 1.
-    #[serde(default = "first")]
-    pub page: i64,
+    /// Only calls numbered below this id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<u64>,
+    /// Which run of `limit` calls, counting from 1. Without it, the first
+    /// `limit` calls below `before`, and no count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
     #[serde(default = "limit")]
     pub limit: i64,
 }
 
 impl CallPage {
-    /// The `Link` header for this page of `total` calls.
+    /// The `Link` header for this numbered page of `total` calls.
     pub fn link(&self, total: i64) -> Option<String> {
-        link(self.page, self.limit, total, |page| {
+        link(self.page.unwrap_or(1), self.limit, total, |page| {
             serde_urlencoded::to_string(CallPage {
-                page,
+                page: Some(page),
                 ..self.clone()
             })
         })
+    }
+
+    /// The `Link` header naming the calls below `id` as `next`.
+    pub fn next(&self, id: u64) -> String {
+        rel(
+            serde_urlencoded::to_string(CallPage {
+                before: Some(id),
+                page: None,
+                ..self.clone()
+            }),
+            "next",
+        )
     }
 }
 
@@ -281,10 +369,15 @@ fn link(
     }
     let link = rels
         .into_iter()
-        .map(|(page, rel)| format!("<?{}>; rel=\"{rel}\"", query(page).unwrap_or_default()))
+        .map(|(page, name)| rel(query(page), name))
         .collect::<Vec<_>>()
         .join(", ");
     Some(link)
+}
+
+/// One `Link` entry: a reference relative to the request, with `query`.
+fn rel(query: Result<String, serde_urlencoded::ser::Error>, name: &str) -> String {
+    format!("<?{}>; rel=\"{name}\"", query.unwrap_or_default())
 }
 
 /// A service's cron tools.
@@ -350,12 +443,10 @@ pub struct Call {
     /// When it began, in epoch milliseconds.
     pub at: u64,
     pub tool: String,
-    /// As [`Usage::source`] names it.
-    pub source: String,
+    pub source: Source,
     /// As [`Usage::caller`] names it.
     pub caller: String,
-    /// As [`Usage::outcome`] names it.
-    pub outcome: String,
+    pub outcome: Outcome,
     /// How long it ran, in milliseconds.
     pub ms: u64,
     /// What it used, summed over every service it reached. `None` for a call
@@ -399,7 +490,7 @@ pub struct Count {
 
 /// One day of a service's meter.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metered {
     /// Days since the Unix epoch.
     pub day: i32,
@@ -426,4 +517,18 @@ pub struct Metered {
     /// its write-ahead log, its state, its logs kept, and its image and
     /// compiled code.
     pub stored: u64,
+}
+
+impl std::ops::AddAssign<Meter> for Metered {
+    /// Sums every count but `memory`, which keeps the larger.
+    fn add_assign(&mut self, used: Meter) {
+        self.calls += used.calls;
+        self.instructions += used.instructions;
+        self.memory = self.memory.max(used.memory);
+        self.read += used.read;
+        self.written += used.written;
+        self.proxied += used.proxied;
+        self.logged += used.logged;
+        self.failed += used.failed;
+    }
 }

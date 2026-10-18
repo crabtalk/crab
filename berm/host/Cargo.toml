@@ -11,7 +11,7 @@ authors.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 berm = { workspace = true, features = ["sqlite"] }
-berm-api.workspace = true
+berm-api = { workspace = true, features = ["rusqlite"] }
 chrono.workspace = true
 croner.workspace = true
 parking_lot.workspace = true

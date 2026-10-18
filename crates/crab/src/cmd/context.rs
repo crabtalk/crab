@@ -4,12 +4,36 @@ use crate::{
     context::{self, Context, Contexts},
     utils,
 };
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::client::Owner;
 use serde::Serialize;
+use std::io::Read;
 
-/// Name `host` as `name`: a bermd, or with `owner`, Cloud.
-pub fn add(name: &str, host: &str, token: Option<&str>, owner: Option<Owner>) -> Result<()> {
+/// Name `host` as `name`: a bermd, or with a key and `org` or `user`, Cloud.
+/// The key is `token`, or read from stdin when `token_stdin`.
+pub fn add(
+    name: &str,
+    host: &str,
+    token: Option<&str>,
+    token_stdin: bool,
+    org: Option<&str>,
+    user: Option<&str>,
+) -> Result<()> {
+    let owner = match (org, user) {
+        (Some(org), _) => Some(Owner::Org(org.to_owned())),
+        (_, Some(user)) => Some(Owner::User(user.to_owned())),
+        _ => None,
+    };
+    let token = match token_stdin {
+        true => {
+            let mut token = String::new();
+            std::io::stdin()
+                .read_to_string(&mut token)
+                .context("reading the key from stdin")?;
+            Some(token.trim().to_owned())
+        }
+        false => token.map(str::to_owned),
+    };
     if name == context::DEFAULT {
         bail!(
             "{:?} is this machine's bermd and cannot be replaced",
@@ -24,7 +48,7 @@ pub fn add(name: &str, host: &str, token: Option<&str>, owner: Option<Owner>) ->
         name.to_owned(),
         Context {
             host: host.to_owned(),
-            token: token.map(str::to_owned),
+            token,
             owner,
         },
     );

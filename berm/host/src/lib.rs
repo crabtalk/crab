@@ -12,34 +12,23 @@ use axum::{
 use berm_api::Failed;
 use std::fmt;
 
+pub use api::{
+    outside::{Call, Called, Layers, Outside},
+    serve::{Named, router},
+};
 pub use config::Config;
 pub use env::{Clock, Edges, Env, Images, Observe, Peers, Secrets, System};
 pub use host::Host;
-pub use outside::{Call, Called, Layers, Outside};
-pub use serve::{Named, router};
-pub use store::Store;
+pub use state::store::Store;
 
-mod call;
-mod cap;
-mod calls;
-mod commit;
+mod api;
 mod config;
-mod cron;
 mod env;
-mod fetch;
-mod hold;
 mod host;
-mod logs;
-mod meter;
-mod outside;
-mod routes;
-mod serve;
-mod service;
-mod store;
-mod terms;
+mod record;
+mod state;
 #[cfg(feature = "test")]
 pub mod test;
-mod usage;
 mod wake;
 
 /// A refusal the caller can read, as `{"error": message}`.

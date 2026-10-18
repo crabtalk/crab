@@ -31,8 +31,13 @@
 //! one. Every invocation runs inside a [`Scope`] the host opens through
 //! [`Calls::enter`].
 
+// Reached by the host expansion, and re-exported for the reason `berm-lang`
+// re-exports serde: an embedder depends on this crate and nothing else, and
+// cannot pick a version the generated code disagrees with.
+pub use anyhow;
 use anyhow::Result;
-pub use berm_api::{Budget, Deps, Dry, Logged, MAX_LOG, Manifest, Meter, ToolSpec};
+pub use berm_api::{Budget, Deps, Dry, Logged, MAX_LOG, Manifest, Meter, Output, ToolSpec};
+pub use berm_codegen::hosts;
 pub use engine::{Config, Engine};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
@@ -47,8 +52,8 @@ use std::{
 };
 pub use storage::{Records, Storage};
 pub use syscall::call::{
-    Budgeted, Called, Calls, Enter, Invoked, Named, Now, Opening, Reaching, Remote, Reported,
-    Resolve, Scope,
+    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Reaching, Remote, Reported, Resolve,
+    Scope,
 };
 
 pub mod abi;
@@ -59,15 +64,11 @@ mod engine;
 mod journal;
 mod meter;
 mod program;
+#[cfg(feature = "sqlite")]
+pub mod readers;
 pub mod storage;
 pub mod syscall;
 pub mod wire;
-
-// Reached by the host expansion, and re-exported for the reason `berm-lang`
-// re-exports serde: an embedder depends on this crate and nothing else, and
-// cannot pick a version the generated code disagrees with.
-pub use anyhow;
-pub use berm_codegen::hosts;
 
 /// What a syscall answers with, once it has. An `Err` reaches the guest as a
 /// failure message on the same wire as a result.

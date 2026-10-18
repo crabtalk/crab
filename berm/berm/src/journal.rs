@@ -11,10 +11,8 @@
 
 use crate::Refused;
 use anyhow::Result;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex, MutexGuard, PoisonError},
-};
+use parking_lot::Mutex;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// Bytes of keys, values, topics and data one chain may hold before the next
 /// entry is refused.
@@ -89,12 +87,17 @@ impl Journal {
 
     /// What `program` last wrote under `key` in this chain, if it has.
     pub(crate) fn read(&self, program: &str, key: &str) -> Option<Vec<u8>> {
-        self.lock().list.iter().rev().find_map(|entry| match entry {
-            Entry::Write(write) if &*write.program == program && write.key == key => {
-                Some(write.value.clone())
-            }
-            _ => None,
-        })
+        self.0
+            .lock()
+            .list
+            .iter()
+            .rev()
+            .find_map(|entry| match entry {
+                Entry::Write(write) if &*write.program == program && write.key == key => {
+                    Some(write.value.clone())
+                }
+                _ => None,
+            })
     }
 
     /// Hold what a call that kept a journal of its own left behind.
@@ -109,7 +112,7 @@ impl Journal {
     }
 
     pub(crate) fn mark(&self) -> Mark {
-        let entries = self.lock();
+        let entries = self.0.lock();
         Mark {
             entries: entries.list.len(),
             bytes: entries.bytes,
@@ -118,14 +121,14 @@ impl Journal {
 
     /// Drop everything held since `mark`.
     pub(crate) fn revert(&self, mark: Mark) {
-        let mut entries = self.lock();
+        let mut entries = self.0.lock();
         entries.list.truncate(mark.entries);
         entries.bytes = mark.bytes;
     }
 
     /// Everything held, with each key's writes collapsed to its last.
     pub(crate) fn take(&self) -> Changes {
-        let list = std::mem::take(&mut self.lock().list);
+        let list = std::mem::take(&mut self.0.lock().list);
         let mut writes = BTreeMap::new();
         let mut logs = Vec::new();
         for entry in list {
@@ -143,7 +146,7 @@ impl Journal {
     }
 
     fn push(&self, size: usize, entry: Entry) -> Result<()> {
-        let mut entries = self.lock();
+        let mut entries = self.0.lock();
         if entries.bytes + size > LIMIT {
             return Err(Refused(format!(
                 "the chain already holds {} bytes of writes and logs, of {LIMIT}",
@@ -154,11 +157,5 @@ impl Journal {
         entries.bytes += size;
         entries.list.push(entry);
         Ok(())
-    }
-
-    /// Reached from syscalls, which may not panic: a poisoned lock is read
-    /// through.
-    fn lock(&self) -> MutexGuard<'_, Entries> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }

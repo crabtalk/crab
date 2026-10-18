@@ -2,7 +2,7 @@
 //! everything they had waiting runs once the scope is released.
 
 use anyhow::Result;
-use berm_api::host::Link;
+use berm_api::{Output, host::Link};
 use berm_host::test::{self, TestHost};
 
 async fn deployed(services: &[&str]) -> Result<TestHost> {
@@ -43,9 +43,9 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
     let nested = host
         .call("acct/fixture", "nest", br#"{"query":"hi"}"#)
         .await?;
-    let failure = nested
-        .result
-        .expect_err("a call into a held scope is refused");
+    let Output::Failed(failure) = nested.result else {
+        panic!("a call into a held scope is refused");
+    };
     assert!(failure.contains("held"), "{failure}");
 
     let link = Link {
@@ -72,12 +72,12 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
     assert_eq!(refused.0.as_u16(), 403);
 
     host.host().hold(Vec::new()).await?;
-    assert!(
+    assert!(matches!(
         host.call("acct/fixture", "nest", br#"{"query":"hi"}"#)
             .await?
-            .result
-            .is_ok()
-    );
+            .result,
+        Output::Done(_)
+    ));
     assert!(
         host.host()
             .link("acct/fixture", "echo", br#"{"query":"hi"}"#.to_vec(), link)

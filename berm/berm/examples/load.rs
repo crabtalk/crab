@@ -111,10 +111,7 @@ async fn row(
             let mut latencies = Vec::with_capacity(mine);
             for _ in 0..mine {
                 let submitted = Instant::now();
-                program
-                    .call(None, tool, b"{}".to_vec())
-                    .await?
-                    .result
+                Result::from(program.call(None, tool, b"{}".to_vec()).await?.result)
                     .map_err(anyhow::Error::msg)?;
                 latencies.push(submitted.elapsed());
             }

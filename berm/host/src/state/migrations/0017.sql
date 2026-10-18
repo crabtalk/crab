@@ -1,0 +1,1 @@
+ALTER TABLE service_meters ADD COLUMN failed INTEGER NOT NULL DEFAULT 0;

@@ -13,15 +13,11 @@
 
 use anyhow::{Context, Result, ensure};
 use berm::{
-    Berm, Calls, Changes, Config, Engine, storage,
+    Berm, Calls, Changes, Config, Engine, Output, storage,
     syscall::{after, call, emit, store},
 };
-use std::{
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use parking_lot::Mutex;
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
 const GUEST: &str = "target/wasm32-unknown-unknown/release/fixture.wasm";
 
@@ -48,7 +44,6 @@ async fn main() -> Result<()> {
         move |at, key| {
             std::future::ready(Ok(reading
                 .lock()
-                .expect("committed")
                 .get(&(at.program.to_string(), key))
                 .cloned()))
         },
@@ -70,7 +65,7 @@ async fn main() -> Result<()> {
         .call(None, "outer", "note", r#"{"word":"one"}"#)
         .await?;
     ensure!(
-        outcome.result.as_deref() == Ok(r#""one""#),
+        outcome.result == Output::Done(r#""one""#.to_owned()),
         "{:?}",
         outcome.result
     );
@@ -90,7 +85,11 @@ async fn main() -> Result<()> {
     let outcome = berm
         .call(None, "outer", "note", r#"{"word":"fail"}"#)
         .await?;
-    ensure!(outcome.result.is_err(), "{:?}", outcome.result);
+    ensure!(
+        matches!(outcome.result, Output::Failed(_)),
+        "{:?}",
+        outcome.result
+    );
     ensure!(said(&outcome.changes).is_empty(), "{:?}", outcome.changes);
     println!("failed:   {:?}", said(&outcome.changes));
 
@@ -100,7 +99,7 @@ async fn main() -> Result<()> {
         .call(None, "outer", "relay", r#"{"word":"fail"}"#)
         .await?;
     ensure!(
-        outcome.result.as_deref() == Ok(r#""one""#),
+        outcome.result == Output::Done(r#""one""#.to_owned()),
         "{:?}",
         outcome.result
     );
@@ -130,8 +129,8 @@ async fn main() -> Result<()> {
     // A query reads what is committed and leaves nothing: its writes, logs and
     // wakes are refused, and so are those of a tool it calls.
     let outcome = berm.call(None, "outer", "peek", "").await?;
-    let answered = outcome.result.as_deref().map_err(Clone::clone);
-    let peek: serde_json::Value = serde_json::from_str(answered.map_err(anyhow::Error::msg)?)?;
+    let answered = Result::from(outcome.result.clone()).map_err(anyhow::Error::msg)?;
+    let peek: serde_json::Value = serde_json::from_str(&answered)?;
     ensure!(peek["note"] == "one", "{peek}");
     for attempt in ["set", "emit", "after", "call"] {
         let told = peek["attempts"][attempt].as_str().unwrap_or_default();
@@ -166,7 +165,7 @@ fn said(changes: &Changes) -> Vec<String> {
 }
 
 fn commit(committed: &Committed, changes: &Changes) {
-    let mut committed = committed.lock().expect("committed");
+    let mut committed = committed.lock();
     for write in &changes.writes {
         committed.insert(
             (write.program.to_string(), write.key.clone()),

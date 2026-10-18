@@ -1,0 +1,1 @@
+ALTER TABLE service_wakes ADD COLUMN failures INTEGER NOT NULL DEFAULT 0;

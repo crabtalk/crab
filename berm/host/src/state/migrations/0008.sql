@@ -1,0 +1,1 @@
+ALTER TABLE service_meters ADD COLUMN overage INTEGER NOT NULL DEFAULT 0;

@@ -34,7 +34,11 @@ pub fn run(name: &str, host: &str, github: bool) -> Result<()> {
     let me = match utils::wait(Client::new(host).token(&token).me()) {
         Ok(me) => me,
         Err(e) => {
-            answer(browser, "400 Bad Request", "Sign-in failed. Return to your terminal.")?;
+            answer(
+                browser,
+                "400 Bad Request",
+                "Sign-in failed. Return to your terminal.",
+            )?;
             bail!("sign-in failed: {e}");
         }
     };

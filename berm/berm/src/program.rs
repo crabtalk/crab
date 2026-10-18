@@ -4,15 +4,15 @@ use crate::{
     Caller, Callsite, Deps, Dry, Meter, Meters, Syscall, User, abi,
     bound::watchdog,
     engine::{Engine, Image},
-    journal::{Changes, Journal},
+    journal::{Changes, Journal, Mark},
     meter::{Held, Own, Running},
     syscall::{
         self,
-        call::{Budgeted, Calls, Enter, Invoked, Now},
+        call::{Budgeted, Calls, Enter, Invoked, Now, Scope},
     },
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Callers, Manifest, Runtime};
+use berm_api::{Callers, Manifest, Output, Runtime};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -302,8 +302,8 @@ impl Program {
             )
             .await?;
         let changes = match result {
-            Ok(_) => journal.take(),
-            Err(_) => Changes::default(),
+            Output::Done(_) => journal.take(),
+            Output::Failed(_) => Changes::default(),
         };
         Ok(Outcome {
             result,
@@ -351,8 +351,8 @@ impl Program {
             )
             .await?;
         let changes = match result {
-            Ok(_) => journal.take(),
-            Err(_) => Changes::default(),
+            Output::Done(_) => journal.take(),
+            Output::Failed(_) => Changes::default(),
         };
         Ok(Outcome {
             result,
@@ -417,7 +417,7 @@ impl Program {
         if own {
             at.journal = Arc::new(Journal::default());
         }
-        let held = at.journal.clone();
+        let held = own.then(|| at.journal.clone());
         let mark = journal.mark();
         let site = at.clone();
         let invocation = Invocation {
@@ -429,34 +429,24 @@ impl Program {
             outcome: None,
             denied: false,
         };
+        let ended = self
+            .image
+            .call(symbol, invocation, budget.instructions)
+            .await
+            .with_context(|| format!("program trapped in {tool}"))
+            .and_then(ended);
+        self.ran(&site, tool, &ended);
+        settle(&ended, scope, held, &journal, mark).await?;
+        ended
+    }
 
-        let ended = async {
-            let finished = self
-                .image
-                .call(symbol, invocation, budget.instructions)
-                .await
-                .with_context(|| format!("program trapped in {tool}"))?;
-
-            // A tool that returned without answering wrote nothing, which is
-            // an empty result rather than a missing one.
-            let result = match finished.outcome {
-                Some(Err(failure)) => Err(failure),
-                Some(Ok(result)) => {
-                    Ok(String::from_utf8(result).context("program returned invalid UTF-8")?)
-                }
-                None => Ok(String::new()),
-            };
-            Ok(Ended {
-                denied: finished.denied && result.is_err(),
-                result,
-            })
-        }
-        .await;
+    /// Count a failed invocation at `site` and report what it used itself.
+    fn ran(&self, site: &Callsite, tool: &str, ended: &Result<Ended>) {
         if matches!(
             ended,
             Err(_)
                 | Ok(Ended {
-                    result: Err(_),
+                    result: Output::Failed(_),
                     denied: false
                 })
         ) {
@@ -465,26 +455,52 @@ impl Program {
                 ..Meter::default()
             });
         }
-        (self.invoked)(&site, tool, site.own.take());
-        match &ended {
-            Ok(Ended { result: Ok(_), .. }) => {
-                let changes = match own {
-                    true => held.take(),
-                    false => Changes::default(),
-                };
-                let kept = scope
-                    .close(changes)
-                    .await
-                    .and_then(|left| journal.extend(left));
-                if let Err(error) = kept {
-                    journal.revert(mark);
-                    return Err(error);
-                }
-            }
-            _ => journal.revert(mark),
-        }
-        ended
+        (self.invoked)(site, tool, site.own.take());
     }
+}
+
+/// Close `scope` over what a done invocation kept on `held`, its own journal
+/// when it has one, or take back what it wrote to `journal` past `mark`.
+async fn settle(
+    ended: &Result<Ended>,
+    scope: Box<dyn Scope>,
+    held: Option<Arc<Journal>>,
+    journal: &Journal,
+    mark: Mark,
+) -> Result<()> {
+    let Ok(Ended {
+        result: Output::Done(_),
+        ..
+    }) = ended
+    else {
+        journal.revert(mark);
+        return Ok(());
+    };
+    let changes = held.map_or_else(Changes::default, |held| held.take());
+    let kept = scope
+        .close(changes)
+        .await
+        .and_then(|left| journal.extend(left));
+    if kept.is_err() {
+        journal.revert(mark);
+    }
+    kept
+}
+
+/// How a finished invocation ended. A tool that returned without answering
+/// wrote nothing, which is an empty result.
+fn ended(finished: Invocation) -> Result<Ended> {
+    let result = match finished.outcome {
+        Some(Err(failure)) => Output::Failed(failure),
+        Some(Ok(result)) => {
+            Output::Done(String::from_utf8(result).context("program returned invalid UTF-8")?)
+        }
+        None => Output::Done(String::new()),
+    };
+    Ok(Ended {
+        denied: finished.denied && matches!(result, Output::Failed(_)),
+        result,
+    })
 }
 
 /// Where an invocation sits in a chain that reached it from outside this
@@ -504,7 +520,7 @@ pub struct Link {
 /// How one invocation ended.
 #[derive(Debug)]
 pub struct Ended {
-    pub result: Result<String, String>,
+    pub result: Output,
     /// The program failed the call through `berm.deny`.
     pub denied: bool,
 }
@@ -512,13 +528,13 @@ pub struct Ended {
 /// What one chain answered with, and what it left for the host to commit.
 #[derive(Debug)]
 pub struct Outcome {
-    /// `Err` is the program's own reported failure, which is a tool result
-    /// rather than an error.
-    pub result: Result<String, String>,
-    /// `result` is `Err` because the program refused its caller, through
-    /// `berm.deny`.
+    /// [`Output::Failed`] is the program's own reported failure, which is a
+    /// tool result rather than an error.
+    pub result: Output,
+    /// `result` is [`Output::Failed`] because the program refused its caller,
+    /// through `berm.deny`.
     pub denied: bool,
-    /// Empty when `result` is `Err`.
+    /// Empty when `result` is [`Output::Failed`].
     pub changes: Changes,
 }
 

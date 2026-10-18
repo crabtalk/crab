@@ -10,7 +10,7 @@ publish = false
 
 [[bin]]
 name = "fixture"
-path = "src/bin/main.rs"
+path = "bin/main.rs"
 
 [dependencies]
 berm-lang.workspace = true

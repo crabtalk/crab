@@ -1,0 +1,1 @@
+ALTER TABLE service_meters ADD COLUMN logged INTEGER NOT NULL DEFAULT 0;

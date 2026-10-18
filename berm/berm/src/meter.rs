@@ -3,10 +3,11 @@
 use crate::Refused;
 use anyhow::Result;
 use berm_api::Meter;
+use parking_lot::Mutex;
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc, Mutex, PoisonError,
+        Arc,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -18,7 +19,7 @@ pub struct Meters(Mutex<BTreeMap<Arc<str>, Meter>>);
 
 impl Meters {
     pub(crate) fn add(&self, program: &str, used: Meter) {
-        let mut meters = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut meters = self.0.lock();
         match meters.get_mut(program) {
             Some(meter) => *meter += used,
             None => {
@@ -28,7 +29,7 @@ impl Meters {
     }
 
     pub fn take(&self) -> BTreeMap<Arc<str>, Meter> {
-        std::mem::take(&mut *self.0.lock().unwrap_or_else(PoisonError::into_inner))
+        std::mem::take(&mut *self.0.lock())
     }
 }
 
@@ -117,16 +118,16 @@ impl Own {
     }
 
     pub(crate) fn add(&self, used: Meter) {
-        *self.used.lock().unwrap_or_else(PoisonError::into_inner) += used;
+        *self.used.lock() += used;
     }
 
     pub(crate) fn take(&self) -> Meter {
-        std::mem::take(&mut *self.used.lock().unwrap_or_else(PoisonError::into_inner))
+        std::mem::take(&mut *self.used.lock())
     }
 
     /// Refused once the budget is used.
     pub(crate) fn left(&self) -> Result<()> {
-        let used = *self.used.lock().unwrap_or_else(PoisonError::into_inner);
+        let used = *self.used.lock();
         if used.read + used.written >= self.budget {
             return Err(Refused(format!(
                 "this call has used its budget of {} rows",

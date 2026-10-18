@@ -54,6 +54,24 @@ extern crate alloc;
 // So `#[derive(Schema)]` resolves `::berm_lang` inside this crate too.
 extern crate self as berm_lang;
 
+pub use abi::{args_len, now, trace};
+pub use berm_codegen::{Schema, declare_program, error_code, event, program, syscalls};
+pub use call::{CallError, Caller, User, after, call, caller, client, deny, user};
+#[doc(hidden)]
+pub use emit::event as __event;
+pub use emit::{Event, emit};
+pub use error::{Error, Result};
+pub use schema::Schema;
+pub use sql::sql;
+pub use store::{get, get_json, set, set_json};
+// Re-exported so a program declares this SDK and nothing else. What the macros
+// generate reaches serde as `::berm_lang::serde`, which only resolves if the
+// author can reach it through us — and an author who had to depend on it
+// directly could pick a version that disagrees with the one the derive was
+// generated against.
+pub use serde_guest as serde;
+pub use serde_json_guest as serde_json;
+
 pub mod abi;
 mod call;
 #[doc(hidden)]
@@ -76,25 +94,6 @@ pub mod test;
 #[cfg_attr(target_arch = "wasm32", path = "sys/wasm.rs")]
 #[cfg_attr(not(target_arch = "wasm32"), path = "sys/stub.rs")]
 mod sys;
-
-pub use abi::{args_len, now, trace};
-pub use berm_codegen::{Schema, declare_program, error_code, event, program, syscalls};
-pub use call::{CallError, Caller, User, after, call, caller, client, deny, user};
-#[doc(hidden)]
-pub use emit::event as __event;
-pub use emit::{Event, emit};
-pub use error::{Error, Result};
-pub use schema::Schema;
-pub use sql::sql;
-pub use store::{get, get_json, set, set_json};
-
-// Re-exported so a program declares this SDK and nothing else. What the macros
-// generate reaches serde as `::berm_lang::serde`, which only resolves if the
-// author can reach it through us — and an author who had to depend on it
-// directly could pick a version that disagrees with the one the derive was
-// generated against.
-pub use serde_guest as serde;
-pub use serde_json_guest as serde_json;
 
 /// What `declare_program!`'s types are written in, so an author need not
 /// declare `extern crate alloc` for them.
