@@ -12,7 +12,7 @@ use axum::{
 };
 use berm_api::{
     Budget, Cron, DryRun, Listing, Program, Runtime, Terms,
-    host::{self, CallPage, Caller, Crons, Live, Metered, Page, ToolUpdate, Usage, Wakes},
+    host::{CallPage, Caller, Crons, Live, Metered, Page, ToolUpdate, Usage, Wakes},
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -104,7 +104,7 @@ async fn live<E: Env>(
 }
 
 /// The service's logs, oldest first, after the sequence number `after`, a
-/// page at a time, with the other pages in `Link`.
+/// page at a time, with the next page in `Link`.
 async fn logs<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
@@ -117,17 +117,16 @@ async fn logs<E: Env>(
     ))
 }
 
-/// The service's runs, newest first, a page at a time, with the other pages
-/// in `Link` and, for a numbered page, how many runs match in [`host::TOTAL`].
+/// The service's runs, newest first, below the id `before`, a page at a time,
+/// with the next page in `Link`.
 async fn calls<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
     Query(page): Query<CallPage>,
 ) -> Result<impl IntoResponse, Denied> {
-    let (calls, total, link) = host.calls(&service, page).await?;
+    let (calls, link) = host.calls(&service, page).await?;
     Ok((
         AppendHeaders(link.map(|link| (header::LINK, link))),
-        AppendHeaders(total.map(|total| (host::TOTAL, total.to_string()))),
         Json(calls),
     ))
 }

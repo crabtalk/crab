@@ -304,7 +304,6 @@ impl TestHost {
                         topic: topic.map(str::to_owned),
                         call: None,
                         after,
-                        page: None,
                         limit: i64::MAX,
                     },
                 )

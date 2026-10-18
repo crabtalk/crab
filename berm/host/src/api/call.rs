@@ -227,9 +227,8 @@ impl<E: Env> Host<E> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         page.limit = page.limit.clamp(1, MAX_PAGE);
-        page.page = page.page.map(|at| at.max(1));
         let _reading = self.flushing.read().await;
-        let (logs, total) = logs::read(
+        let logs = logs::read(
             &self.store,
             scope,
             name,
@@ -237,13 +236,10 @@ impl<E: Env> Host<E> {
             self.logs.unsaved(service),
         )
         .await?;
-        let link = match total {
-            Some(total) => page.link(total),
-            None => logs
-                .last()
-                .filter(|_| logs.len() as i64 == page.limit)
-                .map(|last| page.next(last.seq as i64)),
-        };
+        let link = logs
+            .last()
+            .filter(|_| logs.len() as i64 == page.limit)
+            .map(|last| page.next(last.seq as i64));
         Ok((logs, link))
     }
 
@@ -269,20 +265,18 @@ impl<E: Env> Host<E> {
         })
     }
 
-    /// `service`'s runs on `page`, newest first, for a numbered page how
-    /// many match it in all, and its `Link` header. At most `page.limit`, held
-    /// to [`MAX_PAGE`].
+    /// `service`'s runs on `page`, newest first, and its `Link` header. At
+    /// most `page.limit`, held to [`MAX_PAGE`].
     pub async fn calls(
         &self,
         service: &str,
         mut page: wire::CallPage,
-    ) -> Result<(Vec<wire::Call>, Option<i64>, Option<String>), Denied> {
+    ) -> Result<(Vec<wire::Call>, Option<String>), Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         page.limit = page.limit.clamp(1, MAX_PAGE);
-        page.page = page.page.map(|at| at.max(1));
         let _reading = self.flushing.read().await;
-        let (calls, total) = calls::read(
+        let calls = calls::read(
             &self.store,
             scope,
             name,
@@ -290,14 +284,11 @@ impl<E: Env> Host<E> {
             self.unsaved(service),
         )
         .await?;
-        let link = match total {
-            Some(total) => page.link(total),
-            None => calls
-                .last()
-                .filter(|_| calls.len() as i64 == page.limit)
-                .map(|last| page.next(last.id)),
-        };
-        Ok((calls, total, link))
+        let link = calls
+            .last()
+            .filter(|_| calls.len() as i64 == page.limit)
+            .map(|last| page.next(last.id));
+        Ok((calls, link))
     }
 
     /// A call from a service on a peer, run as `link` and committed here unless

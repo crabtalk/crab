@@ -55,8 +55,8 @@ curl -X DELETE http://127.0.0.1:7777/programs/example
 | `GET /programs/{name}/usage` | Each caller of each tool and event over the last 30 days. |
 | `GET /programs/{name}/live` | What it is using now: invocations running, memory, bytes stored, and each resource's total and rate. |
 | `GET /programs/{name}/meters` | Its meters over the last 30 days, a day each, with the bytes it stored. |
-| `GET /programs/{name}/calls` | Each run, a call from outside or a wake, newest first, with its outcome, duration and meter. `?tool=&event=&outcome=&since=&until=&before=&page=&limit=`. Without `page`, the calls below the id `before`, and `next` in `Link`; with it, numbered pages in `Link` and how many match in `X-Total-Count`. |
-| `GET /programs/{name}/logs` | What it emitted, oldest first, each beside the call it was emitted in and kept 30 days. `?topic=&call=&after=&page=&limit=`. Without `page`, the logs after the sequence number `after`, and `next` in `Link`; with it, numbered pages in `Link`. |
+| `GET /programs/{name}/calls` | Each run, a call from outside or a wake, newest first, with its outcome, duration and meter. `?tool=&event=&outcome=&since=&until=&before=&limit=`: the calls below the id `before`, and `next` in `Link`. |
+| `GET /programs/{name}/logs` | What it emitted, oldest first, each beside the call it was emitted in and kept 30 days. `?topic=&call=&after=&limit=`: the logs after the sequence number `after`, and `next` in `Link`. |
 | `GET /programs/{name}/crons` | Each cron tool with its expression and next run. |
 | `GET /programs/{name}/wakes` | The wakes armed to call its tools that have not run. |
 

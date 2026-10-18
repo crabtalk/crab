@@ -189,16 +189,15 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
         .await
 }
 
-/// `scope/name`'s runs on `page`, newest first, as written and in `unsaved`,
-/// and for a numbered page how many match it in all. A service caller is
-/// named by its name.
+/// `scope/name`'s runs on `page`, newest first, as written and in `unsaved`.
+/// A service caller is named by its name.
 pub(crate) async fn read(
     store: &Store,
     scope: &str,
     name: &str,
     page: CallPage,
     unsaved: Unsaved,
-) -> Result<(Vec<Call>, Option<i64>)> {
+) -> Result<Vec<Call>> {
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
@@ -216,23 +215,6 @@ pub(crate) async fn read(
             let since = page.since.map(|since| since as i64);
             let until = page.until.map(|until| until as i64);
             let before = page.before.map(|before| before as i64);
-            let offset = page
-                .page
-                .map_or(0, |at| (at - 1).saturating_mul(page.limit));
-            let total: Option<i64> = page
-                .page
-                .map(|_| {
-                    conn.prepare_cached(&format!("SELECT COUNT(*) {MATCHING}"))?
-                        .query_row(
-                            named_params! {
-                                ":scope": scope, ":name": name, ":tool": page.tool,
-                                ":event": page.event, ":outcome": page.outcome,
-                                ":since": since, ":until": until, ":before": before,
-                            },
-                            |row| row.get(0),
-                        )
-                })
-                .transpose()?;
             // The written calls a page can hold: runs not yet written only
             // push them further down.
             let written = conn
@@ -244,7 +226,7 @@ pub(crate) async fn read(
                         ":scope": scope, ":name": name, ":tool": page.tool,
                         ":event": page.event, ":outcome": page.outcome,
                         ":since": since, ":until": until, ":before": before,
-                        ":limit": offset.saturating_add(page.limit),
+                        ":limit": page.limit,
                     },
                     |row| row.get::<_, i64>(0),
                 )?
@@ -258,11 +240,7 @@ pub(crate) async fn read(
                 .chain(unsaved.iter().map(|call| (call.id as i64, false)))
                 .collect();
             ids.sort_unstable_by_key(|(id, _)| Reverse(*id));
-            let ids: Vec<(i64, bool)> = ids
-                .into_iter()
-                .skip(offset as usize)
-                .take(page.limit as usize)
-                .collect();
+            ids.truncate(page.limit as usize);
             let shown: Vec<i64> = ids
                 .iter()
                 .filter(|(_, written)| *written)
@@ -279,13 +257,12 @@ pub(crate) async fn read(
                 )?
                 .map(|call| call.map(|call| (call.id, call)))
                 .collect::<rusqlite::Result<_>>()?;
-            let total = total.map(|total| total + unsaved.len() as i64);
             found.extend(unsaved.into_iter().map(|call| (call.id, call)));
             let calls = ids
                 .into_iter()
                 .filter_map(|(id, _)| found.remove(&(id as u64)))
                 .collect();
-            Ok((calls, total))
+            Ok(calls)
         })
         .await
 }

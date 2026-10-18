@@ -176,15 +176,14 @@ pub(crate) async fn write(store: &Store, logs: Vec<Emitted>, now: u64) -> Result
 }
 
 /// `scope/name`'s logs on `page`, oldest first, as written and then in
-/// `unsaved`, its logs not yet written, and for a numbered page how many match
-/// it in all.
+/// `unsaved`, its logs not yet written.
 pub(crate) async fn read(
     store: &Store,
     scope: &str,
     name: &str,
     page: wire::Page,
     unsaved: Vec<Emitted>,
-) -> Result<(Vec<Logged>, Option<i64>)> {
+) -> Result<Vec<Logged>> {
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
@@ -210,27 +209,12 @@ pub(crate) async fn read(
                 })
                 .map(|(log, seq)| log.logged(seq as u64))
                 .collect();
-            let offset = page
-                .page
-                .map_or(0, |at| (at - 1).saturating_mul(page.limit));
-            let total: Option<i64> = page
-                .page
-                .map(|_| {
-                    conn.prepare_cached(&format!("SELECT COUNT(*) {MATCHING}"))?
-                        .query_row(
-                            params![scope, name, page.after, page.topic, page.call],
-                            |row| row.get(0),
-                        )
-                })
-                .transpose()?;
             let mut logs = conn
                 .prepare_cached(&format!(
-                    "SELECT seq, call, at, topics, data {MATCHING} ORDER BY seq LIMIT ?6 OFFSET ?7"
+                    "SELECT seq, call, at, topics, data {MATCHING} ORDER BY seq LIMIT ?6"
                 ))?
                 .query_map(
-                    params![
-                        scope, name, page.after, page.topic, page.call, page.limit, offset
-                    ],
+                    params![scope, name, page.after, page.topic, page.call, page.limit],
                     |row| {
                         let topics: String = row.get(3)?;
                         Ok(Logged {
@@ -243,11 +227,9 @@ pub(crate) async fn read(
                     },
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            let skipped = total.map_or(0, |written| (offset - written).max(0));
             let room = (page.limit as usize).saturating_sub(logs.len());
-            let total = total.map(|written| written + unsaved.len() as i64);
-            logs.extend(unsaved.into_iter().skip(skipped as usize).take(room));
-            Ok((logs, total))
+            logs.extend(unsaved.into_iter().take(room));
+            Ok(logs)
         })
         .await
 }

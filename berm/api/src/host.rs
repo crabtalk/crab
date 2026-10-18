@@ -8,10 +8,6 @@ use std::{collections::BTreeMap, fmt};
 /// program the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
-/// Header carrying how many calls a numbered [`CallPage`]'s filters match,
-/// across every page.
-pub const TOTAL: &str = "x-total-count";
-
 /// Header carrying the [`Caller`] a call to bermd is made as, as JSON. bermd
 /// verifies none of it.
 pub const CALLER: &str = "x-berm-caller";
@@ -242,7 +238,7 @@ pub struct Usage {
     pub public: Option<bool>,
 }
 
-/// `?topic=&call=&after=&page=&limit=` on a service's logs.
+/// `?topic=&call=&after=&limit=` on a service's logs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Page {
     /// Only logs carrying this topic.
@@ -254,10 +250,6 @@ pub struct Page {
     /// Only logs after this sequence number.
     #[serde(default)]
     pub after: i64,
-    /// Which run of `limit` logs, counting from 1. Without it, the first
-    /// `limit` logs after `after`, and no count.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page: Option<i64>,
     #[serde(default = "limit")]
     pub limit: i64,
 }
@@ -267,22 +259,11 @@ fn limit() -> i64 {
 }
 
 impl Page {
-    /// The `Link` header for this numbered page of `total` logs.
-    pub fn link(&self, total: i64) -> Option<String> {
-        link(self.page.unwrap_or(1), self.limit, total, |page| {
-            serde_urlencoded::to_string(Page {
-                page: Some(page),
-                ..self.clone()
-            })
-        })
-    }
-
     /// The `Link` header naming the logs after `seq` as `next`.
     pub fn next(&self, seq: i64) -> String {
         rel(
             serde_urlencoded::to_string(Page {
                 after: seq,
-                page: None,
                 ..self.clone()
             }),
             "next",
@@ -290,8 +271,7 @@ impl Page {
     }
 }
 
-/// `?tool=&event=&outcome=&since=&until=&before=&page=&limit=` on a service's
-/// calls.
+/// `?tool=&event=&outcome=&since=&until=&before=&limit=` on a service's calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
     /// Only calls of this tool.
@@ -312,67 +292,21 @@ pub struct CallPage {
     /// Only calls numbered below this id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before: Option<u64>,
-    /// Which run of `limit` calls, counting from 1. Without it, the first
-    /// `limit` calls below `before`, and no count.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page: Option<i64>,
     #[serde(default = "limit")]
     pub limit: i64,
 }
 
 impl CallPage {
-    /// The `Link` header for this numbered page of `total` calls.
-    pub fn link(&self, total: i64) -> Option<String> {
-        link(self.page.unwrap_or(1), self.limit, total, |page| {
-            serde_urlencoded::to_string(CallPage {
-                page: Some(page),
-                ..self.clone()
-            })
-        })
-    }
-
     /// The `Link` header naming the calls below `id` as `next`.
     pub fn next(&self, id: u64) -> String {
         rel(
             serde_urlencoded::to_string(CallPage {
                 before: Some(id),
-                page: None,
                 ..self.clone()
             }),
             "next",
         )
     }
-}
-
-/// A `Link` header in GitHub's form for page `page` of `total` items, `limit`
-/// a page: `first` and `prev` past the first page, `next` and `last` before
-/// the last, each a reference relative to the request whose query `query`
-/// writes. `None` for the only page.
-fn link(
-    page: i64,
-    limit: i64,
-    total: i64,
-    query: impl Fn(i64) -> Result<String, serde_urlencoded::ser::Error>,
-) -> Option<String> {
-    let last = ((total + limit - 1) / limit).max(1);
-    let mut rels = Vec::new();
-    if page > 1 {
-        rels.push((1, "first"));
-        rels.push(((page - 1).min(last), "prev"));
-    }
-    if page < last {
-        rels.push((page + 1, "next"));
-        rels.push((last, "last"));
-    }
-    if rels.is_empty() {
-        return None;
-    }
-    let link = rels
-        .into_iter()
-        .map(|(page, name)| rel(query(page), name))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Some(link)
 }
 
 /// One `Link` entry: a reference relative to the request, with `query`.
