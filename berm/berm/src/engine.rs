@@ -149,6 +149,8 @@ pub(crate) struct Image {
     /// rather than trapping on a model's turn.
     pre: InstancePre<Invocation>,
     exports: Vec<String>,
+    /// Bytes the image and its compiled code take.
+    pub(crate) bytes: u64,
 }
 
 impl Image {
@@ -188,7 +190,9 @@ impl Image {
             },
         )?;
 
+        let compiled = module.image_range();
         Ok(Self {
+            bytes: image.len() as u64 + (compiled.end as usize - compiled.start as usize) as u64,
             exports: module.exports().map(|e| e.name().to_owned()).collect(),
             pre: linker.instantiate_pre(&module)?,
             engine,

@@ -453,7 +453,13 @@ impl<E: Env> Host<E> {
         Ok(wire::Live {
             running,
             memory,
-            stored: meter::stored(&self.store, service, &self.databases_dir.join(service)).await?,
+            stored: meter::stored(
+                &self.store,
+                service,
+                &self.databases_dir.join(service),
+                program.bytes(),
+            )
+            .await?,
             instructions: count(all.instructions, today.instructions),
             read: count(all.read, today.read),
             written: count(all.written, today.written),

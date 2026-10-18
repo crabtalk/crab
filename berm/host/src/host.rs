@@ -453,6 +453,7 @@ impl<E: Env> Host<E> {
                     &self.store,
                     &program.name,
                     &self.databases_dir.join(&*program.name),
+                    program.bytes(),
                     today,
                 )
                 .await?;

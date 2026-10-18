@@ -373,7 +373,8 @@ pub struct Live {
     pub running: u64,
     /// Bytes of linear memory they hold.
     pub memory: u64,
-    /// Bytes it stores: its database file, its write-ahead log and its state.
+    /// Bytes it keeps: its database file, its write-ahead log, its state, its
+    /// logs kept, and its image and compiled code.
     pub stored: u64,
     /// Wasm instructions executed.
     pub instructions: Count,
@@ -417,7 +418,8 @@ pub struct Metered {
     /// Bytes of the logs those invocations emitted.
     #[serde(default)]
     pub logged: u64,
-    /// Bytes the service stored when the day was sampled: its database file
-    /// and state.
+    /// Bytes the service kept when the day was sampled: its database file,
+    /// its write-ahead log, its state, its logs kept, and its image and
+    /// compiled code.
     pub stored: u64,
 }

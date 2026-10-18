@@ -188,6 +188,11 @@ impl Program {
             .any(|spec| spec.name == tool && spec.callers != Some(Callers::Services))
     }
 
+    /// Bytes its image and its compiled code take.
+    pub fn bytes(&self) -> u64 {
+        self.image.bytes
+    }
+
     /// What the program says it is: ABI version, tools, and README.
     pub fn manifest(&self) -> &Manifest {
         &self.manifest

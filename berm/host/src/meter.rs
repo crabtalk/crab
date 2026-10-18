@@ -98,8 +98,14 @@ pub(crate) async fn write(store: &Store, metered: Vec<((String, i32), Meter)>) -
 }
 
 /// Record what `service` stores on `day`, as [`stored`] measures it.
-pub(crate) async fn sample(store: &Store, service: &str, database: &Path, day: i32) -> Result<()> {
-    let stored = stored(store, service, database).await?;
+pub(crate) async fn sample(
+    store: &Store,
+    service: &str,
+    database: &Path,
+    code: u64,
+    day: i32,
+) -> Result<()> {
+    let stored = stored(store, service, database, code).await?;
     let (scope, name) = host::split(service);
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
@@ -116,9 +122,15 @@ pub(crate) async fn sample(store: &Store, service: &str, database: &Path, day: i
         .await
 }
 
-/// The bytes `service` stores now: its database file and its write-ahead log,
-/// if any, at `database`, and its state.
-pub(crate) async fn stored(store: &Store, service: &str, database: &Path) -> Result<u64> {
+/// The bytes `service` keeps now: its database file and its write-ahead log,
+/// if any, at `database`, its state, the logs kept, and `code`, its image and
+/// compiled code.
+pub(crate) async fn stored(
+    store: &Store,
+    service: &str,
+    database: &Path,
+    code: u64,
+) -> Result<u64> {
     let file: u64 = ["sqlite", "sqlite-wal"]
         .iter()
         .filter_map(|extension| std::fs::metadata(database.with_extension(extension)).ok())
@@ -129,14 +141,16 @@ pub(crate) async fn stored(store: &Store, service: &str, database: &Path) -> Res
     let state: i64 = store
         .run(move |conn| {
             conn.query_row(
-                "SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) FROM service_state
-                  WHERE scope = ?1 AND name = ?2",
+                "SELECT (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) FROM service_state
+                          WHERE scope = ?1 AND name = ?2)
+                      + (SELECT COALESCE(SUM(LENGTH(topics) + LENGTH(data)), 0) FROM service_logs
+                          WHERE scope = ?1 AND name = ?2)",
                 params![scope, name],
                 |row| row.get(0),
             )
         })
         .await?;
-    Ok(file + state as u64)
+    Ok(file + state as u64 + code)
 }
 
 /// `scope/name`'s meters over the [`usage::WINDOW`] days to `today`, oldest
