@@ -1,4 +1,6 @@
 <script>
+	import { Moon, Sun } from 'lucide-static';
+	import { ModeWatcher, toggleMode } from 'mode-watcher';
 	import { siGithub } from 'simple-icons';
 	import '../app.css';
 	import { base } from '$app/paths';
@@ -45,6 +47,8 @@
 	});
 </script>
 
+<ModeWatcher />
+
 <header>
 	<a class="wordmark" href="{base}/">berm</a>
 
@@ -57,6 +61,12 @@
 	</nav>
 
 	<nav class="links">
+		<!-- Both marks are in the markup; the theme's class shows one, so the
+		     prerendered page draws the right one before it hydrates. -->
+		<button class="theme" onclick={toggleMode} aria-label="Toggle light and dark">
+			{@html Sun}
+			{@html Moon}
+		</button>
 		<a class="action" href={repo}>
 			Star
 			<Brand icon={siGithub} size={14} />
@@ -127,6 +137,38 @@
 	.action:hover {
 		border-color: var(--text);
 		text-decoration: none;
+	}
+
+	.theme {
+		display: grid;
+		place-items: center;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border: 1px solid var(--line-strong);
+		border-radius: 6px;
+		background: none;
+		color: var(--muted);
+		cursor: pointer;
+	}
+
+	.theme:hover {
+		border-color: var(--text);
+		color: var(--text);
+	}
+
+	.theme :global(svg) {
+		width: 15px;
+		height: 15px;
+	}
+
+	.theme :global(.lucide-sun),
+	:global(.dark) .theme :global(.lucide-moon) {
+		display: none;
+	}
+
+	:global(.dark) .theme :global(.lucide-sun) {
+		display: block;
 	}
 
 	.count {

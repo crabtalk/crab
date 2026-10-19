@@ -1,19 +1,39 @@
 :root {
+	--bg: #fff;
+	--panel: #fafafa;
+	--panel-high: #f0f0f0;
+	--line: #eaeaea;
+	--line-strong: #d4d4d4;
+	--text: #171717;
+	--strong: #000;
+	--muted: #5f5f5f;
+	--faint: #8f8f8f;
+	/* The page carries one hue, and it is the sand a berm is built from. It marks
+	   the two things worth reading twice: a digest, and a keyword. */
+	--sand: #9a6716;
+	--string: #3d7a1c;
+	--shadow: rgb(0 0 0 / 0.2);
+	--radius: 6px;
+	/* The sticky bar's height; the docs columns hang below it. */
+	--header: 56px;
+	--mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+	color-scheme: light;
+}
+
+/* `mode-watcher` sets the class from the reader's choice, or the system's. */
+:root.dark {
 	--bg: #000;
 	--panel: #0a0a0a;
 	--panel-high: #161616;
 	--line: #232323;
 	--line-strong: #363636;
 	--text: #ededed;
+	--strong: #fff;
 	--muted: #a1a1a1;
 	--faint: #6f6f6f;
-	/* The page carries one hue, and it is the sand a berm is built from. It marks
-	   the two things worth reading twice: a digest, and a keyword. */
 	--sand: #d8a657;
-	--radius: 6px;
-	/* The sticky bar's height; the docs columns hang below it. */
-	--header: 56px;
-	--mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+	--string: #9ec87c;
+	--shadow: rgb(0 0 0 / 0.9);
 	color-scheme: dark;
 }
 
@@ -66,9 +86,15 @@ pre code {
 	font-size: 13px;
 }
 
-/* Shiki paints each token as `--shiki-dark` and sets no colour of its own. */
+/* Shiki paints each token as `--shiki-light` and `--shiki-dark` and sets no
+   colour of its own. */
 .shiki,
 .shiki span {
+	color: var(--shiki-light);
+}
+
+.dark .shiki,
+.dark .shiki span {
 	color: var(--shiki-dark);
 }
 
@@ -142,7 +168,7 @@ pre code {
 }
 
 .s {
-	color: #9ec87c;
+	color: var(--string);
 }
 
 .c {

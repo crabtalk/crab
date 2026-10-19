@@ -1,76 +1,99 @@
-# berm
+# crab
 
-[![CI](https://github.com/crabtalk/berm/actions/workflows/ci.yml/badge.svg)](https://github.com/crabtalk/berm/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/berm.svg)](https://crates.io/crates/berm)
-[![Docs](https://img.shields.io/badge/docs-crabtalk.github.io-blue)](https://crabtalk.github.io/berm/)
+[![CI](https://github.com/crabtalk/crab/actions/workflows/ci.yml/badge.svg)](https://github.com/crabtalk/crab/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
+[![Docs](https://img.shields.io/badge/docs-berm.run-blue)](https://berm.run/docs/)
 
-The OS for agent harnesses.
+The agent for the CrabTalk platform: write a service, deploy it, call it, and watch what it uses, on CrabTalk Cloud or a local bermd.
 
-Claude Code, Codex and OpenCode reach berm over MCP. What they install runs as
-a process, under a syscall table that is readable before it runs and fixed once
-it does.
+## Install
 
-A program is one WebAssembly module. berm pins it by hash, compiles it once, and
-instantiates it per invocation — arguments go in through syscalls, the result
-comes back out through one, and nothing survives the call.
+```sh
+cargo install crab-agent
+```
+
+## Sign in
+
+```sh
+crab login                 # CrabTalk Cloud, in the browser
+crab context use default   # or the bermd on http://127.0.0.1:7777
+```
+
+A context names the host `crab` talks to, the way `docker context` picks a daemon. See [crab](crates/crab/README.md) for contexts, keys, orgs and billing.
+
+## Write a service
+
+```sh
+crab new example
+```
+
+A service is a Rust crate built to one WebAssembly module. Every `pub fn` in its program module is a tool, and its doc comment is what a model reads when deciding to call it:
 
 ```rust
-let berm = Berm::new(&engine, call::DEFAULT_CALL_DEPTH, vec![]);
+#[berm_lang::program]
+mod tools {
+    use alloc::string::String;
+    use berm_lang::Result;
+
+    /// Echo the query back.
+    #[public]
+    pub fn echo(
+        /// The text to echo back.
+        query: String,
+    ) -> Result<String> {
+        Ok(query)
+    }
+}
+```
+
+A tool is internal unless marked `#[public]`: only the host calls an internal tool, for the service's own wakes, crons and Stripe events. A call with no caller reaches only a tool also marked `#[anonymous]`. See [berm-lang](berm/lang/README.md) and [Writing a Program](https://berm.run/docs/berm/writing-a-program/).
+
+## Deploy and call it
+
+```sh
+crab deploy
+crab call example echo '{"query":"hello"}'
+crab logs example
+crab usage example
+```
+
+`crab deploy` builds the crate and deploys it as its `berm.toml` says. Against Cloud it pushes the image to the registry `image` names and deploys that reference. Agents reach a service's tools over MCP.
+
+## Use ours
+
+[crab-guest](crates/guest/README.md) collects the services crab provides, each a guest you deploy under your own account:
+
+- [stripe](guest/stripe/README.md): Stripe subscriptions for a product's users. Checkout, the customer portal, and each user's plan.
+
+Your other services reach one by name, as `berm_lang::call("stripe", "plan", …)`.
+
+## berm, the runtime
+
+Each service runs on berm. A service is one WebAssembly module: berm pins it by hash, compiles it once, and instantiates it per invocation. It reaches the world only through the syscalls it was given, and that table can be read before it runs and is fixed once it does. Its tools are served over HTTP, and over MCP to agents such as Claude Code, Codex and OpenCode.
+
+`bermd` runs berm as a service of your own:
+
+```sh
+bermd &
+curl -X PUT --data-binary @example.wasm 'http://127.0.0.1:7777/programs/example?public=echo'
+```
+
+And `berm` embeds it in a host of your own:
+
+```rust
+let calls = Calls::by_name(call::DEFAULT_CALL_DEPTH);
+let berm = Berm::new(&engine, calls, vec![], storage::Memory::new());
 berm.deploy("example", &wasm)?;
 
 // The outer result is the host's — a missing tool, a trap. The inner one is
 // the program reporting failure, which is a result the model should see.
-match berm.call(None, "example", "echo", br#"{"query":"hello"}"#.to_vec()).await? {
+match berm.call(None, "example", "echo", br#"{"query":"hello"}"#.to_vec()).await?.result {
     Ok(result) => println!("{result}"),
     Err(failure) => eprintln!("{failure}"),
 }
 ```
 
-A program's public tools are reachable by name from anything deployed beside it that declares it. Beyond
-that a program reaches the world only through the *syscalls* it was given, and
-that table is the linker it is instantiated with — a call to anything else traps
-because nothing is registered for it, not because a check said no. berm ships
-none: what a filesystem is bounded by, and where bytes persist, are decisions
-about a host, and berm has no host.
-
-`Manifest::from_image(bytes)` reads what an image claims to be — its tools,
-their schemas, when to reach for them, and what it will reach for itself —
-without compiling or running it.
-
-**A tool is internal unless marked `#[public]`.** Only the host calls an internal tool, for the program's own wakes and crons. A `#[public]` tool can be called by any account the host authenticates and any program allowed to reach it, with arguments the caller chooses; `berm_lang::caller()` says who called. A deploy that makes a tool public is refused until the deployer confirms it.
-
-## Running programs
-
-`bermd` is a long-running service that deploys programs and serves every one of
-them on a single MCP endpoint, with tools named `{program}.{tool}`.
-
-```sh
-bermd &
-crab deploy
-crab ls
-```
-
-`crab deploy` builds the program in the working directory and deploys it as its
-`berm.toml` names it.
-
-See [`crates/daemon`](crates/daemon) for the control API and what a deployed
-program can reach.
-
-## Moving programs
-
-A program is one file, so it travels as one OCI layer with no tarball around it
-— and because the layer is the image and nothing else, the digest a registry
-addresses it by is the digest `crab ls` prints.
-
-Against a host that pulls from a registry, `crab deploy` pushes the image to the
-`image` its `berm.toml` names first. See
-[Publishing a Program](https://crabtalk.github.io/berm/docs/berm/publishing/).
-
-## Documentation
-
-- **[Guide and design notes](https://crabtalk.github.io/berm/docs/)** — how it
-  works and why, with worked examples.
-- **API reference** — `cargo doc --open`.
+See [berm](berm/berm/README.md), [Running the Service](https://berm.run/docs/berm/service/) and [Publishing a Program](https://berm.run/docs/berm/publishing/).
 
 ## Building
 
@@ -78,8 +101,7 @@ Against a host that pulls from a registry, `crab deploy` pushes the image to the
 cargo test --workspace
 ```
 
-Rust 2024 edition, POSIX only. Building a program additionally needs the guest
-target:
+Rust 2024 edition, POSIX only. Building a service additionally needs the guest target:
 
 ```sh
 rustup target add wasm32-unknown-unknown

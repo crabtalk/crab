@@ -1,0 +1,29 @@
+[package]
+name = "berm-host"
+description = "The host every berm daemon runs: deployed services, the state they commit, and the calls into them"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords = ["berm", "wasm", "sandbox", "sqlite", "mcp"]
+categories = ["wasm", "virtualization"]
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+berm = { workspace = true, features = ["sqlite"] }
+berm-api = { workspace = true, features = ["rusqlite"] }
+chrono.workspace = true
+croner.workspace = true
+parking_lot.workspace = true
+rusqlite.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio.workspace = true
+tower.workspace = true
+tracing.workspace = true
+
+[features]
+# `berm_host::test`: a host whose edges a test holds.
+test = []

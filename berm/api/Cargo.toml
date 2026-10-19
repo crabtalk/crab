@@ -1,0 +1,25 @@
+[package]
+name = "berm-api"
+description = "What a program says it is, and what bermd's control API speaks"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords = ["berm", "wasm", "manifest", "mcp", "api"]
+categories = ["wasm", "api-bindings"]
+
+[dependencies]
+anyhow.workspace = true
+object.workspace = true
+rusqlite = { workspace = true, optional = true }
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
+serde_urlencoded.workspace = true
+utoipa = { workspace = true, optional = true }
+
+[features]
+# `ToSchema` on the host's types a daemon documents in its OpenAPI.
+utoipa = ["dep:utoipa"]
+# `ToSql`/`FromSql` on the usage enums of `host`.
+rusqlite = ["dep:rusqlite"]

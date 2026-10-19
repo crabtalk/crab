@@ -1,0 +1,20 @@
+[package]
+name = "berm-codegen"
+description = "Proc-macro codegen for berm programs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/berm-codegen"
+keywords = ["berm", "wasm", "proc-macro", "codegen"]
+categories = ["development-tools::procedural-macro-helpers", "wasm"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+syn.workspace = true

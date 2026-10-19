@@ -209,13 +209,14 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "berm"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
  "berm-codegen",
+ "berm-rusqlite",
  "hex",
- "rusqlite",
+ "parking_lot",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -227,9 +228,10 @@ dependencies = [
 
 [[package]]
 name = "berm-api"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
+ "berm-rusqlite",
  "object 0.40.0",
  "serde",
  "serde_json",
@@ -239,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "berm-codegen"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -249,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "berm-fixture"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -260,16 +262,16 @@ dependencies = [
 
 [[package]]
 name = "berm-host"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
  "berm",
  "berm-api",
+ "berm-rusqlite",
  "chrono",
  "croner",
  "parking_lot",
- "rusqlite",
  "serde",
  "serde_json",
  "tokio",
@@ -279,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "berm-keeper"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -291,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "berm-lang"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "berm-codegen",
  "linked_list_allocator",
@@ -300,8 +302,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-libsqlite3-sys"
+version = "0.37.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3410d1db31a838ed905a5ac8f7f4fe8c7204816fcd92f0824abd96643a2fb723"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "berm-oci"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -312,8 +325,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-rusqlite"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29f2918b477250c7f677fb65981e693ccc0466db9bbd84f90844ad4eebfa0030"
+dependencies = [
+ "berm-libsqlite3-sys",
+ "bitflags",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "smallvec",
+ "sqlite-wasm-rs",
+]
+
+[[package]]
 name = "bermd"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -321,6 +349,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "clap",
+ "parking_lot",
  "reqwest",
  "rmcp",
  "serde",
@@ -539,6 +568,48 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "crab-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-oci",
+ "chrono",
+ "clap",
+ "crabtalk-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 1.1.4+spec-1.1.0",
+ "toml_edit",
+]
+
+[[package]]
+name = "crab-guest"
+version = "0.1.0"
+dependencies = [
+ "crab-guest-stripe",
+]
+
+[[package]]
+name = "crab-guest-stripe"
+version = "0.1.0"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
+name = "crabtalk-sdk"
+version = "0.1.0"
+dependencies = [
+ "berm-api",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "utoipa",
 ]
 
 [[package]]
@@ -1546,16 +1617,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libsqlite3-sys"
-version = "0.37.0"
-source = "git+https://github.com/crabtalk/rusqlite?branch=rows-0.39#2c1a9f49c54e8622699ec57c5a1ae30221030b31"
-dependencies = [
- "cc",
- "pkg-config",
- "vcpkg",
-]
-
-[[package]]
 name = "linked_list_allocator"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2037,6 +2098,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -2100,20 +2162,6 @@ checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
 dependencies = [
  "hashbrown 0.16.1",
  "thiserror 2.0.20",
-]
-
-[[package]]
-name = "rusqlite"
-version = "0.39.0"
-source = "git+https://github.com/crabtalk/rusqlite?branch=rows-0.39#2c1a9f49c54e8622699ec57c5a1ae30221030b31"
-dependencies = [
- "bitflags",
- "fallible-iterator",
- "fallible-streaming-iterator",
- "hashlink",
- "libsqlite3-sys",
- "smallvec",
- "sqlite-wasm-rs",
 ]
 
 [[package]]
@@ -2821,6 +2869,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.25.15+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
+dependencies = [
+ "indexmap",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.4",
 ]
 
 [[package]]
@@ -3621,6 +3682,9 @@ name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "wit-component"

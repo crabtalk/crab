@@ -1,25 +1,29 @@
 [workspace]
-members = ["crates/*"]
+members = ["berm/*", "crates/*", "guest/*"]
 resolver = "3"
 
 [workspace.package]
 edition = "2024"
-version = "0.0.8"
-repository = "https://github.com/crabtalk/berm"
+version = "0.1.0"
+repository = "https://github.com/crabtalk/crab"
 license = "Apache-2.0"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
-readme = "README.md"
-keywords = ["wasm", "sandbox", "mcp", "agent"]
-categories = ["virtualization", "wasm"]
 
 [workspace.dependencies]
-berm = { path = "crates/berm", version = "0.0.8" }
-berm-api = { path = "crates/api", version = "0.0.8" }
-berm-codegen = { path = "crates/codegen", version = "0.0.8" }
-berm-host = { path = "crates/host", version = "0.0.8" }
-berm-lang = { path = "crates/lang", version = "0.0.8" }
-berm-oci = { path = "crates/oci", version = "0.0.8" }
-bermd = { path = "crates/daemon", version = "0.0.8" }
+crab = { package = "crab-agent", path = "crates/crab", version = "0.1.0" }
+crabtalk-sdk = { path = "crates/sdk", version = "0.1.0" }
+
+# berm
+berm = { path = "berm/berm", version = "0.1.0" }
+berm-api = { path = "berm/api", version = "0.1.0" }
+berm-codegen = { path = "berm/codegen", version = "0.1.0" }
+berm-host = { path = "berm/host", version = "0.1.0" }
+berm-lang = { path = "berm/lang", version = "0.1.0" }
+berm-oci = { path = "berm/oci", version = "0.1.0" }
+bermd = { path = "berm/daemon", version = "0.1.0" }
+
+# guest
+stripe = { package = "crab-guest-stripe", path = "guest/stripe", version = "0.1.0" }
 
 # crates-io
 anyhow = "1.0"
@@ -38,23 +42,10 @@ rmcp = { version = "2.2", default-features = false, features = [
     "transport-streamable-http-server",
 ] }
 hex = "0.4"
-# 0.39 for libsqlite3-sys 0.37: Cloud's sqlx 0.9 takes libsqlite3-sys below
-# 0.38, and Cargo counts it though Cloud builds no SQLite driver. One package
-# per graph may link sqlite3.
-rusqlite = { version = "0.39", features = ["bundled", "hooks"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+rusqlite = { package = "berm-rusqlite", version = "0.39", features = ["bundled", "hooks"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false }
 serde_urlencoded = "0.7"
-# The same crates for guests, which are `no_std` with an allocator. Second
-# entries rather than features on the first because a member cannot turn off
-# default features it inherits.
-serde_guest = { package = "serde", version = "1", default-features = false, features = [
-    "derive",
-    "alloc",
-] }
-serde_json_guest = { package = "serde_json", version = "1", default-features = false, features = [
-    "alloc",
-] }
 sha2 = "0.11"
 syn = { version = "2", features = ["full"] }
 tokio = { version = "1", features = [
@@ -67,6 +58,7 @@ tokio = { version = "1", features = [
     "time",
 ] }
 toml = "1"
+toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -90,9 +82,3 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = 0
-
-# rusqlite and libsqlite3-sys 0.39 / 0.37 with libSQL's rows-read and
-# rows-written statement counters in the bundled SQLite.
-[patch.crates-io]
-rusqlite = { git = "https://github.com/crabtalk/rusqlite", branch = "rows-0.39" }
-libsqlite3-sys = { git = "https://github.com/crabtalk/rusqlite", branch = "rows-0.39" }
