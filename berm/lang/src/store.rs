@@ -39,9 +39,7 @@ pub fn set(key: &str, value: &[u8]) -> Result<(), CallError> {
 }
 
 /// Read `key` as JSON, or `None` if this program has never written it.
-pub fn get_json<T: for<'de> serde::Deserialize<'de>>(
-    key: &str,
-) -> Result<Option<T>, CallError> {
+pub fn get_json<T: for<'de> serde::Deserialize<'de>>(key: &str) -> Result<Option<T>, CallError> {
     let Some(bytes) = get(key)? else {
         return Ok(None);
     };
