@@ -30,13 +30,6 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
                 if let Some(database) = host.kept(&at.program) {
                     return database?.get(at.chain, key).await;
                 }
-                if let Some(set) = at
-                    .dry
-                    .as_ref()
-                    .and_then(|_| host.commits.kept(at.chain, &at.program, &key))
-                {
-                    return Ok(Some(set));
-                }
                 let (scope, name) = host::split(&at.program);
                 service::read(&host.store, scope, name, key).await
             }

@@ -2,7 +2,7 @@
 
 use crate::utils;
 use anyhow::{Context, Result};
-use berm_api::{Dry, DryRun, Output, host::Caller};
+use berm_api::{Output, host::Caller};
 use crabtalk_sdk::client::Client;
 use std::{
     io::{IsTerminal, Read},
@@ -13,30 +13,16 @@ use std::{
 /// two leave by different doors so a script can tell them apart.
 const FAILED: u8 = 2;
 
-/// Call `tool` of `program`, dry when `dry` is set.
+/// Call `tool` of `program`.
 pub fn run(
     client: &Client,
     program: &str,
     tool: &str,
     inline: Option<&str>,
     caller: Option<&Caller>,
-    dry: Option<Dry>,
 ) -> Result<ExitCode> {
     let arguments = arguments(inline)?;
-    let (output, meter) = match dry {
-        Some(dry) => {
-            // Arguments that are not JSON go across as their text.
-            let args = serde_json::from_slice(&arguments).unwrap_or_else(|_| {
-                serde_json::Value::String(String::from_utf8_lossy(&arguments).into_owned())
-            });
-            let args = match arguments.is_empty() {
-                true => serde_json::Value::Null,
-                false => args,
-            };
-            utils::wait(client.dry(program, tool, &DryRun { args, dry }, caller))?
-        }
-        None => utils::wait(client.call(program, tool, arguments, caller))?,
-    };
+    let (output, meter) = utils::wait(client.call(program, tool, arguments, caller))?;
     if let Some(meter) = meter {
         eprintln!(
             "{} instructions, {} rows read, {} written, {} KiB memory, {} bytes proxied",

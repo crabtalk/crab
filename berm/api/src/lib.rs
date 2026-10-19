@@ -112,67 +112,6 @@ pub struct ToolTerms {
     pub budget: Budget,
 }
 
-/// How a call is made dry. A dry chain keeps nothing berm holds: no state,
-/// logs or database writes are committed and no wake is armed, in any service
-/// the chain reaches. Its fetches are sent unless
-/// one of `answers` matches.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Dry {
-    /// What a request is answered with in place of being sent, by method and
-    /// URL.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub answers: Vec<Answer>,
-    /// Refuse a request no answer matches, rather than send it.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub offline: bool,
-}
-
-impl Dry {
-    /// The answer to `method` on `url`, if one matches.
-    pub fn answer(&self, method: &str, url: &str) -> Option<&Answer> {
-        self.answers
-            .iter()
-            .find(|answer| answer.method.eq_ignore_ascii_case(method) && answer.url == url)
-    }
-}
-
-/// One request's answer in a dry call.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Answer {
-    pub method: String,
-    pub url: String,
-    pub status: u16,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub headers: Vec<(String, String)>,
-    #[serde(default)]
-    pub body: String,
-}
-
-/// A dry call of a tool: its arguments, and how it is made dry.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct DryRun {
-    /// The argument object. A string is handed to the tool as its text, and
-    /// `null` as no arguments.
-    #[serde(default)]
-    pub args: serde_json::Value,
-    #[serde(flatten)]
-    pub dry: Dry,
-}
-
-impl DryRun {
-    /// The bytes the tool is handed.
-    pub fn arguments(&self) -> Vec<u8> {
-        match &self.args {
-            serde_json::Value::Null => Vec::new(),
-            serde_json::Value::String(text) => text.clone().into_bytes(),
-            args => args.to_string().into_bytes(),
-        }
-    }
-}
-
 /// A cron tool's expression, as its owner sets it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,5 +1,7 @@
 //! `berm.http.fetch` and `berm.http.proxy`, sent through the daemon's
-//! [`Env::Fetch`]. Each request sent meters [`Meter::sent`].
+//! [`Env::Fetch`]. Each request sent meters [`Meter::sent`], and each answered
+//! `berm.http.proxy` request meters [`Meter::proxied`]: its URL, header names
+//! and values and body, and the response's header names and values and body.
 
 use crate::{
     env::{Env, Secrets},
@@ -20,14 +22,22 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, proxied: b
     let send = move |at: Callsite, request: Request| {
         let fetch = fetch.clone();
         async move {
+            let size = request.size();
             at.meter(Meter {
-                sent: request.size() as u64,
+                sent: size as u64,
                 ..Meter::default()
             });
             let host = request.host.clone();
-            tokio::time::timeout_at(at.deadline.into(), fetch.oneshot(request))
+            let response = tokio::time::timeout_at(at.deadline.into(), fetch.oneshot(request))
                 .await
-                .with_context(|| format!("{host} did not answer before the call's deadline"))?
+                .with_context(|| format!("{host} did not answer before the call's deadline"))??;
+            if proxied {
+                at.meter(Meter {
+                    proxied: (size + response.size()) as u64,
+                    ..Meter::default()
+                });
+            }
+            Ok(response)
         }
     };
     let host = host.clone();

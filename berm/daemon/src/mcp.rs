@@ -1,7 +1,7 @@
 //! One MCP endpoint over every deployed program.
 
 use crate::Service;
-use berm_api::{DryRun, Meter, Output, host};
+use berm_api::Output;
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     model::{
@@ -12,7 +12,6 @@ use rmcp::{
     },
     service::{NotificationContext, RequestContext, RoleServer},
 };
-use serde::Deserialize;
 use std::sync::Arc;
 
 /// A server has one `instructions`, paid on every turn; each program's README
@@ -25,8 +24,6 @@ const README_SCHEME: &str = "berm://";
 const README_PATH: &str = "/readme";
 /// The `_meta` key a listed tool carries its terms under.
 const TERMS: &str = "terms";
-/// The tool that runs any listed tool dry.
-const DRY_RUN: &str = "dry_run";
 
 pub struct Mcp {
     service: Arc<Service>,
@@ -108,7 +105,6 @@ impl ServerHandler for Mcp {
                         listed
                     })
             })
-            .chain([dry_run()])
             .collect();
         Ok(ListToolsResult::with_all_items(tools))
     }
@@ -118,9 +114,6 @@ impl ServerHandler for Mcp {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        if request.name == DRY_RUN {
-            return self.dry_run(request).await;
-        }
         let Some((program, tool)) = request.name.split_once('.') else {
             return Err(McpError::invalid_params(
                 format!(
@@ -222,88 +215,4 @@ impl ServerHandler for Mcp {
             request.uri,
         )]))
     }
-}
-
-impl Mcp {
-    /// Run the listed tool `tool` names with `args`, nothing it changes kept,
-    /// and answer what it answered beside what it used.
-    async fn dry_run(&self, request: CallToolRequestParams) -> Result<CallToolResult, McpError> {
-        let Dried { tool, run } = serde_json::from_value(serde_json::Value::Object(
-            request.arguments.unwrap_or_default(),
-        ))
-        .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
-        let Some((program, tool)) = tool.split_once('.') else {
-            return Err(McpError::invalid_params(
-                format!("tool {tool:?} is not named `{{program}}.{{tool}}`"),
-                None,
-            ));
-        };
-        if !self
-            .service
-            .get(program)
-            .is_some_and(|deployed| deployed.reached_anonymously(tool))
-        {
-            return Err(McpError::invalid_params(
-                format!("{program} has no tool named {tool:?} that takes anonymous calls"),
-                None,
-            ));
-        }
-        let (headers, output) = self
-            .service
-            .host
-            .dry_run(program, None, tool, run.arguments(), run.dry)
-            .await
-            .map_err(|denied| McpError::internal_error(denied.to_string(), None))?;
-        let meter: Option<Meter> = headers
-            .get(host::METER)
-            .and_then(|value| serde_json::from_slice(value.as_bytes()).ok());
-        let failed = matches!(output, Output::Failed(_));
-        let answer = serde_json::json!({ "output": output, "meter": meter });
-        Ok(match failed {
-            true => CallToolResult::structured_error(answer),
-            false => CallToolResult::structured(answer),
-        })
-    }
-}
-
-/// What `dry_run` is called with.
-#[derive(Deserialize)]
-struct Dried {
-    /// `{program}.{tool}`, as listed.
-    tool: String,
-    #[serde(flatten)]
-    run: DryRun,
-}
-
-/// The listing of `dry_run`.
-fn dry_run() -> Tool {
-    let schema = serde_json::json!({
-        "type": "object",
-        "required": ["tool"],
-        "properties": {
-            "tool": {"type": "string", "description": "A listed tool, `{program}.{tool}`."},
-            "args": {"description": "The tool's arguments, as it takes them."},
-            "answers": {
-                "type": "array",
-                "description": "What a request the tool sends is answered with instead of being sent, by method and URL.",
-                "items": {
-                    "type": "object",
-                    "required": ["method", "url", "status"],
-                    "properties": {
-                        "method": {"type": "string"},
-                        "url": {"type": "string"},
-                        "status": {"type": "integer"},
-                        "headers": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
-                        "body": {"type": "string"}
-                    }
-                }
-            },
-            "offline": {"type": "boolean", "description": "Refuse a request no answer matches, rather than send it."}
-        }
-    });
-    Tool::new(
-        DRY_RUN,
-        "Runs a listed tool and keeps nothing it changes: no state, logs or database writes, no scheduled calls, in any program it reaches. Its requests to other sites are sent unless `answers` answers them or `offline` is set. Answers what the tool answered and what the call used: instructions, rows read and written, memory, bytes proxied, bytes logged, bytes sent.",
-        Arc::new(schema.as_object().cloned().unwrap_or_default()),
-    )
 }

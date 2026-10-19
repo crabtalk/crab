@@ -11,11 +11,10 @@ use axum::{
     routing::{get, post, put},
 };
 use berm_api::{
-    Budget, Cron, DryRun, Listing, Program, Runtime, Terms,
+    Budget, Cron, Listing, Program, Runtime, Terms,
     host::{CallPage, Caller, Crons, Live, Metered, Page, ToolUpdate, Usage, Wakes},
 };
 use serde::Deserialize;
-use std::sync::Arc;
 
 /// The service a request is for, as its daemon names it. The daemon puts it in
 /// the request's extensions before [`router`] runs, and the [`Caller`] a call
@@ -41,7 +40,6 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
             "/tools/{tool}",
             post(call::<E>).get(query::<E>).patch(update::<E>),
         )
-        .route("/tools/{tool}/dry", post(dry::<E>))
         .route("/tools/{tool}/budget", put(budget::<E>))
         .route("/tools/{tool}/cron", put(cron::<E>))
         .route("/stripe", post(stripe::<E>))
@@ -159,7 +157,7 @@ async fn call<E: Env>(
 ) -> Result<Response, Denied> {
     let caller = caller.map(|Extension(caller)| caller);
     let called = host
-        .outside(&service, &tool, false, args.to_vec(), None, caller, headers)
+        .outside(&service, &tool, false, args.to_vec(), caller, headers)
         .await?;
     Ok((called.headers, Json(called.output)).into_response())
 }
@@ -200,37 +198,11 @@ async fn query<E: Env>(
             &tool,
             true,
             arguments.args.into_bytes(),
-            None,
             caller,
             headers,
         )
         .await?;
     called.headers.insert(header::ETAG, etag);
-    Ok((called.headers, Json(called.output)).into_response())
-}
-
-/// Run one tool dry: its arguments and how its fetches are answered in the
-/// body, nothing it changes kept, answered as a call is.
-async fn dry<E: Env>(
-    State(host): State<Host<E>>,
-    Extension(Named(service)): Extension<Named>,
-    caller: Option<Extension<Caller>>,
-    Path(Tool { tool }): Path<Tool>,
-    headers: HeaderMap,
-    Json(run): Json<DryRun>,
-) -> Result<Response, Denied> {
-    let caller = caller.map(|Extension(caller)| caller);
-    let called = host
-        .outside(
-            &service,
-            &tool,
-            false,
-            run.arguments(),
-            Some(Arc::new(run.dry)),
-            caller,
-            headers,
-        )
-        .await?;
     Ok((called.headers, Json(called.output)).into_response())
 }
 

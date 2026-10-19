@@ -1,7 +1,7 @@
 //! One compiled program, and the state of one invocation of it.
 
 use crate::{
-    Caller, Callsite, Deps, Dry, Meter, Meters, Syscall, User, abi,
+    Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi,
     bound::watchdog,
     engine::{Engine, Image},
     journal::{Changes, Journal, Mark},
@@ -255,22 +255,13 @@ impl Program {
         tool: &str,
         args: impl Into<Vec<u8>>,
     ) -> Result<Outcome> {
-        self.call_as(
-            caller,
-            None,
-            None,
-            tool,
-            args,
-            None,
-            Arc::default(),
-            chain(),
-        )
-        .await
+        self.call_as(caller, None, None, tool, args, Arc::default(), chain())
+            .await
     }
 
     /// [`Program::call`] on behalf of `user` and `client`, which every call in
-    /// the chain reads off its [`Callsite`], metered in `meters`, and dry when `dry` is
-    /// set. `chain`, from [`chain`], is the chain's [`Callsite::chain`].
+    /// the chain reads off its [`Callsite`], metered in `meters`. `chain`, from
+    /// [`chain`], is the chain's [`Callsite::chain`].
     #[allow(clippy::too_many_arguments)]
     pub async fn call_as(
         &self,
@@ -279,7 +270,6 @@ impl Program {
         client: Option<Arc<str>>,
         tool: &str,
         args: impl Into<Vec<u8>>,
-        dry: Option<Arc<Dry>>,
         meters: Arc<Meters>,
         chain: u64,
     ) -> Result<Outcome> {
@@ -293,7 +283,6 @@ impl Program {
                 client,
                 1,
                 false,
-                dry,
                 watchdog::fresh(),
                 chain,
                 journal.clone(),
@@ -328,7 +317,6 @@ impl Program {
             client,
             depth,
             query,
-            dry,
             deadline,
             stack,
         } = link;
@@ -342,7 +330,6 @@ impl Program {
                 client,
                 depth,
                 query,
-                dry,
                 deadline,
                 chain(),
                 journal.clone(),
@@ -376,7 +363,6 @@ impl Program {
         client: Option<Arc<str>>,
         depth: u32,
         query: bool,
-        dry: Option<Arc<Dry>>,
         deadline: Instant,
         chain: u64,
         journal: Arc<Journal>,
@@ -401,7 +387,6 @@ impl Program {
             depth,
             stack,
             query: query || *declared,
-            dry,
             deadline,
             chain,
             journal: journal.clone(),
@@ -512,7 +497,6 @@ pub struct Link {
     pub client: Option<Arc<str>>,
     pub depth: u32,
     pub query: bool,
-    pub dry: Option<Arc<Dry>>,
     pub deadline: Instant,
     pub stack: Arc<[Arc<str>]>,
 }

@@ -7,7 +7,7 @@ use crate::{
     host::{self, Host, Inner, Invoked},
 };
 use anyhow::{Result, bail};
-use berm::{Callsite, Syscall, syscall::after};
+use berm::{Callsite, Meter, Syscall, syscall::after};
 use berm_api::{
     Output,
     host::{Kind, Link, Outcome, Reply, Source},
@@ -28,8 +28,8 @@ const TIMEOUT: u64 = 60_000;
 
 /// `berm.call.after`: hold the wake for the service arming it, once its target
 /// is one of its own tools or a public tool of a deployed service in its
-/// scope. A target on a peer is checked there when the wake fires. In a dry
-/// chain the wake is checked and not held.
+/// scope, metering the row it writes. A target on a peer is checked there when
+/// the wake fires.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
     after::programs(move |at: Callsite, wake: after::Wake| {
@@ -59,9 +59,6 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                     wake.tool
                 );
             }
-            if at.dry.is_some() {
-                return Ok(());
-            }
             let due =
                 ((host.now)() as i64).saturating_add(i64::try_from(wake.delay).unwrap_or(i64::MAX));
             table::arm(
@@ -74,6 +71,10 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                 due,
             )
             .await?;
+            at.meter(Meter {
+                written: 1,
+                ..Meter::default()
+            });
             host.waking.notify_one();
             Ok(())
         }
@@ -139,7 +140,6 @@ impl<E: Env> Host<E> {
                     query: false,
                     timeout: TIMEOUT,
                     stack: vec![key.clone()],
-                    dry: None,
                 };
                 let Reply { result, .. } = self
                     .peers
@@ -170,7 +170,6 @@ impl<E: Env> Host<E> {
                     None,
                     &wake.tool,
                     wake.args.clone().into_bytes(),
-                    None,
                 )
                 .await?;
             let outcome = Outcome::of(&invoked.result, invoked.denied);

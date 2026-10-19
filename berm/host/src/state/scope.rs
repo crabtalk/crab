@@ -20,25 +20,7 @@ impl Scope for Entered {
                 commits,
                 held,
                 first,
-                dry,
             } = *self;
-            if let Some((chain, keep)) = dry {
-                let Some(keep) = keep else {
-                    if let Some(kept) = commits.kept.lock().get_mut(&chain) {
-                        kept.held.push(held);
-                        for write in changes.writes {
-                            kept.writes
-                                .insert((write.program.to_string(), write.key), write.value);
-                        }
-                    }
-                    return Ok(Changes::default());
-                };
-                drop((keep, held));
-                return Ok(match first {
-                    true => changes,
-                    false => Changes::default(),
-                });
-            }
             let took = held.took().map(str::to_owned);
             held.commit().await?;
             if let Some(key) = took {

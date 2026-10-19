@@ -2,15 +2,15 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::Result;
-use berm::{Dry, Meter, Meters, Program, User};
+use berm::{Meter, Meters, Program, User};
 use berm_api::Output;
 use std::{collections::BTreeMap, sync::Arc};
 
 impl<E: Env> Host<E> {
     /// Run `tool` on `program` as the first link of a chain, as call `call`,
-    /// and commit what it wrote unless `dry` is set. A writing call into a
-    /// service with a database commits that database when it returns. What the
-    /// chain emits is kept beside `call` whatever it returns.
+    /// and commit what it wrote. A writing call into a service with a database
+    /// commits that database when it returns. What the chain emits is kept
+    /// beside `call` whatever it returns.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn invoke(
         &self,
@@ -21,10 +21,8 @@ impl<E: Env> Host<E> {
         client: Option<Arc<str>>,
         tool: &str,
         args: Vec<u8>,
-        dry: Option<Arc<Dry>>,
     ) -> Result<Invoked> {
         let meters = Arc::new(Meters::default());
-        let keeps = dry.is_none();
         let chain = berm::chain();
         self.logs.started(chain, call);
         let outcome = program
@@ -34,7 +32,6 @@ impl<E: Env> Host<E> {
                 client,
                 tool,
                 args,
-                dry,
                 meters.clone(),
                 chain,
             )
@@ -42,7 +39,7 @@ impl<E: Env> Host<E> {
         self.logs.ended(chain);
         let meter = self.metered(meters.take());
         let outcome = outcome?;
-        if matches!(outcome.result, Output::Failed(_)) || !keeps {
+        if matches!(outcome.result, Output::Failed(_)) {
             return Ok(Invoked {
                 result: outcome.result,
                 denied: outcome.denied,

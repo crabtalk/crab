@@ -209,7 +209,6 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                         client: at.client.clone(),
                         depth: at.depth + 1,
                         query: at.query,
-                        dry: at.dry.clone(),
                         deadline: at.deadline,
                         stack: at
                             .stack
@@ -259,7 +258,6 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                         at.client.clone(),
                         at.depth + 1,
                         at.query,
-                        at.dry.clone(),
                         at.deadline,
                         at.chain,
                         at.journal.clone(),

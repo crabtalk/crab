@@ -1,6 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use berm_api::{
-    Budget, Dry,
+    Budget,
     host::{Caller, User},
 };
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
@@ -95,17 +95,6 @@ enum Command {
         /// for.
         #[arg(long, requires = "issuer")]
         user: Option<String>,
-        /// On bermd, keep nothing the call changes.
-        #[arg(long)]
-        dry: bool,
-        /// With `--dry`, a JSON array of `{"method", "url", "status",
-        /// "headers", "body"}` a request is answered from in place of being
-        /// sent.
-        #[arg(long, requires = "dry")]
-        answers: Option<PathBuf>,
-        /// With `--dry`, refuse a request no answer matches.
-        #[arg(long, requires = "dry")]
-        offline: bool,
     },
     /// Show a program's tools and their arguments.
     Inspect { name: String },
@@ -611,9 +600,6 @@ fn main() -> Result<ExitCode> {
             caller,
             issuer,
             user,
-            dry,
-            answers,
-            offline,
         } => {
             let caller = caller.as_ref().map(|id| Caller {
                 id: id.clone(),
@@ -625,27 +611,12 @@ fn main() -> Result<ExitCode> {
                 client: None,
                 agent: None,
             });
-            let dry = match dry {
-                true => Some(Dry {
-                    answers: match answers {
-                        Some(path) => serde_json::from_slice(
-                            &std::fs::read(path)
-                                .with_context(|| format!("reading {}", path.display()))?,
-                        )
-                        .with_context(|| format!("{} is not a list of answers", path.display()))?,
-                        None => Vec::new(),
-                    },
-                    offline: *offline,
-                }),
-                false => None,
-            };
             return cmd::call::run(
                 &client()?,
                 program,
                 tool,
                 arguments.as_deref(),
                 caller.as_ref(),
-                dry,
             );
         }
     }

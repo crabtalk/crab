@@ -2,9 +2,9 @@
 //!
 //! berm reads the request; holding the wake, writing it down so a restart
 //! keeps it, and firing it are the host's, and arrive as the closure below.
-//! Each wake armed is metered as one row written.
+//! The host meters the row it writes for each wake held.
 
-use crate::{Callsite, Meter, Refused, Syscall, abi, wire};
+use crate::{Callsite, Refused, Syscall, abi, wire};
 use anyhow::{Context, Result};
 use std::{future::Future, sync::Arc};
 
@@ -42,10 +42,6 @@ where
                 let armed = arm(at.clone(), wake);
                 Box::pin(async move {
                     armed.await?;
-                    at.meter(Meter {
-                        written: 1,
-                        ..Meter::default()
-                    });
                     Ok(Vec::new())
                 })
             }

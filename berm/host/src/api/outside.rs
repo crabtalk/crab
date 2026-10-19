@@ -8,7 +8,7 @@ use crate::{
     record::usage,
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use berm::{Dry, Meter};
+use berm::Meter;
 use berm_api::{
     Output,
     host::{self as wire, Caller, Kind, Outcome, Source},
@@ -16,7 +16,6 @@ use berm_api::{
 use std::{
     future::Future,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 use tower::{
@@ -34,8 +33,6 @@ pub struct Call {
     /// Whether the tool is a query.
     pub query: bool,
     pub args: Vec<u8>,
-    /// Set when nothing the call changes is kept; it is not counted as a use.
-    pub dry: Option<Arc<Dry>>,
     pub caller: Option<Caller>,
     /// The outside client's per-day key, as a layer sets it; the chain reads it
     /// through `berm.client`.
@@ -50,8 +47,8 @@ pub struct Called {
     /// What the answer carries: its meter, and the tool's deprecation.
     pub headers: HeaderMap,
     pub output: Output,
-    /// Its id among its service's calls; `None` for a dry call.
-    pub id: Option<u64>,
+    /// Its id among its service's calls.
+    pub id: u64,
 }
 
 /// A service taking calls from outside.
@@ -78,32 +75,6 @@ impl<E: Env> Host<E> {
                 tool,
                 query,
                 args,
-                None,
-                caller.cloned(),
-                HeaderMap::new(),
-            )
-            .await?;
-        Ok((called.headers, called.output))
-    }
-
-    /// [`Host::call`], made dry: nothing the chain changes is kept, its
-    /// fetches are answered as `dry` says, and it is not counted as a use. Its
-    /// meter is counted.
-    pub async fn dry_run(
-        &self,
-        service: &str,
-        caller: Option<&Caller>,
-        tool: &str,
-        args: Vec<u8>,
-        dry: Dry,
-    ) -> Result<(HeaderMap, Output), Denied> {
-        let called = self
-            .outside(
-                service,
-                tool,
-                false,
-                args,
-                Some(Arc::new(dry)),
                 caller.cloned(),
                 HeaderMap::new(),
             )
@@ -113,14 +84,12 @@ impl<E: Env> Host<E> {
 
     /// A call from outside, through the daemon's layers. `query` holds it to a
     /// tool the IDL marks `query`; `headers` are the request's.
-    #[allow(clippy::too_many_arguments)]
     pub async fn outside(
         &self,
         service: &str,
         tool: &str,
         query: bool,
         args: Vec<u8>,
-        dry: Option<Arc<Dry>>,
         caller: Option<Caller>,
         headers: HeaderMap,
     ) -> Result<Called, Denied> {
@@ -142,22 +111,19 @@ impl<E: Env> Host<E> {
                 format!("{tool} is not a query; POST it"),
             ));
         }
-        let counts = dry.is_none();
         let refused = |denied: Denied, caller: Option<&Caller>| {
-            if counts {
-                let (source, who) = counted(caller);
-                self.usage
-                    .record(service, Kind::Tool, tool, source, who, Outcome::Refused);
-                self.calls.record(
-                    service,
-                    self.calls.start(),
-                    tool,
-                    source,
-                    who,
-                    Outcome::Refused,
-                    None,
-                );
-            }
+            let (source, who) = counted(caller);
+            self.usage
+                .record(service, Kind::Tool, tool, source, who, Outcome::Refused);
+            self.calls.record(
+                service,
+                self.calls.start(),
+                tool,
+                source,
+                who,
+                Outcome::Refused,
+                None,
+            );
             Err(denied)
         };
         if !program.reached_by_accounts(tool) {
@@ -183,7 +149,6 @@ impl<E: Env> Host<E> {
             tool: tool.to_owned(),
             query: spec.query,
             args,
-            dry,
             caller: caller.clone(),
             client: None,
             headers,
@@ -201,7 +166,6 @@ impl<E: Env> Host<E> {
             service,
             tool,
             args,
-            dry,
             caller,
             client,
             ..
@@ -244,7 +208,6 @@ impl<E: Env> Host<E> {
                 "every call slot is taken; retry",
             ));
         };
-        let counts = dry.is_none();
         let started = self.calls.start();
         let mut invoked = self
             .invoke(
@@ -261,7 +224,6 @@ impl<E: Env> Host<E> {
                 client.map(Into::into),
                 &tool,
                 args,
-                dry,
             )
             .await
             .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
@@ -272,21 +234,20 @@ impl<E: Env> Host<E> {
         };
         self.meters.record(&service, answer);
         invoked.meter += answer;
-        if counts {
-            let outcome = Outcome::of(&invoked.result, invoked.denied);
-            let (source, who) = counted(caller.as_ref());
-            self.usage
-                .record(&service, Kind::Tool, &tool, source, who, outcome);
-            self.calls.record(
-                &service,
-                started,
-                &tool,
-                source,
-                who,
-                outcome,
-                Some(invoked.meter),
-            );
-        }
+        let id = started.id;
+        let outcome = Outcome::of(&invoked.result, invoked.denied);
+        let (source, who) = counted(caller.as_ref());
+        self.usage
+            .record(&service, Kind::Tool, &tool, source, who, outcome);
+        self.calls.record(
+            &service,
+            started,
+            &tool,
+            source,
+            who,
+            outcome,
+            Some(invoked.meter),
+        );
         headers.insert(
             HeaderName::from_static(wire::METER),
             HeaderValue::from_str(&serde_json::to_string(&invoked.meter).expect("a meter is JSON"))
@@ -295,7 +256,7 @@ impl<E: Env> Host<E> {
         Ok(Called {
             headers,
             output: invoked.result,
-            id: counts.then_some(started.id),
+            id,
         })
     }
 }

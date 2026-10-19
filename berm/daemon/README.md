@@ -11,7 +11,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 ```
 
 [Running the Service](https://berm.run/docs/berm/service/) covers the control
-API, calls, budgets, dry runs, secrets and MCP.
+API, calls, budgets, secrets and MCP.
 
 The endpoint carries no authorization and binds loopback by default.
 

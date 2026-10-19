@@ -5,7 +5,7 @@
 //! substitutes every `{secret:NAME}` in a header value. Resolving a secret and
 //! sending the request are the host's, and arrive as the two closures below.
 
-use crate::{Callsite, Meter, Refused, Syscall, abi, wire};
+use crate::{Callsite, Refused, Syscall, abi, wire};
 use anyhow::{Result, bail};
 use std::{future::Future, sync::Arc};
 
@@ -40,15 +40,20 @@ pub struct Response {
     pub body: Vec<u8>,
 }
 
+impl Response {
+    /// Its bytes as metered: header names and values, and body.
+    pub fn size(&self) -> usize {
+        self.body.len() + headers(&self.headers)
+    }
+}
+
 /// Serve `berm.http.fetch`.
 ///
 /// `secret` is handed the callsite, a secret's name and the request's host,
 /// and answers the value granted for that triple or `None`. `send` performs
 /// the request; it is not handed one the manifest does not allow. A guest
 /// suspended on `send` cannot notice its deadline, so `send` bounds itself by
-/// [`Callsite::deadline`] and does not follow redirects. In a dry chain
-/// ([`Callsite::dry`]), a request one of its answers matches is answered with it
-/// and not handed to `send`, and with `offline` one none matches is refused.
+/// [`Callsite::deadline`] and does not follow redirects.
 pub fn fetch<S, Sent, R, Found>(send: S, secret: R) -> Syscall
 where
     S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
@@ -60,9 +65,7 @@ where
 }
 
 /// Serve `berm.http.proxy`: [`fetch`], to the hosts the manifest names under
-/// it, where `send` goes through the host's proxy. Each answered request meters
-/// [`Meter::proxied`]: its URL, header names and values and body, and the
-/// response's header names and values and body.
+/// it, where `send` goes through the host's proxy.
 pub fn proxy<S, Sent, R, Found>(send: S, secret: R) -> Syscall
 where
     S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
@@ -123,32 +126,7 @@ where
                     substituted.push_str(rest);
                     *value = substituted;
                 }
-                let sent = request.size();
-                let answered = at
-                    .dry
-                    .as_deref()
-                    .map(|dry| (dry.offline, dry.answer(&request.method, &request.url)));
-                let response = match answered {
-                    Some((_, Some(answer))) => Response {
-                        status: answer.status,
-                        headers: answer.headers.clone(),
-                        body: answer.body.clone().into_bytes(),
-                    },
-                    Some((true, None)) => {
-                        return Err(Refused(format!(
-                            "this dry call answers no {} {} and sends nothing",
-                            request.method, request.url
-                        ))
-                        .into());
-                    }
-                    _ => send(at.clone(), request).await?,
-                };
-                if name == abi::HTTP_PROXY {
-                    at.meter(Meter {
-                        proxied: (sent + response.body.len() + headers(&response.headers)) as u64,
-                        ..Meter::default()
-                    });
-                }
+                let response = send(at.clone(), request).await?;
                 Ok(write(&response))
             })
         }),

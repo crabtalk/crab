@@ -87,7 +87,7 @@ pub trait Secrets: Send + Sync + 'static {
 /// ended.
 pub trait Observe: Send + Sync + 'static {
     /// `call` is the run on this host the invocation is part of, as the
-    /// service's calls number it; `None` in a dry chain or a link from a peer.
+    /// service's calls number it; `None` in a link from a peer.
     fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter);
 }
 

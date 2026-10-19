@@ -19,7 +19,10 @@ use std::{collections::HashMap, mem, sync::Weak};
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
     emit::programs(move |at: Callsite, log: Log| {
-        let taken = host::alive(&host).map(|host| host.logs.take(&at, log));
+        let taken = host::alive(&host).map(|host| {
+            host.logs.take(&at, log);
+            true
+        });
         async move { taken }
     })
 }
@@ -79,11 +82,8 @@ impl Pending {
         self.runs.lock().get(&chain).copied()
     }
 
-    /// Hold `log`, emitted at `at`. `false`, holding nothing, in a dry chain.
-    pub(crate) fn take(&self, at: &Callsite, log: Log) -> bool {
-        if at.dry.is_some() {
-            return false;
-        }
+    /// Hold `log`, emitted at `at`.
+    pub(crate) fn take(&self, at: &Callsite, log: Log) {
         let call = self.run(at.chain);
         self.pending.lock().push(Emitted {
             service: at.program.to_string(),
@@ -92,7 +92,6 @@ impl Pending {
             topics: log.topics,
             data: log.data,
         });
-        true
     }
 
     pub(crate) fn take_all(&self) -> Vec<Emitted> {

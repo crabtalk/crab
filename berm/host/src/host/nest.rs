@@ -44,7 +44,7 @@ pub(crate) fn calls<E: Env>(
                     let Some(host) = host.upgrade() else {
                         return;
                     };
-                    if at.dry.is_some() || host.berm.get(deployed).is_none() {
+                    if host.berm.get(deployed).is_none() {
                         return;
                     }
                     host.usage.record(
@@ -64,11 +64,7 @@ pub(crate) fn calls<E: Env>(
         invoked: {
             let host = host.clone();
             Arc::new(move |at: &Callsite, tool: &str, used: Meter| {
-                let call = at
-                    .dry
-                    .is_none()
-                    .then(|| host.upgrade().and_then(|host| host.logs.run(at.chain)))
-                    .flatten();
+                let call = host.upgrade().and_then(|host| host.logs.run(at.chain));
                 observe.invoked(&at.program, tool, call, &used);
             })
         },
@@ -108,7 +104,6 @@ pub(crate) fn calls<E: Env>(
                         .iter()
                         .map(|program| program.to_string())
                         .collect(),
-                    dry: link.dry.as_deref().cloned(),
                 };
                 let at = at.clone();
                 Some(Box::pin(async move {

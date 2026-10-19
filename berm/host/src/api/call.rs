@@ -291,8 +291,8 @@ impl<E: Env> Host<E> {
         Ok((calls, link))
     }
 
-    /// A call from a service on a peer, run as `link` and committed here unless
-    /// the chain is dry. A refusal is `403` with its reason.
+    /// A call from a service on a peer, run as `link` and committed here. A
+    /// refusal is `403` with its reason.
     pub async fn link(
         &self,
         service: &str,
@@ -306,18 +306,15 @@ impl<E: Env> Host<E> {
                 format!("no program named {service:?} is deployed"),
             )
         })?;
-        let dry = link.dry.is_some();
         let refused = |message: String| {
-            if !dry {
-                self.usage.record(
-                    service,
-                    Kind::Tool,
-                    tool,
-                    Source::Service,
-                    &link.from,
-                    Outcome::Refused,
-                );
-            }
+            self.usage.record(
+                service,
+                Kind::Tool,
+                tool,
+                Source::Service,
+                &link.from,
+                Outcome::Refused,
+            );
             Err(deny(StatusCode::FORBIDDEN, message))
         };
         if self.holds.holds(host::split(service).0) {
@@ -342,7 +339,6 @@ impl<E: Env> Host<E> {
                     client: link.client.as_deref().map(Into::into),
                     depth: link.depth,
                     query: link.query,
-                    dry: link.dry.clone().map(Arc::new),
                     deadline: Instant::now() + Duration::from_millis(link.timeout),
                     stack: link
                         .stack
@@ -364,20 +360,18 @@ impl<E: Env> Host<E> {
                 Err(error) => return Err(error.into()),
             },
         };
-        if matches!(outcome.result, Output::Done(_)) && !dry {
+        if matches!(outcome.result, Output::Done(_)) {
             self.commits.commit(&outcome.changes).await?;
         }
         let ended = Outcome::of(&outcome.result, outcome.denied);
-        if !dry {
-            self.usage.record(
-                service,
-                Kind::Tool,
-                tool,
-                Source::Service,
-                &link.from,
-                ended,
-            );
-        }
+        self.usage.record(
+            service,
+            Kind::Tool,
+            tool,
+            Source::Service,
+            &link.from,
+            ended,
+        );
         Ok(Reply {
             result: outcome.result,
             denied: outcome.denied,
@@ -424,7 +418,7 @@ impl<E: Env> Host<E> {
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
         let invoked = self
-            .invoke(&program, started.id, None, None, None, &tool, event, None)
+            .invoke(&program, started.id, None, None, None, &tool, event)
             .await?;
         let outcome = Outcome::of(&invoked.result, invoked.denied);
         self.usage

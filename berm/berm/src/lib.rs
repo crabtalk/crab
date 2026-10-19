@@ -36,7 +36,7 @@
 // cannot pick a version the generated code disagrees with.
 pub use anyhow;
 use anyhow::Result;
-pub use berm_api::{Budget, Deps, Dry, Logged, MAX_LOG, Manifest, Meter, Output, ToolSpec};
+pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, ToolSpec};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine};
 use journal::Journal;
@@ -105,9 +105,6 @@ pub struct Callsite {
     /// Whether this invocation is of a `query` tool, or sits under one. A
     /// query is refused `berm.set`, `berm.emit` and `berm.call.after`.
     pub query: bool,
-    /// Set when the chain is dry: carried into every nested call, and nothing
-    /// the chain changes is kept.
-    pub dry: Option<Arc<Dry>>,
     /// Which chain this is, unique within the process.
     pub chain: u64,
     /// When the chain has to be done by. A guest suspended in a syscall cannot

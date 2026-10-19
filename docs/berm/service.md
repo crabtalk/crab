@@ -107,18 +107,6 @@ from the next call.
   program's `#[stripe]` tool, unverified, and answers `204` once the tool has
   run, `503` while the program is held and `500` when the tool failed.
 
-## Dry runs
-
-`POST /programs/{name}/tools/{tool}/dry` runs a public tool dry and answers as a
-call does, `Berm-Meter` included. The body is `{"args", "answers", "offline"}`.
-
-- A dry chain keeps nothing, in any program it reaches: no state, logs or
-  database writes are committed, no wake is armed, and it is not counted in
-  `usage`. Its meter is counted.
-- Its requests to other hosts are sent, unless one of `answers`,
-  `{"method", "url", "status", "headers", "body"}`, matches by method and URL
-  and answers in its place. With `offline`, a request none matches is refused.
-
 ## Secrets
 
 A request header may name `{secret:NAME}` for a secret the manifest declares.
@@ -145,9 +133,7 @@ compiling or running it.
   HTTP, its tools named `{program}.{tool}`. A program name carries no dot, so
   dispatch splits on the first one.
 - A call over MCP carries no caller, so the endpoint lists and calls only
-  `#[anonymous]` tools, beside a `dry_run` tool taking
-  `{"tool": "{program}.{tool}", "args", "answers", "offline"}` and answering
-  `{"output", "meter"}`.
+  `#[anonymous]` tools.
 - A tool's budget is in its `_meta.terms`, and a query tool is marked
   read-only.
 - Each program with a [README](./manifest.md#package) publishes it as the
