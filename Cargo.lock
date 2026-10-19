@@ -214,9 +214,9 @@ dependencies = [
  "anyhow",
  "berm-api",
  "berm-codegen",
+ "berm-rusqlite",
  "hex",
  "parking_lot",
- "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -231,8 +231,8 @@ name = "berm-api"
 version = "0.0.8"
 dependencies = [
  "anyhow",
+ "berm-rusqlite",
  "object 0.40.0",
- "rusqlite",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -268,10 +268,10 @@ dependencies = [
  "axum",
  "berm",
  "berm-api",
+ "berm-rusqlite",
  "chrono",
  "croner",
  "parking_lot",
- "rusqlite",
  "serde",
  "serde_json",
  "tokio",
@@ -302,6 +302,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-libsqlite3-sys"
+version = "0.37.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3410d1db31a838ed905a5ac8f7f4fe8c7204816fcd92f0824abd96643a2fb723"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "berm-oci"
 version = "0.0.8"
 dependencies = [
@@ -311,6 +322,21 @@ dependencies = [
  "reqwest",
  "serde_json",
  "sha2 0.11.0",
+]
+
+[[package]]
+name = "berm-rusqlite"
+version = "0.39.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29f2918b477250c7f677fb65981e693ccc0466db9bbd84f90844ad4eebfa0030"
+dependencies = [
+ "berm-libsqlite3-sys",
+ "bitflags",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "smallvec",
+ "sqlite-wasm-rs",
 ]
 
 [[package]]
@@ -1583,16 +1609,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libsqlite3-sys"
-version = "0.37.0"
-source = "git+https://github.com/crabtalk/rusqlite?branch=rows-0.39#2c1a9f49c54e8622699ec57c5a1ae30221030b31"
-dependencies = [
- "cc",
- "pkg-config",
- "vcpkg",
-]
-
-[[package]]
 name = "linked_list_allocator"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2138,20 +2154,6 @@ checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
 dependencies = [
  "hashbrown 0.16.1",
  "thiserror 2.0.20",
-]
-
-[[package]]
-name = "rusqlite"
-version = "0.39.0"
-source = "git+https://github.com/crabtalk/rusqlite?branch=rows-0.39#2c1a9f49c54e8622699ec57c5a1ae30221030b31"
-dependencies = [
- "bitflags",
- "fallible-iterator",
- "fallible-streaming-iterator",
- "hashlink",
- "libsqlite3-sys",
- "smallvec",
- "sqlite-wasm-rs",
 ]
 
 [[package]]
