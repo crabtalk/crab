@@ -596,12 +596,13 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-sdk"
-version = "0.1.4"
+version = "0.0.8"
 dependencies = [
  "berm-api",
  "reqwest",
  "serde",
  "serde_json",
+ "utoipa",
 ]
 
 [[package]]

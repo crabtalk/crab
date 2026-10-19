@@ -1,0 +1,20 @@
+[package]
+name = "crabtalk-sdk"
+description = "Types and client for the CrabTalk Cloud API"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+berm-api.workspace = true
+reqwest = { workspace = true, optional = true, features = ["json", "query", "rustls"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+utoipa = { workspace = true, optional = true }
+
+[features]
+client = ["dep:reqwest"]
+utoipa = ["dep:utoipa", "berm-api/utoipa"]
