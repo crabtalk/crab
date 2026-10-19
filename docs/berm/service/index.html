@@ -3,116 +3,312 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<link rel="icon" href="../../../favicon.svg" type="image/svg+xml" />
-		<link href="../../../_app/immutable/entry/start.Cv99wkEf.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/C8y7wFoi.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/DcU9q_Bj.js" rel="modulepreload">
-		<link href="../../../_app/immutable/entry/app.CG3h8VSa.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/CclF2HiS.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/DCN0agNT.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/3_XwGhuS.js" rel="modulepreload">
-		<link href="../../../_app/immutable/nodes/0.CPZMv4Yh.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/DO6hYDt4.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/Bp4UYI3s.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/xK8xOfm3.js" rel="modulepreload">
-		<link href="../../../_app/immutable/nodes/2.CAGIUgiq.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/2AZZghA6.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/CrxH6Ig8.js" rel="modulepreload">
-		<link href="../../../_app/immutable/nodes/4.C3AXGTxR.js" rel="modulepreload">
-		<link href="../../../_app/immutable/chunks/B0QlxogK.js" rel="modulepreload">
-		<!--100slfm--><!--[-1--><!--]--> <meta property="og:title" content="Running the Service — berm docs"/> <meta property="og:type" content="article"/><!----><title>Running the Service — berm docs</title>
+		<link rel="icon" href="../../../berm.svg" type="image/svg+xml" />
+		<link href="../../../_app/immutable/entry/start.D5WzlkKL.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/CTLrzvcn.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/BhNmYaJN.js" rel="modulepreload">
+		<link href="../../../_app/immutable/entry/app.CtKcz5fq.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/kP3J42Pu.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/DtAtlzYg.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/DDuspaN8.js" rel="modulepreload">
+		<link href="../../../_app/immutable/nodes/0.Bbyok_Mw.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/Bfx6CG6z.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/Cyev07QY.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/d2cDUObl.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/CDNtDOHm.js" rel="modulepreload">
+		<link href="../../../_app/immutable/nodes/2.54_5jGqR.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/DnFFiQq-.js" rel="modulepreload">
+		<link href="../../../_app/immutable/chunks/CfvlCHYW.js" rel="modulepreload">
+		<link href="../../../_app/immutable/nodes/4.C6MTs6OB.js" rel="modulepreload">
+		<!--1funsus--><!--[-1--><!--]--> <!----><script>(function setInitialMode({ defaultMode = "system", themeColors: themeColors2, darkClassNames: darkClassNames2 = ["dark"], lightClassNames: lightClassNames2 = [], defaultTheme = "", modeStorageKey: modeStorageKey2 = "mode-watcher-mode", themeStorageKey: themeStorageKey2 = "mode-watcher-theme" }) {
+  const rootEl = document.documentElement;
+  const mode = localStorage.getItem(modeStorageKey2) ?? defaultMode;
+  const theme = localStorage.getItem(themeStorageKey2) ?? defaultTheme;
+  const light = mode === "light" || mode === "system" && window.matchMedia("(prefers-color-scheme: light)").matches;
+  if (light) {
+    if (darkClassNames2.length)
+      rootEl.classList.remove(...darkClassNames2.filter(Boolean));
+    if (lightClassNames2.length)
+      rootEl.classList.add(...lightClassNames2.filter(Boolean));
+  } else {
+    if (lightClassNames2.length)
+      rootEl.classList.remove(...lightClassNames2.filter(Boolean));
+    if (darkClassNames2.length)
+      rootEl.classList.add(...darkClassNames2.filter(Boolean));
+  }
+  rootEl.style.colorScheme = light ? "light" : "dark";
+  if (themeColors2) {
+    const themeMetaEl = document.querySelector('meta[name="theme-color"]');
+    if (themeMetaEl) {
+      themeMetaEl.setAttribute("content", mode === "light" ? themeColors2.light : themeColors2.dark);
+    }
+  }
+  if (theme) {
+    rootEl.setAttribute("data-theme", theme);
+    localStorage.setItem(themeStorageKey2, theme);
+  }
+  localStorage.setItem(modeStorageKey2, mode);
+})({"defaultMode":"system","darkClassNames":["dark"],"lightClassNames":[],"defaultTheme":"","modeStorageKey":"mode-watcher-mode","themeStorageKey":"mode-watcher-theme"});</script><!----><!----><!--100slfm--><!--[0--><meta name="description" content="bermd deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."/> <meta property="og:description" content="bermd deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."/><!--]--> <meta property="og:title" content="Running the Service — berm docs"/> <meta property="og:type" content="article"/><!----><title>Running the Service — berm docs</title>
 		<link href="../../../_app/immutable/assets/meta.DGiCN2kJ.css" rel="stylesheet">
-		<link href="../../../_app/immutable/assets/0.Bdm5KQ5a.css" rel="stylesheet">
+		<link href="../../../_app/immutable/assets/0.CluFedXV.css" rel="stylesheet">
 		<link href="../../../_app/immutable/assets/2.CLf5j0tH.css" rel="stylesheet">
 		<link href="../../../_app/immutable/assets/4.CoBWTOuv.css" rel="stylesheet">
 	</head>
 	<body data-sveltekit-preload-data="hover">
-		<div style="display: contents"><!--[--><!--[0--><!--[--><header class="svelte-12qhfyh"><a class="wordmark svelte-12qhfyh" href="../../../">berm</a> <nav class="nav svelte-12qhfyh"><!--[--><a href="../../../docs/" class="svelte-12qhfyh">Docs</a><!--]--></nav> <nav class="links svelte-12qhfyh"><a class="action svelte-12qhfyh" href="https://github.com/crabtalk/berm">Star <svg role="img" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" class="svelte-2o74q4"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path></svg><!----> <!--[0--><span class="count svelte-12qhfyh">1</span><!--]--></a></nav></header> <!--[0--><!--[--><div class="docs svelte-1bpnej"><nav class="nav svelte-1bpnej open"><button class="fold svelte-1bpnej" aria-expanded="true">Documentation</button> <div class="list svelte-1bpnej"><!--[--><div class="section svelte-1bpnej"><!--[-1--><!--]--> <!--[--><a href="../../../docs/" class="svelte-1bpnej">Introduction</a><!--]--></div><div class="section svelte-1bpnej"><!--[0--><p class="caption svelte-1bpnej">berm</p><!--]--> <!--[--><a href="../../../docs/berm/overview/" class="svelte-1bpnej">Overview</a><a href="../../../docs/berm/writing-a-program/" class="svelte-1bpnej">Writing a Program</a><a href="../../../docs/berm/manifest/" class="svelte-1bpnej">The Manifest</a><a href="../../../docs/berm/publishing/" class="svelte-1bpnej">Publishing a Program</a><a href="../../../docs/berm/service/" class="svelte-1bpnej here">Running the Service</a><!--]--></div><!--]--></div> <div class="foot svelte-1bpnej"><a class="by svelte-1bpnej" href="https://github.com/crabtalk">crabtalk</a> <span class="marks svelte-1bpnej"><a href="https://github.com/crabtalk/berm" aria-label="berm on GitHub" class="svelte-1bpnej"><svg role="img" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true" class="svelte-2o74q4"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path></svg><!----></a> <a href="https://x.com/tianyi_gc" target="_blank" rel="noreferrer" aria-label="The author on X" class="svelte-1bpnej"><svg role="img" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" class="svelte-2o74q4"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"></path></svg><!----></a></span></div></nav> <!--[--><article class="svelte-100slfm"><h1 class="svelte-100slfm">Running the Service</h1> <!--[-1--><!--]--> <div class="prose svelte-100slfm"><!----><p><code>bermd</code> is a long-running service that deploys programs and serves their tools
-over MCP.</p>
-<p>An invocation is ephemeral, but three things around it are not: the deployed
-set, the modules compiled from it, and the engine's code cache. That is what the
-service exists to hold. A program is compiled once, at deploy, so an invocation
-pays only instantiation.</p>
-<pre class="shiki shiki-themes github-dark" style="--shiki-dark:#e1e4e8;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-dark:#B392F0">bermd</span><span style="--shiki-dark:#E1E4E8"> &#x26;</span></span>
-<span class="line"><span style="--shiki-dark:#B392F0">crab</span><span style="--shiki-dark:#9ECBFF"> deploy</span></span>
-<span class="line"><span style="--shiki-dark:#B392F0">crab</span><span style="--shiki-dark:#9ECBFF"> ls</span></span></code></pre>
+		<div style="display: contents"><!--[--><!--[0--><!--[--><!--[-1--><!--]--><!----> <header class="svelte-12qhfyh"><a class="wordmark svelte-12qhfyh" href="../../../">berm</a> <nav class="nav svelte-12qhfyh"><!--[--><a href="../../../docs/" class="svelte-12qhfyh">Docs</a><!--]--></nav> <nav class="links svelte-12qhfyh"><button class="theme svelte-12qhfyh" aria-label="Toggle light and dark"><!---->
+<svg
+  class="lucide lucide-sun"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="4" />
+  <path d="M12 2v2" />
+  <path d="M12 20v2" />
+  <path d="m4.93 4.93 1.41 1.41" />
+  <path d="m17.66 17.66 1.41 1.41" />
+  <path d="M2 12h2" />
+  <path d="M20 12h2" />
+  <path d="m6.34 17.66-1.41 1.41" />
+  <path d="m19.07 4.93-1.41 1.41" />
+</svg>
+<!----> <!---->
+<svg
+  class="lucide lucide-moon"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+</svg>
+<!----></button> <a class="action svelte-12qhfyh" href="https://github.com/crabtalk/berm">Star <svg role="img" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" class="svelte-2o74q4"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path></svg><!----> <!--[0--><span class="count svelte-12qhfyh">1</span><!--]--></a></nav></header> <!--[0--><!--[--><div class="docs svelte-1bpnej"><nav class="nav svelte-1bpnej open"><button class="fold svelte-1bpnej" aria-expanded="true">Documentation</button> <div class="list svelte-1bpnej"><!--[--><div class="section svelte-1bpnej"><!--[-1--><!--]--> <!--[--><a href="../../../docs/" class="svelte-1bpnej">Introduction</a><!--]--></div><div class="section svelte-1bpnej"><!--[0--><p class="caption svelte-1bpnej">berm</p><!--]--> <!--[--><a href="../../../docs/berm/overview/" class="svelte-1bpnej">Overview</a><a href="../../../docs/berm/writing-a-program/" class="svelte-1bpnej">Writing a Program</a><a href="../../../docs/berm/guest-api/" class="svelte-1bpnej">The Guest API</a><a href="../../../docs/berm/manifest/" class="svelte-1bpnej">The Manifest</a><a href="../../../docs/berm/publishing/" class="svelte-1bpnej">Publishing a Program</a><a href="../../../docs/berm/service/" class="svelte-1bpnej here">Running the Service</a><!--]--></div><!--]--></div> <div class="foot svelte-1bpnej"><a class="by svelte-1bpnej" href="https://github.com/crabtalk">crabtalk</a> <span class="marks svelte-1bpnej"><a href="https://github.com/crabtalk/berm" aria-label="berm on GitHub" class="svelte-1bpnej"><svg role="img" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true" class="svelte-2o74q4"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"></path></svg><!----></a> <a href="https://x.com/tianyi_gc" target="_blank" rel="noreferrer" aria-label="The author on X" class="svelte-1bpnej"><svg role="img" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true" class="svelte-2o74q4"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"></path></svg><!----></a></span></div></nav> <!--[--><article class="svelte-100slfm"><h1 class="svelte-100slfm">Running the Service</h1> <!--[0--><p class="lede svelte-100slfm">bermd deploys programs and serves their tools over HTTP, and their anonymous tools over MCP.</p><!--]--> <div class="prose svelte-100slfm"><!----><p><code>bermd</code> is a long-running service that deploys programs and serves their tools.
+An invocation is ephemeral, but three things around it are not: the deployed
+set, the modules compiled from it, and the engine's code cache. A program is
+compiled once, at deploy, so an invocation pays only instantiation.</p>
+<pre class="shiki shiki-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">bermd</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --addr</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 127.0.0.1:7777</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --root</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ~/.berm</span></span></code></pre>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--addr</code></td>
+<td>Where it listens, <code>127.0.0.1:7777</code> by default.</td>
+</tr>
+<tr>
+<td><code>--root</code></td>
+<td>Where deployed images, the code cache and <code>secrets.toml</code> live.</td>
+</tr>
+<tr>
+<td><code>--max-call-depth</code></td>
+<td>How deep a chain of programs calling programs nests, 4 by default; <code>0</code> refuses the first nested call.</td>
+</tr>
+<tr>
+<td><code>--proxy</code></td>
+<td>The proxy <code>berm.http.proxy</code> goes through, e.g. <code>http://user:pass@gate.example.com:3120</code>. Without one it goes direct.</td>
+</tr>
+</tbody>
+</table>
+<p>The service carries no authorization and binds loopback by default.</p>
 <h2 id="deploying"><a href="#deploying">Deploying</a></h2>
-<p>The control API is resource-shaped — <code>GET</code>, <code>PUT</code> and <code>DELETE</code> on
-<code>/programs/{name}</code> — for the reason dockerd's is: the clients are a UI, a CLI,
-and <code>curl</code>, and a program is a resource.</p>
-<p><code>GET /programs/{name}</code> answers the program as anyone it is visible to sees it:
-its IDL under <code>program</code>, and under <code>served</code> the calls of its tools from outside
-that ended done, per day over the last 30 days and in total.
-<code>GET /programs/{name}/idl</code> answers the IDL alone: name, version, digest, package
-fields and public tools, what a caller needs. <code>GET /programs/{name}/runtime</code> answers
-how it runs: its other tools, <code>deps</code>, <code>events</code>, and what of <code>deps</code> nothing here
-answers to. A deploy answers the IDL beside how it broke callers of the program
-it replaced.</p>
-<p>A deploy is recorded only once its image has compiled, so a rejected one is
-never restored. What is recorded is restored on the next start, and one
-unloadable image is reported and skipped rather than taking the service down
-with it.</p>
-<p>A tool is called with <code>POST /programs/{name}/tools/{tool}</code>, the body its
-argument object. A tool its manifest marks <code>query</code> also answers
-<code>GET /programs/{name}/tools/{tool}?args=&#x3C;json></code>, the argument object URL-encoded;
-any other tool answers that with <code>405</code>.</p>
-<p>There is no container here, so there is nothing to start or stop: a program is
-deployed or it is not, and dockerd's lifecycle verbs have nothing to attach to.</p>
-<h2 id="one-endpoint"><a href="#one-endpoint">One endpoint</a></h2>
-<p>Every deployed program appears on a single MCP endpoint at <code>/mcp</code>, with tools
-named <code>{program}.{tool}</code> — the same dotted rule the guest ABI already uses for
-host call names, so <code>fs.read</code> reads the way it does inside a program.</p>
-<p>One endpoint rather than one per program, for the reason dockerd has one socket
-rather than one per container. It costs two things, both cheap: names have to be
-namespaced, and program names may not contain a dot, because dispatch splits on
-the first one.</p>
-<p>Deploying and undeploying emit <code>notifications/tools/list_changed</code>. The tool set
-moves under clients that are already holding a list, which per-program endpoints
-would have made someone else's problem.</p>
-<h2 id="readmes-as-resources"><a href="#readmes-as-resources">READMEs as resources</a></h2>
-<p>MCP gives a server one <code>instructions</code> string, sent on every turn. Each program
-with a <a href="../manifest/#package">README</a> publishes it as a
-<code>berm://{program}/readme</code> resource, which a model reads when choosing among one
-program's tools.</p>
+<pre class="shiki shiki-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -X</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> PUT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --data-binary</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> @program.wasm</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'http://127.0.0.1:7777/programs/example?public=echo'</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://127.0.0.1:7777/programs</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -X</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> DELETE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://127.0.0.1:7777/programs/example</span></span></code></pre>
+<ul>
+<li><code>PUT /programs/{name}</code> deploys the image in the body under <code>name</code>, replacing
+what is there, and answers <code>{"program", "breaks"}</code>: the IDL, and how it broke
+callers of the program it replaced.</li>
+<li>A name is lowercase letters, digits, <code>-</code> and <code>_</code>.</li>
+<li><code>?public=a,b</code> lists the tools the deploy may make public; a deploy that makes
+one public that it does not list is refused with <code>409</code>.</li>
+<li><code>?crons={"tick": "*/5 * * * *"}</code> sets each cron tool's expression. A deploy
+that would undo one set since the last deploy that set them is refused, and
+so is one that breaks a tool or event a caller used in the last 30 days
+(<a href="../manifest/#compatibility">the manifest</a>), unless <code>?force=true</code>.</li>
+<li>A deploy is recorded only once its image has compiled. What is recorded is
+restored on the next start, and an image that no longer loads is reported and
+skipped.</li>
+</ul>
+<h2 id="reading-a-program"><a href="#reading-a-program">Reading a program</a></h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /programs</code></td>
+<td>Every deployed program's IDL.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}</code></td>
+<td>Its IDL under <code>program</code>, and under <code>served</code> the calls of its tools from outside that ended done, per day over the last 30 days and in total.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/idl</code></td>
+<td>The IDL alone: name, version, digest, package fields and public tools.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/runtime</code></td>
+<td>Its other tools, <code>deps</code>, <code>events</code>, and the <code>deps</code> nothing here answers to.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/terms</code></td>
+<td>Each public tool's budget, as <code>{"tools": {"&#x3C;tool>": {"budget": {"instructions", "rows"}}}}</code>.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/usage</code></td>
+<td>Each caller of each tool and event over the last 30 days.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/live</code></td>
+<td>What it is using now: invocations running, memory, bytes stored, and each resource's total and rate.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/meters</code></td>
+<td>Its meters over the last 30 days, a day each, with the bytes it stored.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/calls</code></td>
+<td>Each run, a call from outside or a wake, newest first, with its outcome, duration and meter. <code>?tool=&#x26;event=&#x26;outcome=&#x26;since=&#x26;until=&#x26;before=&#x26;limit=</code>: the calls below the id <code>before</code>, and <code>next</code> in <code>Link</code>.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/logs</code></td>
+<td>What it emitted, oldest first, each beside the call it was emitted in and kept 30 days. <code>?topic=&#x26;call=&#x26;after=&#x26;limit=</code>: the logs after the sequence number <code>after</code>, and <code>next</code> in <code>Link</code>.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/crons</code></td>
+<td>Each cron tool with its expression and next run.</td>
+</tr>
+<tr>
+<td><code>GET /programs/{name}/wakes</code></td>
+<td>The wakes armed to call its tools that have not run.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="calling-a-tool"><a href="#calling-a-tool">Calling a tool</a></h2>
+<pre class="shiki shiki-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -X</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> POST</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -H</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'X-Berm-Caller: {"id": "alice"}'</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '{"query":"hi"}'</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">  http://127.0.0.1:7777/programs/example/tools/echo</span></span></code></pre>
+<ul>
+<li><code>POST /programs/{name}/tools/{tool}</code> takes the argument object as its body and
+answers <code>{"done": "&#x3C;result>"}</code> or <code>{"failed": "&#x3C;message>"}</code>.</li>
+<li>A tool marked <code>query</code> also answers
+<code>GET /programs/{name}/tools/{tool}?args=&#x3C;json></code>, the argument object
+URL-encoded, with the program's commit count as its <code>ETag</code>; <code>If-None-Match</code>
+with it answers <code>304</code>. Any other tool answers <code>GET</code> with <code>405</code>.</li>
+<li><code>X-Berm-Caller</code> is the caller, as JSON:
+<code>{"id", "app", "user": {"issuer", "subject"}, "client", "agent"}</code>, every field
+but <code>id</code> optional. bermd checks none of it. A call without one, or an app's
+call without a <code>user</code>, has no caller and reaches only <code>#[anonymous]</code> tools.</li>
+<li>The answer carries <code>Berm-Meter</code>, what the call used across every program it
+reached: <code>{"calls", "instructions", "memory", "read", "written", "proxied", "logged", "failed", "sent"}</code>.
+A deprecated tool's answer carries <code>Deprecation</code>, and <code>Sunset</code> once one is set.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>401</code></td>
+<td>No caller, and the tool is not <code>#[anonymous]</code>.</td>
+</tr>
+<tr>
+<td><code>403</code></td>
+<td>The tool is <code>#[callers(services)]</code>.</td>
+</tr>
+<tr>
+<td><code>404</code></td>
+<td>No such program, or no public tool by that name.</td>
+</tr>
+<tr>
+<td><code>405</code></td>
+<td><code>GET</code> on a tool that is not a query.</td>
+</tr>
+<tr>
+<td><code>503</code></td>
+<td>No call slot is free.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="budgets"><a href="#budgets">Budgets</a></h2>
+<p>An invocation stops at its tool's instruction budget, and a row syscall it makes
+once it has read and written its row budget together is refused: 1,000,000,000
+instructions and 1,000,000 rows, unless
+<code>PUT /programs/{name}/tools/{tool}/budget</code> set <code>{"instructions", "rows"}</code> lower,
+from the next call.</p>
+<h2 id="crons-deprecation-and-stripe-events"><a href="#crons-deprecation-and-stripe-events">Crons, deprecation and Stripe events</a></h2>
+<ul>
+<li><code>PUT /programs/{name}/tools/{tool}/cron</code> sets a cron tool's expression as
+<code>{"cron": "*/5 * * * *"}</code>, five fields in UTC; <code>null</code> stops it.</li>
+<li><code>PATCH /programs/{name}/tools/{tool}</code> with <code>{"sunset": &#x3C;epoch seconds>}</code> sets
+when a deprecated tool stops being served; <code>null</code> clears it.</li>
+<li><code>POST /programs/{name}/stripe</code> hands its body, a Stripe event, to the
+program's <code>#[stripe]</code> tool, unverified, and answers <code>204</code> once the tool has
+run, <code>503</code> while the program is held and <code>500</code> when the tool failed.</li>
+</ul>
+<h2 id="secrets"><a href="#secrets">Secrets</a></h2>
+<p>A request header may name <code>{secret:NAME}</code> for a secret the manifest declares.
+bermd substitutes what <code>{root}/secrets.toml</code> grants that program for that host,
+read again whenever the file changes:</p>
+<pre class="shiki shiki-themes github-light github-dark" style="--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">example</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">token</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">value = </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">hosts = [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"api.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span></code></pre>
 <h2 id="what-a-deployed-program-can-reach"><a href="#what-a-deployed-program-can-reach">What a deployed program can reach</a></h2>
-<p>Its arguments, the log, itself, and the programs on the same daemon its
-manifest declares in <code>programs</code>. A call to any other name is
-<code>CallError::Refused</code>.</p>
-<pre class="shiki shiki-themes github-dark" style="--shiki-dark:#e1e4e8;--shiki-dark-bg:#24292e" tabindex="0"><code><span class="line"><span style="--shiki-dark:#F97583">let</span><span style="--shiki-dark:#E1E4E8"> result </span><span style="--shiki-dark:#F97583">=</span><span style="--shiki-dark:#B392F0"> berm_lang</span><span style="--shiki-dark:#F97583">::</span><span style="--shiki-dark:#B392F0">call</span><span style="--shiki-dark:#E1E4E8">(</span><span style="--shiki-dark:#9ECBFF">"inner"</span><span style="--shiki-dark:#E1E4E8">, </span><span style="--shiki-dark:#9ECBFF">"echo"</span><span style="--shiki-dark:#E1E4E8">, </span><span style="--shiki-dark:#9ECBFF">r#"{"query":"hi"}"#</span><span style="--shiki-dark:#E1E4E8">)</span><span style="--shiki-dark:#F97583">?</span><span style="--shiki-dark:#E1E4E8">;</span></span></code></pre>
-<p><code>bermd</code> serves this as one syscall, <code>berm.call</code>, and the target is a
-field in the request rather than part of the call number. So an image is never
-built against a particular deploy — the same bytes work wherever they land, and
-deploying them twice under two names makes them reachable as both.</p>
-<p>A name nothing answers to is <code>CallError::Refused</code>: nothing ran. The target
-running and reporting failure is <code>CallError::Failed</code>. That is the same split the
-control API draws between a status and an <code>Output::Failed</code>, and a program can
-act on it — falling back when something is not deployed, say.</p>
-<p><code>--max-call-depth</code> bounds the chain, 4 by default, <code>0</code> refusing the first nested
-call. The bound is on runaway composition rather than on the stack, which a
-level costs around 720 bytes of; what a level does cost is 64 MiB of reserved
-guest address space.</p>
-<p>That reach stops at the daemon. A program still touches the world outside only
-through syscalls its host registered, and <code>bermd</code> registers none — so
-what matters before deploying an image is what the image <em>is</em>. <code>Manifest::from_image</code>
-reads a program's tools and README without compiling or running it, which is what
-<code>crab inspect</code> shows you.</p>
-<p>The endpoint carries no authorization and binds loopback by default.</p><!----></div> <nav class="steps svelte-100slfm"><!--[0--><a class="step svelte-100slfm" href="../../../docs/berm/publishing/"><span class="svelte-100slfm">Previous</span> Publishing a Program</a><!--]--> <!--[-1--><!--]--></nav></article> <!--[0--><nav class="toc svelte-100slfm" aria-label="On this page"><p class="caption svelte-100slfm">On this page</p> <!--[--><a href="#deploying" class="svelte-100slfm">Deploying</a><a href="#one-endpoint" class="svelte-100slfm">One endpoint</a><a href="#readmes-as-resources" class="svelte-100slfm">READMEs as resources</a><a href="#what-a-deployed-program-can-reach" class="svelte-100slfm">What a deployed program can reach</a><!--]--></nav><!--]--><!--]--><!----></div><!--]--><!--]--><!----><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
+<p>Everything in <a href="../guest-api/">the guest API</a>: its keys, a database, logs, the
+clock, wakes, HTTP to the hosts its manifest declares, itself, and the programs
+deployed beside it that its manifest declares in <code>programs</code>. bermd registers no
+files and no commands. <code>Manifest::from_image</code> reads what an image claims without
+compiling or running it.</p>
+<h2 id="mcp"><a href="#mcp">MCP</a></h2>
+<ul>
+<li>Every deployed program appears on one endpoint at <code>/mcp</code>, over Streamable
+HTTP, its tools named <code>{program}.{tool}</code>. A program name carries no dot, so
+dispatch splits on the first one.</li>
+<li>A call over MCP carries no caller, so the endpoint lists and calls only
+<code>#[anonymous]</code> tools.</li>
+<li>A tool's budget is in its <code>_meta.terms</code>, and a query tool is marked
+read-only.</li>
+<li>Each program with a <a href="../manifest/#package">README</a> publishes it as the
+resource <code>berm://{program}/readme</code>.</li>
+<li>Deploying and undeploying emit <code>notifications/tools/list_changed</code>.</li>
+</ul><!----></div> <nav class="steps svelte-100slfm"><!--[0--><a class="step svelte-100slfm" href="../../../docs/berm/publishing/"><span class="svelte-100slfm">Previous</span> Publishing a Program</a><!--]--> <!--[-1--><!--]--></nav></article> <!--[0--><nav class="toc svelte-100slfm" aria-label="On this page"><p class="caption svelte-100slfm">On this page</p> <!--[--><a href="#deploying" class="svelte-100slfm">Deploying</a><a href="#reading-a-program" class="svelte-100slfm">Reading a program</a><a href="#calling-a-tool" class="svelte-100slfm">Calling a tool</a><a href="#budgets" class="svelte-100slfm">Budgets</a><a href="#crons-deprecation-and-stripe-events" class="svelte-100slfm">Crons, deprecation and Stripe events</a><a href="#secrets" class="svelte-100slfm">Secrets</a><a href="#what-a-deployed-program-can-reach" class="svelte-100slfm">What a deployed program can reach</a><a href="#mcp" class="svelte-100slfm">MCP</a><!--]--></nav><!--]--><!--]--><!----></div><!--]--><!--]--><!----><!--]--><!--]--> <!--[-1--><!--]--><!--]-->
 			
 			<script>
 				{
-					__sveltekit_u1hi1p = {
+					__sveltekit_kvd2r8 = {
 						base: new URL("../../..", location).pathname.slice(0, -1)
 					};
 
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("../../../_app/immutable/entry/start.Cv99wkEf.js"),
-						import("../../../_app/immutable/entry/app.CG3h8VSa.js")
+						import("../../../_app/immutable/entry/start.D5WzlkKL.js"),
+						import("../../../_app/immutable/entry/app.CtKcz5fq.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element, {
 							node_ids: [0, 2, 4],
-							data: [{type:"data",data:{stars:1},uses:{}},{type:"data",data:{sections:[{title:"",pages:[{title:"Introduction",slug:"index"}]},{title:"berm",pages:[{title:"Overview",slug:"berm/overview"},{title:"Writing a Program",slug:"berm/writing-a-program"},{title:"The Manifest",slug:"berm/manifest"},{title:"Publishing a Program",slug:"berm/publishing"},{title:"Running the Service",slug:"berm/service"}]}]},uses:{}},{type:"data",data:{slug:"berm/service",title:"Running the Service",description:"",toc:[{depth:2,id:"deploying",text:"Deploying"},{depth:2,id:"one-endpoint",text:"One endpoint"},{depth:2,id:"readmes-as-resources",text:"READMEs as resources"},{depth:2,id:"what-a-deployed-program-can-reach",text:"What a deployed program can reach"}],html:"\u003Cp>\u003Ccode>bermd\u003C/code> is a long-running service that deploys programs and serves their tools\nover MCP.\u003C/p>\n\u003Cp>An invocation is ephemeral, but three things around it are not: the deployed\nset, the modules compiled from it, and the engine's code cache. That is what the\nservice exists to hold. A program is compiled once, at deploy, so an invocation\npays only instantiation.\u003C/p>\n\u003Cpre class=\"shiki shiki-themes github-dark\" style=\"--shiki-dark:#e1e4e8;--shiki-dark-bg:#24292e\" tabindex=\"0\">\u003Ccode>\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-dark:#B392F0\">bermd\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\"> &#x26;\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-dark:#B392F0\">crab\u003C/span>\u003Cspan style=\"--shiki-dark:#9ECBFF\"> deploy\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-dark:#B392F0\">crab\u003C/span>\u003Cspan style=\"--shiki-dark:#9ECBFF\"> ls\u003C/span>\u003C/span>\u003C/code>\u003C/pre>\n\u003Ch2 id=\"deploying\">\u003Ca href=\"#deploying\">Deploying\u003C/a>\u003C/h2>\n\u003Cp>The control API is resource-shaped — \u003Ccode>GET\u003C/code>, \u003Ccode>PUT\u003C/code> and \u003Ccode>DELETE\u003C/code> on\n\u003Ccode>/programs/{name}\u003C/code> — for the reason dockerd's is: the clients are a UI, a CLI,\nand \u003Ccode>curl\u003C/code>, and a program is a resource.\u003C/p>\n\u003Cp>\u003Ccode>GET /programs/{name}\u003C/code> answers the program as anyone it is visible to sees it:\nits IDL under \u003Ccode>program\u003C/code>, and under \u003Ccode>served\u003C/code> the calls of its tools from outside\nthat ended done, per day over the last 30 days and in total.\n\u003Ccode>GET /programs/{name}/idl\u003C/code> answers the IDL alone: name, version, digest, package\nfields and public tools, what a caller needs. \u003Ccode>GET /programs/{name}/runtime\u003C/code> answers\nhow it runs: its other tools, \u003Ccode>deps\u003C/code>, \u003Ccode>events\u003C/code>, and what of \u003Ccode>deps\u003C/code> nothing here\nanswers to. A deploy answers the IDL beside how it broke callers of the program\nit replaced.\u003C/p>\n\u003Cp>A deploy is recorded only once its image has compiled, so a rejected one is\nnever restored. What is recorded is restored on the next start, and one\nunloadable image is reported and skipped rather than taking the service down\nwith it.\u003C/p>\n\u003Cp>A tool is called with \u003Ccode>POST /programs/{name}/tools/{tool}\u003C/code>, the body its\nargument object. A tool its manifest marks \u003Ccode>query\u003C/code> also answers\n\u003Ccode>GET /programs/{name}/tools/{tool}?args=&#x3C;json>\u003C/code>, the argument object URL-encoded;\nany other tool answers that with \u003Ccode>405\u003C/code>.\u003C/p>\n\u003Cp>There is no container here, so there is nothing to start or stop: a program is\ndeployed or it is not, and dockerd's lifecycle verbs have nothing to attach to.\u003C/p>\n\u003Ch2 id=\"one-endpoint\">\u003Ca href=\"#one-endpoint\">One endpoint\u003C/a>\u003C/h2>\n\u003Cp>Every deployed program appears on a single MCP endpoint at \u003Ccode>/mcp\u003C/code>, with tools\nnamed \u003Ccode>{program}.{tool}\u003C/code> — the same dotted rule the guest ABI already uses for\nhost call names, so \u003Ccode>fs.read\u003C/code> reads the way it does inside a program.\u003C/p>\n\u003Cp>One endpoint rather than one per program, for the reason dockerd has one socket\nrather than one per container. It costs two things, both cheap: names have to be\nnamespaced, and program names may not contain a dot, because dispatch splits on\nthe first one.\u003C/p>\n\u003Cp>Deploying and undeploying emit \u003Ccode>notifications/tools/list_changed\u003C/code>. The tool set\nmoves under clients that are already holding a list, which per-program endpoints\nwould have made someone else's problem.\u003C/p>\n\u003Ch2 id=\"readmes-as-resources\">\u003Ca href=\"#readmes-as-resources\">READMEs as resources\u003C/a>\u003C/h2>\n\u003Cp>MCP gives a server one \u003Ccode>instructions\u003C/code> string, sent on every turn. Each program\nwith a \u003Ca href=\"../manifest/#package\">README\u003C/a> publishes it as a\n\u003Ccode>berm://{program}/readme\u003C/code> resource, which a model reads when choosing among one\nprogram's tools.\u003C/p>\n\u003Ch2 id=\"what-a-deployed-program-can-reach\">\u003Ca href=\"#what-a-deployed-program-can-reach\">What a deployed program can reach\u003C/a>\u003C/h2>\n\u003Cp>Its arguments, the log, itself, and the programs on the same daemon its\nmanifest declares in \u003Ccode>programs\u003C/code>. A call to any other name is\n\u003Ccode>CallError::Refused\u003C/code>.\u003C/p>\n\u003Cpre class=\"shiki shiki-themes github-dark\" style=\"--shiki-dark:#e1e4e8;--shiki-dark-bg:#24292e\" tabindex=\"0\">\u003Ccode>\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-dark:#F97583\">let\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\"> result \u003C/span>\u003Cspan style=\"--shiki-dark:#F97583\">=\u003C/span>\u003Cspan style=\"--shiki-dark:#B392F0\"> berm_lang\u003C/span>\u003Cspan style=\"--shiki-dark:#F97583\">::\u003C/span>\u003Cspan style=\"--shiki-dark:#B392F0\">call\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\">(\u003C/span>\u003Cspan style=\"--shiki-dark:#9ECBFF\">\"inner\"\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\">, \u003C/span>\u003Cspan style=\"--shiki-dark:#9ECBFF\">\"echo\"\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\">, \u003C/span>\u003Cspan style=\"--shiki-dark:#9ECBFF\">r#\"{\"query\":\"hi\"}\"#\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\">)\u003C/span>\u003Cspan style=\"--shiki-dark:#F97583\">?\u003C/span>\u003Cspan style=\"--shiki-dark:#E1E4E8\">;\u003C/span>\u003C/span>\u003C/code>\u003C/pre>\n\u003Cp>\u003Ccode>bermd\u003C/code> serves this as one syscall, \u003Ccode>berm.call\u003C/code>, and the target is a\nfield in the request rather than part of the call number. So an image is never\nbuilt against a particular deploy — the same bytes work wherever they land, and\ndeploying them twice under two names makes them reachable as both.\u003C/p>\n\u003Cp>A name nothing answers to is \u003Ccode>CallError::Refused\u003C/code>: nothing ran. The target\nrunning and reporting failure is \u003Ccode>CallError::Failed\u003C/code>. That is the same split the\ncontrol API draws between a status and an \u003Ccode>Output::Failed\u003C/code>, and a program can\nact on it — falling back when something is not deployed, say.\u003C/p>\n\u003Cp>\u003Ccode>--max-call-depth\u003C/code> bounds the chain, 4 by default, \u003Ccode>0\u003C/code> refusing the first nested\ncall. The bound is on runaway composition rather than on the stack, which a\nlevel costs around 720 bytes of; what a level does cost is 64 MiB of reserved\nguest address space.\u003C/p>\n\u003Cp>That reach stops at the daemon. A program still touches the world outside only\nthrough syscalls its host registered, and \u003Ccode>bermd\u003C/code> registers none — so\nwhat matters before deploying an image is what the image \u003Cem>is\u003C/em>. \u003Ccode>Manifest::from_image\u003C/code>\nreads a program's tools and README without compiling or running it, which is what\n\u003Ccode>crab inspect\u003C/code> shows you.\u003C/p>\n\u003Cp>The endpoint carries no authorization and binds loopback by default.\u003C/p>",prev:{title:"Publishing a Program",slug:"berm/publishing"},next:void 0},uses:{params:["slug"]}}],
+							data: [{type:"data",data:{stars:1},uses:{}},{type:"data",data:{sections:[{title:"",pages:[{title:"Introduction",slug:"index"}]},{title:"berm",pages:[{title:"Overview",slug:"berm/overview"},{title:"Writing a Program",slug:"berm/writing-a-program"},{title:"The Guest API",slug:"berm/guest-api"},{title:"The Manifest",slug:"berm/manifest"},{title:"Publishing a Program",slug:"berm/publishing"},{title:"Running the Service",slug:"berm/service"}]}]},uses:{}},{type:"data",data:{slug:"berm/service",title:"Running the Service",description:"bermd deploys programs and serves their tools over HTTP, and their anonymous tools over MCP.",toc:[{depth:2,id:"deploying",text:"Deploying"},{depth:2,id:"reading-a-program",text:"Reading a program"},{depth:2,id:"calling-a-tool",text:"Calling a tool"},{depth:2,id:"budgets",text:"Budgets"},{depth:2,id:"crons-deprecation-and-stripe-events",text:"Crons, deprecation and Stripe events"},{depth:2,id:"secrets",text:"Secrets"},{depth:2,id:"what-a-deployed-program-can-reach",text:"What a deployed program can reach"},{depth:2,id:"mcp",text:"MCP"}],html:"\u003Cp>\u003Ccode>bermd\u003C/code> is a long-running service that deploys programs and serves their tools.\nAn invocation is ephemeral, but three things around it are not: the deployed\nset, the modules compiled from it, and the engine's code cache. A program is\ncompiled once, at deploy, so an invocation pays only instantiation.\u003C/p>\n\u003Cpre class=\"shiki shiki-themes github-light github-dark\" style=\"--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e\" tabindex=\"0\">\u003Ccode>\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">bermd\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> --addr\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> 127.0.0.1:7777\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> --root\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> ~/.berm\u003C/span>\u003C/span>\u003C/code>\u003C/pre>\n\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Flag\u003C/th>\n\u003Cth>\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\n\u003Ctr>\n\u003Ctd>\u003Ccode>--addr\u003C/code>\u003C/td>\n\u003Ctd>Where it listens, \u003Ccode>127.0.0.1:7777\u003C/code> by default.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>--root\u003C/code>\u003C/td>\n\u003Ctd>Where deployed images, the code cache and \u003Ccode>secrets.toml\u003C/code> live.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>--max-call-depth\u003C/code>\u003C/td>\n\u003Ctd>How deep a chain of programs calling programs nests, 4 by default; \u003Ccode>0\u003C/code> refuses the first nested call.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>--proxy\u003C/code>\u003C/td>\n\u003Ctd>The proxy \u003Ccode>berm.http.proxy\u003C/code> goes through, e.g. \u003Ccode>http://user:pass@gate.example.com:3120\u003C/code>. Without one it goes direct.\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003Cp>The service carries no authorization and binds loopback by default.\u003C/p>\n\u003Ch2 id=\"deploying\">\u003Ca href=\"#deploying\">Deploying\u003C/a>\u003C/h2>\n\u003Cpre class=\"shiki shiki-themes github-light github-dark\" style=\"--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e\" tabindex=\"0\">\u003Ccode>\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">curl\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> -X\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> PUT\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> --data-binary\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> @program.wasm\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> 'http://127.0.0.1:7777/programs/example?public=echo'\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">curl\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> http://127.0.0.1:7777/programs\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">curl\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> -X\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> DELETE\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> http://127.0.0.1:7777/programs/example\u003C/span>\u003C/span>\u003C/code>\u003C/pre>\n\u003Cul>\n\u003Cli>\u003Ccode>PUT /programs/{name}\u003C/code> deploys the image in the body under \u003Ccode>name\u003C/code>, replacing\nwhat is there, and answers \u003Ccode>{\"program\", \"breaks\"}\u003C/code>: the IDL, and how it broke\ncallers of the program it replaced.\u003C/li>\n\u003Cli>A name is lowercase letters, digits, \u003Ccode>-\u003C/code> and \u003Ccode>_\u003C/code>.\u003C/li>\n\u003Cli>\u003Ccode>?public=a,b\u003C/code> lists the tools the deploy may make public; a deploy that makes\none public that it does not list is refused with \u003Ccode>409\u003C/code>.\u003C/li>\n\u003Cli>\u003Ccode>?crons={\"tick\": \"*/5 * * * *\"}\u003C/code> sets each cron tool's expression. A deploy\nthat would undo one set since the last deploy that set them is refused, and\nso is one that breaks a tool or event a caller used in the last 30 days\n(\u003Ca href=\"../manifest/#compatibility\">the manifest\u003C/a>), unless \u003Ccode>?force=true\u003C/code>.\u003C/li>\n\u003Cli>A deploy is recorded only once its image has compiled. What is recorded is\nrestored on the next start, and an image that no longer loads is reported and\nskipped.\u003C/li>\n\u003C/ul>\n\u003Ch2 id=\"reading-a-program\">\u003Ca href=\"#reading-a-program\">Reading a program\u003C/a>\u003C/h2>\n\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Route\u003C/th>\n\u003Cth>Answers\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs\u003C/code>\u003C/td>\n\u003Ctd>Every deployed program's IDL.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}\u003C/code>\u003C/td>\n\u003Ctd>Its IDL under \u003Ccode>program\u003C/code>, and under \u003Ccode>served\u003C/code> the calls of its tools from outside that ended done, per day over the last 30 days and in total.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/idl\u003C/code>\u003C/td>\n\u003Ctd>The IDL alone: name, version, digest, package fields and public tools.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/runtime\u003C/code>\u003C/td>\n\u003Ctd>Its other tools, \u003Ccode>deps\u003C/code>, \u003Ccode>events\u003C/code>, and the \u003Ccode>deps\u003C/code> nothing here answers to.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/terms\u003C/code>\u003C/td>\n\u003Ctd>Each public tool's budget, as \u003Ccode>{\"tools\": {\"&#x3C;tool>\": {\"budget\": {\"instructions\", \"rows\"}}}}\u003C/code>.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/usage\u003C/code>\u003C/td>\n\u003Ctd>Each caller of each tool and event over the last 30 days.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/live\u003C/code>\u003C/td>\n\u003Ctd>What it is using now: invocations running, memory, bytes stored, and each resource's total and rate.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/meters\u003C/code>\u003C/td>\n\u003Ctd>Its meters over the last 30 days, a day each, with the bytes it stored.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/calls\u003C/code>\u003C/td>\n\u003Ctd>Each run, a call from outside or a wake, newest first, with its outcome, duration and meter. \u003Ccode>?tool=&#x26;event=&#x26;outcome=&#x26;since=&#x26;until=&#x26;before=&#x26;limit=\u003C/code>: the calls below the id \u003Ccode>before\u003C/code>, and \u003Ccode>next\u003C/code> in \u003Ccode>Link\u003C/code>.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/logs\u003C/code>\u003C/td>\n\u003Ctd>What it emitted, oldest first, each beside the call it was emitted in and kept 30 days. \u003Ccode>?topic=&#x26;call=&#x26;after=&#x26;limit=\u003C/code>: the logs after the sequence number \u003Ccode>after\u003C/code>, and \u003Ccode>next\u003C/code> in \u003Ccode>Link\u003C/code>.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/crons\u003C/code>\u003C/td>\n\u003Ctd>Each cron tool with its expression and next run.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>GET /programs/{name}/wakes\u003C/code>\u003C/td>\n\u003Ctd>The wakes armed to call its tools that have not run.\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003Ch2 id=\"calling-a-tool\">\u003Ca href=\"#calling-a-tool\">Calling a tool\u003C/a>\u003C/h2>\n\u003Cpre class=\"shiki shiki-themes github-light github-dark\" style=\"--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e\" tabindex=\"0\">\u003Ccode>\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">curl\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> -X\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> POST\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> -H\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> 'X-Berm-Caller: {\"id\": \"alice\"}'\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> -d\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\"> '{\"query\":\"hi\"}'\u003C/span>\u003Cspan style=\"--shiki-light:#005CC5;--shiki-dark:#79B8FF\"> \\\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\">  http://127.0.0.1:7777/programs/example/tools/echo\u003C/span>\u003C/span>\u003C/code>\u003C/pre>\n\u003Cul>\n\u003Cli>\u003Ccode>POST /programs/{name}/tools/{tool}\u003C/code> takes the argument object as its body and\nanswers \u003Ccode>{\"done\": \"&#x3C;result>\"}\u003C/code> or \u003Ccode>{\"failed\": \"&#x3C;message>\"}\u003C/code>.\u003C/li>\n\u003Cli>A tool marked \u003Ccode>query\u003C/code> also answers\n\u003Ccode>GET /programs/{name}/tools/{tool}?args=&#x3C;json>\u003C/code>, the argument object\nURL-encoded, with the program's commit count as its \u003Ccode>ETag\u003C/code>; \u003Ccode>If-None-Match\u003C/code>\nwith it answers \u003Ccode>304\u003C/code>. Any other tool answers \u003Ccode>GET\u003C/code> with \u003Ccode>405\u003C/code>.\u003C/li>\n\u003Cli>\u003Ccode>X-Berm-Caller\u003C/code> is the caller, as JSON:\n\u003Ccode>{\"id\", \"app\", \"user\": {\"issuer\", \"subject\"}, \"client\", \"agent\"}\u003C/code>, every field\nbut \u003Ccode>id\u003C/code> optional. bermd checks none of it. A call without one, or an app's\ncall without a \u003Ccode>user\u003C/code>, has no caller and reaches only \u003Ccode>#[anonymous]\u003C/code> tools.\u003C/li>\n\u003Cli>The answer carries \u003Ccode>Berm-Meter\u003C/code>, what the call used across every program it\nreached: \u003Ccode>{\"calls\", \"instructions\", \"memory\", \"read\", \"written\", \"proxied\", \"logged\", \"failed\", \"sent\"}\u003C/code>.\nA deprecated tool's answer carries \u003Ccode>Deprecation\u003C/code>, and \u003Ccode>Sunset\u003C/code> once one is set.\u003C/li>\n\u003C/ul>\n\u003Ctable>\n\u003Cthead>\n\u003Ctr>\n\u003Cth>Status\u003C/th>\n\u003Cth>When\u003C/th>\n\u003C/tr>\n\u003C/thead>\n\u003Ctbody>\n\u003Ctr>\n\u003Ctd>\u003Ccode>401\u003C/code>\u003C/td>\n\u003Ctd>No caller, and the tool is not \u003Ccode>#[anonymous]\u003C/code>.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>403\u003C/code>\u003C/td>\n\u003Ctd>The tool is \u003Ccode>#[callers(services)]\u003C/code>.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>404\u003C/code>\u003C/td>\n\u003Ctd>No such program, or no public tool by that name.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>405\u003C/code>\u003C/td>\n\u003Ctd>\u003Ccode>GET\u003C/code> on a tool that is not a query.\u003C/td>\n\u003C/tr>\n\u003Ctr>\n\u003Ctd>\u003Ccode>503\u003C/code>\u003C/td>\n\u003Ctd>No call slot is free.\u003C/td>\n\u003C/tr>\n\u003C/tbody>\n\u003C/table>\n\u003Ch2 id=\"budgets\">\u003Ca href=\"#budgets\">Budgets\u003C/a>\u003C/h2>\n\u003Cp>An invocation stops at its tool's instruction budget, and a row syscall it makes\nonce it has read and written its row budget together is refused: 1,000,000,000\ninstructions and 1,000,000 rows, unless\n\u003Ccode>PUT /programs/{name}/tools/{tool}/budget\u003C/code> set \u003Ccode>{\"instructions\", \"rows\"}\u003C/code> lower,\nfrom the next call.\u003C/p>\n\u003Ch2 id=\"crons-deprecation-and-stripe-events\">\u003Ca href=\"#crons-deprecation-and-stripe-events\">Crons, deprecation and Stripe events\u003C/a>\u003C/h2>\n\u003Cul>\n\u003Cli>\u003Ccode>PUT /programs/{name}/tools/{tool}/cron\u003C/code> sets a cron tool's expression as\n\u003Ccode>{\"cron\": \"*/5 * * * *\"}\u003C/code>, five fields in UTC; \u003Ccode>null\u003C/code> stops it.\u003C/li>\n\u003Cli>\u003Ccode>PATCH /programs/{name}/tools/{tool}\u003C/code> with \u003Ccode>{\"sunset\": &#x3C;epoch seconds>}\u003C/code> sets\nwhen a deprecated tool stops being served; \u003Ccode>null\u003C/code> clears it.\u003C/li>\n\u003Cli>\u003Ccode>POST /programs/{name}/stripe\u003C/code> hands its body, a Stripe event, to the\nprogram's \u003Ccode>#[stripe]\u003C/code> tool, unverified, and answers \u003Ccode>204\u003C/code> once the tool has\nrun, \u003Ccode>503\u003C/code> while the program is held and \u003Ccode>500\u003C/code> when the tool failed.\u003C/li>\n\u003C/ul>\n\u003Ch2 id=\"secrets\">\u003Ca href=\"#secrets\">Secrets\u003C/a>\u003C/h2>\n\u003Cp>A request header may name \u003Ccode>{secret:NAME}\u003C/code> for a secret the manifest declares.\nbermd substitutes what \u003Ccode>{root}/secrets.toml\u003C/code> grants that program for that host,\nread again whenever the file changes:\u003C/p>\n\u003Cpre class=\"shiki shiki-themes github-light github-dark\" style=\"--shiki-light:#24292e;--shiki-dark:#e1e4e8;--shiki-light-bg:#fff;--shiki-dark-bg:#24292e\" tabindex=\"0\">\u003Ccode>\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#24292E;--shiki-dark:#E1E4E8\">[\u003C/span>\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">example\u003C/span>\u003Cspan style=\"--shiki-light:#24292E;--shiki-dark:#E1E4E8\">.\u003C/span>\u003Cspan style=\"--shiki-light:#6F42C1;--shiki-dark:#B392F0\">token\u003C/span>\u003Cspan style=\"--shiki-light:#24292E;--shiki-dark:#E1E4E8\">]\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#24292E;--shiki-dark:#E1E4E8\">value = \u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\">\"...\"\u003C/span>\u003C/span>\n\u003Cspan class=\"line\">\u003Cspan style=\"--shiki-light:#24292E;--shiki-dark:#E1E4E8\">hosts = [\u003C/span>\u003Cspan style=\"--shiki-light:#032F62;--shiki-dark:#9ECBFF\">\"api.example.com\"\u003C/span>\u003Cspan style=\"--shiki-light:#24292E;--shiki-dark:#E1E4E8\">]\u003C/span>\u003C/span>\u003C/code>\u003C/pre>\n\u003Ch2 id=\"what-a-deployed-program-can-reach\">\u003Ca href=\"#what-a-deployed-program-can-reach\">What a deployed program can reach\u003C/a>\u003C/h2>\n\u003Cp>Everything in \u003Ca href=\"../guest-api/\">the guest API\u003C/a>: its keys, a database, logs, the\nclock, wakes, HTTP to the hosts its manifest declares, itself, and the programs\ndeployed beside it that its manifest declares in \u003Ccode>programs\u003C/code>. bermd registers no\nfiles and no commands. \u003Ccode>Manifest::from_image\u003C/code> reads what an image claims without\ncompiling or running it.\u003C/p>\n\u003Ch2 id=\"mcp\">\u003Ca href=\"#mcp\">MCP\u003C/a>\u003C/h2>\n\u003Cul>\n\u003Cli>Every deployed program appears on one endpoint at \u003Ccode>/mcp\u003C/code>, over Streamable\nHTTP, its tools named \u003Ccode>{program}.{tool}\u003C/code>. A program name carries no dot, so\ndispatch splits on the first one.\u003C/li>\n\u003Cli>A call over MCP carries no caller, so the endpoint lists and calls only\n\u003Ccode>#[anonymous]\u003C/code> tools.\u003C/li>\n\u003Cli>A tool's budget is in its \u003Ccode>_meta.terms\u003C/code>, and a query tool is marked\nread-only.\u003C/li>\n\u003Cli>Each program with a \u003Ca href=\"../manifest/#package\">README\u003C/a> publishes it as the\nresource \u003Ccode>berm://{program}/readme\u003C/code>.\u003C/li>\n\u003Cli>Deploying and undeploying emit \u003Ccode>notifications/tools/list_changed\u003C/code>.\u003C/li>\n\u003C/ul>",prev:{title:"Publishing a Program",slug:"berm/publishing"},next:void 0},uses:{params:["slug"]}}],
 							form: null,
 							error: null
 						});
