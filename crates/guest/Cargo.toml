@@ -1,0 +1,12 @@
+[package]
+name = "crab-guest"
+description = "The guests crab provides"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+stripe.workspace = true

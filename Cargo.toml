@@ -1,5 +1,5 @@
 [workspace]
-members = ["berm/*", "crates/*", "services/*"]
+members = ["berm/*", "crates/*", "guest/*"]
 resolver = "3"
 
 [workspace.package]
@@ -20,6 +20,7 @@ berm-host = { path = "berm/host", version = "0.0.8" }
 berm-lang = { path = "berm/lang", version = "0.0.8" }
 berm-oci = { path = "berm/oci", version = "0.0.8" }
 bermd = { path = "berm/daemon", version = "0.0.8" }
+stripe = { path = "guest/stripe" }
 # Cloud's API types and client, from `crabtalk/cloud`.
 crabtalk-sdk = { git = "https://github.com/crabtalk/cloud", branch = "main", features = ["client"] }
 
@@ -102,7 +103,7 @@ libsqlite3-sys = { git = "https://github.com/crabtalk/rusqlite", branch = "rows-
 
 # crabtalk-sdk from the local checkout of crabtalk/cloud beside this one, at `../crabtalk`.
 [patch."https://github.com/crabtalk/cloud"]
-crabtalk-sdk = { path = "../crabtalk/crates/api" }
+crabtalk-sdk = { path = "../crabtalk/crates/sdk" }
 
 # What crabtalk-sdk takes from crabtalk/berm is this workspace's own.
 [patch."https://github.com/crabtalk/berm"]

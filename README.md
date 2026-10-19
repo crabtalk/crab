@@ -65,7 +65,8 @@ addresses it by is sha256 of the file. See
 
 - `berm/` — the runtime and `bermd`, published as `berm-*`.
 - `crates/crab` — the `crab` CLI, for a local bermd and for CrabTalk Cloud.
-- `services/` — services, each deployed from its own directory.
+- `crates/guest` — every guest crab provides, re-exported from one crate.
+- `guest/` — guest programs, each deployed from its own directory, and the reference guests berm is tested against.
 
 ## Documentation
 
