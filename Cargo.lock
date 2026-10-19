@@ -209,7 +209,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "berm"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "berm-api"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-rusqlite",
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "berm-codegen"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "berm-fixture"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "berm-host"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "berm-keeper"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -293,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "berm-lang"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "berm-codegen",
  "linked_list_allocator",
@@ -314,7 +314,7 @@ dependencies = [
 
 [[package]]
 name = "berm-oci"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "bermd"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -572,7 +572,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -589,14 +589,21 @@ dependencies = [
 
 [[package]]
 name = "crab-guest"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
- "stripe",
+ "crab-guest-stripe",
+]
+
+[[package]]
+name = "crab-guest-stripe"
+version = "0.1.0"
+dependencies = [
+ "berm-lang",
 ]
 
 [[package]]
 name = "crabtalk-sdk"
-version = "0.0.8"
+version = "0.1.0"
 dependencies = [
  "berm-api",
  "reqwest",
@@ -2589,13 +2596,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "stripe"
-version = "0.0.8"
-dependencies = [
- "berm-lang",
-]
 
 [[package]]
 name = "strsim"

@@ -30,8 +30,8 @@ pub trait Event {
 
 /// What [`crate::emit!`] expands to.
 #[doc(hidden)]
-pub fn event<T: Event + serde_guest::Serialize>(event: &T) -> Result<usize, CallError> {
-    let data = serde_json_guest::to_string(event)
+pub fn event<T: Event + serde::Serialize>(event: &T) -> Result<usize, CallError> {
+    let data = serde_json::to_string(event)
         .map_err(|error| CallError::Failed(alloc::format!("unserializable event: {error}")))?;
     emit(&[T::NAME], &data)?;
     Ok(data.len())

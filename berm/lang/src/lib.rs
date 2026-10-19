@@ -69,8 +69,8 @@ pub use store::{get, get_json, set, set_json};
 // author can reach it through us — and an author who had to depend on it
 // directly could pick a version that disagrees with the one the derive was
 // generated against.
-pub use serde_guest as serde;
-pub use serde_json_guest as serde_json;
+pub use serde;
+pub use serde_json;
 
 pub mod abi;
 mod call;

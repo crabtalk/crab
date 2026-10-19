@@ -7,7 +7,7 @@ repository.workspace = true
 license.workspace = true
 authors.workspace = true
 keywords = ["mcp", "sandbox", "wasm", "program", "daemon"]
-categories = ["virtualization"]
+categories = ["virtualization", "wasm"]
 
 [[bin]]
 name = "bermd"
@@ -22,8 +22,8 @@ berm-host.workspace = true
 clap.workspace = true
 parking_lot.workspace = true
 rmcp.workspace = true
-serde.workspace = true
-serde_json.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
 reqwest = { workspace = true, features = ["rustls"] }
 tokio.workspace = true
 toml.workspace = true

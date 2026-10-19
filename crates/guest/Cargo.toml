@@ -6,7 +6,8 @@ version.workspace = true
 repository.workspace = true
 license.workspace = true
 authors.workspace = true
-publish = false
+keywords = ["berm", "wasm", "guest", "crabtalk"]
+categories = ["wasm"]
 
 [dependencies]
 stripe.workspace = true

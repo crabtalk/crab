@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords = ["berm", "program", "sandbox", "wasm"]
-readme = "README.md"
+categories = ["wasm", "no-std"]
 
 [lib]
 # No host tests yet: the crate is `no_std`, so a test harness would need one
@@ -16,8 +16,8 @@ test = false
 
 [dependencies]
 berm-codegen.workspace = true
-serde_guest.workspace = true
-serde_json_guest.workspace = true
+serde = { workspace = true, features = ["alloc"] }
+serde_json = { workspace = true, features = ["alloc"] }
 
 # The allocator is installed as *the* global allocator, which only a guest
 # target may do — off one, this crate is a library inside someone's tests and

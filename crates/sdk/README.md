@@ -6,13 +6,13 @@ Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`
 
 ```toml
 [dependencies]
-crabtalk-sdk = { git = "https://github.com/crabtalk/berm", branch = "main", features = ["client"] }
+crabtalk-sdk = { version = "0.1", features = ["client"] }
 ```
 
 | Feature   | Adds                                              |
 | --------- | ------------------------------------------------- |
 | `client`  | `crabtalk_sdk::client`, the HTTP client (reqwest) |
-| `openapi` | `utoipa::ToSchema` on every wire type             |
+| `utoipa`  | `utoipa::ToSchema` on every wire type             |
 
 With no features, the crate is the request and response types, with `serde` only.
 

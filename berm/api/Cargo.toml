@@ -6,13 +6,15 @@ version.workspace = true
 repository.workspace = true
 license.workspace = true
 authors.workspace = true
+keywords = ["berm", "wasm", "manifest", "mcp", "api"]
+categories = ["wasm", "api-bindings"]
 
 [dependencies]
 anyhow.workspace = true
 object.workspace = true
 rusqlite = { workspace = true, optional = true }
-serde.workspace = true
-serde_json.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
 serde_urlencoded.workspace = true
 utoipa = { workspace = true, optional = true }
 
