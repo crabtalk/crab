@@ -41,6 +41,15 @@ pub(crate) fn thread(id: &str, now: u64, thread: &impl Serialize) -> Result<usiz
     Ok(data.len())
 }
 
+/// Whether item `id` is stored as shown by `feed`.
+pub fn has(feed: &str, id: &str) -> Result<bool, CallError> {
+    let found = berm_lang::rows::<(u8,)>(
+        "SELECT 1 FROM lake_items WHERE id = ? AND feed = ?",
+        &(id, feed),
+    )?;
+    Ok(!found.is_empty())
+}
+
 /// Up to `limit` items stored after `after`, oldest first, of `feed` when
 /// given.
 pub fn items<T: DeserializeOwned>(

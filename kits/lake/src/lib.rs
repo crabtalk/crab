@@ -167,7 +167,6 @@ fn posts<S: Source>(
 ) -> Result<usize, CallError> {
     let watches = S::watches(feed);
     let mut newest = feed.watermark;
-    let mut shown = Vec::new();
     let (mut stored, mut new, count) = (0, 0, listed.len() as u64);
     for Listed { id, posted, item } in listed {
         newest = newest.max(posted);
@@ -182,11 +181,7 @@ fn posts<S: Source>(
         }
         let fresh = match feed.chronological {
             true => posted > feed.watermark,
-            false => {
-                let fresh = !feed.shown.contains(&id);
-                shown.push(id.clone());
-                fresh
-            }
+            false => !store::has(&feed.key, &id)?,
         };
         if fresh {
             let written = store::item(&id, &feed.key, posted, &S::post(feed, item))?;
@@ -195,7 +190,6 @@ fn posts<S: Source>(
         }
     }
     feed.watermark = newest;
-    feed.shown = shown;
     berm_lang::emit!(Fetched {
         feed: feed.key.clone(),
         shown: count,

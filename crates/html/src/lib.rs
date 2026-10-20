@@ -10,8 +10,8 @@ use alloc::{string::String, vec::Vec};
 /// The longest entity body decoded, `#1114111`, in bytes.
 const LONGEST_ENTITY: usize = 8;
 
-/// `html` as text. Tags are dropped, except that a block boundary becomes a
-/// line break and a link becomes `[text](href)`, or its text alone when that
+/// `html` as text. Tags are dropped, and `<script>` and `<style>` with their
+/// contents, except that a block boundary becomes a line break and a link becomes `[text](href)`, or its text alone when that
 /// is its href or it has none. Entities are decoded; an `&` with no `;` within
 /// 8 bytes is kept. An unclosed tag drops the rest.
 ///
@@ -46,6 +46,15 @@ pub fn text(html: &str) -> String {
             .next()
             .unwrap_or("");
         let is = |candidate: &str| name.eq_ignore_ascii_case(candidate);
+        if !closing && (is("script") || is("style")) {
+            let close = alloc::format!("</{}", name.to_ascii_lowercase());
+            at = match find_ignore_case(&html[at..], &close) {
+                Some(found) => at + found + tag_end(&html[at + found..]) + 1,
+                None => html.len(),
+            }
+            .min(html.len());
+            continue;
+        }
         if is("a") {
             match closing {
                 false => {
@@ -91,6 +100,21 @@ pub fn unescape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     decode(&mut out, s);
     out
+}
+
+/// The text of the first `<title>`: entities decoded, whitespace collapsed to
+/// single spaces. `None` when there is none or it is blank.
+///
+/// ```
+/// assert_eq!(crab_html::title("<title> Fish &amp;\n chips </title>").as_deref(), Some("Fish & chips"));
+/// ```
+pub fn title(html: &str) -> Option<String> {
+    let open = find_ignore_case(html, "<title")?;
+    let start = open + tag_end(&html[open..]) + 1;
+    let end = start + find_ignore_case(html.get(start..)?, "</title")?;
+    let words = unescape(&html[start..end]);
+    let words: Vec<&str> = words.split_whitespace().collect();
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
 /// The `content` of the first `<meta>` whose `property` or `name` is

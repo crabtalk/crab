@@ -1,0 +1,16 @@
+[package]
+name = "crab-crawl"
+version.workspace = true
+description = "An incremental crawler for berm programs: robots.txt, sitemaps, and the pages of the kinds a program names, recrawled when they change."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["crawler", "sitemap", "robots", "berm", "crabtalk"]
+categories = ["wasm", "web-programming"]
+
+[dependencies]
+berm-lang.workspace = true
+html.workspace = true
+url.workspace = true
+xmlparser.workspace = true

@@ -23,14 +23,12 @@ pub struct Feed {
     /// What the source names it by.
     pub key: String,
     /// Ordered by post time: an item is new past `watermark`. Otherwise an
-    /// item is new when it was not in `shown`.
+    /// item is new when `lake_items` does not hold it for this feed.
     pub chronological: bool,
     /// When it was last fetched, in Unix milliseconds; 0 if never.
     pub fetched: u64,
     /// The newest post time it has shown, in Unix milliseconds.
     pub watermark: u64,
-    /// The items it showed when last fetched; empty when `chronological`.
-    pub shown: Vec<String>,
 }
 
 /// An item whose thread is fetched.
@@ -68,7 +66,6 @@ impl State {
             chronological,
             fetched: 0,
             watermark: 0,
-            shown: Vec::new(),
         });
         true
     }

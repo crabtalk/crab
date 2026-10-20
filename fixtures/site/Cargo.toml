@@ -1,0 +1,25 @@
+[package]
+name = "berm-site"
+description = "The reference crawler, sites read through crab-crawl, what crawl's ticks are tested against"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "site"
+path = "bin/main.rs"
+
+[dependencies]
+berm-lang.workspace = true
+crawl.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+berm-api.workspace = true
+berm-host = { workspace = true, features = ["test"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio.workspace = true

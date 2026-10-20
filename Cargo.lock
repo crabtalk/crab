@@ -386,6 +386,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-site"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-host",
+ "berm-lang",
+ "crab-crawl",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "bermd"
 version = "0.1.0"
 dependencies = [
@@ -717,6 +731,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-crawl"
+version = "0.1.0"
+dependencies = [
+ "berm-lang",
+ "crab-html",
+ "url",
+ "xmlparser",
+]
+
+[[package]]
 name = "crab-html"
 version = "0.1.0"
 
@@ -725,6 +749,7 @@ name = "crab-kits"
 version = "0.1.0"
 dependencies = [
  "crab-auth",
+ "crab-crawl",
  "crab-lake",
  "crab-neon",
  "crab-stripe",

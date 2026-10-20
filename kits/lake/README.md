@@ -87,7 +87,7 @@ impl Source for Blog {
 }
 ```
 
-`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed marked chronological stores the items posted after the newest it has shown; any other stores the items it did not show when last fetched.
+`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed marked chronological stores the items posted after the newest it has shown; any other stores the items it has not stored before, and `store::has` says whether it has.
 
 ## A tick
 
