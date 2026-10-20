@@ -27,6 +27,7 @@ berm-kit = { path = "fixtures/kit" }
 
 # kits
 auth = { package = "crab-auth", path = "kits/auth", version = "0.1.0" }
+lake = { package = "crab-lake", path = "kits/lake", version = "0.1.0" }
 neon = { package = "crab-neon", path = "kits/neon", version = "0.1.0" }
 stripe = { package = "crab-stripe", path = "kits/stripe", version = "0.1.0" }
 supabase = { package = "crab-supabase", path = "kits/supabase", version = "0.1.0" }
@@ -93,6 +94,7 @@ wasmtime = { version = "48", default-features = false, features = [
     "runtime",
     "std",
 ] }
+xmlparser = { version = "0.13", default-features = false }
 
 [profile.dev]
 # Enough for a backtrace to name a line. The full DWARF is what made `target`

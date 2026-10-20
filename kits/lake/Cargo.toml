@@ -1,0 +1,14 @@
+[package]
+name = "crab-lake"
+version.workspace = true
+description = "The runtime of a source service: feeds fetched on its schedule, their items and threads stored in its database."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["rss", "atom", "feeds", "berm", "crabtalk"]
+categories = ["wasm", "parser-implementations"]
+
+[dependencies]
+berm-lang.workspace = true
+xmlparser.workspace = true

@@ -3,6 +3,7 @@
 #![no_std]
 
 pub use auth;
+pub use lake;
 pub use neon;
 pub use stripe;
 pub use supabase;

@@ -273,6 +273,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-feed"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-host",
+ "berm-lang",
+ "crab-lake",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "berm-fixture"
 version = "0.1.0"
 dependencies = [
@@ -703,9 +716,18 @@ name = "crab-kits"
 version = "0.1.0"
 dependencies = [
  "crab-auth",
+ "crab-lake",
  "crab-neon",
  "crab-stripe",
  "crab-supabase",
+]
+
+[[package]]
+name = "crab-lake"
+version = "0.1.0"
+dependencies = [
+ "berm-lang",
+ "xmlparser",
 ]
 
 [[package]]
@@ -4295,6 +4317,12 @@ dependencies = [
  "libc",
  "rustix",
 ]
+
+[[package]]
+name = "xmlparser"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "yoke"
