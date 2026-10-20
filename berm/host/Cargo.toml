@@ -12,11 +12,13 @@ categories = ["wasm", "virtualization"]
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+base64.workspace = true
 berm = { workspace = true, features = ["sqlite"] }
 berm-api = { workspace = true, features = ["rusqlite"] }
 chrono.workspace = true
 croner.workspace = true
 parking_lot.workspace = true
+ring.workspace = true
 rusqlite.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }

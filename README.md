@@ -63,7 +63,8 @@ crab usage example
 
 [crab-guest](crates/guest/README.md) collects the services crab provides, each a guest you deploy under your own account:
 
-- [stripe](guest/stripe/README.md): Stripe subscriptions for a product's users. Checkout, the customer portal, and each user's plan.
+- [auth](guests/auth/README.md): Sign-in for a product's users. GitHub and Google logins as ID tokens its apps trust.
+- [stripe](guests/stripe/README.md): Stripe subscriptions for a product's users. Checkout, the customer portal, and each user's plan.
 
 Your other services reach one by name, as `berm_lang::call("stripe", "plan", …)`.
 

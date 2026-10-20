@@ -13,6 +13,11 @@ struct Args {
     #[arg(long, default_value = "127.0.0.1:7777")]
     addr: SocketAddr,
 
+    /// The base URL this service is reached at, which begins every program's
+    /// ID token issuer. `http://{addr}` by default.
+    #[arg(long)]
+    url: Option<String>,
+
     /// Where deployed images and the code cache live.
     #[arg(long)]
     root: Option<PathBuf>,
@@ -49,7 +54,8 @@ async fn main() -> Result<()> {
         None => PathBuf::from(std::env::var("HOME").context("HOME is not set")?).join(".berm"),
     };
 
-    let service = Service::new(root, args.max_call_depth, args.proxy.as_deref()).await?;
+    let url = args.url.unwrap_or_else(|| format!("http://{}", args.addr));
+    let service = Service::new(root, args.max_call_depth, args.proxy.as_deref(), &url).await?;
     let listener = TcpListener::bind(args.addr)
         .await
         .with_context(|| format!("failed to bind {}", args.addr))?;

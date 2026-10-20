@@ -12,8 +12,9 @@
 //! a second entry into the guest, `spin` loops past the instructions a call
 //! includes, and `boom` fails on purpose.
 //! `tick` arms itself, to show a wake outliving the invocation that asked for
-//! it, `wait` makes one host call a host can make slow, and `fetch` makes one
-//! HTTP request to a host its manifest declares. `note` writes and emits, and
+//! it, `wait` makes one host call a host can make slow, `fetch` makes one
+//! HTTP request to a host its manifest declares, and `token` signs an ID
+//! token. `note` writes and emits, and
 //! `relay` calls `note` on `inner`, to show what a failed call takes with it.
 //! `seen` takes the `Noted` events of whatever is deployed as `fixture`, read
 //! through `declare_program!(fixture)`, the fixture's own IDL in `idls/`, and
@@ -44,11 +45,12 @@ berm_lang::declare_program!(fixture);
         "berm.set",
         "berm.call.after",
         "berm.http.fetch" = ["127.0.0.1"],
+        "berm.token.sign",
     },
     secrets = ["fixture"],
 )]
 mod tools {
-    use crate::{Attempts, Echo, Fetched, Noted, Peek, Round, Wait};
+    use crate::{Attempts, Echo, Fetched, Noted, Peek, Round, Signed, Wait};
     use alloc::{format, string::String, vec::Vec};
     use berm_lang::{Caller, Result};
 
@@ -111,22 +113,40 @@ mod tools {
         })
     }
 
-    /// Fetches `url` and answers the status and the body's length.
+    /// Fetches `url`, posting `body` when there is one, and answers the status
+    /// and the body's length.
     #[public]
     pub fn fetch(
         url: String,
         /// One `Name: Value` header, which may name `{secret:fixture}`.
         header: Option<String>,
+        /// What to post, which may name `{secret:fixture}`.
+        body: Option<String>,
     ) -> Result<Fetched> {
         let header = header.as_deref().and_then(|header| {
             header
                 .split_once(':')
                 .map(|(name, value)| (name.trim(), value.trim()))
         });
-        let response = berm_lang::http::fetch("GET", &url, header.as_slice(), b"")?;
+        let response = match &body {
+            Some(body) => berm_lang::http::fetch("POST", &url, header.as_slice(), body.as_bytes())?,
+            None => berm_lang::http::fetch("GET", &url, header.as_slice(), b"")?,
+        };
         Ok(Fetched {
             status: response.status,
             bytes: response.body.len() as u64,
+        })
+    }
+
+    /// Signs `claims`, a JSON object, as an ID token, and answers it beside
+    /// this program's issuer.
+    #[public]
+    pub fn token(claims: String) -> Result<Signed> {
+        let claims: berm_lang::serde_json::Value =
+            berm_lang::serde_json::from_str(&claims).map_err(|e| format!("{e}"))?;
+        Ok(Signed {
+            token: berm_lang::token::sign(&claims)?,
+            issuer: berm_lang::token::issuer()?,
         })
     }
 
@@ -321,6 +341,14 @@ pub struct Fetched {
     pub status: u16,
     /// The body's length.
     pub bytes: u64,
+}
+
+/// What `token` answers.
+#[derive(Schema)]
+pub struct Signed {
+    /// The compact JWT.
+    pub token: String,
+    pub issuer: String,
 }
 
 /// What `tick` answers.

@@ -2,7 +2,7 @@
 //! program's manifest names under the syscall it makes.
 //!
 //! berm checks the request against the asking program's [`crate::Deps`] and
-//! substitutes every `{secret:NAME}` in a header value. Resolving a secret and
+//! substitutes every `{secret:NAME}` in a header value and in the body. Resolving a secret and
 //! sending the request are the host's, and arrive as the two closures below.
 
 use crate::{Callsite, Refused, Syscall, abi, wire};
@@ -14,7 +14,7 @@ const SECRET: &str = "{secret:";
 
 /// One request, as the host is handed it: allowed by the manifest, and every
 /// secret already substituted.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Request {
     pub method: String,
     pub url: String,
@@ -92,45 +92,69 @@ where
                 let mut request = read(&request)?;
                 permitted(&at, name, &request.host)?;
                 for (_, value) in &mut request.headers {
-                    if !value.contains(SECRET) {
-                        continue;
+                    let found = substitute(&at, &*secret, &request.host, value.as_bytes()).await?;
+                    if let Some(found) = found {
+                        *value = String::from_utf8(found)?;
                     }
-                    let mut substituted = String::with_capacity(value.len());
-                    let mut rest = value.as_str();
-                    while let Some(start) = rest.find(SECRET) {
-                        let after = &rest[start + SECRET.len()..];
-                        let Some(end) = after.find('}') else {
-                            bail!("a header opens {SECRET} and never closes it");
-                        };
-                        let name = &after[..end];
-                        if !at.deps.secrets.iter().any(|declared| declared == name) {
-                            return Err(Refused(format!(
-                                "{} does not declare the secret {name:?}",
-                                at.program
-                            ))
-                            .into());
-                        }
-                        let found =
-                            secret(at.clone(), name.to_owned(), request.host.clone()).await?;
-                        let Some(found) = found else {
-                            return Err(Refused(format!(
-                                "no secret {name:?} is granted to {} for {}",
-                                at.program, request.host
-                            ))
-                            .into());
-                        };
-                        substituted.push_str(&rest[..start]);
-                        substituted.push_str(&found);
-                        rest = &after[end + 1..];
-                    }
-                    substituted.push_str(rest);
-                    *value = substituted;
+                }
+                if let Some(found) = substitute(&at, &*secret, &request.host, &request.body).await?
+                {
+                    request.body = found;
                 }
                 let response = send(at.clone(), request).await?;
                 Ok(write(&response))
             })
         }),
     }
+}
+
+/// `text` with every `{secret:NAME}` replaced by what `secret` grants the
+/// asking program for `host`, or `None` when it names no secret.
+async fn substitute<R, Found>(
+    at: &Callsite,
+    secret: &R,
+    host: &str,
+    text: &[u8],
+) -> Result<Option<Vec<u8>>>
+where
+    R: Fn(Callsite, String, String) -> Found,
+    Found: Future<Output = Result<Option<String>>>,
+{
+    let opens = |rest: &[u8]| {
+        rest.windows(SECRET.len())
+            .position(|w| w == SECRET.as_bytes())
+    };
+    if opens(text).is_none() {
+        return Ok(None);
+    }
+    let mut substituted = Vec::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = opens(rest) {
+        let after = &rest[start + SECRET.len()..];
+        let Some(end) = after.iter().position(|&byte| byte == b'}') else {
+            bail!("{SECRET} is opened and never closed");
+        };
+        let name = std::str::from_utf8(&after[..end])?;
+        if !at.deps.secrets.iter().any(|declared| declared == name) {
+            return Err(Refused(format!(
+                "{} does not declare the secret {name:?}",
+                at.program
+            ))
+            .into());
+        }
+        let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
+            return Err(Refused(format!(
+                "no secret {name:?} is granted to {} for {host}",
+                at.program
+            ))
+            .into());
+        };
+        substituted.extend_from_slice(&rest[..start]);
+        substituted.extend_from_slice(found.as_bytes());
+        rest = &after[end + 1..];
+    }
+    substituted.extend_from_slice(rest);
+    Ok(Some(substituted))
 }
 
 /// The bytes of `headers`' names and values.

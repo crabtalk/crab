@@ -1,10 +1,10 @@
 //! Stripe's API, through `berm.http.fetch`, as the restricted key in
 //! `STRIPE_SECRET_KEY`.
 
-use crate::{Session, StripeError, utils};
+use crate::{Session, StripeError};
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::{
-    Result, User,
+    Result, User, http,
     serde::{Deserialize, de::DeserializeOwned},
     serde_json,
 };
@@ -116,19 +116,19 @@ pub fn portal(customer: &str, back: &str) -> Result<Session> {
 
 /// The subscription `id` as Stripe holds it now.
 pub fn subscription(id: &str) -> Result<Subscription> {
-    send("GET", &format!("/subscriptions/{}", utils::encode(id)), &[])
+    send("GET", &format!("/subscriptions/{}", http::encode(id)), &[])
 }
 
 /// `fields` sent to `path`, in the query of a `GET` and the body otherwise,
 /// and Stripe's answer read as `T`.
 fn send<T: DeserializeOwned>(method: &str, path: &str, fields: &[(&str, &str)]) -> Result<T> {
-    let form = utils::form(fields);
+    let form = http::form(fields);
     let (url, body) = match method {
         "GET" if !form.is_empty() => (format!("{API}{path}?{form}"), String::new()),
         "GET" => (format!("{API}{path}"), String::new()),
         _ => (format!("{API}{path}"), form),
     };
-    let response = berm_lang::http::fetch(
+    let response = http::fetch(
         method,
         &url,
         &[

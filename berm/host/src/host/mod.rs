@@ -45,6 +45,7 @@ mod fetch;
 mod invoke;
 mod nest;
 mod storage;
+mod token;
 
 /// Every service, compiled and callable.
 #[derive(Clone)]
@@ -97,6 +98,8 @@ pub struct Inner<E: Env> {
     pub(crate) peers: E::Peers,
     images: E::Images,
     pub(crate) secrets: E::Secrets,
+    /// [`Edges::issuer`].
+    pub(crate) issuer: E::Issuer,
     /// [`Edges::layers`].
     pub(crate) layers: Layers,
     /// The most one invocation may use, and what a tool's owner has not set
@@ -126,7 +129,8 @@ impl<E: Env> Host<E> {
     /// the service's own database, `berm.call.after` over `service_wakes`,
     /// `berm.sql` over the databases kept under `config.databases`,
     /// `berm.http.fetch` through `edges.fetch` and, when given one,
-    /// `berm.http.proxy` through `edges.proxy`, both with `edges.secrets`.
+    /// `berm.http.proxy` through `edges.proxy`, both with `edges.secrets`, and
+    /// `berm.token.sign` and `berm.token.issuer` with `edges.issuer`.
     /// Images come from `edges.images`, a service it does not run is reached
     /// through `edges.peers`, a call from outside goes through `edges.layers`,
     /// and `edges.observe` is told of each invocation.
@@ -137,6 +141,7 @@ impl<E: Env> Host<E> {
             images,
             peers,
             secrets,
+            issuer,
             layers,
             observe,
             clock,
@@ -163,6 +168,7 @@ impl<E: Env> Host<E> {
             if let Some(proxy) = proxy {
                 syscalls.push(fetch::syscall(host, proxy, true));
             }
+            syscalls.extend(token::syscalls(host));
             syscalls.extend(state::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
@@ -189,6 +195,7 @@ impl<E: Env> Host<E> {
                 peers,
                 images,
                 secrets,
+                issuer,
                 layers,
                 budget: Budget {
                     instructions: config.fuel,

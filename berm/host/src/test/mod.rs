@@ -1,7 +1,8 @@
 //! A host for tests: a service's built image runs under the real engine,
 //! against edges the test holds. Fetches answer what the test arranged, images
-//! are bytes it handed in, there are no peers, secrets are what it granted, and
-//! the clock stands where it set it. Wakes are fired by the test, not a timer.
+//! are bytes it handed in, there are no peers, secrets are what it granted,
+//! each service signs with a key generated on first use, and the clock stands
+//! where it set it. Wakes are fired by the test, not a timer.
 //!
 //! ```ignore
 //! let host = TestHost::open(0).await?;
@@ -12,9 +13,12 @@
 //! let logs = host.logs("feeds", Some("Item")).await?;
 //! ```
 
+pub use berm::User;
+
+use crate::key::Key;
 use crate::{
     api::outside::Layers,
-    env::{Clock, Edges},
+    env::{Clock, Edges, Issuer},
     host::{self, Host},
     state::service,
     wake::table,
@@ -48,6 +52,7 @@ use std::{
 mod clock;
 mod env;
 mod images;
+mod issuer;
 mod peers;
 mod secrets;
 
@@ -61,6 +66,7 @@ pub struct TestHost {
     fetch: Arranged,
     images: Given,
     secrets: Granted,
+    issuer: Generated,
     clock: Manual,
     dir: PathBuf,
 }
@@ -100,6 +106,7 @@ impl TestHost {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
         let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
+        let issuer = Generated::default();
         let clock = Manual(Arc::new(AtomicU64::new(now)));
         let config = crate::Config {
             databases: dir.join("databases"),
@@ -114,6 +121,7 @@ impl TestHost {
                 images: images.clone(),
                 peers: Nowhere,
                 secrets: secrets.clone(),
+                issuer: issuer.clone(),
                 layers: Layers::new(tower::layer::util::Identity::new()),
                 observe: (),
                 clock: clock.clone(),
@@ -125,6 +133,7 @@ impl TestHost {
             fetch,
             images,
             secrets,
+            issuer,
             clock,
             dir,
         })
@@ -147,8 +156,8 @@ impl TestHost {
         );
     }
 
-    /// Every request sent so far, as method and URL, in order.
-    pub fn fetched(&self) -> Vec<(String, String)> {
+    /// Every request sent so far, in order, with its secrets substituted.
+    pub fn fetched(&self) -> Vec<Request> {
         self.fetch.0.lock().sent.clone()
     }
 
@@ -158,6 +167,16 @@ impl TestHost {
             (service.to_owned(), secret.to_owned(), host.to_owned()),
             value.to_owned(),
         );
+    }
+
+    /// The issuer URL of `service`'s tokens.
+    pub async fn issuer(&self, service: &str) -> Result<String> {
+        self.issuer.issuer(service).await
+    }
+
+    /// The public key `service`'s tokens are signed with.
+    pub fn public_key(&self, service: &str) -> Result<Vec<u8>> {
+        Ok(self.issuer.key(service)?.public().to_vec())
     }
 
     /// Milliseconds since the Unix epoch, as the clock stands.
@@ -208,6 +227,21 @@ impl TestHost {
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
     /// and commit what it did.
     pub async fn call(&self, service: &str, tool: &str, args: &[u8]) -> Result<Ran> {
+        self.run(service, tool, args, None).await
+    }
+
+    /// [`TestHost::call`], for `user`.
+    pub async fn call_for(
+        &self,
+        service: &str,
+        tool: &str,
+        args: &[u8],
+        user: User,
+    ) -> Result<Ran> {
+        self.run(service, tool, args, Some(user)).await
+    }
+
+    async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
         let program = self
             .host
             .get(service)
@@ -218,7 +252,7 @@ impl TestHost {
                 &program,
                 self.host.calls.start().id,
                 None,
-                None,
+                user,
                 None,
                 tool,
                 args.to_vec(),
@@ -402,7 +436,7 @@ pub struct Arranged(Arc<Mutex<Fetches>>);
 #[derive(Default)]
 struct Fetches {
     answers: HashMap<(String, String), Response>,
-    sent: Vec<(String, String)>,
+    sent: Vec<Request>,
 }
 
 impl tower::Service<Request> for Arranged {
@@ -416,9 +450,6 @@ impl tower::Service<Request> for Arranged {
 
     fn call(&mut self, request: Request) -> Self::Future {
         let mut fetches = self.0.lock();
-        fetches
-            .sent
-            .push((request.method.clone(), request.url.clone()));
         let answer = match fetches
             .answers
             .get(&(request.method.clone(), request.url.clone()))
@@ -434,6 +465,7 @@ impl tower::Service<Request> for Arranged {
                 request.url
             )),
         };
+        fetches.sent.push(request);
         Box::pin(std::future::ready(answer))
     }
 }
@@ -451,6 +483,22 @@ pub struct Granted(Arc<Mutex<HashMap<Grant, String>>>);
 
 /// A service, a secret and a host.
 type Grant = (String, String, String);
+
+/// A key per service, generated on first use.
+#[derive(Clone, Default)]
+pub struct Generated(Arc<Mutex<HashMap<String, Arc<Key>>>>);
+
+impl Generated {
+    fn key(&self, service: &str) -> Result<Arc<Key>> {
+        let mut keys = self.0.lock();
+        if let Some(key) = keys.get(service) {
+            return Ok(key.clone());
+        }
+        let key = Arc::new(Key::generate()?.0);
+        keys.insert(service.to_owned(), key.clone());
+        Ok(key)
+    }
+}
 
 /// A clock that stands where the test set it.
 #[derive(Clone)]

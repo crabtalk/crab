@@ -15,7 +15,7 @@ use axum::{
     routing::{get, put},
 };
 use berm_api::{Deployed, Program as Wire, host};
-use berm_host::{Denied, Named, deny};
+use berm_host::{Denied, Issuer, Named, deny};
 use rmcp::transport::{
     StreamableHttpService, streamable_http_server::session::local::LocalSessionManager,
 };
@@ -44,6 +44,11 @@ pub fn router(service: Arc<Service>) -> Router {
 
     Router::new()
         .route("/programs", get(list))
+        .route(
+            "/issuers/{name}/.well-known/openid-configuration",
+            get(discovery),
+        )
+        .route("/issuers/{name}/jwks", get(jwks))
         .with_state(service)
         .nest("/programs/{name}", program)
         .route_service("/mcp", mcp)
@@ -83,6 +88,37 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
             .map(|one| one.idl(&one.name))
             .collect(),
     )
+}
+
+/// The OpenID Provider metadata of a deployed program's issuer.
+async fn discovery(
+    State(service): State<Arc<Service>>,
+    Path(Name { name }): Path<Name>,
+) -> Result<Json<serde_json::Value>, Denied> {
+    deployed(&service, &name)?;
+    let issuer = service.keys.issuer(&name).await?;
+    let jwks_uri = format!("{issuer}/jwks");
+    Ok(Json(berm_host::discovery(&issuer, &jwks_uri)))
+}
+
+/// The JWK Set a deployed program's ID tokens verify against.
+async fn jwks(
+    State(service): State<Arc<Service>>,
+    Path(Name { name }): Path<Name>,
+) -> Result<Json<serde_json::Value>, Denied> {
+    deployed(&service, &name)?;
+    let key = service.keys.key(&name).await?;
+    Ok(Json(serde_json::json!({ "keys": [key.jwk()] })))
+}
+
+fn deployed(service: &Service, name: &str) -> Result<(), Denied> {
+    match service.get(name) {
+        Some(_) => Ok(()),
+        None => Err(deny(
+            StatusCode::NOT_FOUND,
+            format!("no program named {name:?} is deployed"),
+        )),
+    }
 }
 
 /// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}` on a deploy: the

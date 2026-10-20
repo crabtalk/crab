@@ -9,7 +9,6 @@ use alloc::string::String;
 use berm_lang::Schema;
 
 mod api;
-mod store;
 mod utils;
 
 #[berm_lang::program(
@@ -21,7 +20,7 @@ mod utils;
     },
 )]
 mod tools {
-    use crate::{Data, Session, StripeError, api, store, utils};
+    use crate::{Data, Session, StripeError, api, utils};
     use alloc::string::String;
     use berm_lang::Result;
 
@@ -43,7 +42,7 @@ mod tools {
             Some(customer) => customer,
             None => {
                 let customer = api::customer(&user)?;
-                store::sql::<()>(
+                berm_lang::rows::<()>(
                     "INSERT INTO customers (issuer, subject, customer) VALUES (?, ?, ?)",
                     &(&user.issuer, &user.subject, &customer),
                 )?;
@@ -73,7 +72,7 @@ mod tools {
     #[callers(services)]
     pub fn plan() -> Result<Option<String>> {
         let user = utils::user()?;
-        let plans = store::sql::<(Option<String>,)>(
+        let plans = berm_lang::rows::<(Option<String>,)>(
             "SELECT s.plan FROM subscriptions s
              JOIN customers c ON c.customer = s.customer
              WHERE c.issuer = ? AND c.subject = ? AND s.status IN ('active', 'trialing')
@@ -105,7 +104,7 @@ mod tools {
             .into_iter()
             .next()
             .and_then(|item| item.price.lookup_key);
-        store::sql::<()>(
+        berm_lang::rows::<()>(
             "INSERT INTO subscriptions (id, customer, status, plan) VALUES (?, ?, ?, ?)
              ON CONFLICT (id) DO UPDATE
              SET customer = excluded.customer, status = excluded.status, plan = excluded.plan",

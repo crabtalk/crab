@@ -1,6 +1,6 @@
 ---
 title: The Guest API
-description: "What berm-lang gives a program past its arguments: who called, state, a database, logs, HTTP, other programs, wakes and the clock."
+description: "What berm-lang gives a program past its arguments: who called, state, a database, logs, HTTP, ID tokens, other programs, wakes and the clock."
 ---
 
 Each function here is a syscall. berm serves the call's own context — caller,
@@ -94,10 +94,25 @@ let page = berm_lang::http::fetch(
 - It reaches only the hosts the manifest lists under `berm.http.fetch`.
 - `http::proxy` sends the same request through the host's proxy, to the hosts
   listed under `berm.http.proxy`.
-- A header value may carry `{secret:NAME}` for a secret the manifest lists in
-  `secrets`. The host substitutes it, and the program never holds the value.
+- A header value or the body may carry `{secret:NAME}` for a secret the manifest lists in `secrets`. The host substitutes it, and the program never holds the value.
 - `CallError::Refused` means nothing was sent: a host or secret the manifest
   does not list, or a secret the host has not granted.
+
+## ID tokens
+
+```rust,ignore
+let token = berm_lang::token::sign(&serde_json::json!({
+    "sub": "user-1",
+    "aud": "https://app.example.com",
+    "exp": berm_lang::now() / 1000 + 600,
+}))?;
+```
+
+- `token::sign(claims)` answers a compact JWT signed `EdDSA` with the program's own Ed25519 key. The host holds the key, and the program never does.
+- `claims` is a JSON object with a string `sub`, an `aud` that is a string or an array of strings, and a numeric `exp`. Anything else is `CallError::Refused`.
+- The host sets `iss` to the program's issuer and `iat` to its clock in seconds, over whatever `claims` held.
+- `token::issuer()` answers the program's issuer URL.
+- Both are refused unless the manifest lists `berm.token.sign` in `syscalls`.
 
 ## Other programs
 

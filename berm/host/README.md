@@ -8,7 +8,7 @@ per-service databases, a log of each call, and usage accounting. The daemon
 authenticates callers and serves its own routes.
 
 Implement `Env` to supply HTTP transport, image fetching, peer calls, secret
-resolution, an invocation observer, and the clock. Pass those implementations,
+resolution, ID token signing, an invocation observer, and the clock. Pass those implementations,
 an optional proxy, and the layers put around every call from outside as `Edges`
 to `Host::open`, then call `Host::boot` inside a Tokio runtime to restore
 services and start background work.

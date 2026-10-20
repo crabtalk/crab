@@ -67,7 +67,7 @@ when the crate sets none.
 
 is what an image says it will reach for once it runs: programs it calls by
 name, syscalls it makes beyond the ABI's own, each beside what it reaches
-through that call, and secrets it names as `{secret:NAME}` in a header. The
+through that call, and secrets it names as `{secret:NAME}` in a header or a body. The
 manifest carries them as
 `"deps": {"programs": [...], "syscalls": {"name": [...]}, "secrets": [...]}`.
 `database` names a directory of migrations, read at compile time, and adds
@@ -76,7 +76,9 @@ manifest carries them as
 `berm.http.fetch` holds a program to them: a host it does not declare, or a
 secret it does not declare, is refused before anything is sent.
 `berm.http.proxy` does the same for the hosts declared under it, and sends
-through the host's proxy. `berm.call`
+through the host's proxy. `berm.token.sign`, declared bare, lets the program
+have the host sign ID tokens with its key and read its issuer; without it both
+are refused. `berm.call`
 reaches the program itself and the programs it declares, and refuses any other
 name. A declared secret is substituted by the host with the value it granted the
 program, and the guest never holds it. These are runtime

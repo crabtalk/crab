@@ -32,10 +32,10 @@
 //!
 //! This crate declares the standard syscalls: [`call`] and [`after`] for
 //! reaching programs, [`get`] and [`set`] for a program's own bytes, [`emit`]
-//! for logs ([`emit!`] for an `#[event]` struct), and [`http::fetch`] and
-//! [`http::proxy`] for the network. berm serves [`call`] and [`emit`] itself;
-//! the rest run only under a host that registers them, and trap as unknown host
-//! calls otherwise.
+//! for logs ([`emit!`] for an `#[event]` struct), [`http::fetch`] and
+//! [`http::proxy`] for the network, and [`token::sign`] for ID tokens. berm
+//! serves [`call`] and [`emit`] itself; the rest run only under a host that
+//! registers them, and trap as unknown host calls otherwise.
 //!
 //! What [`set`] writes is kept only if the call the host started returns a
 //! result. What [`emit`] emits is kept whatever the call returns: logs are what
@@ -62,7 +62,7 @@ pub use emit::event as __event;
 pub use emit::{Event, emit};
 pub use error::{Error, Result};
 pub use schema::Schema;
-pub use sql::sql;
+pub use sql::{rows, sql};
 pub use store::{get, get_json, set, set_json};
 // Re-exported so a program declares this SDK and nothing else. What the macros
 // generate reaches serde as `::berm_lang::serde`, which only resolves if the
@@ -87,6 +87,7 @@ pub mod schema;
 mod sql;
 mod store;
 pub mod test;
+pub mod token;
 
 // One boundary for the whole crate: `wasm.rs` makes real host calls, and
 // `stub.rs` is a host a test can stand in for, which is what lets a program

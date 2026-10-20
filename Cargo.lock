@@ -240,6 +240,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-bare"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-host",
+ "berm-lang",
+ "tokio",
+]
+
+[[package]]
 name = "berm-codegen"
 version = "0.1.0"
 dependencies = [
@@ -254,9 +265,12 @@ name = "berm-fixture"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "berm-api",
  "berm-host",
  "berm-lang",
+ "ring",
+ "serde_json",
  "tokio",
 ]
 
@@ -266,12 +280,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64",
  "berm",
  "berm-api",
  "berm-rusqlite",
  "chrono",
  "croner",
  "parking_lot",
+ "ring",
  "serde",
  "serde_json",
  "tokio",
@@ -345,12 +361,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64",
  "berm",
  "berm-api",
  "berm-host",
  "clap",
  "parking_lot",
  "reqwest",
+ "ring",
  "rmcp",
  "serde",
  "serde_json",
@@ -591,7 +609,21 @@ dependencies = [
 name = "crab-guest"
 version = "0.1.0"
 dependencies = [
+ "crab-guest-auth",
  "crab-guest-stripe",
+]
+
+[[package]]
+name = "crab-guest-auth"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "berm-api",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

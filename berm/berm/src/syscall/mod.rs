@@ -4,7 +4,8 @@
 //! native code behind an address. berm serves [`call`] itself, resolving
 //! against the set it already holds.
 //!
-//! The standard calls — [`store`], [`emit`], [`after`], [`http`], [`sql`] —
+//! The standard calls — [`store`], [`emit`], [`after`], [`http`], [`sql`],
+//! [`token`] —
 //! are berm's to read and check, and a host's to carry out: each module turns
 //! the request into a typed value and hands it to closures the embedder
 //! registers with it.
@@ -24,6 +25,7 @@ pub mod emit;
 pub mod http;
 pub mod sql;
 pub mod store;
+pub mod token;
 
 /// One of the ABI's own doors: request bytes at `(ptr, len)` in, a staged
 /// length out, answered before the guest resumes.

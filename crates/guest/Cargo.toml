@@ -10,4 +10,5 @@ keywords = ["berm", "wasm", "guest", "crabtalk"]
 categories = ["wasm"]
 
 [dependencies]
+auth.workspace = true
 stripe.workspace = true

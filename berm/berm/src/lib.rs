@@ -23,8 +23,9 @@
 //! and that list is the linker it is instantiated with: a call to anything else
 //! traps because nothing is registered for it, not because a check said no.
 //! The standard ones — `berm.get`/`berm.set`, `berm.emit`, `berm.call.after`,
-//! `berm.http.fetch` — are built with [`syscall`]'s constructors, which read
-//! and check the request and hand the work to the embedder's closures.
+//! `berm.http.fetch`, `berm.token.sign` — are built with [`syscall`]'s
+//! constructors, which read and check the request and hand the work to the
+//! embedder's closures.
 //!
 //! What `berm.set` and `berm.emit` leave to berm is held in a journal and
 //! handed back from [`Program::call`] as [`Changes`], for the host to commit as

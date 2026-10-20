@@ -1,5 +1,5 @@
 [workspace]
-members = ["berm/*", "crates/*", "guest/*"]
+members = ["berm/*", "crates/*", "fixtures/*", "guests/*"]
 resolver = "3"
 
 [workspace.package]
@@ -23,11 +23,13 @@ berm-oci = { path = "berm/oci", version = "0.1.0" }
 bermd = { path = "berm/daemon", version = "0.1.0" }
 
 # guest
-stripe = { package = "crab-guest-stripe", path = "guest/stripe", version = "0.1.0" }
+auth = { package = "crab-guest-auth", path = "guests/auth", version = "0.1.0" }
+stripe = { package = "crab-guest-stripe", path = "guests/stripe", version = "0.1.0" }
 
 # crates-io
 anyhow = "1.0"
 axum = "0.8"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 croner = "4"
@@ -37,6 +39,7 @@ parking_lot = "0.12"
 proc-macro2 = "1"
 quote = "1"
 reqwest = { version = "0.13", default-features = false }
+ring = "0.17"
 rmcp = { version = "2.2", default-features = false, features = [
     "server",
     "transport-streamable-http-server",

@@ -94,8 +94,9 @@ pub const HTTP_FETCH: &str = "berm.http.fetch";
 ///
 /// Request fields are the method, the URL and the body, then header names and
 /// values in turn. The reply is the status as decimal text and the body, then
-/// header names and values in turn. A header value may carry `{secret:NAME}`,
-/// which the host substitutes; the guest never holds the value.
+/// header names and values in turn. A header value or the body may carry
+/// `{secret:NAME}`, which the host substitutes; the guest never holds the
+/// value.
 pub const HOST_HTTP_FETCH: u64 = hash(HTTP_FETCH);
 
 /// What a host registers to serve [`HOST_HTTP_PROXY`].
@@ -104,6 +105,28 @@ pub const HTTP_PROXY: &str = "berm.http.proxy";
 /// Make one HTTP request through the host's proxy. The request and reply are
 /// [`HOST_HTTP_FETCH`]'s.
 pub const HOST_HTTP_PROXY: u64 = hash(HTTP_PROXY);
+
+/// What a host registers to serve [`HOST_TOKEN_SIGN`], and what a manifest
+/// declares to make it or [`HOST_TOKEN_ISSUER`].
+pub const TOKEN_SIGN: &str = "berm.token.sign";
+
+/// Sign one ID token with this program's key. `(ptr, len) -> staged length`
+///
+/// The request is one field, the claims as a JSON object carrying `sub`,
+/// `aud` and a numeric `exp`. The host sets `iss` to this program's issuer and
+/// `iat` to its clock in seconds, over whatever the claims held. The reply is
+/// one field: the compact JWT, signed `EdDSA` under the `kid` its header
+/// names. The guest never holds the key.
+pub const HOST_TOKEN_SIGN: u64 = hash(TOKEN_SIGN);
+
+/// What a host registers to serve [`HOST_TOKEN_ISSUER`].
+pub const TOKEN_ISSUER: &str = "berm.token.issuer";
+
+/// This program's issuer URL. `(ptr, len) -> staged length`, the pair ignored.
+///
+/// The reply is one field. Refused unless the manifest declares
+/// [`TOKEN_SIGN`].
+pub const HOST_TOKEN_ISSUER: u64 = hash(TOKEN_ISSUER);
 
 /// What a host registers to serve [`HOST_EMIT`].
 pub const EMIT: &str = "berm.emit";

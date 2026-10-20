@@ -2,8 +2,8 @@
 //! `berm.http.fetch`, or under `berm.http.proxy` to send it through the host's
 //! proxy.
 //!
-//! A header value may carry `{secret:NAME}` for a secret the manifest
-//! declares. The host substitutes it, and this program never holds the value.
+//! A header value or the body may carry `{secret:NAME}` for a secret the
+//! manifest declares. The host substitutes it, and this program never holds the value.
 
 use crate::abi::{self, host, host::CallError, wire};
 use alloc::{string::String, vec::Vec};
@@ -90,4 +90,37 @@ fn send(
         headers,
         body: body.to_vec(),
     })
+}
+
+/// `fields` as `application/x-www-form-urlencoded`.
+pub fn form(fields: &[(&str, &str)]) -> String {
+    let mut out = String::new();
+    for (name, value) in fields {
+        if !out.is_empty() {
+            out.push('&');
+        }
+        out.push_str(&encode(name));
+        out.push('=');
+        out.push_str(&encode(value));
+    }
+    out
+}
+
+/// `text` percent-encoded, leaving only unreserved characters.
+pub fn encode(text: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::new();
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => {
+                out.push('%');
+                out.push(HEX[(byte >> 4) as usize] as char);
+                out.push(HEX[(byte & 15) as usize] as char);
+            }
+        }
+    }
+    out
 }

@@ -15,7 +15,8 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 | Flag | |
 |---|---|
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
-| `--root` | Where deployed images, the code cache and `secrets.toml` live. |
+| `--root` | Where deployed images, the code cache, signing keys and `secrets.toml` live. |
+| `--url` | The base URL the service is reached at, which begins every program's issuer. `http://{addr}` by default. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
 | `--proxy` | The proxy `berm.http.proxy` goes through, e.g. `http://user:pass@gate.example.com:3120`. Without one it goes direct. |
 
@@ -109,7 +110,7 @@ from the next call.
 
 ## Secrets
 
-A request header may name `{secret:NAME}` for a secret the manifest declares.
+A request header or body may name `{secret:NAME}` for a secret the manifest declares.
 bermd substitutes what `{root}/secrets.toml` grants that program for that host,
 read again whenever the file changes:
 
@@ -119,13 +120,20 @@ value = "..."
 hosts = ["api.example.com"]
 ```
 
+## ID tokens
+
+A program that declares `berm.token.sign` has bermd sign its ID tokens. Its issuer is `{url}/issuers/{name}`, and bermd serves, unauthenticated, for each deployed program:
+
+| Route | Answers |
+|---|---|
+| `GET /issuers/{name}/.well-known/openid-configuration` | Its OpenID Provider metadata: `issuer`, `jwks_uri`, and `EdDSA` as the one signing algorithm. |
+| `GET /issuers/{name}/jwks` | Its JWK Set: one `OKP` `Ed25519` key, `kid` the RFC 7638 thumbprint. |
+
+Each program's key is generated on first use and kept as PKCS#8 in `{root}/keys/{name}.p8`, readable by its owner alone on Unix. It survives a restart and an undeploy, and bermd never serves it.
+
 ## What a deployed program can reach
 
-Everything in [the guest API](./guest-api.md): its keys, a database, logs, the
-clock, wakes, HTTP to the hosts its manifest declares, itself, and the programs
-deployed beside it that its manifest declares in `programs`. bermd registers no
-files and no commands. `Manifest::from_image` reads what an image claims without
-compiling or running it.
+Everything in [the guest API](./guest-api.md): its keys, a database, logs, the clock, wakes, HTTP to the hosts its manifest declares, ID tokens signed with its own key, itself, and the programs deployed beside it that its manifest declares in `programs`. bermd registers no files and no commands. `Manifest::from_image` reads what an image claims without compiling or running it.
 
 ## MCP
 
