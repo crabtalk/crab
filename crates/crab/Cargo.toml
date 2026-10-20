@@ -20,6 +20,7 @@ berm-oci.workspace = true
 chrono.workspace = true
 clap.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
+self_update.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }
 tokio.workspace = true

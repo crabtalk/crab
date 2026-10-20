@@ -194,6 +194,8 @@ enum Command {
     /// Name the hosts `crab` talks to, and pick one.
     #[command(subcommand)]
     Context(ContextCommand),
+    /// Replace this `crab` with the latest release, when it is newer.
+    Upgrade,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -591,6 +593,7 @@ fn main() -> Result<ExitCode> {
         } => cmd::invites::accept(&client()?, token)?,
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
+        Command::Upgrade => cmd::upgrade::run(yes)?,
         // The one command whose exit code carries a result rather than a
         // verdict on berm.
         Command::Call {
