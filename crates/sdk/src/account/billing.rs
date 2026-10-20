@@ -39,7 +39,7 @@ pub struct Period {
     pub since: i32,
     pub until: i32,
     pub included: Included,
-    /// In the units of `included`; `stored` is the most bytes kept on one day.
+    /// In the units of `included`; `stored` is the bytes its services reserve.
     pub used: Included,
     /// Each share of an included amount reached, and running out of credit.
     pub warnings: Vec<Warning>,
@@ -146,7 +146,8 @@ pub struct Included {
     pub read: u64,
     /// Rows written.
     pub written: u64,
-    /// Bytes stored.
+    /// Bytes the account's services reserve for their databases together. A
+    /// deploy that would reserve past it is refused.
     pub stored: u64,
     /// Bytes sent off the nodes: answers to outside callers and requests to
     /// other sites. Past it the account's services take no calls until the

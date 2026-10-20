@@ -23,7 +23,6 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
     );
     println!("rows read     {}", per_million(rates.read));
     println!("rows written  {}", per_million(rates.written));
-    println!("storage       ${} per GB-month", rates.stored as f64 / 1e6);
     match rates.proxied {
         Some(rate) => println!("proxied       {} bytes", per_million(rate)),
         None => println!("proxied       free"),

@@ -46,8 +46,6 @@ pub struct Rates {
     pub overage: u64,
     pub read: u64,
     pub written: u64,
-    /// Bytes stored for a month; a day is charged a thirtieth.
-    pub stored: u64,
     /// Bytes through `berm.http.proxy`; unset is free.
     pub proxied: Option<u64>,
 }

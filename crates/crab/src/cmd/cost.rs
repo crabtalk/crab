@@ -18,14 +18,10 @@ pub fn run(client: &Client, name: &str, month: Option<&str>, json: bool) -> Resu
     println!("{:<12}  {:>16}  {:>12}", "RESOURCE", "UNITS", "COST");
     for resource in &billing.resources {
         let cost = resource.cost_micros_decimal.parse::<f64>().unwrap_or(0.0);
-        let units = match resource.resource.as_str() {
-            "stored" => format!("{} months", format::bytes(resource.units)),
-            _ => format::count(resource.units),
-        };
         println!(
             "{:<12}  {:>16}  {:>12}",
             resource.resource,
-            units,
+            format::count(resource.units),
             format::usd(cost)
         );
     }
