@@ -1,10 +1,11 @@
-//! The feed as a lake source, keyed by its URL.
+//! The feed as a lake source, keyed by its URL, and any feed of records `list`
+//! follows, read the same way.
 
 use crate::Post;
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::http;
 use lake::{
-    Feed, Listed, Schedule, Source, State, Watch,
+    Feed, Kind, Listed, Schedule, Source, State, Watch,
     rss::{self, Entry},
 };
 
@@ -16,7 +17,7 @@ pub struct Rss;
 impl Source for Rss {
     const SCHEDULE: Schedule = Schedule {
         refetch: 60 * 1000,
-        feeds: 1,
+        feeds: 2,
         threads: 0,
         rewarm: 0,
         window: 0,
@@ -27,7 +28,7 @@ impl Source for Rss {
     type Reply = ();
 
     fn follow(state: &mut State) {
-        state.follow(FEED, true);
+        state.follow(FEED, Kind::Chronological);
     }
 
     fn fetch(feed: &Feed) -> Result<Vec<Listed<Entry>>, String> {

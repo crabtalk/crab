@@ -22,13 +22,24 @@ pub struct State {
 pub struct Feed {
     /// What the source names it by.
     pub key: String,
-    /// Ordered by post time: an item is new past `watermark`. Otherwise an
-    /// item is new when `lake_items` does not hold it for this feed.
-    pub chronological: bool,
+    pub kind: Kind,
     /// When it was last fetched, in Unix milliseconds; 0 if never.
     pub fetched: u64,
     /// The newest post time it has shown, in Unix milliseconds.
     pub watermark: u64,
+}
+
+/// What makes an entry of a feed new.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "berm_lang::serde", rename_all = "lowercase")]
+pub enum Kind {
+    /// Ordered by post time: an item is new past the feed's `watermark`.
+    Chronological,
+    /// An item is new when `lake_items` does not hold it for the feed.
+    Unordered,
+    /// Each entry is a record: a version is stored when its id is new to the
+    /// feed or its values changed.
+    Records,
 }
 
 /// An item whose thread is fetched.
@@ -57,13 +68,13 @@ impl State {
 
     /// Follow the feed `key`, unless it already is. Answers whether it was
     /// added.
-    pub fn follow(&mut self, key: &str, chronological: bool) -> bool {
+    pub fn follow(&mut self, key: &str, kind: Kind) -> bool {
         if self.feeds.iter().any(|feed| feed.key == key) {
             return false;
         }
         self.feeds.push(Feed {
             key: String::from(key),
-            chronological,
+            kind,
             fetched: 0,
             watermark: 0,
         });

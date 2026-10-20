@@ -1,7 +1,9 @@
 //! The reference source service: one RSS feed, followed through `crab-lake`.
 //!
 //! `tick` fetches the feed and stores each item new to it, and `posts` reads
-//! the stored items back, oldest first.
+//! the stored items back, oldest first. `list` follows a feed of records, each
+//! item a record keyed by its guid, and `record` and `versions` read them
+//! back.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
@@ -9,6 +11,7 @@ extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 use berm_lang::Schema;
+use lake::store::Version;
 
 mod source;
 
@@ -17,9 +20,10 @@ mod source;
     uses = [lake],
 )]
 mod tools {
-    use crate::{Post, Posts, source::Rss};
+    use crate::{Post, Posts, Records, source::Rss};
+    use alloc::string::String;
     use berm_lang::Result;
-    use lake::store;
+    use lake::{Kind, State, store};
 
     /// Fetches the feed and stores each item new to it.
     #[cron]
@@ -43,6 +47,59 @@ mod tools {
             posts: stored.into_iter().map(|post| post.item).collect(),
         })
     }
+
+    /// Follows the feed of records at `url`. Answers whether it was new.
+    #[public]
+    pub fn list(url: String) -> Result<bool> {
+        let mut state = State::load()?;
+        let added = state.follow(&url, Kind::Records);
+        state.save()?;
+        Ok(added)
+    }
+
+    /// The latest version of record `id` in each feed that showed it.
+    #[query]
+    #[public]
+    pub fn record(id: String) -> Result<Records> {
+        Ok(Records::from(store::record_of::<Post>(&id)?))
+    }
+
+    /// Every version of record `id`, oldest first.
+    #[query]
+    #[public]
+    pub fn versions(id: String) -> Result<Records> {
+        Ok(Records::from(store::versions_of::<Post>(&id, None)?))
+    }
+}
+
+/// What `record` and `versions` answer.
+#[derive(Schema)]
+pub struct Records {
+    pub records: Vec<Recorded>,
+}
+
+impl From<Vec<Version<Post>>> for Records {
+    fn from(versions: Vec<Version<Post>>) -> Self {
+        Records {
+            records: versions
+                .into_iter()
+                .map(|version| Recorded {
+                    feed: version.feed,
+                    since: version.since,
+                    post: version.values,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// A version of a record.
+#[derive(Schema)]
+pub struct Recorded {
+    pub feed: String,
+    /// When it was stored, in Unix milliseconds.
+    pub since: u64,
+    pub post: Post,
 }
 
 /// What `posts` answers.

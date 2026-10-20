@@ -1,9 +1,11 @@
 //! The runtime of a source service as a kit: the feeds it follows, the items
 //! they show and the threads under them, fetched on the service's schedule and
-//! stored in its database. Its tables are `lake_items` and `lake_threads`.
+//! stored in its database. Its tables are `lake_items`, `lake_threads` and
+//! `lake_records`.
 //!
 //! A tick fetches the feeds due, least recently fetched first, and stores each
-//! item new to one. It then fetches the threads due, least recently fetched
+//! item new to one, or each record of a feed of records whose values changed.
+//! It then fetches the threads due, least recently fetched
 //! first, and stores each whose comment count changed in place of the last. It
 //! saves its state; all of it commits with the call. It logs what each fetch
 //! found and each fetch that failed, which is tried again when next due.
@@ -20,7 +22,7 @@ mod state;
 pub mod store;
 pub mod time;
 
-pub use state::{Feed, State, Watch};
+pub use state::{Feed, Kind, State, Watch};
 
 berm_lang::kit!(
     syscalls = { "berm.get", "berm.set" },
@@ -44,10 +46,10 @@ pub struct Schedule {
     pub window: u64,
 }
 
-/// One item a feed showed.
+/// One item a feed showed, or one record.
 pub struct Listed<T> {
     pub id: String,
-    /// When it was posted, in Unix milliseconds.
+    /// When it was posted, in Unix milliseconds; unread for a record.
     pub posted: u64,
     pub item: T,
 }
@@ -57,7 +59,7 @@ pub trait Source {
     const SCHEDULE: Schedule;
     type Item;
     type Thread;
-    /// An item as stored and answered.
+    /// An item or a record's values, as stored and answered.
     type Post: Serialize;
     /// A thread as stored and answered.
     type Reply: Serialize;
@@ -117,7 +119,7 @@ pub fn tick<S: Source>() -> Result<()> {
     for feed in due {
         feed.fetched = now;
         match S::fetch(feed) {
-            Ok(listed) => stored += posts::<S>(feed, listed, watched)?,
+            Ok(listed) => stored += posts::<S>(feed, listed, watched, now)?,
             Err(error) => {
                 berm_lang::emit!(FetchFailed {
                     of: feed.key.clone(),
@@ -157,13 +159,14 @@ pub fn tick<S: Source>() -> Result<()> {
     Ok(())
 }
 
-/// Store the items in `listed` new to `feed`, watch them when `S` watches
-/// `feed`, record what it showed, and log what it found. Answers the bytes
-/// stored.
+/// Store the items in `listed` new to `feed`, or the records whose values
+/// changed as of `now`, watch them when `S` watches `feed`, and log what it
+/// found. Answers the bytes stored.
 fn posts<S: Source>(
     feed: &mut Feed,
     listed: Vec<Listed<S::Item>>,
     watched: &mut Vec<Watch>,
+    now: u64,
 ) -> Result<usize, CallError> {
     let watches = S::watches(feed);
     let mut newest = feed.watermark;
@@ -179,15 +182,16 @@ fn posts<S: Source>(
                 comments: 0,
             });
         }
-        let fresh = match feed.chronological {
-            true => posted > feed.watermark,
-            false => !store::has(&feed.key, &id)?,
+        let written = match feed.kind {
+            Kind::Chronological if posted <= feed.watermark => 0,
+            Kind::Unordered if store::has(&feed.key, &id)? => 0,
+            Kind::Chronological | Kind::Unordered => {
+                store::item(&id, &feed.key, posted, &S::post(feed, item))?
+            }
+            Kind::Records => store::record(&id, &feed.key, now, &S::post(feed, item))?,
         };
-        if fresh {
-            let written = store::item(&id, &feed.key, posted, &S::post(feed, item))?;
-            stored += written;
-            new += u64::from(written > 0);
-        }
+        stored += written;
+        new += u64::from(written > 0);
     }
     feed.watermark = newest;
     berm_lang::emit!(Fetched {

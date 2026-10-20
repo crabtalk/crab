@@ -1,6 +1,6 @@
 # Lake
 
-The runtime of a source service: the feeds it follows, the items they show and the threads under them, fetched on the service's schedule and stored in its database. `rss::entries` reads RSS 2.0, RSS 1.0 and Atom feeds, and `time` reads the dates feeds and pages carry.
+The runtime of a source service: the feeds it follows, the items they show and the threads under them, or the records they list, kept a version per change, fetched on the service's schedule and stored in its database. `rss::entries` reads RSS 2.0, RSS 1.0 and Atom feeds, and `time` reads the dates feeds and pages carry.
 
 ## Using it
 
@@ -50,7 +50,7 @@ tick = "*/5 * * * *"
 Implement `Source` to fetch items and threads and shape what is stored, and set a `Schedule` with fetch limits and intervals in milliseconds:
 
 ```rust,ignore
-use crab_lake::{Feed, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
+use crab_lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
 
 pub struct Blog;
 
@@ -68,7 +68,7 @@ impl Source for Blog {
     type Reply = ();
 
     fn follow(state: &mut State) {
-        state.follow("https://example.com/feed.xml", true);
+        state.follow("https://example.com/feed.xml", Kind::Chronological);
     }
 
     fn fetch(feed: &Feed) -> Result<Vec<Listed<Entry>>, String> {
@@ -87,7 +87,7 @@ impl Source for Blog {
 }
 ```
 
-`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed marked chronological stores the items posted after the newest it has shown; any other stores the items it has not stored before, and `store::has` says whether it has.
+`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items posted after the newest it has shown; `Unordered`, the items it has not stored before, which `store::has` answers; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed.
 
 ## A tick
 
@@ -97,10 +97,13 @@ Each tick fetches the feeds due, least recently fetched first, stores each item 
 
 - `store::items::<T>(feed, after, limit)`: up to `limit` items stored after `after`, oldest first, of `feed` when given. Each is a `Stored { seq, item }`; pass the last `seq` as `after` for the next page.
 - `store::thread_of::<T>(id)`: the last thread stored under item `id`.
+- `store::record_of::<T>(id)`: the latest version of record `id` in each feed that showed it. Each is a `Version { seq, id, feed, since, values }`.
+- `store::versions_of::<T>(id, feed)`: every version of record `id`, of `feed` when given, oldest first.
+- `store::versions::<T>(feed, after, limit)`: up to `limit` versions stored after `after`, oldest first, of `feed` when given.
 
 ## Tables
 
-In the program's database: `lake_items` (`seq`, `id`, `feed`, `posted`, `data`), one row per item per feed, indexed by `lake_items_feed` on (`feed`, `seq`); and `lake_threads` (`id`, `data`, `fetched`), the last thread fetched under each watched item. `data` is the `Post` or `Reply` as JSON.
+In the program's database: `lake_items` (`seq`, `id`, `feed`, `posted`, `data`), one row per item per feed, indexed by `lake_items_feed` on (`feed`, `seq`); `lake_threads` (`id`, `data`, `fetched`), the last thread fetched under each watched item; and `lake_records` (`seq`, `id`, `feed`, `since`, `data`), one row per version of a record, indexed by `lake_records_id` on (`id`, `feed`, `seq`). `data` is the `Post` or `Reply` as JSON.
 
 ## License
 
