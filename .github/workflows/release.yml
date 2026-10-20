@@ -1,8 +1,8 @@
 name: Release
 
 # `install.sh` on crab.talk and `crab upgrade` download
-# `releases/latest/download/crab-<target>.{tar.gz,zip}` and its `.sha256`.
-# Renaming an asset breaks both.
+# `releases/latest/download/crab-<target>.{tar.gz,zip}`. Renaming an asset
+# breaks both.
 on:
   push:
     tags:
@@ -70,7 +70,6 @@ jobs:
           package: crab-agent
           target: ${{ matrix.target }}
           archive: crab-$target
-          checksum: sha256
           locked: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
