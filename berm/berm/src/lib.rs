@@ -37,7 +37,7 @@
 // cannot pick a version the generated code disagrees with.
 pub use anyhow;
 use anyhow::Result;
-pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, ToolSpec};
+pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine};
 use journal::Journal;

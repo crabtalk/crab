@@ -1,11 +1,11 @@
 //! `berm.http.fetch` and `berm.http.proxy` — one HTTP request, to a host the
-//! program's manifest names under the syscall it makes.
+//! program's manifest declares under the syscall it makes.
 //!
 //! berm checks the request against the asking program's [`crate::Deps`] and
 //! substitutes every `{secret:NAME}` in a header value and in the body. Resolving a secret and
 //! sending the request are the host's, and arrive as the two closures below.
 
-use crate::{Callsite, Refused, Syscall, abi, wire};
+use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
 use anyhow::{Result, bail};
 use std::{future::Future, sync::Arc};
 
@@ -20,6 +20,8 @@ pub struct Request {
     pub url: String,
     /// The host `url` names, lowercased, without port or credentials.
     pub host: String,
+    /// How the asking program's manifest declares `host`.
+    pub reach: Reach,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
@@ -64,7 +66,7 @@ where
     serve(abi::HTTP_FETCH, send, secret)
 }
 
-/// Serve `berm.http.proxy`: [`fetch`], to the hosts the manifest names under
+/// Serve `berm.http.proxy`: [`fetch`], to the hosts the manifest declares under
 /// it, where `send` goes through the host's proxy.
 pub fn proxy<S, Sent, R, Found>(send: S, secret: R) -> Syscall
 where
@@ -89,8 +91,7 @@ where
         call: Arc::new(move |at: Callsite, request: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let mut request = read(&request)?;
-                permitted(&at, name, &request.host)?;
+                let mut request = read(&at, name, &request)?;
                 for (_, value) in &mut request.headers {
                     let found = substitute(&at, &*secret, &request.host, value.as_bytes()).await?;
                     if let Some(found) = found {
@@ -165,24 +166,21 @@ fn headers(headers: &[(String, String)]) -> usize {
         .sum()
 }
 
-/// Refuse a host the asking program's manifest does not name under `syscall`.
-fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<()> {
-    let declared = at.deps.syscalls.get(syscall);
-    if !declared.is_some_and(|hosts| {
-        hosts
-            .iter()
-            .any(|allowed| allowed.eq_ignore_ascii_case(host))
-    }) {
-        return Err(Refused(format!(
+/// Refuse a host the asking program's manifest does not declare under
+/// `syscall`.
+fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
+    at.deps.reach(syscall, host).ok_or_else(|| {
+        Refused(format!(
             "{} does not declare {host} under {syscall}",
             at.program
         ))
-        .into());
-    }
-    Ok(())
+        .into()
+    })
 }
 
-fn read(request: &[u8]) -> Result<Request> {
+/// `request` off the wire, refused unless the asking program declares its host
+/// under `syscall`.
+fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     let fields = wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?.to_owned();
@@ -203,9 +201,12 @@ fn read(request: &[u8]) -> Result<Request> {
     let Some(host) = host(&url) else {
         bail!("{url} is not an http or https URL with a host");
     };
+    let host = host.to_ascii_lowercase();
+    let reach = permitted(at, syscall, &host)?;
     Ok(Request {
         method,
-        host: host.to_ascii_lowercase(),
+        host,
+        reach,
         url,
         headers,
         body: body.to_vec(),

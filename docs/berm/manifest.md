@@ -75,6 +75,8 @@ manifest carries them as
 
 `berm.http.fetch` holds a program to them: a host it does not declare, or a
 secret it does not declare, is refused before anything is sent.
+
+A declared host is a name, matched whole; `*.example.com`, which matches every subdomain of `example.com` and not `example.com` itself; or `*`, which matches every host. Matching ignores ASCII case. The embedder is handed each request with how its host was declared, by name or only through a pattern; bermd refuses a host reached only through a pattern when it is, or resolves only to, an address that is not public (loopback, private, link-local, shared, documentation, multicast).
 `berm.http.proxy` does the same for the hosts declared under it, and sends
 through the host's proxy. `berm.call`
 reaches the program itself and the programs it declares, and refuses any other

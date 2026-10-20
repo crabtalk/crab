@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use compat::{Break, Surface};
-pub use manifest::{Database, Deps, EventSpec, Kit, Manifest, Migration};
+pub use manifest::{Database, Deps, EventSpec, Kit, Manifest, Migration, Reach};
 
 mod compat;
 pub mod host;

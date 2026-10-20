@@ -93,7 +93,7 @@ let page = berm_lang::http::fetch(
 
 - `http::fetch` sends one request and answers `Response { status, headers, body }`.
   A `4xx` or `5xx` from the far end is a `Response`.
-- It reaches only the hosts the manifest lists under `berm.http.fetch`.
+- It reaches only the hosts the manifest declares under `berm.http.fetch`, by name or by `*.domain` or `*` ([manifest](manifest.md)).
 - `http::proxy` sends the same request through the host's proxy, to the hosts
   listed under `berm.http.proxy`.
 - A header value or the body may carry `{secret:NAME}` for a secret the manifest lists in `secrets`. The host substitutes it, and the program never holds the value.

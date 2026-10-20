@@ -122,6 +122,39 @@ impl Deps {
             missing(self.syscalls.entry(name.clone()).or_default(), reached);
         }
     }
+
+    /// How `host` is declared under `syscall`, or `None` when it is not.
+    ///
+    /// A declared host is a name, matched whole; `*.example.com`, matching
+    /// every subdomain of `example.com` and not `example.com` itself; or `*`,
+    /// matching every host. Matching ignores ASCII case. A host declared by
+    /// name is [`Reach::Named`] even when a pattern matches it too.
+    pub fn reach(&self, syscall: &str, host: &str) -> Option<Reach> {
+        let declared = self.syscalls.get(syscall)?;
+        if declared.iter().any(|item| item.eq_ignore_ascii_case(host)) {
+            return Some(Reach::Named);
+        }
+        let host = host.to_ascii_lowercase();
+        declared
+            .iter()
+            .any(|item| match item.strip_prefix("*") {
+                Some("") => true,
+                Some(suffix) => {
+                    suffix.starts_with('.') && host.ends_with(&suffix.to_ascii_lowercase())
+                }
+                None => false,
+            })
+            .then_some(Reach::Pattern)
+    }
+}
+
+/// How a manifest declares a host it reaches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// By its name.
+    Named,
+    /// Only through `*` or `*.domain`.
+    Pattern,
 }
 
 /// `inner, berm.http.fetch (example.com), secret openai` — every program,
