@@ -13,8 +13,8 @@
 //! includes, and `boom` fails on purpose.
 //! `tick` arms itself, to show a wake outliving the invocation that asked for
 //! it, `wait` makes one host call a host can make slow, `fetch` makes one
-//! HTTP request to a host its manifest declares, and `token` signs an ID
-//! token. `note` writes and emits, and
+//! HTTP request to a host its manifest declares, and `random` answers fresh
+//! random bytes. `note` writes and emits, and
 //! `relay` calls `note` on `inner`, to show what a failed call takes with it.
 //! `seen` takes the `Noted` events of whatever is deployed as `fixture`, read
 //! through `declare_program!(fixture)`, the fixture's own IDL in `idls/`, and
@@ -45,12 +45,11 @@ berm_lang::declare_program!(fixture);
         "berm.set",
         "berm.call.after",
         "berm.http.fetch" = ["127.0.0.1"],
-        "berm.token.sign",
     },
     secrets = ["fixture"],
 )]
 mod tools {
-    use crate::{Attempts, Echo, Fetched, Noted, Peek, Round, Signed, Wait};
+    use crate::{Attempts, Echo, Fetched, Noted, Peek, Round, Wait};
     use alloc::{format, string::String, vec::Vec};
     use berm_lang::{Caller, Result};
 
@@ -138,16 +137,12 @@ mod tools {
         })
     }
 
-    /// Signs `claims`, a JSON object, as an ID token, and answers it beside
-    /// this program's issuer.
+    /// Answers 32 bytes from the host's random source, as hex.
     #[public]
-    pub fn token(claims: String) -> Result<Signed> {
-        let claims: berm_lang::serde_json::Value =
-            berm_lang::serde_json::from_str(&claims).map_err(|e| format!("{e}"))?;
-        Ok(Signed {
-            token: berm_lang::token::sign(&claims)?,
-            issuer: berm_lang::token::issuer()?,
-        })
+    pub fn random() -> Result<String> {
+        let mut bytes = [0; 32];
+        berm_lang::random(&mut bytes);
+        Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
     }
 
     /// Says who called: `outside NAME`, `program NAME`, or `none`, then
@@ -341,14 +336,6 @@ pub struct Fetched {
     pub status: u16,
     /// The body's length.
     pub bytes: u64,
-}
-
-/// What `token` answers.
-#[derive(Schema)]
-pub struct Signed {
-    /// The compact JWT.
-    pub token: String,
-    pub issuer: String,
 }
 
 /// What `tick` answers.

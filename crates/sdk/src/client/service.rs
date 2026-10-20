@@ -3,7 +3,7 @@
 
 use crate::{
     client::{Client, Error},
-    sandbox::service::{Billing, Costed, MeteredDay, Secret, SetSecret, Visibility},
+    sandbox::service::{Billing, Costed, DeployRequest, MeteredDay, Secret, SetSecret, Visibility},
 };
 use berm_api::{
     Budget, Cron, Deployed, Logged, Meter, Output, Program, Runtime, Terms,
@@ -34,7 +34,8 @@ impl Client {
     }
 
     /// Deploy `image` as `name` on a bermd, confirming the tools it may make
-    /// public, and setting each cron tool's expression when `crons` is given.
+    /// public, setting each cron tool's expression when `crons` is given, and
+    /// holding its database to `size` bytes.
     pub async fn deploy_image(
         &self,
         name: &str,
@@ -42,6 +43,7 @@ impl Client {
         public: &[String],
         force: bool,
         crons: Option<&BTreeMap<String, String>>,
+        size: u64,
     ) -> Result<Deployed, Error> {
         if self.owner.is_some() {
             return Err(Error::Host("Cloud deploys from a registry, not from bytes"));
@@ -49,7 +51,8 @@ impl Client {
         let mut request = self
             .at(Method::PUT, &self.program(name))
             .query(&[("public", public.join(","))])
-            .query(&[("force", force)]);
+            .query(&[("force", force)])
+            .query(&[("size", size)]);
         if let Some(crons) = crons {
             let crons =
                 serde_json::to_string(crons).map_err(|_| Error::Host("crons do not serialize"))?;
@@ -59,25 +62,9 @@ impl Client {
         self.json(request).await
     }
 
-    /// Deploy the index entry `reference` as `name` on Cloud, confirming the
-    /// tools it may make public, and setting each cron tool's expression when
-    /// `crons` is given.
-    pub async fn deploy(
-        &self,
-        name: &str,
-        reference: &str,
-        public: &[String],
-        force: bool,
-        crons: Option<&BTreeMap<String, String>>,
-    ) -> Result<Deployed, Error> {
-        let request = self
-            .at(Method::PUT, &self.program(name))
-            .json(&serde_json::json!({
-                "reference": reference,
-                "public": public,
-                "force": force,
-                "crons": crons,
-            }));
+    /// Deploy as `name` on Cloud what `deploy` names.
+    pub async fn deploy(&self, name: &str, deploy: &DeployRequest) -> Result<Deployed, Error> {
+        let request = self.at(Method::PUT, &self.program(name)).json(deploy);
         self.json(request).await
     }
 

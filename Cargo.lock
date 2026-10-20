@@ -229,6 +229,7 @@ dependencies = [
  "berm-rusqlite",
  "hex",
  "parking_lot",
+ "ring",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -290,11 +291,9 @@ name = "berm-fixture"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
  "berm-api",
  "berm-host",
  "berm-lang",
- "ring",
  "serde_json",
  "tokio",
 ]
@@ -305,14 +304,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.22.1",
  "berm",
  "berm-api",
  "berm-rusqlite",
  "chrono",
  "croner",
  "parking_lot",
- "ring",
  "serde",
  "serde_json",
  "tokio",
@@ -394,14 +391,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.22.1",
  "berm",
  "berm-api",
  "berm-host",
  "clap",
  "parking_lot",
  "reqwest",
- "ring",
  "rmcp",
  "serde",
  "serde_json",
@@ -456,6 +451,15 @@ name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+
+[[package]]
+name = "bytesize"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7354288c522e7e980fafd2075d63d1285794c3a6a16cdd492f189ea406e5f18b"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "cc"
@@ -687,6 +691,7 @@ dependencies = [
  "anyhow",
  "berm-api",
  "berm-oci",
+ "bytesize",
  "chrono",
  "clap",
  "crabtalk-sdk",
@@ -703,11 +708,11 @@ name = "crab-auth"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
  "berm-api",
  "berm-host",
  "berm-lang",
  "serde_json",
+ "sha2 0.11.0",
  "tokio",
 ]
 

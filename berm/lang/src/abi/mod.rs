@@ -51,14 +51,12 @@ pub const HOST_CALL_AFTER: u64 = hash("berm.call.after");
 pub const HOST_HTTP_FETCH: u64 = hash("berm.http.fetch");
 /// Make one HTTP request through the host's proxy.
 pub const HOST_HTTP_PROXY: u64 = hash("berm.http.proxy");
-/// Sign one ID token with this program's key.
-pub const HOST_TOKEN_SIGN: u64 = hash("berm.token.sign");
-/// This program's issuer URL.
-pub const HOST_TOKEN_ISSUER: u64 = hash("berm.token.issuer");
 /// Run one SQL statement against this program's own database.
 pub const HOST_SQL: u64 = hash("berm.sql");
 /// Milliseconds since the Unix epoch, as the host reads its clock.
 pub const HOST_NOW: u64 = hash("berm.now");
+/// Fill a buffer with secure random bytes.
+pub const HOST_RANDOM: u64 = hash("berm.random");
 /// Who made this call.
 pub const HOST_CALLER: u64 = hash("berm.caller");
 /// The end user the chain runs for.
@@ -101,6 +99,12 @@ pub fn trace(message: &str) {
 /// otherwise tell a wake that arrived on time from one that arrived late.
 pub fn now() -> u64 {
     sys::call0(HOST_NOW)
+}
+
+/// Fill `buffer` with bytes from the host's secure random source, for tokens
+/// and keys a caller must not guess.
+pub fn random(buffer: &mut [u8]) {
+    sys::call2(HOST_RANDOM, buffer.as_mut_ptr() as u64, buffer.len() as u64);
 }
 
 /// Mark this invocation's failure as refusing its caller.

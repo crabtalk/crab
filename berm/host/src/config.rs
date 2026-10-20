@@ -10,6 +10,9 @@ pub struct Config {
     /// Guests live at once across every service, nested calls included.
     #[serde(default = "instances")]
     pub instances: u32,
+    /// The largest linear memory one guest may grow to, in bytes.
+    #[serde(default = "memory")]
+    pub memory: usize,
     /// The most wasm instructions one invocation may execute.
     #[serde(default = "fuel")]
     pub fuel: u64,
@@ -35,6 +38,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             instances: instances(),
+            memory: memory(),
             fuel: fuel(),
             rows: rows(),
             depth: depth(),
@@ -47,6 +51,10 @@ impl Default for Config {
 
 fn instances() -> u32 {
     berm::Config::default().instances
+}
+
+fn memory() -> usize {
+    berm::Config::default().memory
 }
 
 fn fuel() -> u64 {

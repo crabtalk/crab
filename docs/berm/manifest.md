@@ -76,9 +76,7 @@ manifest carries them as
 `berm.http.fetch` holds a program to them: a host it does not declare, or a
 secret it does not declare, is refused before anything is sent.
 `berm.http.proxy` does the same for the hosts declared under it, and sends
-through the host's proxy. `berm.token.sign`, declared bare, lets the program
-have the host sign ID tokens with its key and read its issuer; without it both
-are refused. `berm.call`
+through the host's proxy. `berm.call`
 reaches the program itself and the programs it declares, and refuses any other
 name. A declared secret is substituted by the host with the value it granted the
 program, and the guest never holds it. These are runtime

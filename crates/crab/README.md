@@ -31,9 +31,13 @@ public = ["search"]
 # week, in UTC.
 [crons]
 tick = "*/5 * * * *"
+
+# What the service's database may hold: 1GiB when unset, at most 10GiB.
+[database]
+size = "2GiB"
 ```
 
-A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them.
+A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`.
 
 ## Contexts
 

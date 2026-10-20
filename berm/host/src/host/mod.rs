@@ -45,7 +45,6 @@ mod fetch;
 mod invoke;
 mod nest;
 mod storage;
-mod token;
 
 /// Every service, compiled and callable.
 #[derive(Clone)]
@@ -68,6 +67,9 @@ pub struct Inner<E: Env> {
     /// Chains in flight. Each holds up to `depth + 1` guests, and a guest past
     /// `Config::instances` fails to instantiate.
     pub(crate) gate: Semaphore,
+    /// Chains the host may run at once: the permits [`Self::gate`] was made
+    /// with.
+    pub chains: usize,
     /// Chains each scope may run at once, beside [`Self::gate`].
     pub(crate) caps: Caps,
     /// Wakes the timer.
@@ -98,8 +100,6 @@ pub struct Inner<E: Env> {
     pub(crate) peers: E::Peers,
     images: E::Images,
     pub(crate) secrets: E::Secrets,
-    /// [`Edges::issuer`].
-    pub(crate) issuer: E::Issuer,
     /// [`Edges::layers`].
     pub(crate) layers: Layers,
     /// The most one invocation may use, and what a tool's owner has not set
@@ -114,6 +114,11 @@ pub struct Inner<E: Env> {
 }
 
 impl<E: Env> Inner<E> {
+    /// Chains in flight now, out of [`Self::chains`].
+    pub fn running(&self) -> usize {
+        self.chains - self.gate.available_permits()
+    }
+
     /// The database of `program`, when it is deployed and keeps one.
     pub(crate) fn kept(&self, program: &str) -> Option<Result<Arc<Database>>> {
         self.berm
@@ -129,8 +134,7 @@ impl<E: Env> Host<E> {
     /// the service's own database, `berm.call.after` over `service_wakes`,
     /// `berm.sql` over the databases kept under `config.databases`,
     /// `berm.http.fetch` through `edges.fetch` and, when given one,
-    /// `berm.http.proxy` through `edges.proxy`, both with `edges.secrets`, and
-    /// `berm.token.sign` and `berm.token.issuer` with `edges.issuer`.
+    /// `berm.http.proxy` through `edges.proxy`, both with `edges.secrets`.
     /// Images come from `edges.images`, a service it does not run is reached
     /// through `edges.peers`, a call from outside goes through `edges.layers`,
     /// and `edges.observe` is told of each invocation.
@@ -141,7 +145,6 @@ impl<E: Env> Host<E> {
             images,
             peers,
             secrets,
-            issuer,
             layers,
             observe,
             clock,
@@ -153,9 +156,9 @@ impl<E: Env> Host<E> {
         let engine = Engine::new(&berm::Config {
             cache_dir: config.cache_dir.clone(),
             instances: config.instances,
+            memory: config.memory,
             fuel: config.fuel,
             rows: config.rows,
-            ..Default::default()
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
         let commits = Commits::new(store.clone(), databases.clone());
@@ -168,7 +171,6 @@ impl<E: Env> Host<E> {
             if let Some(proxy) = proxy {
                 syscalls.push(fetch::syscall(host, proxy, true));
             }
-            syscalls.extend(token::syscalls(host));
             syscalls.extend(state::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
@@ -179,6 +181,7 @@ impl<E: Env> Host<E> {
                 store,
                 berm,
                 gate: Semaphore::new(chains as usize),
+                chains: chains as usize,
                 caps: Caps::new(config.cap),
                 waking: Notify::new(),
                 usage: Counts::new(now.clone()),
@@ -195,7 +198,6 @@ impl<E: Env> Host<E> {
                 peers,
                 images,
                 secrets,
-                issuer,
                 layers,
                 budget: Budget {
                     instructions: config.fuel,
@@ -237,9 +239,15 @@ impl<E: Env> Host<E> {
         };
         for row in rows {
             let key = join(&row.scope, &row.name);
+            let size = row.size;
             match self.load(row).await {
                 Ok(program) => {
                     tracing::debug!(service = key, digest = %program.digest, "loaded");
+                    if keeps(&program)
+                        && let Err(e) = async { self.databases.get(&key)?.limit(size).await }.await
+                    {
+                        tracing::error!(service = key, "limiting its database failed: {e:#}");
+                    }
                 }
                 Err(e) => tracing::error!(service = key, "loading failed: {e:#}"),
             }

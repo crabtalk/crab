@@ -1,6 +1,6 @@
 ---
 title: The Guest API
-description: "What berm-lang gives a program past its arguments: who called, state, a database, logs, HTTP, ID tokens, other programs, wakes and the clock."
+description: "What berm-lang gives a program past its arguments: who called, state, a database, logs, HTTP, other programs, wakes, the clock and randomness."
 ---
 
 Each function here is a syscall. berm serves the call's own context — caller,
@@ -100,22 +100,6 @@ let page = berm_lang::http::fetch(
 - `CallError::Refused` means nothing was sent: a host or secret the manifest
   does not list, or a secret the host has not granted.
 
-## ID tokens
-
-```rust,ignore
-let token = berm_lang::token::sign(&serde_json::json!({
-    "sub": "user-1",
-    "aud": "https://app.example.com",
-    "exp": berm_lang::now() / 1000 + 600,
-}))?;
-```
-
-- `token::sign(claims)` answers a compact JWT signed `EdDSA` with the program's own Ed25519 key. The host holds the key, and the program never does.
-- `claims` is a JSON object with a string `sub`, an `aud` that is a string or an array of strings, and a numeric `exp`. Anything else is `CallError::Refused`.
-- The host sets `iss` to the program's issuer and `iat` to its clock in seconds, over whatever `claims` held.
-- `token::issuer()` answers the program's issuer URL.
-- Both are refused unless the manifest lists `berm.token.sign` in `syscalls`.
-
 ## Other programs
 
 ```rust,ignore
@@ -142,9 +126,11 @@ berm_lang::after(300_000, "weather", "poll", "{}")?;
   armed it; what it needs goes in state.
 - A `#[query]` tool cannot arm one.
 
-## The clock
+## The clock and randomness
 
 `now()` answers the host's time, in milliseconds since the Unix epoch.
+
+`random(&mut buffer)` fills `buffer` from the host's secure random source. Neither needs declaring.
 
 ## HTML
 

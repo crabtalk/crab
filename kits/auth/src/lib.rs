@@ -1,6 +1,6 @@
-//! Sign-in as a kit: a GitHub or Google login turned into an ID token the
-//! program using it issues, for an account each of the user's identities signs
-//! in to. Its tables are `auth_accounts` and `auth_identities`.
+//! Sign-in as a kit: a GitHub or Google login turned into a session of the
+//! program using it, for an account each of the user's identities signs in
+//! to. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`.
 
 #![no_std]
 
@@ -21,7 +21,6 @@ berm_lang::kit!(
         "GOOGLE_CLIENT_SECRET",
     ],
     syscalls = {
-        "berm.token.sign",
         "berm.http.fetch" = [
             "github.com",
             "api.github.com",
@@ -31,16 +30,16 @@ berm_lang::kit!(
     },
 );
 
-/// An ID token this service issued.
+/// A signed-in session.
 #[derive(Schema)]
-pub struct Signed {
-    /// A compact JWT: `sub` the account's id, `aud` this service's issuer.
+pub struct Session {
+    /// What a call carries to act as the account: 64 hex digits.
     pub token: String,
     /// When it expires, in seconds since the Unix epoch.
     pub expires: u64,
 }
 
-/// An account, the `sub` of the tokens issued for it.
+/// An account, the identities that sign in to it.
 #[derive(Schema)]
 pub struct Account {
     pub id: String,
@@ -65,7 +64,7 @@ pub struct Identity {
 /// Why a call is refused.
 #[berm_lang::error_code]
 pub enum AuthError {
-    #[msg("this call carries no user this service signed in")]
+    #[msg("that session is not signed in")]
     NotSignedIn,
     #[msg("that identity signs in to another account")]
     Taken,

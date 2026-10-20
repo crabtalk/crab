@@ -12,6 +12,12 @@ pub const METER: &str = "berm-meter";
 /// verifies none of it.
 pub const CALLER: &str = "x-berm-caller";
 
+/// Bytes a service's database may hold when its deploy sets none.
+pub const DATABASE_SIZE: u64 = 1 << 30;
+
+/// The most bytes a deploy may let a service's database hold.
+pub const MAX_DATABASE_SIZE: u64 = 10 << 30;
+
 /// Who called from outside, as the daemon hands them to the host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Caller {
@@ -63,6 +69,13 @@ pub struct Deploy {
     /// owner set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crons: Option<BTreeMap<String, String>>,
+    /// Bytes the service's database may hold, at most [`MAX_DATABASE_SIZE`].
+    #[serde(default = "database_size")]
+    pub size: u64,
+}
+
+fn database_size() -> u64 {
+    DATABASE_SIZE
 }
 
 /// A change to one of a service's tools.

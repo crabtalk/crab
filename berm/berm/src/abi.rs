@@ -106,28 +106,6 @@ pub const HTTP_PROXY: &str = "berm.http.proxy";
 /// [`HOST_HTTP_FETCH`]'s.
 pub const HOST_HTTP_PROXY: u64 = hash(HTTP_PROXY);
 
-/// What a host registers to serve [`HOST_TOKEN_SIGN`], and what a manifest
-/// declares to make it or [`HOST_TOKEN_ISSUER`].
-pub const TOKEN_SIGN: &str = "berm.token.sign";
-
-/// Sign one ID token with this program's key. `(ptr, len) -> staged length`
-///
-/// The request is one field, the claims as a JSON object carrying `sub`,
-/// `aud` and a numeric `exp`. The host sets `iss` to this program's issuer and
-/// `iat` to its clock in seconds, over whatever the claims held. The reply is
-/// one field: the compact JWT, signed `EdDSA` under the `kid` its header
-/// names. The guest never holds the key.
-pub const HOST_TOKEN_SIGN: u64 = hash(TOKEN_SIGN);
-
-/// What a host registers to serve [`HOST_TOKEN_ISSUER`].
-pub const TOKEN_ISSUER: &str = "berm.token.issuer";
-
-/// This program's issuer URL. `(ptr, len) -> staged length`, the pair ignored.
-///
-/// The reply is one field. Refused unless the manifest declares
-/// [`TOKEN_SIGN`].
-pub const HOST_TOKEN_ISSUER: u64 = hash(TOKEN_ISSUER);
-
 /// What a host registers to serve [`HOST_EMIT`].
 pub const EMIT: &str = "berm.emit";
 
@@ -203,6 +181,12 @@ pub const HOST_DENY: u64 = hash("berm.deny");
 /// woke has no other way to tell how long it was away — a wake that came due
 /// while the process was down arrives late, and says so only against this.
 pub const HOST_NOW: u64 = hash("berm.now");
+
+/// Fill `(ptr, len)` with bytes from the operating system's secure random
+/// source. `(ptr, len) -> 0`
+///
+/// berm serves this one itself.
+pub const HOST_RANDOM: u64 = hash("berm.random");
 
 /// Prefix on every tool's exported symbol. A tool is resolved by name like any
 /// other symbol; the prefix keeps one called `init` from colliding with the

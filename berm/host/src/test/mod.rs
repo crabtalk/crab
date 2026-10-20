@@ -15,10 +15,9 @@
 
 pub use berm::User;
 
-use crate::key::Key;
 use crate::{
     api::outside::Layers,
-    env::{Clock, Edges, Issuer},
+    env::{Clock, Edges},
     host::{self, Host},
     state::service,
     wake::table,
@@ -33,7 +32,7 @@ use berm::{
 };
 use berm_api::{
     Logged, Output,
-    host::{Deploy, Page},
+    host::{DATABASE_SIZE, Deploy, Page},
 };
 use parking_lot::Mutex;
 use std::{
@@ -52,7 +51,6 @@ use std::{
 mod clock;
 mod env;
 mod images;
-mod issuer;
 mod peers;
 mod secrets;
 
@@ -66,7 +64,6 @@ pub struct TestHost {
     fetch: Arranged,
     images: Given,
     secrets: Granted,
-    issuer: Generated,
     clock: Manual,
     dir: PathBuf,
 }
@@ -106,7 +103,6 @@ impl TestHost {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
         let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
-        let issuer = Generated::default();
         let clock = Manual(Arc::new(AtomicU64::new(now)));
         let config = crate::Config {
             databases: dir.join("databases"),
@@ -121,7 +117,6 @@ impl TestHost {
                 images: images.clone(),
                 peers: Nowhere,
                 secrets: secrets.clone(),
-                issuer: issuer.clone(),
                 layers: Layers::new(tower::layer::util::Identity::new()),
                 observe: (),
                 clock: clock.clone(),
@@ -133,7 +128,6 @@ impl TestHost {
             fetch,
             images,
             secrets,
-            issuer,
             clock,
             dir,
         })
@@ -167,16 +161,6 @@ impl TestHost {
             (service.to_owned(), secret.to_owned(), host.to_owned()),
             value.to_owned(),
         );
-    }
-
-    /// The issuer URL of `service`'s tokens.
-    pub async fn issuer(&self, service: &str) -> Result<String> {
-        self.issuer.issuer(service).await
-    }
-
-    /// The public key `service`'s tokens are signed with.
-    pub fn public_key(&self, service: &str) -> Result<Vec<u8>> {
-        Ok(self.issuer.key(service)?.public().to_vec())
     }
 
     /// Milliseconds since the Unix epoch, as the clock stands.
@@ -219,6 +203,7 @@ impl TestHost {
                         .collect(),
                     force: true,
                     crons: None,
+                    size: DATABASE_SIZE,
                 },
             )
             .await?)
@@ -483,22 +468,6 @@ pub struct Granted(Arc<Mutex<HashMap<Grant, String>>>);
 
 /// A service, a secret and a host.
 type Grant = (String, String, String);
-
-/// A key per service, generated on first use.
-#[derive(Clone, Default)]
-pub struct Generated(Arc<Mutex<HashMap<String, Arc<Key>>>>);
-
-impl Generated {
-    fn key(&self, service: &str) -> Result<Arc<Key>> {
-        let mut keys = self.0.lock();
-        if let Some(key) = keys.get(service) {
-            return Ok(key.clone());
-        }
-        let key = Arc::new(Key::generate()?.0);
-        keys.insert(service.to_owned(), key.clone());
-        Ok(key)
-    }
-}
 
 /// A clock that stands where the test set it.
 #[derive(Clone)]

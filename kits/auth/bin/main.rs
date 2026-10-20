@@ -9,10 +9,10 @@ extern crate alloc;
 mod tools {
     use alloc::string::String;
     use berm_lang::Result;
-    use crab_auth::{Account, Identity, Signed};
+    use crab_auth::{Account, Identity, Session};
 
     /// Signs in with a GitHub authorization code, creating the account on the
-    /// identity's first sign-in, and answers a token for it.
+    /// identity's first sign-in, and answers a session of it.
     #[public]
     #[anonymous]
     pub fn github(
@@ -20,12 +20,12 @@ mod tools {
         code: String,
         /// The `redirect_uri` the code was asked for with.
         redirect: String,
-    ) -> Result<Signed> {
+    ) -> Result<Session> {
         Identity::github(&code, &redirect)?.sign_in()
     }
 
     /// Signs in with a Google authorization code, creating the account on the
-    /// identity's first sign-in, and answers a token for it.
+    /// identity's first sign-in, and answers a session of it.
     #[public]
     #[anonymous]
     pub fn google(
@@ -36,26 +36,32 @@ mod tools {
         /// The PKCE `code_verifier`, when the code was asked for with a
         /// challenge.
         verifier: Option<String>,
-    ) -> Result<Signed> {
+    ) -> Result<Session> {
         Identity::google(&code, &redirect, verifier.as_deref())?.sign_in()
     }
 
-    /// Adds the GitHub identity behind an authorization code to the calling
-    /// user's account, and answers the account.
+    /// Adds the GitHub identity behind an authorization code to the account
+    /// a session is signed in to, and answers the account.
     #[public]
+    #[anonymous]
     pub fn link_github(
+        /// The session's token.
+        session: String,
         /// The `code` GitHub sent the user back with.
         code: String,
         /// The `redirect_uri` the code was asked for with.
         redirect: String,
     ) -> Result<Account> {
-        Identity::github(&code, &redirect)?.link()
+        Identity::github(&code, &redirect)?.link(&session)
     }
 
-    /// Adds the Google identity behind an authorization code to the calling
-    /// user's account, and answers the account.
+    /// Adds the Google identity behind an authorization code to the account
+    /// a session is signed in to, and answers the account.
     #[public]
+    #[anonymous]
     pub fn link_google(
+        /// The session's token.
+        session: String,
         /// The `code` Google sent the user back with.
         code: String,
         /// The `redirect_uri` the code was asked for with.
@@ -64,13 +70,28 @@ mod tools {
         /// challenge.
         verifier: Option<String>,
     ) -> Result<Account> {
-        Identity::google(&code, &redirect, verifier.as_deref())?.link()
+        Identity::google(&code, &redirect, verifier.as_deref())?.link(&session)
     }
 
-    /// The calling user's account and the identities that sign in to it.
+    /// The account a session is signed in to, and the identities that sign
+    /// in to it.
     #[query]
     #[public]
-    pub fn account() -> Result<Account> {
-        Account::load(Account::signed_in()?)
+    #[anonymous]
+    pub fn account(
+        /// The session's token.
+        session: String,
+    ) -> Result<Account> {
+        Account::load(Account::session(&session)?)
+    }
+
+    /// Signs a session out, answering whether it was signed in.
+    #[public]
+    #[anonymous]
+    pub fn sign_out(
+        /// The session's token.
+        session: String,
+    ) -> Result<bool> {
+        Session::end(&session)
     }
 }

@@ -33,8 +33,8 @@
 //! This crate declares the standard syscalls: [`call`] and [`after`] for
 //! reaching programs, [`get`] and [`set`] for a program's own bytes, [`emit`]
 //! for logs ([`emit!`] for an `#[event]` struct), [`http::fetch`] and
-//! [`http::proxy`] for the network, and [`token::sign`] for ID tokens. berm
-//! serves [`call`] and [`emit`] itself; the rest run only under a host that
+//! [`http::proxy`] for the network. berm serves [`call`], [`emit`], [`now`]
+//! and [`random`] itself; the rest run only under a host that
 //! registers them, and trap as unknown host calls otherwise.
 //!
 //! What [`set`] writes is kept only if the call the host started returns a
@@ -54,7 +54,7 @@ extern crate alloc;
 // So `#[derive(Schema)]` resolves `::berm_lang` inside this crate too.
 extern crate self as berm_lang;
 
-pub use abi::{args_len, now, trace};
+pub use abi::{args_len, now, random, trace};
 pub use berm_codegen::{Schema, declare_program, error_code, event, kit, program, syscalls};
 pub use call::{CallError, Caller, User, after, call, caller, client, deny, user};
 #[doc(hidden)]
@@ -87,7 +87,6 @@ pub mod schema;
 mod sql;
 mod store;
 pub mod test;
-pub mod token;
 
 // One boundary for the whole crate: `wasm.rs` makes real host calls, and
 // `stub.rs` is a host a test can stand in for, which is what lets a program

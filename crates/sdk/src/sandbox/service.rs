@@ -1,6 +1,9 @@
 //! Service wire types.
 
-use berm_api::{Program, host::Call};
+use berm_api::{
+    Program,
+    host::{self, Call},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -22,6 +25,14 @@ pub struct DeployRequest {
     /// it leaves out has none. Absent, each stays as its owners set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crons: Option<BTreeMap<String, String>>,
+    /// Bytes the service's database may hold, at most
+    /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
+    #[serde(default = "database_size")]
+    pub size: u64,
+}
+
+fn database_size() -> u64 {
+    host::DATABASE_SIZE
 }
 
 /// One day of a service's meter, with what Cloud charges past each

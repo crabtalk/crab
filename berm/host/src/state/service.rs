@@ -11,6 +11,8 @@ pub(crate) struct Row {
     pub name: String,
     pub reference: String,
     pub digest: String,
+    /// Bytes its database may hold.
+    pub size: u64,
 }
 
 /// Every deployed service.
@@ -18,13 +20,14 @@ pub(crate) async fn all(store: &Store) -> Result<Vec<Row>> {
     store
         .read(|conn| {
             let mut statement =
-                conn.prepare("SELECT scope, name, reference, digest FROM services")?;
+                conn.prepare("SELECT scope, name, reference, digest, size FROM services")?;
             let rows = statement.query_map([], |row| {
                 Ok(Row {
                     scope: row.get(0)?,
                     name: row.get(1)?,
                     reference: row.get(2)?,
                     digest: row.get(3)?,
+                    size: row.get::<_, i64>(4)? as u64,
                 })
             })?;
             rows.collect()
@@ -38,7 +41,7 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
     store
         .read(move |conn| {
             conn.query_row(
-                "SELECT scope, name, reference, digest FROM services
+                "SELECT scope, name, reference, digest, size FROM services
                   WHERE scope = ?1 AND name = ?2",
                 params![scope, name],
                 |row| {
@@ -47,6 +50,7 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
                         name: row.get(1)?,
                         reference: row.get(2)?,
                         digest: row.get(3)?,
+                        size: row.get::<_, i64>(4)? as u64,
                     })
                 },
             )
@@ -82,6 +86,7 @@ pub(crate) async fn install(
     reference: &str,
     digest: &str,
     version: &str,
+    size: u64,
     deprecated: Vec<String>,
     cron_tools: Vec<String>,
     crons: Option<BTreeMap<String, String>>,
@@ -96,12 +101,13 @@ pub(crate) async fn install(
             let [scope, name, reference, digest, version] = row;
             let tx = conn.transaction()?;
             tx.execute(
-                "INSERT INTO services (scope, name, reference, digest, version)
-                 VALUES (?1, ?2, ?3, ?4, ?5)
+                "INSERT INTO services (scope, name, reference, digest, version, size)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT (scope, name) DO UPDATE
                     SET reference = excluded.reference, digest = excluded.digest,
-                        version = excluded.version, updated_at = unixepoch()",
-                params![scope, name, reference, digest, version],
+                        version = excluded.version, size = excluded.size,
+                        updated_at = unixepoch()",
+                params![scope, name, reference, digest, version, size as i64],
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;
             schedule(&tx, &scope, &name, &cron_tools, declared.as_deref())?;

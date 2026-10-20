@@ -17,16 +17,14 @@ pub use api::{
     serve::{Named, router},
 };
 pub use config::Config;
-pub use env::{Clock, Edges, Env, Images, Issuer, Observe, Peers, Secrets, System};
+pub use env::{Clock, Edges, Env, Images, Observe, Peers, Secrets, System};
 pub use host::Host;
-pub use key::{Key, discovery};
 pub use state::store::Store;
 
 mod api;
 mod config;
 mod env;
 mod host;
-mod key;
 mod record;
 mod state;
 #[cfg(feature = "test")]

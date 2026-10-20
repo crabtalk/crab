@@ -58,7 +58,7 @@ impl Default for Config {
         Self {
             cache_dir: None,
             instances: 1_000,
-            memory: 64 << 20,
+            memory: 128 << 20,
             fuel: 1_000_000_000,
             rows: 1_000_000,
         }

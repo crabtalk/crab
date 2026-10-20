@@ -22,7 +22,6 @@ pub trait Env: Clone + Send + Sync + 'static {
     type Images: Images;
     type Peers: Peers;
     type Secrets: Secrets;
-    type Issuer: Issuer;
     type Observe: Observe;
     type Clock: Clock;
 }
@@ -36,8 +35,6 @@ pub struct Edges<E: Env> {
     pub images: E::Images,
     pub peers: E::Peers,
     pub secrets: E::Secrets,
-    /// Signs `berm.token.sign` and names `berm.token.issuer`.
-    pub issuer: E::Issuer,
     /// Put around every call from outside, outermost first. A refusal one
     /// answers with a `4xx` is counted as `refused`.
     pub layers: Layers,
@@ -83,18 +80,6 @@ pub trait Secrets: Send + Sync + 'static {
 
     /// The names of the secrets granted to `service`, for whatever hosts.
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
-}
-
-/// What signs a service's ID tokens, and the issuer they name.
-pub trait Issuer: Send + Sync + 'static {
-    /// The issuer URL of `service`'s tokens.
-    fn issuer(&self, service: &str) -> impl Future<Output = Result<String>> + Send;
-
-    /// The `kid` of the key [`Issuer::sign`] signs for `service` with.
-    fn kid(&self, service: &str) -> impl Future<Output = Result<String>> + Send;
-
-    /// An Ed25519 signature over `message` with `service`'s key.
-    fn sign(&self, service: &str, message: &[u8]) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }
 
 /// Told of each invocation this host runs once it ran, trapped or not, with

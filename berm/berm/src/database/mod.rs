@@ -187,6 +187,23 @@ impl Database {
         })
     }
 
+    /// Hold the database to `size` bytes: a write past it fails as
+    /// `SQLITE_FULL`. Refused when it holds more already. Lasts as long as the
+    /// writer's connection, the life of this [`Database`].
+    pub async fn limit(&self, size: u64) -> Result<()> {
+        on(&self.jobs, move |conn| {
+            let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
+            let held: i64 = conn.pragma_query_value(None, "page_count", |row| row.get(0))?;
+            let pages = i64::try_from(size)? / page;
+            if held > pages {
+                bail!("the database holds {} bytes, more than {size}", held * page);
+            }
+            conn.pragma_update(None, "max_page_count", pages)?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Run the program's statement inside the transaction `chain` holds.
     pub async fn exec(&self, chain: u64, statement: Statement) -> Result<Answer> {
         self.held(chain)?;

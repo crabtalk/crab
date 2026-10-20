@@ -36,6 +36,7 @@ supabase = { package = "crab-supabase", path = "kits/supabase", version = "0.1.0
 anyhow = "1.0"
 axum = "0.8"
 base64 = "0.22"
+bytesize = { version = "2.7", features = ["serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 croner = "4"

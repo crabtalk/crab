@@ -2,6 +2,8 @@
 //! cargo builds from it.
 
 use anyhow::{Context, Result, bail};
+use berm_api::host;
+use bytesize::ByteSize;
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
@@ -33,6 +35,30 @@ pub struct Project {
     /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub database: Database,
+}
+
+/// `[database]` of `berm.toml`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Database {
+    /// What the service's database may hold, such as `"2GiB"`, at most
+    /// [`host::MAX_DATABASE_SIZE`] bytes.
+    #[serde(default = "database_size")]
+    pub size: ByteSize,
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        Self {
+            size: database_size(),
+        }
+    }
+}
+
+fn database_size() -> ByteSize {
+    ByteSize(host::DATABASE_SIZE)
 }
 
 impl Project {

@@ -2,9 +2,8 @@
 //! answers.
 
 use anyhow::{Context, Result};
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use berm_api::Output;
-use berm_host::test::{self, TestHost, User};
+use berm_host::test::{self, TestHost};
 use serde_json::{Value, json};
 
 const GITHUB_TOKEN: &str = "https://github.com/login/oauth/access_token";
@@ -50,65 +49,57 @@ fn google(host: &TestHost, sub: &str, verified: bool) {
 }
 
 /// What `tool` answered, read as JSON.
-async fn done(host: &TestHost, tool: &str, args: Value, user: Option<User>) -> Result<Value> {
-    let args = args.to_string();
-    let ran = match user {
-        Some(user) => host.call_for("auth", tool, args.as_bytes(), user).await?,
-        None => host.call("auth", tool, args.as_bytes()).await?,
-    };
-    match ran.result {
+async fn done(host: &TestHost, tool: &str, args: Value) -> Result<Value> {
+    match host
+        .call("auth", tool, args.to_string().as_bytes())
+        .await?
+        .result
+    {
         Output::Done(answer) => Ok(serde_json::from_str(&answer)?),
         Output::Failed(failure) => anyhow::bail!("{tool} failed: {failure}"),
     }
 }
 
-async fn failed(host: &TestHost, tool: &str, args: Value, user: Option<User>) -> Result<String> {
-    let args = args.to_string();
-    let ran = match user {
-        Some(user) => host.call_for("auth", tool, args.as_bytes(), user).await?,
-        None => host.call("auth", tool, args.as_bytes()).await?,
-    };
-    match ran.result {
+async fn failed(host: &TestHost, tool: &str, args: Value) -> Result<String> {
+    match host
+        .call("auth", tool, args.to_string().as_bytes())
+        .await?
+        .result
+    {
         Output::Failed(failure) => Ok(failure),
         Output::Done(answer) => anyhow::bail!("{tool} answered {answer}"),
     }
-}
-
-/// The claims of the token `signed` carries.
-fn claims(signed: &Value) -> Result<Value> {
-    let token = signed["token"].as_str().context("a token")?;
-    let payload = token.split('.').nth(1).context("a payload")?;
-    Ok(serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload)?)?)
 }
 
 fn code() -> Value {
     json!({"code": "c0de", "redirect": "https://app.example.com/callback"})
 }
 
-async fn user(host: &TestHost, subject: &str) -> Result<User> {
-    Ok(User {
-        issuer: host.issuer("auth").await?.into(),
-        subject: subject.into(),
-    })
+/// `args` with `session`'s token beside them.
+fn with(session: &Value, mut args: Value) -> Value {
+    args["session"] = session["token"].clone();
+    args
 }
 
 #[tokio::test]
 async fn a_github_sign_in_makes_an_account_once() -> Result<()> {
     let host = deployed().await?;
     github(&host, 42);
-    let first = done(&host, "github", code(), None).await?;
-    let claims = claims(&first)?;
-    let issuer = host.issuer("auth").await?;
-    assert_eq!(claims["iss"], issuer);
-    assert_eq!(claims["aud"], issuer);
-    assert_eq!(claims["sub"], "1");
-    assert_eq!(claims["name"], "octo");
-    assert_eq!(claims["email"], "octo@example.com");
-    assert_eq!(claims["exp"], first["expires"]);
-    assert_eq!(first["expires"], 1_700_000_000 + 3600);
+    let first = done(&host, "github", code()).await?;
+    let token = first["token"].as_str().context("a token")?;
+    assert_eq!(token.len(), 64, "{token}");
+    assert_eq!(first["expires"], 1_700_000_000 + 30 * 24 * 60 * 60);
+    let account = done(&host, "account", with(&first, json!({}))).await?;
+    assert_eq!(account["id"], "1");
+    assert_eq!(account["identities"][0]["name"], "octo");
+    assert_eq!(account["identities"][0]["email"], "octo@example.com");
 
-    let again = done(&host, "github", code(), None).await?;
-    assert_eq!(self::claims(&again)?["sub"], "1");
+    let again = done(&host, "github", code()).await?;
+    assert_ne!(again["token"], first["token"]);
+    assert_eq!(
+        done(&host, "account", with(&again, json!({}))).await?["id"],
+        "1"
+    );
 
     let exchange = &host.fetched()[0];
     assert_eq!(
@@ -124,10 +115,10 @@ async fn a_google_sign_in_keeps_only_a_verified_email() -> Result<()> {
     google(&host, "g-1", false);
     let mut args = code();
     args["verifier"] = "v3rifier".into();
-    let signed = done(&host, "google", args, None).await?;
-    let claims = claims(&signed)?;
-    assert_eq!(claims["name"], "Ada");
-    assert_eq!(claims["email"], Value::Null);
+    let session = done(&host, "google", args).await?;
+    let account = done(&host, "account", with(&session, json!({}))).await?;
+    assert_eq!(account["identities"][0]["name"], "Ada");
+    assert_eq!(account["identities"][0]["email"], Value::Null);
     let exchange = String::from_utf8(host.fetched()[0].body.clone())?;
     assert!(exchange.contains("code_verifier=v3rifier"), "{exchange}");
     assert!(
@@ -146,7 +137,7 @@ async fn a_refused_code_reads_as_the_provider_said() -> Result<()> {
         200,
         r#"{"error":"bad_verification_code","error_description":"The code passed is incorrect or expired."}"#,
     );
-    let failure = failed(&host, "github", code(), None).await?;
+    let failure = failed(&host, "github", code()).await?;
     assert!(
         failure.contains("The code passed is incorrect or expired."),
         "{failure}"
@@ -158,10 +149,10 @@ async fn a_refused_code_reads_as_the_provider_said() -> Result<()> {
 async fn a_linked_identity_signs_in_to_the_same_account() -> Result<()> {
     let host = deployed().await?;
     github(&host, 42);
-    done(&host, "github", code(), None).await?;
+    let session = done(&host, "github", code()).await?;
 
     google(&host, "g-1", true);
-    let account = done(&host, "link_google", code(), Some(user(&host, "1").await?)).await?;
+    let account = done(&host, "link_google", with(&session, code())).await?;
     assert_eq!(account["id"], "1");
     let providers: Vec<&str> = account["identities"]
         .as_array()
@@ -171,8 +162,11 @@ async fn a_linked_identity_signs_in_to_the_same_account() -> Result<()> {
         .collect();
     assert_eq!(providers, ["github", "google"]);
 
-    let signed = done(&host, "google", code(), None).await?;
-    assert_eq!(claims(&signed)?["sub"], "1");
+    let google = done(&host, "google", code()).await?;
+    assert_eq!(
+        done(&host, "account", with(&google, json!({}))).await?["id"],
+        "1"
+    );
     Ok(())
 }
 
@@ -180,31 +174,38 @@ async fn a_linked_identity_signs_in_to_the_same_account() -> Result<()> {
 async fn an_identity_of_another_account_is_not_linked() -> Result<()> {
     let host = deployed().await?;
     github(&host, 42);
-    done(&host, "github", code(), None).await?;
+    let session = done(&host, "github", code()).await?;
     google(&host, "g-1", true);
-    done(&host, "google", code(), None).await?;
+    done(&host, "google", code()).await?;
 
-    let failure = failed(&host, "link_google", code(), Some(user(&host, "1").await?)).await?;
+    let failure = failed(&host, "link_google", with(&session, code())).await?;
     assert!(failure.contains("another account"), "{failure}");
     Ok(())
 }
 
 #[tokio::test]
-async fn a_user_another_issuer_signed_in_has_no_account_here() -> Result<()> {
+async fn a_session_ends_when_signed_out_or_expired() -> Result<()> {
     let host = deployed().await?;
     github(&host, 42);
-    done(&host, "github", code(), None).await?;
+    let session = done(&host, "github", code()).await?;
+    let stranger = json!({"session": "0".repeat(64)});
+    let failure = failed(&host, "account", stranger).await?;
+    assert!(failure.contains("not signed in"), "{failure}");
 
-    let stranger = User {
-        issuer: "https://accounts.google.com".into(),
-        subject: "1".into(),
-    };
-    let failure = failed(&host, "account", json!({}), Some(stranger)).await?;
-    assert!(
-        failure.contains("no user this service signed in"),
-        "{failure}"
+    assert_eq!(
+        done(&host, "sign_out", with(&session, json!({}))).await?,
+        true
     );
-    let account = done(&host, "account", json!({}), Some(user(&host, "1").await?)).await?;
-    assert_eq!(account["identities"][0]["subject"], "42");
+    assert_eq!(
+        done(&host, "sign_out", with(&session, json!({}))).await?,
+        false
+    );
+    let failure = failed(&host, "account", with(&session, json!({}))).await?;
+    assert!(failure.contains("not signed in"), "{failure}");
+
+    let expiring = done(&host, "github", code()).await?;
+    host.set_now(1_700_000_000_000 + 31 * 24 * 60 * 60 * 1000);
+    let failure = failed(&host, "account", with(&expiring, json!({}))).await?;
+    assert!(failure.contains("not signed in"), "{failure}");
     Ok(())
 }

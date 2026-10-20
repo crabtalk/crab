@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{Context, Result};
 use berm_api::Manifest;
 use berm_oci::{Access, Reference, Registry};
-use crabtalk_sdk::client::Client;
+use crabtalk_sdk::{client::Client, sandbox::service::DeployRequest};
 use std::{path::Path, str::FromStr};
 
 /// Deploy the project in `dir` as its `berm.toml` names it. On Cloud, the image
@@ -41,6 +41,7 @@ pub fn run(
             &project.public,
             force,
             project.crons.as_ref(),
+            project.database.size.0,
         ))?,
         Some(_) => {
             let image = image.or(project.image.as_deref()).with_context(|| {
@@ -50,10 +51,13 @@ pub fn run(
             push(&reference, &bytes)?;
             utils::wait(client.deploy(
                 &project.name,
-                &reference,
-                &project.public,
-                force,
-                project.crons.as_ref(),
+                &DeployRequest {
+                    reference,
+                    public: project.public.clone(),
+                    force,
+                    crons: project.crons.clone(),
+                    size: project.database.size.0,
+                },
             ))?
         }
     };

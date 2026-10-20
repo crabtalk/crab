@@ -30,8 +30,3 @@ toml.workspace = true
 tower.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[dev-dependencies]
-base64.workspace = true
-berm-host = { workspace = true, features = ["test"] }
-ring.workspace = true

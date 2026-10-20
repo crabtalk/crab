@@ -15,7 +15,7 @@ use axum::{
     routing::{get, put},
 };
 use berm_api::{Deployed, Program as Wire, host};
-use berm_host::{Denied, Issuer, Named, deny};
+use berm_host::{Denied, Named, deny};
 use rmcp::transport::{
     StreamableHttpService, streamable_http_server::session::local::LocalSessionManager,
 };
@@ -44,11 +44,6 @@ pub fn router(service: Arc<Service>) -> Router {
 
     Router::new()
         .route("/programs", get(list))
-        .route(
-            "/issuers/{name}/.well-known/openid-configuration",
-            get(discovery),
-        )
-        .route("/issuers/{name}/jwks", get(jwks))
         .with_state(service)
         .nest("/programs/{name}", program)
         .route_service("/mcp", mcp)
@@ -90,41 +85,10 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// The OpenID Provider metadata of a deployed program's issuer.
-async fn discovery(
-    State(service): State<Arc<Service>>,
-    Path(Name { name }): Path<Name>,
-) -> Result<Json<serde_json::Value>, Denied> {
-    deployed(&service, &name)?;
-    let issuer = service.keys.issuer(&name).await?;
-    let jwks_uri = format!("{issuer}/jwks");
-    Ok(Json(berm_host::discovery(&issuer, &jwks_uri)))
-}
-
-/// The JWK Set a deployed program's ID tokens verify against.
-async fn jwks(
-    State(service): State<Arc<Service>>,
-    Path(Name { name }): Path<Name>,
-) -> Result<Json<serde_json::Value>, Denied> {
-    deployed(&service, &name)?;
-    let key = service.keys.key(&name).await?;
-    Ok(Json(serde_json::json!({ "keys": [key.jwk()] })))
-}
-
-fn deployed(service: &Service, name: &str) -> Result<(), Denied> {
-    match service.get(name) {
-        Some(_) => Ok(()),
-        None => Err(deny(
-            StatusCode::NOT_FOUND,
-            format!("no program named {name:?} is deployed"),
-        )),
-    }
-}
-
-/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}` on a deploy: the
-/// tools it may make public, whether to deploy over what it would break or
-/// undo, and each cron tool's expression, as a JSON object, when the deploy
-/// sets them.
+/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}&size=1073741824` on a
+/// deploy: the tools it may make public, whether to deploy over what it would
+/// break or undo, each cron tool's expression, as a JSON object, when the
+/// deploy sets them, and the bytes its database may hold.
 #[derive(Deserialize)]
 struct Confirmed {
     #[serde(default)]
@@ -132,6 +96,12 @@ struct Confirmed {
     #[serde(default)]
     force: bool,
     crons: Option<String>,
+    #[serde(default = "database_size")]
+    size: u64,
+}
+
+fn database_size() -> u64 {
+    host::DATABASE_SIZE
 }
 
 /// Deploy the image in the body under `name`. `PUT` because the name is the
@@ -160,7 +130,14 @@ async fn deploy(
             )
         })?;
     let (deployed, breaks) = service
-        .deploy(&name, image.to_vec(), &public, confirmed.force, crons)
+        .deploy(
+            &name,
+            image.to_vec(),
+            &public,
+            confirmed.force,
+            crons,
+            confirmed.size,
+        )
         .await?;
     Ok(Json(Deployed {
         program: deployed.idl(&name),

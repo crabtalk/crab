@@ -13,7 +13,6 @@ use tokio::{net::TcpListener, sync::broadcast};
 pub use env::Local;
 pub use fetch::Fetch;
 pub use images::Stored;
-pub use keys::Keys;
 pub use peers::Alone;
 pub use secrets::Grants;
 
@@ -21,7 +20,6 @@ mod api;
 mod env;
 mod fetch;
 mod images;
-mod keys;
 mod mcp;
 mod peers;
 mod program;
@@ -35,8 +33,6 @@ pub struct Service {
     host: Host<Local>,
     /// Where uploaded images are kept for the host to pull.
     images: Stored,
-    /// What each program's ID tokens are signed with.
-    keys: Keys,
     /// Fires when the deployed set changes. Connected MCP sessions turn this
     /// into `notifications/tools/list_changed`.
     changed: broadcast::Sender<()>,
@@ -45,16 +41,9 @@ pub struct Service {
 impl Service {
     /// Open `root`, restoring whatever was deployed before this process.
     /// Chains of programs calling programs nest at most `depth` deep.
-    /// `berm.http.proxy` goes through `proxy`, or direct without one. `url`
-    /// is where this service is reached, and begins every program's issuer.
-    pub async fn new(
-        root: PathBuf,
-        depth: u32,
-        proxy: Option<&str>,
-        url: &str,
-    ) -> Result<Arc<Self>> {
+    /// `berm.http.proxy` goes through `proxy`, or direct without one.
+    pub async fn new(root: PathBuf, depth: u32, proxy: Option<&str>) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
-        let keys = Keys::open(&root, url);
         let config = Config {
             depth,
             cache_dir: Some(root.join("cache")),
@@ -70,7 +59,6 @@ impl Service {
                 images: images.clone(),
                 peers: Alone,
                 secrets: Grants::open(&root),
-                issuer: keys.clone(),
                 layers: Layers::new(tower::layer::util::Identity::new()),
                 observe: (),
                 clock: System,
@@ -82,7 +70,6 @@ impl Service {
         Ok(Arc::new(Self {
             host,
             images,
-            keys,
             changed: broadcast::channel(CHANGE_BACKLOG).0,
         }))
     }

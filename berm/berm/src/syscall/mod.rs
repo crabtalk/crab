@@ -4,8 +4,7 @@
 //! native code behind an address. berm serves [`call`] itself, resolving
 //! against the set it already holds.
 //!
-//! The standard calls — [`store`], [`emit`], [`after`], [`http`], [`sql`],
-//! [`token`] —
+//! The standard calls — [`store`], [`emit`], [`after`], [`http`], [`sql`] —
 //! are berm's to read and check, and a host's to carry out: each module turns
 //! the request into a typed value and hands it to closures the embedder
 //! registers with it.
@@ -15,7 +14,8 @@
 //! below.
 
 use crate::{Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, abi, engine, wire};
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
+use ring::rand::{SecureRandom, SystemRandom};
 use std::{collections::HashMap, sync::Arc};
 use wasmtime::Caller;
 
@@ -25,7 +25,6 @@ pub mod emit;
 pub mod http;
 pub mod sql;
 pub mod store;
-pub mod token;
 
 /// One of the ABI's own doors: request bytes at `(ptr, len)` in, a staged
 /// length out, answered before the guest resumes.
@@ -220,6 +219,18 @@ fn builtins() -> Table {
     table.insert(
         abi::HOST_NOW,
         handler(|guest, _, _| Ok((guest.data().now)())),
+    );
+
+    table.insert(
+        abi::HOST_RANDOM,
+        handler(|guest, ptr, len| {
+            let mut bytes = vec![0; len as usize];
+            SystemRandom::new()
+                .fill(&mut bytes)
+                .map_err(|_| anyhow!("the system's random source failed"))?;
+            engine::write(guest, ptr, &bytes)?;
+            Ok(0)
+        }),
     );
 
     table

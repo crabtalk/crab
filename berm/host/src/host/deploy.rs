@@ -12,7 +12,7 @@ use axum::http::StatusCode;
 use berm::Program;
 use berm_api::{
     Manifest, Surface,
-    host::{Deploy, Kind, Outcome},
+    host::{Deploy, Kind, MAX_DATABASE_SIZE, Outcome},
 };
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -22,7 +22,8 @@ impl<E: Env> Host<E> {
     /// that the program it replaces did not and `public` does not confirm it,
     /// or, unless `force`, when it breaks a public tool or event of the program
     /// it replaces that a caller used, with a call that was done, in the last
-    /// [`usage::WINDOW`] days.
+    /// [`usage::WINDOW`] days. Refused too when its `size` is past
+    /// [`MAX_DATABASE_SIZE`] or below what its database holds.
     pub async fn deploy(&self, service: &str, deploy: Deploy) -> Result<Arc<Program>, Denied> {
         let Deploy {
             reference,
@@ -30,7 +31,14 @@ impl<E: Env> Host<E> {
             public,
             force,
             crons,
+            size,
         } = deploy;
+        if size > MAX_DATABASE_SIZE {
+            return Err(deny(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("a database holds at most {MAX_DATABASE_SIZE} bytes, not {size}"),
+            ));
+        }
         let image = self
             .images
             .pull(&reference, &digest)
@@ -69,7 +77,7 @@ impl<E: Env> Host<E> {
         {
             self.unbroken(service, current, &manifest).await?;
         }
-        self.migrate(&key, &manifest).await?;
+        self.migrate(&key, &manifest, size).await?;
         let deprecated: Vec<String> = manifest
             .tools
             .iter()
@@ -87,6 +95,7 @@ impl<E: Env> Host<E> {
             &reference,
             &digest,
             &manifest.version,
+            size,
             deprecated,
             cron_tools,
             crons,
@@ -226,13 +235,19 @@ impl<E: Env> Host<E> {
 
     /// Migrate the database of `service` to `manifest`'s, when it keeps one.
     /// A failed migration leaves the version it replaces serving.
-    async fn migrate(&self, service: &str, manifest: &Manifest) -> Result<(), Denied> {
+    async fn migrate(&self, service: &str, manifest: &Manifest, size: u64) -> Result<(), Denied> {
         if !manifest.keeps_database() {
             return Ok(());
         }
-        self.databases
+        let database = self
+            .databases
             .get(service)
-            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?
+            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+        database
+            .limit(size)
+            .await
+            .map_err(|e| deny(StatusCode::UNPROCESSABLE_ENTITY, format!("{e:#}")))?;
+        database
             .migrate(manifest.migrations())
             .await
             .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
