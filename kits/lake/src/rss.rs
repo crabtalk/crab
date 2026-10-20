@@ -5,7 +5,6 @@
 
 use crate::time;
 use alloc::{format, string::String, vec::Vec};
-use berm_lang::html;
 use xmlparser::{ElementEnd, Token, Tokenizer};
 
 /// One `<item>` or `<entry>`. Text is unescaped once, so `summary` and

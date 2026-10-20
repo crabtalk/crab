@@ -11,4 +11,5 @@ categories = ["wasm", "parser-implementations"]
 
 [dependencies]
 berm-lang.workspace = true
+html.workspace = true
 xmlparser.workspace = true

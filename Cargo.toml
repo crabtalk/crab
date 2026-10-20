@@ -22,6 +22,9 @@ berm-lang = { path = "berm/lang", version = "0.1.0" }
 berm-oci = { path = "berm/oci", version = "0.1.0" }
 bermd = { path = "berm/daemon", version = "0.1.0" }
 
+# html
+html = { package = "crab-html", path = "crates/html", version = "0.1.0" }
+
 # fixtures
 berm-kit = { path = "fixtures/kit" }
 

@@ -131,8 +131,3 @@ berm_lang::after(300_000, "weather", "poll", "{}")?;
 `now()` answers the host's time, in milliseconds since the Unix epoch.
 
 `random(&mut buffer)` fills `buffer` from the host's secure random source. Neither needs declaring.
-
-## HTML
-
-`html::text(html)` turns HTML into text: tags are dropped, a block boundary
-becomes a line break, a link becomes `[text](href)`, and entities are decoded.

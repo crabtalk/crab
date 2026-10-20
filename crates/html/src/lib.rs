@@ -1,6 +1,11 @@
-//! Text out of the HTML that feeds and APIs carry in their fields.
+//! Text out of HTML: the fields feeds and APIs carry, and the `<meta>` of a
+//! page.
 
-use alloc::string::String;
+#![no_std]
+
+extern crate alloc;
+
+use alloc::{string::String, vec::Vec};
 
 /// The longest entity body decoded, `#1114111`, in bytes.
 const LONGEST_ENTITY: usize = 8;
@@ -10,8 +15,8 @@ const LONGEST_ENTITY: usize = 8;
 /// is its href or it has none. Entities are decoded; an `&` with no `;` within
 /// 8 bytes is kept. An unclosed tag drops the rest.
 ///
-/// ```ignore
-/// let said = berm_lang::html::text("It&#x27;s <i>fine</i>.<p>Next");
+/// ```
+/// let said = crab_html::text("It&#x27;s <i>fine</i>.<p>Next");
 /// assert_eq!(said, "It's fine.\n\nNext");
 /// ```
 pub fn text(html: &str) -> String {
@@ -88,6 +93,59 @@ pub fn unescape(s: &str) -> String {
     out
 }
 
+/// The `content` of the first `<meta>` whose `property` or `name` is
+/// `property`, ASCII case ignored, with a non-blank content: entities decoded,
+/// whitespace collapsed to single spaces.
+///
+/// ```
+/// let page = r#"<meta property="og:title" content="Fish &amp; chips">"#;
+/// assert_eq!(crab_html::meta(page, "og:title").as_deref(), Some("Fish & chips"));
+/// ```
+pub fn meta(html: &str, property: &str) -> Option<String> {
+    let mut at = 0;
+    while let Some(found) = find_ignore_case(&html[at..], "<meta") {
+        let start = at + found + "<meta".len();
+        let end = start + tag_end(&html[start..]);
+        at = end;
+        let tag = &html[start..end];
+        let named = ["property", "name"].iter().any(|key| {
+            attribute(tag, key).is_some_and(|value| value.eq_ignore_ascii_case(property))
+        });
+        if !named {
+            continue;
+        }
+        let content = unescape(attribute(tag, "content").unwrap_or_default());
+        let words: Vec<&str> = content.split_whitespace().collect();
+        if !words.is_empty() {
+            return Some(words.join(" "));
+        }
+    }
+    None
+}
+
+/// The offset of the `>` that ends the tag `s` is inside, outside quoted
+/// values; `s.len()` when there is none.
+fn tag_end(s: &str) -> usize {
+    let mut quote = None;
+    for (i, c) in s.char_indices() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), c) if c == q => quote = None,
+            (None, '>') => return i,
+            _ => {}
+        }
+    }
+    s.len()
+}
+
+/// The offset of the first match of `needle`, an ASCII lowercase string, in
+/// `s`, ASCII case ignored.
+fn find_ignore_case(s: &str, needle: &str) -> Option<usize> {
+    s.as_bytes()
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
 fn finish(mut out: String) -> String {
     out.truncate(out.trim_end().len());
     out
@@ -106,7 +164,8 @@ fn line_break(out: &mut String, newlines: usize) {
     }
 }
 
-/// The value of `name` in a tag's attributes, quoted with `"` or `'`.
+/// The value of `name` in a tag's attributes, quoted with `"` or `'`, or bare
+/// up to whitespace.
 fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let bytes = tag.as_bytes();
     let mut from = 0;
@@ -117,16 +176,22 @@ fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
             .rfind(|c: char| c.is_ascii_whitespace())
             .map_or(0, |i| i + 1)..];
         let value = tag[equals + 1..].trim_start();
-        let quote = value.chars().next()?;
-        if quote != '"' && quote != '\'' {
-            from = equals + 1;
-            continue;
-        }
-        let close = value[1..].find(quote)?;
+        let (value, rest) = match value.chars().next()? {
+            quote @ ('"' | '\'') => {
+                let close = value[1..].find(quote)?;
+                (&value[1..1 + close], 1 + close + 1)
+            }
+            _ => {
+                let end = value
+                    .find(|c: char| c.is_ascii_whitespace())
+                    .unwrap_or(value.len());
+                (&value[..end], end)
+            }
+        };
         if key.eq_ignore_ascii_case(name) {
-            return Some(&value[1..1 + close]);
+            return Some(value);
         }
-        from = tag.len() - value.len() + 1 + close + 1;
+        from = tag.len() - tag[equals + 1..].trim_start().len() + rest;
     }
     None
 }

@@ -79,7 +79,6 @@ pub mod dispatch;
 mod emit;
 mod error;
 mod heap;
-pub mod html;
 pub mod http;
 #[doc(hidden)]
 pub mod json;

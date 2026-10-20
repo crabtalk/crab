@@ -717,6 +717,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-html"
+version = "0.1.0"
+
+[[package]]
 name = "crab-kits"
 version = "0.1.0"
 dependencies = [
@@ -732,6 +736,7 @@ name = "crab-lake"
 version = "0.1.0"
 dependencies = [
  "berm-lang",
+ "crab-html",
  "xmlparser",
 ]
 
