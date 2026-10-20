@@ -1,0 +1,12 @@
+[package]
+name = "berm-kit"
+description = "The reference kit, a library berm-keeper links with `uses`, what berm's kits are tested against"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+berm-lang.workspace = true

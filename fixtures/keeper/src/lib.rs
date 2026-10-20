@@ -2,7 +2,8 @@
 //! in the database beside its own `words` table.
 //!
 //! `put` writes a word every way the database takes one, `count` reads the
-//! table back, and `relay` calls both on `inner`.
+//! table back, and `relay` calls both on `inner`. It uses `berm-kit`, whose
+//! table `note` writes to.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
@@ -15,6 +16,7 @@ use berm_lang::Schema;
     database = "migrations",
     programs = ["inner"],
     syscalls = { "berm.get", "berm.set", "berm.sql" },
+    uses = [berm_kit],
 )]
 mod tools {
     use crate::Counted;
@@ -43,6 +45,12 @@ mod tools {
             .and_then(|row| row.first())
             .copied()
             .unwrap_or(0))
+    }
+
+    /// Adds `text` to `berm-kit`'s table, and answers how many notes it holds.
+    #[public]
+    pub fn note(text: String) -> Result<u64> {
+        berm_kit::note(&text)
     }
 
     /// Writes `word` under `last`, calls `put` on `inner` with it, then `count`

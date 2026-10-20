@@ -1,0 +1,16 @@
+[package]
+name = "crab-kits"
+description = "The kits crab provides"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords = ["berm", "wasm", "kit", "crabtalk"]
+categories = ["wasm"]
+
+[dependencies]
+auth.workspace = true
+neon.workspace = true
+stripe.workspace = true
+supabase.workspace = true

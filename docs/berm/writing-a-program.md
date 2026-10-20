@@ -116,7 +116,7 @@ gets linked, and the binary alone cannot be reached from `tests/`.
 Off a guest target the crate is an ordinary library, so tools can be unit tested
 natively instead of cross-compiling to run anything at all. `berm_lang::test`
 stands in for the host: it holds the argument blob and collects what a program
-logged. A call reaching a syscall that has no stand-in panics naming it,
+logged. `test::answer` arranges what another program answers, and `test::respond` what an HTTP request answers by method and URL, with `test::fetched` the requests sent as the program wrote them, `{secret:NAME}` unsubstituted. A call reaching a syscall that has no stand-in panics naming it,
 rather than reading a plausible zero.
 
 `berm_host::test::TestHost`, behind `berm-host`'s `test` feature, runs the built

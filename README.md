@@ -61,12 +61,12 @@ crab usage example
 
 ## Use ours
 
-[crab-guest](crates/guest/README.md) collects the services crab provides, each a guest you deploy under your own account:
+[crab-kits](crates/kits/README.md) collects the kits crab provides. A service links a kit as a library with `#[berm_lang::program(uses = [crab_auth])]` and calls it from its own tools; auth and stripe also deploy as services of their own from their `bin/`.
 
-- [auth](guests/auth/README.md): Sign-in for a product's users. GitHub and Google logins as ID tokens its apps trust.
-- [stripe](guests/stripe/README.md): Stripe subscriptions for a product's users. Checkout, the customer portal, and each user's plan.
-
-Your other services reach one by name, as `berm_lang::call("stripe", "plan", …)`.
+- [auth](kits/auth/README.md): Sign-in for a product's users. GitHub and Google logins as ID tokens its apps trust.
+- [neon](kits/neon/README.md): Neon Postgres over HTTP. Parameterized statements and transactions.
+- [stripe](kits/stripe/README.md): Stripe subscriptions for a product's users. Checkout, the customer portal, and each user's plan.
+- [supabase](kits/supabase/README.md): Supabase over HTTPS. PostgREST tables and functions, and Storage objects.
 
 ## berm, the runtime
 

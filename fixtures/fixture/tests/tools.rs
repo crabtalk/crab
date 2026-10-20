@@ -53,3 +53,26 @@ fn nest_tells_a_refusal_from_a_failure() {
     assert_eq!(error, "the target said no");
     test::forget();
 }
+
+#[test]
+fn fetch_reads_what_the_test_arranged_and_keeps_secrets_named() {
+    test::respond("POST", "http://127.0.0.1/token", 201, b"created");
+    let out = test::call(
+        berm_fixture::berm_tool_fetch,
+        br#"{"url":"http://127.0.0.1/token","header":"Authorization: Bearer {secret:fixture}","body":"a=1"}"#,
+    )
+    .unwrap();
+    assert_eq!(out, br#"{"status":201,"bytes":7}"#);
+    let fetched = test::fetched();
+    assert_eq!(fetched.len(), 1);
+    assert_eq!(fetched[0].method, "POST");
+    assert_eq!(
+        fetched[0].headers,
+        [(
+            "Authorization".to_owned(),
+            "Bearer {secret:fixture}".to_owned()
+        )]
+    );
+    assert_eq!(fetched[0].body, b"a=1");
+    test::forget();
+}

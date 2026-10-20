@@ -33,8 +33,21 @@ const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS _berm_state (key TEXT PRIMARY KEY, value BLOB NOT NULL);
     DROP TABLE IF EXISTS _berm_outbox;
     CREATE TABLE IF NOT EXISTS _berm_migrations (
-        name TEXT PRIMARY KEY, sql TEXT NOT NULL,
-        applied_at INTEGER NOT NULL DEFAULT (unixepoch()));";
+        kit TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, sql TEXT NOT NULL,
+        applied_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (kit, name));";
+
+/// `_berm_migrations` as it was before kits, keyed by name alone, rebuilt
+/// keyed by kit and name, its rows the program's own.
+const REKEY: &str = "
+    ALTER TABLE _berm_migrations RENAME TO _berm_migrations_unkeyed;
+    CREATE TABLE _berm_migrations (
+        kit TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, sql TEXT NOT NULL,
+        applied_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (kit, name));
+    INSERT INTO _berm_migrations (kit, name, sql, applied_at)
+        SELECT '', name, sql, applied_at FROM _berm_migrations_unkeyed ORDER BY rowid;
+    DROP TABLE _berm_migrations_unkeyed;";
 
 /// Work for the writer's thread, on the one connection that writes.
 type Job = Box<dyn FnOnce(&mut Connection) + Send>;
@@ -94,7 +107,7 @@ impl Databases {
                 }
             }
             drop(open);
-            if program.manifest().database.is_some() {
+            if program.manifest().keeps_database() {
                 taking = self
                     .get(&program.name)
                     .map(|database| Some(database).filter(|database| !database.holds(at.chain)));
@@ -146,6 +159,16 @@ impl Database {
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
+        let keyed: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM pragma_table_info('_berm_migrations') WHERE name = 'kit'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !keyed {
+            let tx = conn.transaction()?;
+            tx.execute_batch(REKEY)?;
+            tx.commit()?;
+        }
         query::guard(&conn)?;
         let (jobs, queue) = mpsc::channel::<Job>();
         thread::Builder::new()
@@ -222,39 +245,53 @@ impl Database {
     }
 
     /// Apply the migrations not yet applied, in one transaction, answering
-    /// their names. Refused, with nothing applied, when the applied ones are not
-    /// the first of `migrations`, unchanged, or when one fails.
-    pub async fn migrate(&self, migrations: Vec<Migration>) -> Result<Vec<String>> {
+    /// their names, a kit's as `{kit}/{name}`. Each sequence is applied under
+    /// its kit, `""` the program's own. Refused, with nothing applied, when a
+    /// kit's applied migrations are not the first of its sequence, unchanged,
+    /// or when one fails.
+    pub async fn migrate(&self, sequences: Vec<(String, Vec<Migration>)>) -> Result<Vec<String>> {
         let _held = self.writing.clone().lock_owned().await;
         on(&self.jobs, move |conn| {
             let tx = conn.transaction()?;
-            let applied: Vec<(String, String)> = tx
-                .prepare("SELECT name, sql FROM _berm_migrations ORDER BY rowid")?
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-                .collect::<Result<_, _>>()?;
-            for (at, (name, sql)) in applied.iter().enumerate() {
-                match migrations.get(at) {
-                    Some(next) if next.name == *name && next.sql == *sql => {}
-                    Some(next) if next.name == *name => {
-                        bail!("migration {name} was applied and has changed since")
-                    }
-                    _ => bail!(
-                        "migration {name} was applied and is not migration {} any more",
-                        at + 1
-                    ),
-                }
-            }
             let mut ran = Vec::new();
-            for next in &migrations[applied.len()..] {
-                query::GUEST.set(true);
-                let applying = tx.execute_batch(&next.sql);
-                query::GUEST.set(false);
-                applying.with_context(|| format!("migration {} failed", next.name))?;
-                tx.execute(
-                    "INSERT INTO _berm_migrations (name, sql) VALUES (?1, ?2)",
-                    (&next.name, &next.sql),
-                )?;
-                ran.push(next.name.clone());
+            for (kit, migrations) in &sequences {
+                let named = |name: &str| match kit.as_str() {
+                    "" => name.to_owned(),
+                    kit => format!("{kit}/{name}"),
+                };
+                let applied: Vec<(String, String)> = tx
+                    .prepare(
+                        "SELECT name, sql FROM _berm_migrations WHERE kit = ?1 ORDER BY rowid",
+                    )?
+                    .query_map([kit], |row| Ok((row.get(0)?, row.get(1)?)))?
+                    .collect::<Result<_, _>>()?;
+                for (at, (name, sql)) in applied.iter().enumerate() {
+                    match migrations.get(at) {
+                        Some(next) if next.name == *name && next.sql == *sql => {}
+                        Some(next) if next.name == *name => {
+                            bail!(
+                                "migration {} was applied and has changed since",
+                                named(name)
+                            )
+                        }
+                        _ => bail!(
+                            "migration {} was applied and is not migration {} any more",
+                            named(name),
+                            at + 1
+                        ),
+                    }
+                }
+                for next in &migrations[applied.len()..] {
+                    query::GUEST.set(true);
+                    let applying = tx.execute_batch(&next.sql);
+                    query::GUEST.set(false);
+                    applying.with_context(|| format!("migration {} failed", named(&next.name)))?;
+                    tx.execute(
+                        "INSERT INTO _berm_migrations (kit, name, sql) VALUES (?1, ?2, ?3)",
+                        (kit, &next.name, &next.sql),
+                    )?;
+                    ran.push(named(&next.name));
+                }
             }
             tx.commit()?;
             Ok(ran)

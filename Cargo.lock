@@ -314,9 +314,17 @@ dependencies = [
  "anyhow",
  "berm-api",
  "berm-host",
+ "berm-kit",
  "berm-lang",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "berm-kit"
+version = "0.1.0"
+dependencies = [
+ "berm-lang",
 ]
 
 [[package]]
@@ -678,15 +686,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-guest"
-version = "0.1.0"
-dependencies = [
- "crab-guest-auth",
- "crab-guest-stripe",
-]
-
-[[package]]
-name = "crab-guest-auth"
+name = "crab-auth"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -699,7 +699,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-guest-stripe"
+name = "crab-kits"
+version = "0.1.0"
+dependencies = [
+ "crab-auth",
+ "crab-neon",
+ "crab-stripe",
+ "crab-supabase",
+]
+
+[[package]]
+name = "crab-neon"
+version = "0.1.0"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
+name = "crab-stripe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "crab-supabase"
 version = "0.1.0"
 dependencies = [
  "berm-lang",

@@ -55,7 +55,7 @@ extern crate alloc;
 extern crate self as berm_lang;
 
 pub use abi::{args_len, now, trace};
-pub use berm_codegen::{Schema, declare_program, error_code, event, program, syscalls};
+pub use berm_codegen::{Schema, declare_program, error_code, event, kit, program, syscalls};
 pub use call::{CallError, Caller, User, after, call, caller, client, deny, user};
 #[doc(hidden)]
 pub use emit::event as __event;

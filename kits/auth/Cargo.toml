@@ -1,0 +1,25 @@
+[package]
+name = "crab-auth"
+version.workspace = true
+description = "Sign-in for a product's users: GitHub and Google logins as ID tokens its apps trust."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["oauth", "oidc", "berm", "wasm", "crabtalk"]
+categories = ["wasm", "authentication"]
+
+[[bin]]
+name = "auth"
+path = "bin/main.rs"
+
+[dependencies]
+berm-lang.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+base64.workspace = true
+berm-api.workspace = true
+berm-host = { workspace = true, features = ["test"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio.workspace = true

@@ -227,13 +227,13 @@ impl<E: Env> Host<E> {
     /// Migrate the database of `service` to `manifest`'s, when it keeps one.
     /// A failed migration leaves the version it replaces serving.
     async fn migrate(&self, service: &str, manifest: &Manifest) -> Result<(), Denied> {
-        let Some(database) = &manifest.database else {
+        if !manifest.keeps_database() {
             return Ok(());
-        };
+        }
         self.databases
             .get(service)
             .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?
-            .migrate(database.migrations.clone())
+            .migrate(manifest.migrations())
             .await
             .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         Ok(())

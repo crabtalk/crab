@@ -3,13 +3,17 @@
 //! Off wasm this crate is an ordinary library, so a program author can build
 //! and unit test their handlers natively rather than cross-compiling to see
 //! anything at all. The calls a test can reasonably answer — the argument blob,
-//! the trace, emitted logs, the failure channel — are served from
-//! [`crate::test`]'s state.
+//! the trace, emitted logs, the failure channel, other programs and HTTP —
+//! are served from [`crate::test`]'s state.
 //! Anything else panics naming the syscall, because a test that reached a
 //! real syscall should say so rather than read a plausible zero.
 
-use crate::abi;
-use std::{cell::RefCell, string::String, vec::Vec};
+use crate::{abi, test::Fetched};
+use std::{
+    cell::RefCell,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 std::thread_local! {
     static HOST: RefCell<Host> = const { RefCell::new(Host::new()) };
@@ -32,6 +36,11 @@ pub(crate) struct Host {
     /// tool, the outcome bits, and the bytes. A short list rather than a map
     /// because a program calls a handful of things, not a thousand.
     pub answers: Vec<(String, String, u64, Vec<u8>)>,
+    /// What a test has arranged a request to answer: the method, the URL,
+    /// the status, and the body.
+    pub responses: Vec<(String, String, u16, Vec<u8>)>,
+    /// Each request sent, in order.
+    pub fetched: Vec<Fetched>,
 }
 
 impl Host {
@@ -44,6 +53,8 @@ impl Host {
             failure: None,
             result: Vec::new(),
             answers: Vec::new(),
+            responses: Vec::new(),
+            fetched: Vec::new(),
         }
     }
 }
@@ -136,6 +147,47 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                     "nothing arranged for {program}.{tool}; call berm_lang::test::answer first"
                 ),
             }
+        }
+        abi::HOST_HTTP_FETCH | abi::HOST_HTTP_PROXY => {
+            let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
+            let Some(fields) = crate::abi::wire::fields(request) else {
+                no_host(number)
+            };
+            let [method, url, body, headers @ ..] = fields.as_slice() else {
+                no_host(number)
+            };
+            let text = |field: &[u8]| String::from_utf8_lossy(field).into_owned();
+            let fetched = Fetched {
+                method: text(method),
+                url: text(url),
+                headers: headers
+                    .chunks(2)
+                    .map(|pair| {
+                        (
+                            text(pair[0]),
+                            pair.get(1).map(|value| text(value)).unwrap_or_default(),
+                        )
+                    })
+                    .collect(),
+                body: body.to_vec(),
+            };
+            let response = with(|host| {
+                host.responses
+                    .iter()
+                    .find(|(m, u, ..)| *m == fetched.method && *u == fetched.url)
+                    .map(|(.., status, body)| (*status, body.clone()))
+            });
+            let Some((status, body)) = response else {
+                panic!(
+                    "nothing arranged for {} {}; call berm_lang::test::respond first",
+                    fetched.method, fetched.url
+                )
+            };
+            with(|host| {
+                host.fetched.push(fetched);
+                host.result = crate::abi::wire::request(&[status.to_string().as_bytes(), &body]);
+                host.result.len() as u64
+            })
         }
         _ => no_host(number),
     }

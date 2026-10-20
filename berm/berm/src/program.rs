@@ -203,6 +203,7 @@ impl Program {
         let Manifest {
             abi_version: _,
             database: _,
+            kits: _,
             deps: _,
             events: _,
             version,

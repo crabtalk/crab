@@ -56,6 +56,8 @@ let config: Config = berm_lang::get_json("config")?.unwrap_or_default();
 - `database` names a directory of `*.sql` migrations, applied in name order at
   deploy. A deploy whose migrations do not begin with the ones already applied
   is refused.
+- A kit the program `uses` keeps its tables in the same database, its migrations applied first and checked the same way under the kit's name. See [Kits](./manifest.md#kits).
+- `berm_lang::rows::<T>(statement, params)` runs one statement, `params` a tuple bound to its `?`s, and answers its rows, each a tuple of its columns.
 - `berm_lang::sql(statement, params)` runs one statement, `params` a JSON array
   bound to its `?` placeholders, and answers
   `{"columns": [..], "rows": [[..]], "read": n, "written": n}`.

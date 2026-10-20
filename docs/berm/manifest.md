@@ -99,6 +99,22 @@ Refusing would make deploy order significant, and a restart brings programs
 back in whatever order the filesystem lists them — two that name each other
 could then never come up at all.
 
+## Kits
+
+A kit is a library crate a program links, declaring at its root what it reaches for and the tables it keeps:
+
+```rust,ignore
+berm_lang::kit!(
+    syscalls = { "berm.http.fetch" = ["api.example.com"] },
+    secrets = ["example"],
+    database = "migrations",
+);
+```
+
+`kit!` takes `programs`, `syscalls`, `secrets` and `database`, and names the kit for its crate. A program links it with `#[berm_lang::program(uses = [example_kit])]`. Its manifest carries each kit as `"kits": [{"name", "version", "deps", "database"}]`, in `uses` order, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A program that keeps no database of its own keeps one for a kit that does.
+
+A kit's migrations run in the program's database before the program's own, each kit's in `uses` order. The host keeps the migrations it applied under the kit's name and the program's own under none, so a kit's migration and the program's may share a name. A kit no longer used leaves its tables and its applied migrations in place.
+
 ## Checks at load
 
 `Berm::deploy` refuses an image before it can ever be offered to a model when:
@@ -108,6 +124,7 @@ could then never come up at all.
 - its manifest declares a tool the image does not export, matched by the
   `berm_tool_` prefix;
 - it declares more than one `#[stripe]` tool;
+- it uses one kit twice;
 - a `#[cron]` or `#[stripe]` tool is `#[public]`;
 - an `#[anonymous]` tool is not `#[public]`, or is `#[callers(services)]`.
 

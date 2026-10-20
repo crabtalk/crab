@@ -13,6 +13,7 @@ name = "keeper"
 path = "bin/main.rs"
 
 [dependencies]
+berm-kit.workspace = true
 berm-lang.workspace = true
 
 [dev-dependencies]

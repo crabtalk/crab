@@ -365,7 +365,7 @@ pub(crate) fn alive<E: Env>(host: &Weak<Inner<E>>) -> Result<Arc<Inner<E>>> {
 
 /// Whether `program` keeps a database.
 pub(crate) fn keeps(program: &Program) -> bool {
-    program.manifest().database.is_some()
+    program.manifest().keeps_database()
 }
 
 /// How often counted uses are written.
