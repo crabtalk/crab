@@ -3,8 +3,9 @@
 //! recrawled when due, sites watched first read and fetched first, a page of
 //! each site before a second of any, a silent site fetched no more in its
 //! tick, a page cut at the bytes it is read for, a failed read logged and
-//! retried, and the URLs a program lists and the links its crawler lists
-//! fetched under the site's robots.txt.
+//! retried, the URLs a program lists and the links its crawler lists fetched
+//! under the site's robots.txt, and a URL listed with its bytes read for them,
+//! past the tick's HTML when it is the tick's first.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -439,5 +440,67 @@ async fn a_link_its_crawler_lists_is_fetched_on_a_later_tick() -> Result<()> {
     );
     call(&host, "tick", json!({})).await?;
     assert!(fetched(&host).contains(&linked.to_owned()));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_url_listed_with_its_bytes_is_read_past_the_bytes_a_page_is_read_for() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let listed = "https://example.com/compare/listed-vs-other";
+    let long = format!("<html><body><p>{}</p></body></html>", "a".repeat(600 << 10));
+    host.arrange("GET", listed, 200, long.clone());
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(
+        &host,
+        "list",
+        json!({"domain": "example.com", "urls": [listed], "bytes": 1 << 20}),
+    )
+    .await?;
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(
+        call(&host, "read", json!({ "url": listed })).await?,
+        json!({"kind": "comparison", "length": long.len()})
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_url_listed_past_the_html_left_is_left_due_and_read_first_on_a_tick_of_its_own()
+-> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    host.arrange(
+        "GET",
+        "https://big.com/robots.txt",
+        200,
+        "User-agent: *\nAllow: /\n",
+    );
+    host.arrange(
+        "GET",
+        "https://big.com/sitemap.xml",
+        200,
+        r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>"#,
+    );
+    let big = "https://big.com/compare/big-vs-other";
+    let long = format!("<html><body><p>{}</p></body></html>", "a".repeat(5 << 19));
+    host.arrange("GET", big, 200, long.clone());
+    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
+    call(&host, "watch", json!({"domains": ["big.com"]})).await?;
+    call(
+        &host,
+        "list",
+        json!({"domain": "big.com", "urls": [big], "bytes": 3 << 20}),
+    )
+    .await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(fetched(&host).contains(&"https://example.com/pricing".to_owned()));
+    assert!(!fetched(&host).contains(&big.to_owned()));
+
+    assert_eq!(ticked_pages(&host).await?, [big]);
+    assert_eq!(
+        call(&host, "read", json!({ "url": big })).await?,
+        json!({"kind": "comparison", "length": long.len()})
+    );
     Ok(())
 }

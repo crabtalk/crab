@@ -152,14 +152,18 @@ pub struct Link {
     pub href: String,
     /// What [`text`] makes of its contents, whitespace collapsed.
     pub text: String,
+    /// The `alt` of the first `<img>` in it, entities decoded and whitespace
+    /// collapsed; `None` when it has none or it is blank.
+    pub image: Option<String>,
 }
 
 /// Each `<a>` with an `href`, in page order. A link whose `</a>` is missing
 /// runs to the next `<a`.
 ///
 /// ```
-/// let links = crab_html::links(r#"<a href="/a?x=1&amp;y=2">A <b>b</b></a>"#);
+/// let links = crab_html::links(r#"<a href="/a?x=1&amp;y=2">A <b>b</b></a><a href="/c"><img src="c.png" alt="C &amp; D"></a>"#);
 /// assert_eq!((links[0].href.as_str(), links[0].text.as_str()), ("/a?x=1&y=2", "A b"));
+/// assert_eq!(links[1].image.as_deref(), Some("C & D"));
 /// ```
 pub fn links(html: &str) -> Vec<Link> {
     let mut links = Vec::new();
@@ -183,11 +187,19 @@ pub fn links(html: &str) -> Vec<Link> {
         .flatten()
         .min()
         .map_or(html.len(), |end| inner + end);
-        let words = text(&html[inner..close]);
+        let contents = &html[inner..close];
+        let words = text(contents);
         let words: Vec<&str> = words.split_whitespace().collect();
+        let image = find_ignore_case(contents, "<img").and_then(|found| {
+            let tag = &contents[found + "<img".len()..];
+            let alt = unescape(attribute(&tag[..tag_end(tag)], "alt")?);
+            let alt: Vec<&str> = alt.split_whitespace().collect();
+            (!alt.is_empty()).then(|| alt.join(" "))
+        });
         links.push(Link {
             href: unescape(href),
             text: words.join(" "),
+            image,
         });
         at = close;
     }

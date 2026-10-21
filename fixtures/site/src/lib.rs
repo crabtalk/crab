@@ -34,10 +34,11 @@ mod tools {
         Ok(crawl::watch_first(&domains)? as u64)
     }
 
-    /// Lists `urls` on `domain`'s site, and answers how many were new.
+    /// Lists `urls` on `domain`'s site, each read for `bytes` of HTML when
+    /// given, and answers how many were new.
     #[public]
-    pub fn list(domain: String, urls: Vec<String>) -> Result<u64> {
-        Ok(crawl::list::<Pages>(&domain, &urls)? as u64)
+    pub fn list(domain: String, urls: Vec<String>, bytes: Option<u64>) -> Result<u64> {
+        Ok(crawl::list::<Pages>(&domain, &urls, bytes.map(|bytes| bytes as usize))? as u64)
     }
 
     /// Reads the sites due and fetches the pages due.
@@ -106,7 +107,7 @@ impl Crawler for Pages {
             .filter_map(|link| base.join(&link.href).ok())
             .map(String::from)
             .collect();
-        crawl::list::<Pages>(domain, &links)?;
+        crawl::list::<Pages>(domain, &links, None)?;
         Ok(0)
     }
 }

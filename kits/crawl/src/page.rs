@@ -33,12 +33,12 @@ pub enum Fetched {
 }
 
 /// Fetch each of `dues` as `C`, at once, each conditionally on the validators
-/// it last answered with and read for its first `limit` bytes, and answer each
-/// in its place.
-pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
+/// it last answered with and read for the first bytes paired with it, and
+/// answer each in its place.
+pub fn fetch_all<C: Crawler>(dues: &[(Due, usize)]) -> Vec<Fetched> {
     let mut gets: Vec<Get<'_>> = Vec::new();
     let mut parsed: Vec<Result<(), String>> = Vec::new();
-    for due in dues {
+    for (due, limit) in dues {
         match Url::parse(&due.url) {
             Ok(url) => {
                 let mut headers = alloc::vec![("Accept", "text/html")];
@@ -52,7 +52,7 @@ pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
                     url,
                     domain: &due.domain,
                     headers,
-                    limit,
+                    limit: *limit,
                 });
                 parsed.push(Ok(()));
             }

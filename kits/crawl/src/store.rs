@@ -58,6 +58,8 @@ pub struct Due {
     pub lastmod: Option<String>,
     pub etag: Option<String>,
     pub modified: Option<String>,
+    /// The bytes of HTML its program listed it to be read for.
+    pub bytes: Option<usize>,
 }
 
 /// Watch `domain`, read before the sites not `first` when `first`. Answers
@@ -151,14 +153,19 @@ pub(crate) fn read_failed(domain: &str, now: u64, error: &str) -> Result<(), Cal
     Ok(())
 }
 
-/// Keep `url`, of `kind`, as listed for `domain`, a site watched. Answers
-/// whether it was new.
-pub(crate) fn list(domain: &str, url: &str, kind: &str) -> Result<bool, CallError> {
+/// Keep `url`, of `kind`, as listed for `domain`, a site watched, read for
+/// `bytes` of HTML when given. Answers whether it was new.
+pub(crate) fn list(
+    domain: &str,
+    url: &str,
+    kind: &str,
+    bytes: Option<usize>,
+) -> Result<bool, CallError> {
     let known = berm_lang::rows::<(u8,)>("SELECT listed FROM crawl_urls WHERE url = ?", &(url,))?;
     berm_lang::rows::<()>(
-        "INSERT INTO crawl_urls (url, domain, kind, listed) VALUES (?, ?, ?, 1)
-         ON CONFLICT (url) DO UPDATE SET listed = 1",
-        &(url, domain, kind),
+        "INSERT INTO crawl_urls (url, domain, kind, listed, bytes) VALUES (?, ?, ?, 1, ?)
+         ON CONFLICT (url) DO UPDATE SET listed = 1, bytes = excluded.bytes",
+        &(url, domain, kind, bytes.map(|bytes| bytes as u64)),
     )?;
     Ok(known.is_empty())
 }
@@ -175,8 +182,9 @@ pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError
         Option<String>,
         Option<String>,
         Option<String>,
+        Option<u64>,
     )>(
-        "SELECT u.url, u.domain, u.kind, u.lastmod, p.etag, p.modified
+        "SELECT u.url, u.domain, u.kind, u.lastmod, p.etag, p.modified, u.bytes
            FROM crawl_urls u JOIN crawl_sites s ON s.domain = u.domain
                 LEFT JOIN crawl_pages p ON p.url = u.url
           WHERE s.read > 0
@@ -190,13 +198,14 @@ pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError
         &(before, limit as u64),
     )?
     .into_iter()
-    .map(|(url, domain, kind, lastmod, etag, modified)| Due {
+    .map(|(url, domain, kind, lastmod, etag, modified, bytes)| Due {
         url,
         domain,
         kind,
         lastmod,
         etag,
         modified,
+        bytes: bytes.map(|bytes| bytes as usize),
     })
     .collect())
 }
