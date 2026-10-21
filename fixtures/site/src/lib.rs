@@ -70,7 +70,7 @@ impl Crawler for Pages {
         recrawl: 7 * DAY,
         refetch: 30 * DAY,
         sites: 10,
-        listed: 20_000,
+        sitemaps: 4 << 20,
         pages: 10,
         html: 2 << 20,
         page: 256 << 10,

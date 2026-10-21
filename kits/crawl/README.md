@@ -40,7 +40,7 @@ impl Crawler for Pages {
         recrawl: 7 * 24 * 60 * 60 * 1000,
         refetch: 30 * 24 * 60 * 60 * 1000,
         sites: 20,
-        listed: 20_000,
+        sitemaps: 4 << 20,
         pages: 50,
         html: 2 << 20,
         page: 256 << 10,
@@ -62,7 +62,7 @@ impl Crawler for Pages {
 - A page keeps its title (`<title>`, else `og:title`), its description (`description`, else `og:description`) and up to 64 KiB of its text. A page that holds no text, such as one rendered by JavaScript, is stored without text.
 - `Crawler::read` is handed each page that answered `200` with HTML, its domain, URL, kind and HTML, in the call that stored it, and answers the bytes it stored itself; by default it stores nothing.
 - A tick reads its sites at once and fetches its pages a page a site a round, each round's requests sent as one batch over `berm.http.fetch_all`, so a site sees one request at a time. Each page is read for its first `page` bytes of HTML, and a round fetches no more pages than the HTML left holds at `page` bytes each.
-- A tick stops at 8 MiB stored, or at `html` bytes of HTML read, and leaves the rest due. The first site due is read for `listed` sitemap URLs of its own; the rest share `listed`, and one that would list more than are left is left due. It logs `Read` for each site read and `ReadFailed` and `FetchFailed` for each failure.
+- A tick stops at 8 MiB stored, or at `html` bytes of HTML read, and leaves the rest due. The first site due is read for `sitemaps` bytes of sitemaps of its own; the rest share `sitemaps`, and one whose sitemaps would take more than are left is left due. Each request takes at most the bytes left for it, and the host cuts the rest of its answer; a robots.txt is read for its first 500 KiB. It logs `Read` for each site read and `ReadFailed` and `FetchFailed` for each failure.
 - `store::site`, `store::urls` and `store::page` read back a site, its URLs by kind, and a page; `store::failed` the sites whose last read failed.
 
 ## License

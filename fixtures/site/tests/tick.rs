@@ -2,7 +2,8 @@
 //! rules and sitemaps read, pages of a kind fetched, handed to the crawler and
 //! recrawled when due, sites watched first read and fetched first, a page of
 //! each site before a second of any, a silent site fetched no more in its
-//! tick, and a failed read logged and retried.
+//! tick, a page cut at the bytes it is read for, and a failed read logged and
+//! retried.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -332,5 +333,20 @@ async fn a_site_that_answers_a_page_with_nothing_is_fetched_no_more_that_tick() 
         .collect();
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(host.logs("site", Some("FetchFailed")).await?.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_page_reaches_the_crawler_cut_at_the_bytes_a_page_is_read_for() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let long = format!("<html><body><p>{}</p></body></html>", "a".repeat(300 << 10));
+    host.arrange("GET", "https://example.com/pricing", 200, long);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(
+        call(&host, "read", json!({"url": "https://example.com/pricing"})).await?,
+        json!({"kind": "pricing", "length": 256 << 10})
+    );
     Ok(())
 }

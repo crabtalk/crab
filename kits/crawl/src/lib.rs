@@ -47,10 +47,10 @@ pub struct Schedule {
     pub refetch: u64,
     /// Sites read per tick.
     pub sites: usize,
-    /// Sitemap URLs a site is read for. The first site due is read for this
-    /// many of its own; the rest of a tick's share this many, and one that
-    /// would list more than are left is left due.
-    pub listed: usize,
+    /// Bytes of sitemaps a site is read for. The first site due is read for
+    /// this many of its own; the rest of a tick's share this many, and one
+    /// whose sitemaps would take more than are left is left due.
+    pub sitemaps: usize,
     /// Pages fetched per tick.
     pub pages: usize,
     /// Bytes of HTML a tick reads before it fetches no more pages. A page's
@@ -147,7 +147,7 @@ pub fn tick<C: Crawler>() -> Result<()> {
         schedule.failures,
         schedule.sites,
     )?;
-    let reads = site::read_all::<C>(&due, schedule.listed);
+    let reads = site::read_all::<C>(&due, schedule.sitemaps);
     for (domain, read) in due.into_iter().zip(reads) {
         match read {
             Ok(None) => {}

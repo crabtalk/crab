@@ -186,7 +186,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
 /// fetched; `None` when it is not framed as one.
 fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
     let fields = crate::abi::wire::fields(request)?;
-    let [method, url, body, _timeout, headers @ ..] = fields.as_slice() else {
+    let [method, url, body, _timeout, limit, headers @ ..] = fields.as_slice() else {
         return None;
     };
     let text = |field: &[u8]| String::from_utf8_lossy(field).into_owned();
@@ -210,13 +210,20 @@ fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
             .find(|(m, u, ..)| *m == fetched.method && *u == fetched.url)
             .map(|(.., status, body)| (*status, body.clone()))
     });
-    let Some((status, body)) = response else {
+    let limit: Option<usize> = match core::str::from_utf8(limit).ok()? {
+        "" => None,
+        limit => Some(limit.parse().ok()?),
+    };
+    let Some((status, mut body)) = response else {
         panic!(
             "nothing arranged for {} {}; call berm_lang::test::respond first",
             fetched.method, fetched.url
         )
     };
     with(|host| host.fetched.push(fetched));
+    if let Some(limit) = limit {
+        body.truncate(limit);
+    }
     Some((status, body))
 }
 

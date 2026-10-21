@@ -13,6 +13,8 @@ pub struct Get<'a> {
     pub url: Url,
     pub domain: &'a str,
     pub headers: Vec<(&'a str, &'a str)>,
+    /// The most bytes of the answer's body read.
+    pub limit: usize,
 }
 
 /// GET each of `gets` as `agent`, each request given up when nothing answered
@@ -47,6 +49,7 @@ pub fn get_all(gets: &[Get<'_>], agent: &str, timeout: u64) -> Vec<Result<Respon
                 headers,
                 body: b"",
                 timeout: Some(timeout),
+                limit: Some(gets[at].limit),
             })
             .collect();
         let answered = match http::fetch_all(&requests) {

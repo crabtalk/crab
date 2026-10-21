@@ -33,8 +33,8 @@ pub enum Fetched {
 }
 
 /// Fetch each of `dues` as `C`, at once, each conditionally on the validators
-/// it last answered with and read for its first `limit` bytes of HTML, and
-/// answer each in its place.
+/// it last answered with and read for its first `limit` bytes, and answer each
+/// in its place.
 pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
     let mut gets: Vec<Get<'_>> = Vec::new();
     let mut parsed: Vec<Result<(), String>> = Vec::new();
@@ -52,6 +52,7 @@ pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
                     url,
                     domain: &due.domain,
                     headers,
+                    limit,
                 });
                 parsed.push(Ok(()));
             }
@@ -63,7 +64,7 @@ pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
         .into_iter()
         .map(|parsed| match parsed {
             Ok(()) => match answers.next() {
-                Some(Ok(answer)) => read(answer, limit),
+                Some(Ok(answer)) => read(answer),
                 Some(Err(error)) => Fetched::Failed(error),
                 None => Fetched::Failed(String::from("no answer")),
             },
@@ -72,8 +73,8 @@ pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
         .collect()
 }
 
-/// What `answer` holds, its first `limit` bytes of HTML read.
-fn read(answer: Response, limit: usize) -> Fetched {
+/// What `answer` holds.
+fn read(answer: Response) -> Fetched {
     let status = answer.status;
     if status == 304 {
         return Fetched::Unchanged;
@@ -93,8 +94,7 @@ fn read(answer: Response, limit: usize) -> Fetched {
             html: None,
         };
     }
-    let read = answer.body.len().min(limit);
-    let page = String::from_utf8_lossy(&answer.body[..read]).into_owned();
+    let page = String::from_utf8_lossy(&answer.body).into_owned();
     let mut text = html::text(&page);
     text.truncate(text.floor_char_boundary(TEXT));
     Fetched::Answered {

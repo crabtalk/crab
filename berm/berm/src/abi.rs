@@ -92,9 +92,10 @@ pub const HTTP_FETCH: &str = "berm.http.fetch";
 
 /// Make one HTTP request. `(ptr, len) -> staged length`
 ///
-/// Request fields are the method, the URL, the body and the milliseconds to
+/// Request fields are the method, the URL, the body, the milliseconds to
 /// wait for an answer as decimal text, empty for the call's deadline alone,
-/// then header names and values in turn. The reply is the status as decimal text and the body, then
+/// and the most bytes of the answer's body the guest takes as decimal text,
+/// empty for all of it, then header names and values in turn. The reply is the status as decimal text and the body, then
 /// header names and values in turn. A header value or the body may carry
 /// `{secret:NAME}`, which the host substitutes; the guest never holds the
 /// value.

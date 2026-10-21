@@ -76,6 +76,9 @@ pub struct Request<'a> {
     pub body: &'a [u8],
     /// Milliseconds to wait for an answer; `None` for the call's deadline.
     pub timeout: Option<u64>,
+    /// The most bytes of the answer's body this program takes; the host cuts
+    /// the rest before it reaches it. `None` for all of it.
+    pub limit: Option<usize>,
 }
 
 /// Send `requests` at once, each to a host the manifest declares under
@@ -120,6 +123,7 @@ fn send(
         headers,
         body,
         timeout,
+        limit: None,
     });
     let reply = host::call(number, &request)?;
     response(&wire::fields(&reply).ok_or_else(unreadable)?)
@@ -131,11 +135,16 @@ fn frame(request: &Request<'_>) -> Vec<u8> {
         .timeout
         .map(|timeout| alloc::format!("{timeout}"))
         .unwrap_or_default();
+    let limit = request
+        .limit
+        .map(|limit| alloc::format!("{limit}"))
+        .unwrap_or_default();
     let mut framed = wire::request(&[
         request.method.as_bytes(),
         request.url.as_bytes(),
         request.body,
         timeout.as_bytes(),
+        limit.as_bytes(),
     ]);
     for (name, value) in request.headers {
         wire::field(&mut framed, name.as_bytes());

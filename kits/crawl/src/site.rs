@@ -17,6 +17,10 @@ const SITEMAPS: usize = 12;
 /// The most of a robots.txt kept, in bytes.
 const ROBOTS: usize = 64 << 10;
 
+/// The most of a robots.txt read, in bytes: the least RFC 9309 has a crawler
+/// parse.
+const ROBOTS_READ: usize = 500 << 10;
+
 /// What a read found.
 pub struct Site {
     /// Its robots.txt, up to 64 KiB; `None` when it answered 4xx.
@@ -40,9 +44,9 @@ struct Reading<'a> {
 }
 
 /// Read each of `domains` as `C`, at once, and answer each in its place. The
-/// first is read for `budget` sitemap URLs of its own; the rest share another
-/// `budget`, and one that would list more than are left answers `None`, left
-/// for a later tick. A read fails when robots.txt cannot be read or answers
+/// first is read for `budget` bytes of sitemaps of its own; the rest share
+/// another `budget`, and one whose sitemaps would take more than are left
+/// answers `None`, left for a later tick. A read fails when robots.txt cannot be read or answers
 /// 5xx; a sitemap that fails is left out.
 pub fn read_all<C: Crawler>(
     domains: &[String],
@@ -73,6 +77,7 @@ pub fn read_all<C: Crawler>(
                     url,
                     domain: reading.domain,
                     headers: Vec::new(),
+                    limit: ROBOTS_READ,
                 });
             }
             Err(error) => reading.done = Some(Err(format!("{}: {error}", reading.domain))),
@@ -109,7 +114,7 @@ pub fn read_all<C: Crawler>(
         }
     }
 
-    // What the first site may still list, and what the rest may.
+    // The bytes of sitemaps the first site may still read, and the rest may.
     let (mut own, mut shared) = (budget, budget);
     loop {
         let mut round: Vec<usize> = Vec::new();
@@ -118,13 +123,20 @@ pub fn read_all<C: Crawler>(
             if reading.done.is_some() {
                 continue;
             }
+            let left = match at {
+                0 => own,
+                _ => shared,
+            };
             match next(reading) {
+                Some(_) if left == 0 && at > 0 => reading.done = Some(Ok(None)),
+                Some(_) if left == 0 => reading.done = Some(Ok(Some(finish(reading)))),
                 Some(url) => {
                     round.push(at);
                     gets.push(Get {
                         url,
                         domain: reading.domain,
                         headers: Vec::new(),
+                        limit: left,
                     });
                 }
                 None => reading.done = Some(Ok(Some(finish(reading)))),
@@ -143,18 +155,20 @@ pub fn read_all<C: Crawler>(
                 0 => &mut own,
                 _ => &mut shared,
             };
-            let Some(sitemap) = sitemap(get, answer, *left) else {
+            let Some(body) = sitemap(get, answer) else {
                 continue;
             };
-            if sitemap.more && at > 0 {
+            // An answer as long as its limit was cut there.
+            let cut = body.len() >= get.limit;
+            if at > 0 && (cut || body.len() > *left) {
                 reading.done = Some(Ok(None));
                 continue;
             }
+            *left = left.saturating_sub(body.len());
+            let sitemap = Sitemap::parse(&String::from_utf8_lossy(&body));
             reading.queue.extend(sitemap.sitemaps);
-            *left -= sitemap.urls.len();
-            let full = sitemap.more || *left == 0;
             keep::<C>(reading, sitemap.urls);
-            if full {
+            if cut {
                 reading.done = Some(Ok(Some(finish(reading))));
             }
         }
@@ -189,8 +203,8 @@ fn next(reading: &mut Reading<'_>) -> Option<Url> {
     None
 }
 
-/// The sitemap `answer` holds, its first `limit` URLs, when it answered 200.
-fn sitemap(get: &Get<'_>, answer: Result<Response, String>, limit: usize) -> Option<Sitemap> {
+/// The body of the sitemap `answer` holds, when it answered 200.
+fn sitemap(get: &Get<'_>, answer: Result<Response, String>) -> Option<Vec<u8>> {
     let answer = match answer {
         Ok(answer) => answer,
         Err(error) => {
@@ -202,10 +216,7 @@ fn sitemap(get: &Get<'_>, answer: Result<Response, String>, limit: usize) -> Opt
         berm_lang::trace(&format!("{} answered {}", get.url, answer.status));
         return None;
     }
-    Some(Sitemap::parse(
-        &String::from_utf8_lossy(&answer.body),
-        limit,
-    ))
+    Some(answer.body)
 }
 
 /// Keep each of `listed` on `reading`'s site that its robots.txt allows and

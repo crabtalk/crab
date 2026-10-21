@@ -10,16 +10,14 @@ pub struct Sitemap {
     pub sitemaps: Vec<String>,
     /// Each URL a urlset lists, with its `lastmod` as written.
     pub urls: Vec<(String, Option<String>)>,
-    /// Whether it lists more URLs than it was read for.
-    pub more: bool,
 }
 
 impl Sitemap {
-    /// The entries of `xml`, its first `limit` URLs at most. Elements are matched by their local name, an
+    /// The entries of `xml`. Elements are matched by their local name, an
     /// entry's `loc` and `lastmod` only as its own children, so the `loc` of
     /// an extension inside it, such as `image:image`, is not its; an entry
-    /// with no `loc` is left out.
-    pub fn parse(xml: &str, limit: usize) -> Self {
+    /// with no `loc`, or one `xml` ends inside, is left out.
+    pub fn parse(xml: &str) -> Self {
         let mut sitemap = Sitemap::default();
         // The entry being read, `sitemap` or `url`, its `loc` and `lastmod`.
         let mut entry: Option<(bool, String, Option<String>)> = None;
@@ -35,10 +33,6 @@ impl Sitemap {
                     depth += 1;
                     let child = entry.is_some() && depth == within + 1;
                     match open {
-                        "url" if sitemap.urls.len() == limit => {
-                            sitemap.more = true;
-                            break;
-                        }
                         "sitemap" | "url" => {
                             entry = Some((open == "sitemap", String::new(), None));
                             within = depth;

@@ -169,7 +169,7 @@ where
     R: Fn(Callsite, String, String) -> Found,
     Found: Future<Output = Result<Option<String>>>,
 {
-    let mut request = read(at, syscall, request)?;
+    let (mut request, limit) = read(at, syscall, request)?;
     for (_, value) in &mut request.headers {
         let found = substitute(at, secret, &request.host, value.as_bytes()).await?;
         if let Some(found) = found {
@@ -179,7 +179,11 @@ where
     if let Some(found) = substitute(at, secret, &request.host, &request.body).await? {
         request.body = found;
     }
-    send(at.clone(), request).await
+    let mut response = send(at.clone(), request).await?;
+    if let Some(limit) = limit {
+        response.body.truncate(limit);
+    }
+    Ok(response)
 }
 
 /// `text` with every `{secret:NAME}` replaced by what `secret` grants the
@@ -252,8 +256,8 @@ fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
 }
 
 /// `request` off the wire, refused unless the asking program declares its host
-/// under `syscall`.
-fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
+/// under `syscall`, with the most body bytes the program takes of its answer.
+fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option<usize>)> {
     let fields = wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?.to_owned();
@@ -266,7 +270,15 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
             anyhow::anyhow!("timeout {millis:?} is not a count of milliseconds")
         })?)),
     };
-    let trailing = &fields[4..];
+    let limit = match wire::text(&fields, 4, "limit")? {
+        "" => None,
+        bytes => Some(
+            bytes
+                .parse()
+                .map_err(|_| anyhow::anyhow!("limit {bytes:?} is not a count of bytes"))?,
+        ),
+    };
+    let trailing = &fields[5..];
     if trailing.len() % 2 != 0 {
         bail!("a header has a name and no value");
     }
@@ -282,15 +294,18 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     };
     let host = host.to_ascii_lowercase();
     let reach = permitted(at, syscall, &host)?;
-    Ok(Request {
-        method,
-        host,
-        reach,
-        url,
-        headers,
-        body: body.to_vec(),
-        timeout,
-    })
+    Ok((
+        Request {
+            method,
+            host,
+            reach,
+            url,
+            headers,
+            body: body.to_vec(),
+            timeout,
+        },
+        limit,
+    ))
 }
 
 fn write(response: &Response) -> Vec<u8> {
