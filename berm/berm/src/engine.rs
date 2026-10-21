@@ -286,10 +286,23 @@ impl Image {
 
 /// Copy `len` bytes of guest memory at `addr`.
 pub(crate) fn read(caller: &mut Caller<'_, Invocation>, addr: u64, len: u64) -> Result<Vec<u8>> {
+    Ok(slice_mut(caller, addr, len)?.to_vec())
+}
+
+/// The `len` bytes of guest memory at `addr`, refused when any lies outside
+/// it.
+pub(crate) fn slice_mut<'a>(
+    caller: &'a mut Caller<'_, Invocation>,
+    addr: u64,
+    len: u64,
+) -> Result<&'a mut [u8]> {
     let memory = memory(caller)?;
-    let mut bytes = vec![0u8; len as usize];
-    memory.read(&*caller, addr as usize, &mut bytes)?;
-    Ok(bytes)
+    let size = memory.data_size(&*caller) as u64;
+    let end = addr
+        .checked_add(len)
+        .filter(|end| *end <= size)
+        .with_context(|| format!("{len} bytes at {addr} lie outside guest memory"))?;
+    Ok(&mut memory.data_mut(caller)[addr as usize..end as usize])
 }
 
 /// Copy `bytes` into guest memory at `addr`.

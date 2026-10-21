@@ -9,6 +9,7 @@ use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
 use anyhow::{Result, bail};
 use futures_util::future::join_all;
 use std::{future::Future, sync::Arc, time::Duration};
+use url::{Host, Url};
 
 /// What opens a secret's name in a header value.
 const SECRET: &str = "{secret:";
@@ -260,7 +261,7 @@ fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
 fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option<usize>)> {
     let fields = wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
-    let url = wire::text(&fields, 1, "url")?.to_owned();
+    let url = wire::text(&fields, 1, "url")?;
     let Some(body) = fields.get(2) else {
         bail!("request has no body");
     };
@@ -289,10 +290,19 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option
             std::str::from_utf8(pair[1])?.to_owned(),
         ));
     }
-    let Some(host) = host(&url) else {
+    let parsed = Url::parse(url)
+        .ok()
+        .filter(|url| matches!(url.scheme(), "http" | "https"));
+    let Some((url, host)) = parsed.and_then(|parsed| {
+        let host = match parsed.host()? {
+            Host::Domain(domain) => domain.to_owned(),
+            Host::Ipv4(ip) => ip.to_string(),
+            Host::Ipv6(ip) => ip.to_string(),
+        };
+        Some((String::from(parsed), host))
+    }) else {
         bail!("{url} is not an http or https URL with a host");
     };
-    let host = host.to_ascii_lowercase();
     let reach = permitted(at, syscall, &host)?;
     Ok((
         Request {
@@ -316,18 +326,4 @@ fn write(response: &Response) -> Vec<u8> {
         fields.push(value.as_bytes());
     }
     wire::frame(&fields)
-}
-
-/// The host an `http` or `https` URL names, without port or credentials.
-fn host(url: &str) -> Option<&str> {
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let authority = authority.rsplit('@').next()?;
-    let host = match authority.strip_prefix('[') {
-        Some(bracketed) => bracketed.split(']').next()?,
-        None => authority.split(':').next()?,
-    };
-    (!host.is_empty()).then_some(host)
 }

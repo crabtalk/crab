@@ -416,6 +416,71 @@ async fn a_listed_url_its_robots_txt_disallows_is_not_fetched() -> Result<()> {
 }
 
 #[tokio::test]
+async fn a_url_listed_after_its_site_is_read_is_held_to_its_robots_txt() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let secret = "https://example.com/compare/secret";
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(
+        call(
+            &host,
+            "list",
+            json!({"domain": "example.com", "urls": [secret]}),
+        )
+        .await?,
+        json!(0)
+    );
+    call(&host, "tick", json!({})).await?;
+    assert!(!fetched(&host).contains(&secret.to_owned()));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_robots_txt_opening_with_a_byte_order_mark_keeps_its_first_group() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    host.arrange(
+        "GET",
+        "https://example.com/robots.txt",
+        200,
+        format!("\u{feff}{ROBOTS}"),
+    );
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(
+        !kept(&host, "example.com")
+            .await?
+            .contains(&"https://example.com/compare/secret".to_owned())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_pattern_of_many_wildcards_is_matched_in_time() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let stars = "*a".repeat(30);
+    host.arrange(
+        "GET",
+        "https://example.com/robots.txt",
+        200,
+        format!("User-agent: *\nDisallow: /compare/{stars}b\nSitemap: https://example.com/sitemap-index.xml\n"),
+    );
+    let long = format!("https://example.com/compare/{}", "a".repeat(200));
+    host.arrange(
+        "GET",
+        "https://example.com/sitemap-pages.xml",
+        200,
+        format!(r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>{long}</loc></url></urlset>"#),
+    );
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(kept(&host, "example.com").await?.contains(&long));
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_link_its_crawler_lists_is_fetched_on_a_later_tick() -> Result<()> {
     let host = deployed().await?;
     arrange(&host);

@@ -235,11 +235,9 @@ fn builtins() -> Table {
     table.insert(
         abi::HOST_RANDOM,
         handler(|guest, ptr, len| {
-            let mut bytes = vec![0; len as usize];
             SystemRandom::new()
-                .fill(&mut bytes)
+                .fill(engine::slice_mut(guest, ptr, len)?)
                 .map_err(|_| anyhow!("the system's random source failed"))?;
-            engine::write(guest, ptr, &bytes)?;
             Ok(0)
         }),
     );

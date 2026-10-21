@@ -73,3 +73,37 @@ async fn a_body_secret_the_manifest_does_not_declare_sends_nothing() -> Result<(
     assert!(host.fetched().is_empty());
     Ok(())
 }
+
+#[tokio::test]
+async fn a_host_is_the_one_the_url_reaches() -> Result<()> {
+    let host = deployed().await?;
+    let ran = host
+        .call(
+            "fixture",
+            "fetch",
+            br#"{"url":"http://evil.test\\@127.0.0.1/token"}"#,
+        )
+        .await?;
+    let Output::Failed(failure) = ran.result else {
+        panic!("a backslash ends the authority, so the host is evil.test");
+    };
+    assert!(failure.contains("does not declare evil.test"), "{failure}");
+    assert!(host.fetched().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_address_is_read_in_its_canonical_form() -> Result<()> {
+    let host = deployed().await?;
+    host.arrange("GET", URL, 200, "ok");
+    let ran = host
+        .call("fixture", "fetch", br#"{"url":"http://2130706433/token"}"#)
+        .await?;
+    assert!(matches!(ran.result, Output::Done(_)), "{:?}", ran.result);
+    let sent = host.fetched();
+    assert_eq!(
+        (sent[0].host.as_str(), sent[0].url.as_str()),
+        ("127.0.0.1", URL)
+    );
+    Ok(())
+}

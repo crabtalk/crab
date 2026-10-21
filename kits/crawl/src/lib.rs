@@ -20,6 +20,7 @@
 
 extern crate alloc;
 
+use crate::robots::Robots;
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 use berm_lang::{CallError, Result, event};
 use url::Url;
@@ -139,13 +140,14 @@ pub fn list<C: Crawler>(
     bytes: Option<usize>,
 ) -> Result<usize, CallError> {
     let domain = domain.to_ascii_lowercase();
+    let robots = Robots::parse(&store::robots(&domain)?.unwrap_or_default(), C::AGENT);
     urls.iter().try_fold(0, |new, listed| {
         let Ok(url) = Url::parse(listed) else {
             return Ok(new);
         };
         let on_site = url.host_str().is_some_and(|host| same_site(host, &domain));
         match C::kind(&domain, &url) {
-            Some(kind) if on_site => {
+            Some(kind) if on_site && robots.allows(&url) => {
                 Ok(new + usize::from(store::list(&domain, url.as_str(), kind, bytes)?))
             }
             _ => Ok(new),

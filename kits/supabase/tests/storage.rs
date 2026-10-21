@@ -134,3 +134,16 @@ fn a_storage_error_names_supabase_the_status_message_and_error() {
         "Supabase answered 400: Object not found (not_found)"
     );
 }
+
+#[test]
+fn a_path_out_of_its_bucket_sends_nothing() {
+    let bucket = supabase().storage("avatars");
+    for path in ["../other/x", "users/./x", "users//x", "/x", "x/.."] {
+        let failure = bucket.download(path).unwrap_err();
+        assert!(
+            failure.message.contains("is not an object path"),
+            "{path}: {failure}"
+        );
+    }
+    assert!(test::fetched().is_empty());
+}

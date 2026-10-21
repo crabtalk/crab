@@ -153,6 +153,18 @@ pub(crate) fn read_failed(domain: &str, now: u64, error: &str) -> Result<(), Cal
     Ok(())
 }
 
+/// `domain`'s robots.txt as last read; `None` when it answered 4xx or was
+/// never read.
+pub(crate) fn robots(domain: &str) -> Result<Option<String>, CallError> {
+    Ok(berm_lang::rows::<(Option<String>,)>(
+        "SELECT robots FROM crawl_sites WHERE domain = ?",
+        &(domain,),
+    )?
+    .into_iter()
+    .next()
+    .and_then(|(robots,)| robots))
+}
+
 /// Keep `url`, of `kind`, as listed for `domain`, a site watched, read for
 /// `bytes` of HTML when given. Answers whether it was new.
 pub(crate) fn list(

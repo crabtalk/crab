@@ -17,8 +17,11 @@ pub struct Robots {
 }
 
 impl Robots {
-    /// `text` as read by the crawler whose token is `token`.
-    pub fn parse(text: &str, token: &str) -> Self {
+    /// `text` as read by the crawler whose `User-Agent` is `agent`, its group
+    /// matched by the part of `agent` before the first `/`.
+    pub fn parse(text: &str, agent: &str) -> Self {
+        let token = agent.split('/').next().unwrap_or(agent);
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         let mut robots = Robots::default();
         let (mut named, mut star) = (Vec::new(), Vec::new());
         // The agents of the group being read, and whether its rules began.
@@ -75,10 +78,35 @@ impl Robots {
 /// Whether `pattern`, with `*` for any run and a final `$` for the end,
 /// matches the start of `path`.
 fn matches(pattern: &[u8], path: &[u8]) -> bool {
-    match pattern.split_first() {
-        None => true,
-        Some((b'$', [])) => path.is_empty(),
-        Some((b'*', rest)) => (0..=path.len()).any(|skip| matches(rest, &path[skip..])),
-        Some((&byte, rest)) => path.first() == Some(&byte) && matches(rest, &path[1..]),
+    let (pattern, anchored) = match pattern.strip_suffix(b"$") {
+        Some(pattern) => (pattern, true),
+        None => (pattern, false),
+    };
+    let (mut p, mut s) = (0, 0);
+    // Where to resume after the last `*`: the pattern past it, and the path
+    // position it has taken up to.
+    let mut star = None;
+    loop {
+        match pattern.get(p) {
+            None if !anchored || s == path.len() => return true,
+            Some(b'*') => {
+                p += 1;
+                star = Some((p, s));
+                continue;
+            }
+            Some(&byte) if path.get(s) == Some(&byte) => {
+                p += 1;
+                s += 1;
+                continue;
+            }
+            _ => {}
+        }
+        match star {
+            Some((after, taken)) if taken < path.len() => {
+                star = Some((after, taken + 1));
+                (p, s) = (after, taken + 1);
+            }
+            _ => return false,
+        }
     }
 }

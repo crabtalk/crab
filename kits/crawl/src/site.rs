@@ -54,7 +54,6 @@ pub fn read_all<C: Crawler>(
     domains: &[String],
     budget: usize,
 ) -> Vec<Result<Option<Site>, String>> {
-    let token = C::AGENT.split('/').next().unwrap_or(C::AGENT);
     let timeout = C::SCHEDULE.timeout;
     let mut readings: Vec<Reading<'_>> = domains
         .iter()
@@ -106,7 +105,7 @@ pub fn read_all<C: Crawler>(
         reading.robots = reading
             .text
             .as_deref()
-            .map(|text| Robots::parse(text, token))
+            .map(|text| Robots::parse(text, C::AGENT))
             .unwrap_or_default();
         reading.queue = reading.robots.sitemaps.iter().cloned().collect();
         if reading.queue.is_empty() {

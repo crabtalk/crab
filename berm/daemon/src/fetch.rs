@@ -115,7 +115,7 @@ impl tower::Service<Request> for Fetch {
         };
         Box::pin(async move {
             if request.reach == Reach::Pattern
-                && let Ok(ip) = request.host.trim_matches(['[', ']']).parse::<IpAddr>()
+                && let Ok(ip) = request.host.parse::<IpAddr>()
                 && !public(ip)
             {
                 bail!("{} is not a public address", request.host);
