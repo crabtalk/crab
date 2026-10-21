@@ -14,9 +14,9 @@ const SUBSCRIPTION: &str = "https://api.stripe.com/v1/subscriptions/sub_1";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("stripe", &test::build("crab-stripe", "stripe")?)
+    host.deploy("billing", &test::build("berm-billing", "billing")?)
         .await?;
-    host.grant("stripe", "STRIPE_SECRET_KEY", "api.stripe.com", "rk_test");
+    host.grant("billing", "STRIPE_SECRET_KEY", "api.stripe.com", "rk_test");
     host.arrange(
         "GET",
         PRICES,
@@ -60,8 +60,11 @@ async fn run(
 ) -> Result<Result<Value, String>> {
     let args = args.to_string();
     let ran = match user {
-        Some(user) => host.call_for("stripe", tool, args.as_bytes(), user).await?,
-        None => host.call("stripe", tool, args.as_bytes()).await?,
+        Some(user) => {
+            host.call_for("billing", tool, args.as_bytes(), user)
+                .await?
+        }
+        None => host.call("billing", tool, args.as_bytes()).await?,
     };
     Ok(match ran.result {
         Output::Done(answer) if answer.is_empty() => Ok(Value::Null),
@@ -91,7 +94,11 @@ async fn a_user_is_made_a_customer_on_their_first_checkout_only() -> Result<()> 
         .count();
     assert_eq!(made, 1);
     let rows = host
-        .sql("stripe", "SELECT customer FROM stripe_customers", json!([]))
+        .sql(
+            "billing",
+            "SELECT customer FROM stripe_customers",
+            json!([]),
+        )
         .await?;
     assert_eq!(rows["rows"], json!([["cus_1"]]));
     Ok(())

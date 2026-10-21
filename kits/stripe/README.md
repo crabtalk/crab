@@ -2,7 +2,7 @@
 
 Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan, kept from Stripe's events.
 
-## As a library
+## Using it
 
 Add the kit to your program's crate:
 
@@ -43,14 +43,6 @@ The program declares nothing the kit already declares: `STRIPE_SECRET_KEY`, `api
 - `subscriber.customer()`: the user's Stripe `Customer`, once they have checked out.
 - `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A program has one `#[stripe]` tool, which calls it.
 - `Price::find`, `Customer::create`, `customer.checkout`, `customer.portal` and `Subscription::retrieve` are the Stripe API calls these make.
-
-## As a service
-
-`bin/` is the kit as a service of its own, `stripe`: deploy it under your own account, with your own Stripe keys, and your other services reach it with `berm_lang::call("stripe", …)`. Each call names the end user the product's call carries.
-
-- `checkout(price, success, cancel)`: a Checkout session subscribing the user to the price whose `lookup_key` is `price`. Answers `{url}` to send them to.
-- `portal(back)`: a customer portal session for the user. Answers `{url}`.
-- `plan()`: the user's plan, or `null`.
 
 ## Setting it up
 

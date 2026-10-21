@@ -2,7 +2,7 @@
 
 Sign-in for a product's users: a GitHub or Google login turned into a session the program keeps in its own database, for an account each of the user's identities signs in to.
 
-## As a library
+## Using it
 
 Add the kit to your program's crate:
 
@@ -47,16 +47,6 @@ The program declares nothing the kit already declares: its secrets, the hosts it
 - `Session::end(token)`: signs the session out, answering whether it was signed in.
 
 A session lasts 30 days. Its token is 32 bytes from `berm_lang::random` as 64 hex digits; `auth_sessions` keeps only its sha256. `email` is GitHub's public email, or Google's when it is verified.
-
-## As a service
-
-`bin/` is the kit as a service of its own, `auth`: deploy it under your own account, with its own OAuth clients. A product's site sends the user to GitHub or Google, takes the `code` they come back with, and calls `github` or `google` with it. The token it answers is what the site passes as `session` to the calls after.
-
-- `github(code, redirect)`: signs in with a GitHub authorization code. Answers `{token, expires}`.
-- `google(code, redirect, verifier)`: the same for Google.
-- `link_github(session, code, redirect)` and `link_google(session, code, redirect, verifier)`: add that identity to the session's account. Answers the account.
-- `account(session)`: the session's account, `{id, identities}`.
-- `sign_out(session)`: ends the session. Answers whether it was signed in.
 
 ## Setting it up
 

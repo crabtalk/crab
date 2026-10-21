@@ -1,15 +1,15 @@
-//! Stripe subscriptions as a service: the `crab-stripe` kit's Checkout,
-//! customer portal and plans as tools, and its webhook.
+//! The reference subscriptions service: Stripe Checkout, the customer portal
+//! and each user's plan through `crab-stripe`, and its webhook.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
 extern crate alloc;
 
-#[berm_lang::program(uses = [crab_stripe], readme = "README.md")]
+#[berm_lang::program(uses = [stripe])]
 mod tools {
     use alloc::string::String;
     use berm_lang::Result;
-    use crab_stripe::{Data, Session, Subscriber};
+    use stripe::{Data, Session, Subscriber};
 
     /// Opens a Stripe Checkout session subscribing the calling user to a
     /// plan, and answers the URL to send them to.

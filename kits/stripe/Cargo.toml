@@ -9,16 +9,6 @@ repository.workspace = true
 keywords = ["stripe", "subscriptions", "berm", "wasm", "crabtalk"]
 categories = ["wasm", "web-programming"]
 
-[[bin]]
-name = "stripe"
-path = "bin/main.rs"
-
 [dependencies]
 berm-lang.workspace = true
 
-[dev-dependencies]
-anyhow.workspace = true
-berm-api.workspace = true
-berm-host = { workspace = true, features = ["test"] }
-serde_json = { workspace = true, features = ["std"] }
-tokio.workspace = true

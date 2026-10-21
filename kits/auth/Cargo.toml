@@ -9,17 +9,7 @@ repository.workspace = true
 keywords = ["oauth", "oidc", "berm", "wasm", "crabtalk"]
 categories = ["wasm", "authentication"]
 
-[[bin]]
-name = "auth"
-path = "bin/main.rs"
-
 [dependencies]
 berm-lang.workspace = true
 sha2.workspace = true
 
-[dev-dependencies]
-anyhow.workspace = true
-berm-api.workspace = true
-berm-host = { workspace = true, features = ["test"] }
-serde_json = { workspace = true, features = ["std"] }
-tokio.workspace = true

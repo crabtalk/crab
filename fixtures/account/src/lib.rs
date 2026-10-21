@@ -1,15 +1,15 @@
-//! Sign-in as a service: the `crab-auth` kit's identities and accounts as
-//! tools.
+//! The reference sign-in service: GitHub and Google sign-in through
+//! `crab-auth`, each identity's account and its sessions as tools.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
 extern crate alloc;
 
-#[berm_lang::program(uses = [crab_auth], readme = "README.md")]
+#[berm_lang::program(uses = [auth])]
 mod tools {
     use alloc::string::String;
+    use auth::{Account, Identity, Session};
     use berm_lang::Result;
-    use crab_auth::{Account, Identity, Session};
 
     /// Signs in with a GitHub authorization code, creating the account on the
     /// identity's first sign-in, and answers a session of it.

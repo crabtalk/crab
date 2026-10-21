@@ -1,7 +1,0 @@
-# The service this program deploys as.
-name = "auth"
-# The registry repository Cloud pulls the image from, tagged with the crate's
-# version on each deploy.
-# image = "ghcr.io/<you>/auth"
-# Tools this program may make public.
-public = ["github", "google", "link_github", "link_google", "account", "sign_out"]

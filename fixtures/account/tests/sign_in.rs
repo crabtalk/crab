@@ -13,7 +13,7 @@ const GOOGLE_USER: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(1_700_000_000_000).await?;
-    host.deploy("auth", &test::build("crab-auth", "auth")?)
+    host.deploy("account", &test::build("berm-account", "account")?)
         .await?;
     for (secret, to) in [
         ("GITHUB_CLIENT_ID", "github.com"),
@@ -21,7 +21,7 @@ async fn deployed() -> Result<TestHost> {
         ("GOOGLE_CLIENT_ID", "oauth2.googleapis.com"),
         ("GOOGLE_CLIENT_SECRET", "oauth2.googleapis.com"),
     ] {
-        host.grant("auth", secret, to, &secret.to_lowercase());
+        host.grant("account", secret, to, &secret.to_lowercase());
     }
     Ok(host)
 }
@@ -51,7 +51,7 @@ fn google(host: &TestHost, sub: &str, verified: bool) {
 /// What `tool` answered, read as JSON.
 async fn done(host: &TestHost, tool: &str, args: Value) -> Result<Value> {
     match host
-        .call("auth", tool, args.to_string().as_bytes())
+        .call("account", tool, args.to_string().as_bytes())
         .await?
         .result
     {
@@ -62,7 +62,7 @@ async fn done(host: &TestHost, tool: &str, args: Value) -> Result<Value> {
 
 async fn failed(host: &TestHost, tool: &str, args: Value) -> Result<String> {
     match host
-        .call("auth", tool, args.to_string().as_bytes())
+        .call("account", tool, args.to_string().as_bytes())
         .await?
         .result
     {
