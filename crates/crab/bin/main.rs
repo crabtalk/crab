@@ -232,7 +232,7 @@ enum SecretCommand {
 
 #[derive(Subcommand)]
 enum BillingCommand {
-    /// Subscribe to a plan, in Stripe Checkout.
+    /// Subscribe to a plan, in Stripe Checkout; from a trial, at once.
     Plan { slug: String },
     /// Start the free trial, in Stripe Checkout.
     Trial,

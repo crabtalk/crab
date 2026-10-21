@@ -162,6 +162,14 @@ pub struct CheckoutResponse {
     pub url: String,
 }
 
+/// A plan subscribed: the Checkout URL to pay at, or `None` when the plan
+/// took effect at once, a trial ended and billed to the card on file.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscribeResponse {
+    pub url: Option<String>,
+}
+
 /// An account's credit, in USD micros. All of it was bought; it never
 /// expires.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

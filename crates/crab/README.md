@@ -67,7 +67,7 @@ crab login                     # --github for GitHub
 crab status
 crab usage                     # the account's services and its plan this period
 crab billing                   # plan, credit, refill, card
-crab billing plan pro          # plan, trial, credit and portal open Stripe
+crab billing plan pro          # plan, trial, credit and portal open Stripe; plan from a trial ends it at once
 crab key create ci --days 90
 crab app ls
 crab org create acme

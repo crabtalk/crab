@@ -6,7 +6,7 @@ use crate::{
         auth::Client as Surface,
         billing::{
             CheckoutResponse, Credit, Invoice, PaymentMethod, Period, PortalFlow, PortalResponse,
-            RefillRequest,
+            RefillRequest, SubscribeResponse,
         },
     },
     client::{Client, Error},
@@ -43,8 +43,8 @@ impl Client {
         self.json(req).await
     }
 
-    /// A Checkout URL subscribing to `plan`.
-    pub async fn checkout(&self, plan: &str, surface: Surface) -> Result<CheckoutResponse, Error> {
+    /// Subscribe to `plan`: a Checkout URL, or none when a trial ended into it.
+    pub async fn checkout(&self, plan: &str, surface: Surface) -> Result<SubscribeResponse, Error> {
         let path = format!("{}/billing/checkout", self.account()?.api());
         let req = self
             .at(Method::POST, &path)
