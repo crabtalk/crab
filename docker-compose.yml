@@ -1,0 +1,13 @@
+services:
+  berm:
+    build:
+      context: .
+      dockerfile: berm/daemon/Dockerfile
+    # Loopback only: the service carries no authorization.
+    ports:
+      - "127.0.0.1:7777:7777"
+    volumes:
+      - berm:/data
+
+volumes:
+  berm:

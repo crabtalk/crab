@@ -5,6 +5,8 @@
 //! agents reach sits on the same server at `/mcp`.
 
 use crate::Service;
+#[cfg(feature = "dashboard")]
+use crate::dashboard;
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -42,11 +44,14 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route_layer(middleware::from_fn(named));
 
-    Router::new()
+    let router = Router::new()
         .route("/programs", get(list))
         .with_state(service)
         .nest("/programs/{name}", program)
-        .route_service("/mcp", mcp)
+        .route_service("/mcp", mcp);
+    #[cfg(feature = "dashboard")]
+    let router = router.fallback(get(dashboard::serve));
+    router
 }
 
 /// The program a request names.

@@ -23,6 +23,27 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 
 The service carries no authorization and binds loopback by default.
 
+## Dashboard
+
+Built from this repository with the `dashboard` feature, bermd serves a development dashboard at `/`: the deployed programs, a form to call each tool, its calls, logs, crons, wakes, usage and meters, and a deploy.
+
+```sh
+(cd dashboard && bun install && bun run build)
+cargo run -p bermd --features dashboard
+```
+
+The feature is off by default.
+
+## Docker
+
+`docker-compose.yml` at the repository root builds the image from the checkout and runs bermd with the dashboard on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
+
+```sh
+docker compose up --build
+```
+
+Inside the container bermd listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes bermd its other flags: `--proxy`, `--max-call-depth`, `--max-instructions`, `--max-call-seconds`.
+
 ## Deploying
 
 ```sh

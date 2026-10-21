@@ -17,6 +17,8 @@ pub use peers::Alone;
 pub use secrets::Grants;
 
 mod api;
+#[cfg(feature = "dashboard")]
+mod dashboard;
 mod env;
 mod fetch;
 mod images;
