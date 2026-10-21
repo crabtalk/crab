@@ -40,7 +40,7 @@
 			deployed = await api.deploy(name, file, { public: tools, crons, force });
 			await load();
 		} catch (e) {
-			refused = `${e.status}: ${e.message}`;
+			refused = e.message;
 		} finally {
 			deploying = false;
 		}

@@ -1,6 +1,6 @@
 //! Objects in one Supabase Storage bucket.
 
-use crate::send;
+use crate::request;
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::{Result, http};
 
@@ -20,7 +20,7 @@ impl Bucket {
     /// already at `path` is replaced; without, it fails the upload.
     pub fn upload(&self, path: &str, content_type: &str, body: &[u8], upsert: bool) -> Result<()> {
         let upsert = if upsert { "true" } else { "false" };
-        send(
+        request::send(
             "POST",
             &self.object(path)?,
             &[("Content-Type", content_type), ("x-upsert", upsert)],
@@ -31,12 +31,12 @@ impl Bucket {
 
     /// The bytes of the object at `path`.
     pub fn download(&self, path: &str) -> Result<Vec<u8>> {
-        send("GET", &self.object(path)?, &[], &[])
+        request::send("GET", &self.object(path)?, &[], &[])
     }
 
     /// Deletes the object at `path`.
     pub fn delete(&self, path: &str) -> Result<()> {
-        send("DELETE", &self.object(path)?, &[], &[])?;
+        request::send("DELETE", &self.object(path)?, &[], &[])?;
         Ok(())
     }
 

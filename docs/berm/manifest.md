@@ -73,18 +73,9 @@ manifest carries them as
 `database` names a directory of migrations, read at compile time, and adds
 `berm.sql` to the syscalls.
 
-`berm.http.fetch` holds a program to them: a host it does not declare, or a
-secret it does not declare, is refused before anything is sent.
+`berm.http.fetch` holds a program to them: a host it does not declare, or a secret it does not declare, is refused before anything is sent. `berm.http.proxy` does the same for the hosts declared under it, and sends through the host's proxy. `berm.call` reaches the program itself and the programs it declares, and refuses any other name. A declared secret is substituted by the host with the value it granted the program, and the guest never holds it. These are runtime and resolved wherever the image lands: nothing here is fetched, installed, or compiled in, which is what separates them from the crate's own `[dependencies]`.
 
 A declared host is a name, matched whole; `*.example.com`, which matches every subdomain of `example.com` and not `example.com` itself; or `*`, which matches every host. Matching ignores ASCII case. The embedder is handed each request with how its host was declared, by name or only through a pattern; bermd refuses a host reached only through a pattern when it is, or resolves only to, an address that is not public (loopback, private, link-local, shared, documentation, multicast).
-`berm.http.proxy` does the same for the hosts declared under it, and sends
-through the host's proxy. `berm.call`
-reaches the program itself and the programs it declares, and refuses any other
-name. A declared secret is substituted by the host with the value it granted the
-program, and the guest never holds it. These are runtime
-and resolved wherever the image lands: nothing here is fetched, installed, or
-compiled in, which is what separates them from the crate's own
-`[dependencies]`.
 
 Declared by the author rather than found by reading the image, because a target
 the program computes at the call is invisible to any scan — a list built that

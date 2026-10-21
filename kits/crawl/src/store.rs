@@ -3,7 +3,7 @@
 
 use crate::{page::Fetched, site::Site};
 use alloc::{string::String, vec::Vec};
-use berm_lang::{CallError, Schema};
+use berm_lang::{CallError, Schema, serde::Deserialize};
 use url::Url;
 
 /// A watched site as last read.
@@ -51,6 +51,8 @@ pub struct Page {
 }
 
 /// A page due to be fetched, with the validators it last answered with.
+#[derive(Deserialize)]
+#[serde(crate = "berm_lang::serde")]
 pub struct Due {
     pub url: String,
     pub domain: String,
@@ -62,28 +64,26 @@ pub struct Due {
     pub bytes: Option<usize>,
 }
 
-/// Watch `domain`, read before the sites not `first` when `first`. Answers
-/// whether it was new.
-pub(crate) fn watch(domain: &str, first: bool) -> Result<bool, CallError> {
-    let known =
-        berm_lang::rows::<(u8,)>("SELECT first FROM crawl_sites WHERE domain = ?", &(domain,))?;
-    match known.first() {
-        Some((was,)) if !first || *was == 1 => Ok(false),
-        Some(_) => {
-            berm_lang::rows::<()>(
-                "UPDATE crawl_sites SET first = 1 WHERE domain = ?",
-                &(domain,),
-            )?;
-            Ok(false)
-        }
-        None => {
-            berm_lang::rows::<()>(
-                "INSERT INTO crawl_sites (domain, first) VALUES (?, ?)",
-                &(domain, u8::from(first)),
-            )?;
-            Ok(true)
-        }
+/// Watch `domains`, each lowercased, read before the sites not `first` when
+/// `first`. Answers how many were new.
+pub(crate) fn watch(domains: &[String], first: bool) -> Result<usize, CallError> {
+    let domains: Vec<String> = domains
+        .iter()
+        .map(|domain| domain.to_ascii_lowercase())
+        .collect();
+    let new = berm_lang::rows::<(u8,)>(
+        "INSERT INTO crawl_sites (domain, first) SELECT value, ?2 FROM json_each(?1) WHERE true
+         ON CONFLICT (domain) DO NOTHING RETURNING 1",
+        &(&domains, u8::from(first)),
+    )?
+    .len();
+    if first {
+        berm_lang::rows::<()>(
+            "UPDATE crawl_sites SET first = 1 WHERE domain IN (SELECT value FROM json_each(?))",
+            &(&domains,),
+        )?;
     }
+    Ok(new)
 }
 
 /// Up to `limit` sites never read or last read at `before` or earlier, with
@@ -112,28 +112,33 @@ pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallErr
     berm_lang::rows::<()>(
         "UPDATE crawl_sites SET robots = ?, signal = ?, read = ?, failures = 0, error = NULL
           WHERE domain = ?",
-        &(&site.robots, &site.signal, now, domain),
+        &(&site.robots, &site.rules.signal, now, domain),
     )?;
     berm_lang::rows::<()>(
         "DELETE FROM crawl_urls WHERE domain = ? AND listed = 0",
         &(domain,),
     )?;
-    for (url, kind, lastmod) in &site.urls {
-        berm_lang::rows::<()>(
-            "INSERT INTO crawl_urls (url, domain, kind, lastmod) VALUES (?, ?, ?, ?)
-             ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod",
-            &(url, domain, kind, lastmod),
-        )?;
-    }
-    let listed = berm_lang::rows::<(String,)>(
+    berm_lang::rows::<()>(
+        "INSERT INTO crawl_urls (url, domain, kind, lastmod)
+         SELECT value ->> 0, ?1, value ->> 1, value ->> 2 FROM json_each(?2) WHERE true
+         ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod",
+        &(domain, &site.urls),
+    )?;
+    let disallowed: Vec<String> = berm_lang::rows::<(String,)>(
         "SELECT url FROM crawl_urls WHERE domain = ? AND listed = 1",
         &(domain,),
+    )?
+    .into_iter()
+    .filter_map(|(url,)| {
+        Url::parse(&url)
+            .is_ok_and(|parsed| !site.rules.allows(&parsed))
+            .then_some(url)
+    })
+    .collect();
+    berm_lang::rows::<()>(
+        "DELETE FROM crawl_urls WHERE url IN (SELECT value FROM json_each(?))",
+        &(&disallowed,),
     )?;
-    for (url,) in listed {
-        if Url::parse(&url).is_ok_and(|parsed| !site.rules.allows(&parsed)) {
-            berm_lang::rows::<()>("DELETE FROM crawl_urls WHERE url = ?", &(&url,))?;
-        }
-    }
     let urls: usize = site
         .urls
         .iter()
@@ -165,21 +170,27 @@ pub(crate) fn robots(domain: &str) -> Result<Option<String>, CallError> {
     .and_then(|(robots,)| robots))
 }
 
-/// Keep `url`, of `kind`, as listed for `domain`, a site watched, read for
-/// `bytes` of HTML when given. Answers whether it was new.
+/// Keep each of `urls`, a URL and its kind, as listed for `domain`, a site
+/// watched, read for `bytes` of HTML when given. Answers how many were new.
 pub(crate) fn list(
     domain: &str,
-    url: &str,
-    kind: &str,
+    urls: &[(String, &str)],
     bytes: Option<usize>,
-) -> Result<bool, CallError> {
-    let known = berm_lang::rows::<(u8,)>("SELECT listed FROM crawl_urls WHERE url = ?", &(url,))?;
+) -> Result<usize, CallError> {
+    let bytes = bytes.map(|bytes| bytes as u64);
+    let new = berm_lang::rows::<(u8,)>(
+        "INSERT INTO crawl_urls (url, domain, kind, listed, bytes)
+         SELECT value ->> 0, ?1, value ->> 1, 1, ?3 FROM json_each(?2) WHERE true
+         ON CONFLICT (url) DO NOTHING RETURNING 1",
+        &(domain, urls, bytes),
+    )?
+    .len();
     berm_lang::rows::<()>(
-        "INSERT INTO crawl_urls (url, domain, kind, listed, bytes) VALUES (?, ?, ?, 1, ?)
-         ON CONFLICT (url) DO UPDATE SET listed = 1, bytes = excluded.bytes",
-        &(url, domain, kind, bytes.map(|bytes| bytes as u64)),
+        "UPDATE crawl_urls SET listed = 1, bytes = ?1
+          WHERE url IN (SELECT value ->> 0 FROM json_each(?2))",
+        &(bytes, urls),
     )?;
-    Ok(known.is_empty())
+    Ok(new)
 }
 
 /// Up to `limit` pages due on sites read, those of sites watched first before
@@ -187,15 +198,7 @@ pub(crate) fn list(
 /// fetched, their URL's `lastmod` changed since, or with no `lastmod` and last
 /// fetched at `before` or earlier.
 pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError> {
-    Ok(berm_lang::rows::<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<u64>,
-    )>(
+    berm_lang::rows::<Due>(
         "SELECT u.url, u.domain, u.kind, u.lastmod, p.etag, p.modified, u.bytes
            FROM crawl_urls u JOIN crawl_sites s ON s.domain = u.domain
                 LEFT JOIN crawl_pages p ON p.url = u.url
@@ -208,18 +211,7 @@ pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError
                    p.fetched NULLS FIRST
           LIMIT ?",
         &(before, limit as u64),
-    )?
-    .into_iter()
-    .map(|(url, domain, kind, lastmod, etag, modified, bytes)| Due {
-        url,
-        domain,
-        kind,
-        lastmod,
-        etag,
-        modified,
-        bytes: bytes.map(|bytes| bytes as usize),
-    })
-    .collect())
+    )
 }
 
 /// Store what fetching `due` at `now` found. Answers the bytes written.
@@ -276,101 +268,39 @@ pub(crate) fn fetched(due: &Due, now: u64, fetched: &Fetched) -> Result<usize, C
 
 /// The site `domain` as last read, when it is watched.
 pub fn site(domain: &str) -> Result<Option<Watched>, CallError> {
-    Ok(berm_lang::rows::<(
-        String,
-        Option<String>,
-        Option<String>,
-        u64,
-        u64,
-        Option<String>,
-        u64,
-    )>(
+    Ok(berm_lang::rows::<Watched>(
         "SELECT domain, robots, signal, read, failures, error, failed FROM crawl_sites
-              WHERE domain = ?",
+          WHERE domain = ?",
         &(domain,),
     )?
-    .pop()
-    .map(
-        |(domain, robots, signal, read, failures, error, failed)| Watched {
-            domain,
-            robots,
-            signal,
-            read,
-            failures,
-            error,
-            failed,
-        },
-    ))
+    .pop())
 }
 
 /// Up to `limit` sites whose last read failed at `since` or later, most
 /// recently failed first.
 pub fn failed(since: u64, limit: usize) -> Result<Vec<Watched>, CallError> {
-    Ok(berm_lang::rows::<(
-        String,
-        Option<String>,
-        Option<String>,
-        u64,
-        u64,
-        Option<String>,
-        u64,
-    )>(
+    berm_lang::rows::<Watched>(
         "SELECT domain, robots, signal, read, failures, error, failed FROM crawl_sites
           WHERE failures > 0 AND failed >= ? ORDER BY failed DESC LIMIT ?",
         &(since, limit as u64),
-    )?
-    .into_iter()
-    .map(
-        |(domain, robots, signal, read, failures, error, failed)| Watched {
-            domain,
-            robots,
-            signal,
-            read,
-            failures,
-            error,
-            failed,
-        },
     )
-    .collect())
 }
 
 /// The URLs `domain`'s sitemaps list, of `kind` when given, in URL order.
 pub fn urls(domain: &str, kind: Option<&str>) -> Result<Vec<Listed>, CallError> {
-    Ok(berm_lang::rows::<(String, String, Option<String>)>(
+    berm_lang::rows::<Listed>(
         "SELECT url, kind, lastmod FROM crawl_urls
           WHERE domain = ? AND (? IS NULL OR kind = ?) ORDER BY url",
         &(domain, kind, kind),
-    )?
-    .into_iter()
-    .map(|(url, kind, lastmod)| Listed { url, kind, lastmod })
-    .collect())
+    )
 }
 
 /// The page at `url` as last fetched.
 pub fn page(url: &str) -> Result<Option<Page>, CallError> {
-    Ok(berm_lang::rows::<(
-        String,
-        u16,
-        u64,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )>(
+    Ok(berm_lang::rows::<Page>(
         "SELECT url, status, fetched, title, description, text, error FROM crawl_pages
           WHERE url = ?",
         &(url,),
     )?
-    .pop()
-    .map(
-        |(url, status, fetched, title, description, text, error)| Page {
-            url,
-            status,
-            fetched,
-            title,
-            description,
-            text,
-            error,
-        },
-    ))
+    .pop())
 }

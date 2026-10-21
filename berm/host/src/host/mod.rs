@@ -31,13 +31,17 @@ use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     ops::Deref,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc, Weak,
         atomic::{AtomicI32, Ordering},
     },
+    time::Duration,
 };
-use tokio::sync::{Notify, RwLock, Semaphore};
+use tokio::{
+    sync::{self, Notify, RwLock, Semaphore},
+    task, time,
+};
 
 pub(crate) use invoke::Invoked;
 
@@ -86,12 +90,10 @@ pub struct Inner<E: Env> {
     /// Held to write what is pending, and shared to read it beside what is
     /// written.
     pub(crate) flushing: RwLock<()>,
-    /// Where the databases of the services that keep one live.
-    pub(crate) databases_dir: PathBuf,
     /// The last day stored bytes were sampled, in days since the Unix epoch.
     sampled: AtomicI32,
     /// The databases of the services that keep one.
-    pub(crate) databases: Arc<Databases>,
+    pub databases: Arc<Databases>,
     /// Where a chain's changes are committed.
     pub(crate) commits: Commits,
     /// Where the services this host does not run live.
@@ -109,7 +111,7 @@ pub struct Inner<E: Env> {
     /// Each tool's budget its owner set.
     pub(crate) terms: Terms,
     /// Held by a deploy of the service keyed by its key.
-    deploying: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    deploying: Mutex<HashMap<String, Arc<sync::Mutex<()>>>>,
     /// [`Edges::clock`].
     pub(crate) now: Now,
 }
@@ -194,7 +196,6 @@ impl<E: Env> Host<E> {
                 logs: logs::Pending::new(now.clone()),
                 meters: Pending::new(now.clone()),
                 flushing: RwLock::default(),
-                databases_dir: config.databases.clone(),
                 sampled: AtomicI32::default(),
                 databases,
                 commits,
@@ -221,7 +222,7 @@ impl<E: Env> Host<E> {
         let flushing = self.clone();
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(FLUSH).await;
+                time::sleep(FLUSH).await;
                 if let Err(e) = flushing.flush().await {
                     tracing::error!("writing service usage failed: {e:#}");
                 }
@@ -302,7 +303,7 @@ impl<E: Env> Host<E> {
                 meter::sample(
                     &self.store,
                     &program.name,
-                    &self.databases_dir.join(&*program.name),
+                    &self.databases,
                     program.bytes(),
                     today,
                 )
@@ -319,11 +320,6 @@ impl<E: Env> Host<E> {
             ran: self.calls.unsaved(service),
             emitted: self.logs.unsaved(service),
         }
-    }
-
-    /// Where `service`'s database file is.
-    pub fn database(&self, service: &str) -> PathBuf {
-        self.databases.path(service)
     }
 
     /// The program `service` runs.
@@ -370,7 +366,7 @@ impl<E: Env> Host<E> {
     /// Compile an image into the runtime, off the async workers.
     async fn compile(&self, key: String, image: Vec<u8>) -> Result<Arc<Program>> {
         let berm = self.berm.clone();
-        tokio::task::spawn_blocking(move || berm.deploy(&key, &image))
+        task::spawn_blocking(move || berm.deploy(&key, &image))
             .await
             .context("compilation panicked")?
     }
@@ -387,7 +383,7 @@ pub(crate) fn keeps(program: &Program) -> bool {
 }
 
 /// How often counted uses are written.
-const FLUSH: std::time::Duration = std::time::Duration::from_secs(60);
+const FLUSH: Duration = Duration::from_secs(60);
 
 /// The service named `name` in `scope`.
 pub(crate) fn join(scope: &str, name: &str) -> String {

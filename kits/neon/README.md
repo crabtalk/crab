@@ -9,7 +9,7 @@ Neon's SQL over HTTP for berm programs: parameterized statements and transaction
 crab-neon = "0.1"
 ```
 
-The kit declares the secret `NEON_PASSWORD`. The endpoint's host differs per Neon project, so the program declares it under `berm.http.fetch`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
+The kit declares the secret `NEON_PASSWORD`. The kit declares no host; the program declares its project's endpoint under `berm.http.fetch`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
 
 ```rust,ignore
 #[berm_lang::program(

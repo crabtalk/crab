@@ -4,9 +4,9 @@
 //! a UI, a CLI and `curl`, and a program is a resource. The MCP endpoint that
 //! agents reach sits on the same server at `/mcp`.
 
-use crate::Service;
 #[cfg(feature = "dashboard")]
 use crate::dashboard;
+use crate::{Service, mcp::Mcp};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -31,7 +31,7 @@ pub fn router(service: Arc<Service>) -> Router {
     let mcp = StreamableHttpService::new(
         {
             let service = service.clone();
-            move || Ok(crate::mcp::Mcp::new(service.clone()))
+            move || Ok(Mcp::new(service.clone()))
         },
         Arc::new(LocalSessionManager::default()),
         Default::default(),
@@ -101,12 +101,8 @@ struct Confirmed {
     #[serde(default)]
     force: bool,
     crons: Option<String>,
-    #[serde(default = "database_size")]
+    #[serde(default = "host::database_size")]
     size: u64,
-}
-
-fn database_size() -> u64 {
-    host::DATABASE_SIZE
 }
 
 /// Deploy the image in the body under `name`. `PUT` because the name is the

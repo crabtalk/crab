@@ -1,7 +1,7 @@
 //! GETs over `berm.http.fetch_all`, sent a batch at a time, following
 //! redirects within a site.
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use berm_lang::http::{self, Request, Response};
 use url::Url;
 
@@ -35,7 +35,7 @@ pub fn get_all(gets: &[Get<'_>], agent: &str, timeout: u64) -> Vec<Result<Respon
         let sent: Vec<Vec<(&str, &str)>> = pending
             .iter()
             .map(|&at| {
-                let mut sent = alloc::vec![("User-Agent", agent)];
+                let mut sent = vec![("User-Agent", agent)];
                 sent.extend_from_slice(&gets[at].headers);
                 sent
             })
@@ -74,7 +74,7 @@ pub fn get_all(gets: &[Get<'_>], agent: &str, timeout: u64) -> Vec<Result<Respon
                 answers[at] = Some(Ok(response));
                 continue;
             }
-            let Some(location) = header(&response, "location") else {
+            let Some(location) = response.header("location") else {
                 answers[at] = Some(Err(format!("{url}: redirect with no Location")));
                 continue;
             };
@@ -102,13 +102,4 @@ pub fn get_all(gets: &[Get<'_>], agent: &str, timeout: u64) -> Vec<Result<Respon
             answer.unwrap_or_else(|| Err(format!("{url}: more than {REDIRECTS} redirects")))
         })
         .collect()
-}
-
-/// The value of `response`'s header `name`, ASCII case ignored.
-pub fn header<'a>(response: &'a Response, name: &str) -> Option<&'a str> {
-    response
-        .headers
-        .iter()
-        .find(|(key, _)| key.eq_ignore_ascii_case(name))
-        .map(|(_, value)| value.as_str())
 }

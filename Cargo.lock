@@ -323,6 +323,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "berm-lang",
+ "hex",
  "serde_json",
  "tokio",
 ]
@@ -757,6 +758,7 @@ name = "crab-auth"
 version = "0.1.0"
 dependencies = [
  "berm-lang",
+ "hex",
  "sha2 0.11.0",
 ]
 

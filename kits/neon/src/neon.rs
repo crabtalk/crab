@@ -119,9 +119,9 @@ impl Neon {
             ],
             &body,
         )?;
-        if !(200..300).contains(&response.status) {
+        if !response.is_success() {
             let status = response.status;
-            let message = match serde_json::from_slice::<Failure>(&response.body) {
+            let message = match response.json::<Failure>() {
                 Ok(Failure {
                     message,
                     code: Some(code),
@@ -131,7 +131,8 @@ impl Neon {
             };
             return Err(format!("Neon answered {status}: {message}").into());
         }
-        serde_json::from_slice(&response.body)
+        response
+            .json()
             .map_err(|error| format!("Neon answered what this kit cannot read: {error}").into())
     }
 }

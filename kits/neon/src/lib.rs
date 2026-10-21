@@ -1,9 +1,9 @@
 //! Neon's SQL over HTTP, through `berm.http.fetch`, with the password in the
 //! secret `NEON_PASSWORD`.
 //!
-//! The endpoint's host differs per Neon project, so a program using this kit
-//! declares it under `berm.http.fetch` itself: `api.` and the connection
-//! string's host after its first label.
+//! The kit declares no host. A program using it declares its project's
+//! endpoint under `berm.http.fetch`: `api.` and the connection string's host
+//! after its first label.
 
 #![no_std]
 

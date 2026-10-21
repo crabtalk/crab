@@ -134,13 +134,15 @@ impl Deps {
         if declared.iter().any(|item| item.eq_ignore_ascii_case(host)) {
             return Some(Reach::Named);
         }
-        let host = host.to_ascii_lowercase();
         declared
             .iter()
             .any(|item| match item.strip_prefix("*") {
                 Some("") => true,
                 Some(suffix) => {
-                    suffix.starts_with('.') && host.ends_with(&suffix.to_ascii_lowercase())
+                    suffix.starts_with('.')
+                        && host.len().checked_sub(suffix.len()).is_some_and(|at| {
+                            host.as_bytes()[at..].eq_ignore_ascii_case(suffix.as_bytes())
+                        })
                 }
                 None => false,
             })

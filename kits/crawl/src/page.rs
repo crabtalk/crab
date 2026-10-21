@@ -5,7 +5,7 @@ use crate::{
     fetch::{self, Get},
     store::Due,
 };
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use berm_lang::http::Response;
 use url::Url;
 
@@ -22,8 +22,8 @@ pub enum Fetched {
         modified: Option<String>,
         title: Option<String>,
         description: Option<String>,
-        /// Up to 64 KiB of its text; `None` when it holds no text or names
-        /// a `Content-Type` other than HTML.
+        /// Its text, cut at [`TEXT`] bytes; `None` when it holds no text or
+        /// names a `Content-Type` other than HTML.
         text: Option<String>,
         /// The HTML read of it, when it answered `200` with HTML.
         html: Option<String>,
@@ -41,7 +41,7 @@ pub fn fetch_all<C: Crawler>(dues: &[(Due, usize)]) -> Vec<Fetched> {
     for (due, limit) in dues {
         match Url::parse(&due.url) {
             Ok(url) => {
-                let mut headers = alloc::vec![("Accept", "text/html")];
+                let mut headers = vec![("Accept", "text/html")];
                 if let Some(etag) = &due.etag {
                     headers.push(("If-None-Match", etag.as_str()));
                 }
@@ -79,9 +79,10 @@ fn read(answer: Response) -> Fetched {
     if status == 304 {
         return Fetched::Unchanged;
     }
-    let etag = fetch::header(&answer, "etag").map(String::from);
-    let modified = fetch::header(&answer, "last-modified").map(String::from);
-    let is_html = fetch::header(&answer, "content-type")
+    let etag = answer.header("etag").map(String::from);
+    let modified = answer.header("last-modified").map(String::from);
+    let is_html = answer
+        .header("content-type")
         .is_none_or(|kind| kind.to_ascii_lowercase().contains("html"));
     if status != 200 || !is_html {
         return Fetched::Answered {
@@ -94,7 +95,8 @@ fn read(answer: Response) -> Fetched {
             html: None,
         };
     }
-    let page = String::from_utf8_lossy(&answer.body).into_owned();
+    let page = String::from_utf8(answer.body)
+        .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned());
     let mut text = html::text(&page);
     text.truncate(text.floor_char_boundary(TEXT));
     Fetched::Answered {

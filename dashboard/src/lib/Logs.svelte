@@ -1,53 +1,44 @@
 <script>
+	import { untrack } from 'svelte';
 	import * as api from '$lib/api.js';
 	import { time } from '$lib/format.js';
+	import { Paged } from '$lib/paged.svelte.js';
 
 	/** `call` limits the logs to those emitted in one call. */
 	let { program, call = null } = $props();
 
 	let topic = $state('');
-	let items = $state([]);
-	let next = $state(null);
-	let error = $state('');
+	const logs = new Paged((query) => api.logs(program, query));
 
+	/** Reads `topic` untracked: a topic applies on submit, not as it is typed. */
 	function filters() {
 		const query = new URLSearchParams();
-		if (topic) query.set('topic', topic);
+		const words = untrack(() => topic);
+		if (words) query.set('topic', words);
 		if (call !== null) query.set('call', call);
 		return query.toString();
 	}
 
-	async function load(query, more) {
-		try {
-			const page = await api.logs(program, query);
-			items = more ? [...items, ...page.items] : page.items;
-			next = page.next;
-			error = '';
-		} catch (e) {
-			error = e.message;
-		}
-	}
-
 	$effect(() => {
-		load(filters(), false);
+		logs.load(filters());
 	});
 </script>
 
 {#if call === null}
-	<div class="row">
+	<form class="row" onsubmit={(event) => (event.preventDefault(), logs.load(filters()))}>
 		<label>Topic <input bind:value={topic} placeholder="any" /></label>
-		<button class="ghost" onclick={() => load(filters(), false)}>Refresh</button>
-	</div>
+		<button class="ghost">Refresh</button>
+	</form>
 {/if}
 
-{#if error}<p class="error">{error}</p>{/if}
+{#if logs.error}<p class="error">{logs.error}</p>{/if}
 
 <table>
 	<thead>
 		<tr><th class="num">Seq</th><th>At</th><th class="num">Call</th><th>Topics</th><th>Data</th></tr>
 	</thead>
 	<tbody>
-		{#each items as log (log.seq)}
+		{#each logs.items as log (log.seq)}
 			<tr>
 				<td class="num">{log.seq}</td>
 				<td>{time(log.at)}</td>
@@ -61,6 +52,6 @@
 	</tbody>
 </table>
 
-{#if next}
-	<p><button class="ghost" onclick={() => load(next, true)}>Newer</button></p>
+{#if logs.next}
+	<p><button class="ghost" onclick={() => logs.load(logs.next, true)}>Newer</button></p>
 {/if}

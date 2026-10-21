@@ -30,7 +30,7 @@
 			);
 			onchange?.();
 		} catch (e) {
-			refused = e.status ? `${e.status}: ${e.message}` : e.message;
+			refused = e.message;
 		} finally {
 			running = false;
 		}
@@ -45,7 +45,7 @@
 			});
 			onchange?.();
 		} catch (e) {
-			refused = `${e.status}: ${e.message}`;
+			refused = e.message;
 		}
 	}
 

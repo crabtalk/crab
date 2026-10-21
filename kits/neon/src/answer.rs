@@ -75,10 +75,7 @@ impl Field {
         };
         let unreadable = || format!("Neon answered an unreadable `{}`: {text}", self.name);
         Ok(match self.data_type {
-            BOOL => Value::Bool(matches!(
-                text,
-                "TRUE" | "t" | "true" | "y" | "yes" | "on" | "1"
-            )),
+            BOOL => Value::Bool(text == "t"),
             INT2 | INT4 | INT8 | OID => Value::from(text.parse::<i64>().map_err(|_| unreadable())?),
             FLOAT4 | FLOAT8 => {
                 let float = text.parse::<f64>().map_err(|_| unreadable())?;

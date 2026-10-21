@@ -4,6 +4,7 @@
 use crate::Post;
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::http;
+use core::str;
 use lake::{
     Feed, Kind, Listed, Schedule, Source, State, Watch,
     rss::{self, Entry},
@@ -37,8 +38,8 @@ impl Source for Rss {
         if response.status != 200 {
             return Err(format!("{} answered {}", feed.key, response.status));
         }
-        let xml = core::str::from_utf8(&response.body)
-            .map_err(|_| format!("{} is not UTF-8", feed.key))?;
+        let xml =
+            str::from_utf8(&response.body).map_err(|_| format!("{} is not UTF-8", feed.key))?;
         Ok(rss::entries(xml)?
             .into_iter()
             .map(|entry| Listed {

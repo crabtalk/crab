@@ -5,13 +5,19 @@ use berm::{
     Reach,
     syscall::http::{Request, Response},
 };
-use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+use reqwest::{
+    Client, ClientBuilder, Method, Proxy,
+    dns::{Addrs, Name, Resolve, Resolving},
+    redirect,
+};
 use std::{
     future::Future,
     net::{IpAddr, Ipv4Addr},
     pin::Pin,
     task::{self, Poll},
 };
+use tokio::net;
+use tower::Service;
 
 /// The largest body a response may carry. The guest reads it into its own
 /// heap.
@@ -24,29 +30,31 @@ const MAX_BODY: usize = 16 << 20;
 /// proxy resolves the name, and only an address written in the URL is checked.
 #[derive(Clone)]
 pub struct Fetch {
-    named: reqwest::Client,
-    pattern: reqwest::Client,
+    named: Client,
+    pattern: Client,
 }
 
 impl Fetch {
     /// Through `proxy` when given, with no idle connection kept, so a rotating
     /// proxy gives each request a fresh exit.
     pub fn new(proxy: Option<&str>) -> Result<Self> {
-        let client = |resolve: Option<Public>| -> Result<reqwest::Client> {
-            let mut client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
-            if let Some(proxy) = proxy {
-                client = client
-                    .proxy(reqwest::Proxy::all(proxy).context("the proxy URL is not one")?)
-                    .pool_max_idle_per_host(0);
-            }
-            if let (None, Some(resolve)) = (proxy, resolve) {
-                client = client.dns_resolver(resolve);
-            }
-            client.build().context("failed to build the HTTP client")
+        let builder = || Client::builder().redirect(redirect::Policy::none());
+        let build =
+            |builder: ClientBuilder| builder.build().context("failed to build the HTTP client");
+        let Some(proxy) = proxy else {
+            return Ok(Self {
+                named: build(builder())?,
+                pattern: build(builder().dns_resolver(Public))?,
+            });
         };
+        let client = build(
+            builder()
+                .proxy(Proxy::all(proxy).context("the proxy URL is not one")?)
+                .pool_max_idle_per_host(0),
+        )?;
         Ok(Self {
-            named: client(None)?,
-            pattern: client(Some(Public))?,
+            named: client.clone(),
+            pattern: client,
         })
     }
 }
@@ -58,7 +66,7 @@ impl Resolve for Public {
     fn resolve(&self, name: Name) -> Resolving {
         let name = name.as_str().to_owned();
         Box::pin(async move {
-            let found: Vec<_> = tokio::net::lookup_host((name.as_str(), 0))
+            let found: Vec<_> = net::lookup_host((name.as_str(), 0))
                 .await?
                 .filter(|addr| public(addr.ip()))
                 .collect();
@@ -99,7 +107,7 @@ fn public(ip: IpAddr) -> bool {
     }
 }
 
-impl tower::Service<Request> for Fetch {
+impl Service<Request> for Fetch {
     type Response = Response;
     type Error = anyhow::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Response>> + Send>>;
@@ -120,7 +128,7 @@ impl tower::Service<Request> for Fetch {
             {
                 bail!("{} is not a public address", request.host);
             }
-            let method = reqwest::Method::from_bytes(request.method.as_bytes())
+            let method = Method::from_bytes(request.method.as_bytes())
                 .with_context(|| format!("{:?} is not an HTTP method", request.method))?;
             let mut sending = client.request(method, &request.url).body(request.body);
             for (name, value) in &request.headers {

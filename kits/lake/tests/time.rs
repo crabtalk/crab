@@ -63,3 +63,10 @@ fn a_month_is_named_by_its_first_three_letters() {
     assert_eq!(time::month("Ju"), None);
     assert_eq!(time::month("Foo"), None);
 }
+
+#[test]
+fn parse_reads_either_spelling() {
+    assert_eq!(time::parse("2026-10-11T06:55:00Z"), Some(MORNING));
+    assert_eq!(time::parse("Fri, 09 Oct 2026 23:27:00 +0000"), Some(NIGHT));
+    assert_eq!(time::parse("yesterday"), None);
+}

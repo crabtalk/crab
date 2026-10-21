@@ -9,6 +9,7 @@ use crate::{
 };
 use alloc::{collections::VecDeque, format, string::String, vec::Vec};
 use berm_lang::http::Response;
+use core::mem;
 use url::Url;
 
 /// Sitemap files read per site.
@@ -23,11 +24,10 @@ const ROBOTS_READ: usize = 500 << 10;
 
 /// What a read found.
 pub struct Site {
-    /// Its robots.txt, up to 64 KiB; `None` when it answered 4xx.
+    /// Its robots.txt, cut at [`ROBOTS`] bytes; `None` when it answered 4xx.
     pub robots: Option<String>,
     /// What the crawler reads out of its robots.txt.
     pub rules: Robots,
-    pub signal: Option<String>,
     /// Each URL of a kind that robots.txt allows: the URL, its kind and its
     /// `lastmod` as written.
     pub urls: Vec<(String, &'static str, Option<String>)>,
@@ -47,9 +47,10 @@ struct Reading<'a> {
 
 /// Read each of `domains` as `C`, at once, and answer each in its place. The
 /// first is read for `budget` bytes of sitemaps of its own; the rest share
-/// another `budget`, and one whose sitemaps would take more than are left
-/// answers `None`, left for a later tick. A read fails when robots.txt cannot be read or answers
-/// 5xx; a sitemap that fails is left out.
+/// another `budget`, each round's split evenly among those reading, and one
+/// whose sitemap is cut at its share answers `None`, left for a later tick. A
+/// read fails when robots.txt cannot be read or answers 5xx; a sitemap that
+/// fails is left out.
 pub fn read_all<C: Crawler>(
     domains: &[String],
     budget: usize,
@@ -95,7 +96,10 @@ pub fn read_all<C: Crawler>(
             }
         };
         reading.text = match answer.status {
-            200..=299 => Some(String::from_utf8_lossy(&answer.body).into_owned()),
+            200..=299 => Some(
+                String::from_utf8(answer.body)
+                    .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned()),
+            ),
             400..=499 => None,
             status => {
                 reading.done = Some(Err(format!("{} answered {status}", get.url)));
@@ -118,20 +122,29 @@ pub fn read_all<C: Crawler>(
     // The bytes of sitemaps the first site may still read, and the rest may.
     let (mut own, mut shared) = (budget, budget);
     loop {
-        let mut round: Vec<usize> = Vec::new();
-        let mut gets: Vec<Get<'_>> = Vec::new();
+        let mut next_urls: Vec<(usize, Url)> = Vec::new();
         for (at, reading) in readings.iter_mut().enumerate() {
             if reading.done.is_some() {
                 continue;
             }
-            let left = match at {
-                0 => own,
-                _ => shared,
-            };
             match next(reading) {
-                Some(_) if left == 0 && at > 0 => reading.done = Some(Ok(None)),
-                Some(_) if left == 0 => reading.done = Some(Ok(Some(finish(reading)))),
-                Some(url) => {
+                Some(url) => next_urls.push((at, url)),
+                None => reading.done = Some(Ok(Some(finish(reading)))),
+            }
+        }
+        // Each site after the first is read for an even share of `shared`: a
+        // round's answers to them never take more than it.
+        let others = next_urls.iter().filter(|(at, _)| *at > 0).count();
+        let share = shared / others.max(1);
+        let mut round: Vec<usize> = Vec::new();
+        let mut gets: Vec<Get<'_>> = Vec::new();
+        for (at, url) in next_urls {
+            let reading = &mut readings[at];
+            let left = if at == 0 { own } else { share };
+            match left {
+                0 if at > 0 => reading.done = Some(Ok(None)),
+                0 => reading.done = Some(Ok(Some(finish(reading)))),
+                _ => {
                     round.push(at);
                     gets.push(Get {
                         url,
@@ -140,7 +153,6 @@ pub fn read_all<C: Crawler>(
                         limit: left,
                     });
                 }
-                None => reading.done = Some(Ok(Some(finish(reading)))),
             }
         }
         if round.is_empty() {
@@ -161,7 +173,7 @@ pub fn read_all<C: Crawler>(
             };
             // An answer as long as its limit was cut there.
             let cut = body.len() >= get.limit;
-            if at > 0 && (cut || body.len() > *left) {
+            if at > 0 && cut {
                 reading.done = Some(Ok(None));
                 continue;
             }
@@ -249,8 +261,7 @@ fn finish(reading: &mut Reading<'_>) -> Site {
             text.truncate(text.floor_char_boundary(ROBOTS));
             text
         }),
-        signal: reading.robots.signal.take(),
-        rules: core::mem::take(&mut reading.robots),
-        urls: core::mem::take(&mut reading.urls),
+        rules: mem::take(&mut reading.robots),
+        urls: mem::take(&mut reading.urls),
     }
 }

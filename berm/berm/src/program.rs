@@ -2,7 +2,6 @@
 
 use crate::{
     Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi,
-    bound::watchdog,
     engine::{Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Running},
@@ -15,6 +14,7 @@ use anyhow::{Context, Result, bail};
 use berm_api::{Callers, Manifest, Output, Runtime};
 use std::{
     collections::BTreeMap,
+    error, fmt,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -292,7 +292,7 @@ impl Program {
                 client,
                 1,
                 false,
-                watchdog::fresh(self.deadline),
+                Instant::now() + self.deadline,
                 chain,
                 journal.clone(),
                 meters,
@@ -571,10 +571,10 @@ pub struct Invocation {
 #[derive(Debug)]
 pub struct Refused(pub String);
 
-impl std::fmt::Display for Refused {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Refused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl std::error::Error for Refused {}
+impl error::Error for Refused {}

@@ -135,7 +135,7 @@ pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
 /// at the crate's root. The kit is named for its crate.
 #[proc_macro]
 pub fn kit(input: TokenStream) -> TokenStream {
-    kit::expand(&parse_macro_input!(input as config::Kit)).into()
+    kit::expand(&parse_macro_input!(input as config::Declarations)).into()
 }
 
 /// A type's JSON Schema, and the serde impls that read and write it.

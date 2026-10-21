@@ -12,7 +12,6 @@ use alloc::{
 use berm_lang::{
     Result, http,
     serde::{Deserialize, de::DeserializeOwned},
-    serde_json,
 };
 
 const FORM: &str = "application/x-www-form-urlencoded";
@@ -118,14 +117,14 @@ fn exchange(provider: &str, url: &str, form: &str) -> Result<String> {
         &[("Accept", "application/json"), ("Content-Type", FORM)],
         form.as_bytes(),
     )?;
-    let granted: Granted = serde_json::from_slice(&response.body).map_err(|_| {
+    let granted: Granted = response.json().map_err(|_| {
         format!(
             "{provider} answered {} with what this service cannot read",
             response.status
         )
     })?;
     match granted.access_token {
-        Some(access) if (200..300).contains(&response.status) => Ok(access),
+        Some(access) if response.is_success() => Ok(access),
         _ => Err(format!(
             "{provider} refused the code: {}",
             granted
@@ -140,9 +139,10 @@ fn exchange(provider: &str, url: &str, form: &str) -> Result<String> {
 /// What `provider` answers a `GET` of `url`, read as `T`.
 fn get<T: DeserializeOwned>(provider: &str, url: &str, headers: &[(&str, &str)]) -> Result<T> {
     let response = http::fetch("GET", url, headers, b"")?;
-    if !(200..300).contains(&response.status) {
+    if !response.is_success() {
         return Err(format!("{provider} answered {} for the user", response.status).into());
     }
-    serde_json::from_slice(&response.body)
+    response
+        .json()
         .map_err(|_| format!("{provider} answered a user this service cannot read").into())
 }

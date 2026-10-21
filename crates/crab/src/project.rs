@@ -41,29 +41,23 @@ pub struct Project {
 
 /// `[database]` of `berm.toml`.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct Database {
     /// What the service's database may hold, such as `"2GiB"`, at most
     /// [`host::MAX_DATABASE_SIZE`] bytes.
-    #[serde(default = "database_size")]
     pub size: ByteSize,
     /// A SQLite database, relative to `berm.toml`, a service on Cloud with no
     /// database yet starts from, such as one a bermd filled.
-    #[serde(default)]
     pub seed: Option<PathBuf>,
 }
 
 impl Default for Database {
     fn default() -> Self {
         Self {
-            size: database_size(),
+            size: ByteSize(host::DATABASE_SIZE),
             seed: None,
         }
     }
-}
-
-fn database_size() -> ByteSize {
-    ByteSize(host::DATABASE_SIZE)
 }
 
 impl Project {

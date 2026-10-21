@@ -212,9 +212,10 @@ impl From<Output> for Result<String, String> {
 pub const MAX_LOG: usize = 4096;
 
 /// What a call used of one program: its invocations, the CPU time they spent
-/// in microseconds, nested calls excluded, the largest linear memory one reached, in bytes, the rows
-/// they read and wrote, the bytes sent and received through the proxy, the
-/// bytes of the logs they emitted, and the bytes sent off the host.
+/// in microseconds, nested calls excluded, the largest linear memory one
+/// reached, in bytes, the rows they read and wrote, the bytes sent and
+/// received through the proxy, the bytes of the logs they emitted, and the
+/// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meter {

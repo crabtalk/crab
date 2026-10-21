@@ -11,9 +11,10 @@ use alloc::{string::String, vec::Vec};
 const LONGEST_ENTITY: usize = 8;
 
 /// `html` as text. Tags are dropped, and `<script>` and `<style>` with their
-/// contents, except that a block boundary becomes a line break and a link becomes `[text](href)`, or its text alone when that
-/// is its href or it has none. Entities are decoded; an `&` with no `;` within
-/// 8 bytes is kept. An unclosed tag drops the rest.
+/// contents, except that a block boundary becomes a line break and a link
+/// becomes `[text](href)`, or its text alone when that is its href or it has
+/// none. Entities are decoded; an `&` with no `;` within 8 bytes is kept. An
+/// unclosed tag drops the rest.
 ///
 /// ```
 /// let said = crab_html::text("It&#x27;s <i>fine</i>.<p>Next");
@@ -47,8 +48,8 @@ pub fn text(html: &str) -> String {
             .unwrap_or("");
         let is = |candidate: &str| name.eq_ignore_ascii_case(candidate);
         if !closing && (is("script") || is("style")) {
-            let close = alloc::format!("</{}", name.to_ascii_lowercase());
-            at = match find_ignore_case(&html[at..], &close) {
+            let close = if is("script") { "</script" } else { "</style" };
+            at = match find_ignore_case(&html[at..], close) {
                 Some(found) => at + found + tag_end(&html[at + found..]) + 1,
                 None => html.len(),
             }
@@ -112,9 +113,7 @@ pub fn title(html: &str) -> Option<String> {
     let open = find_ignore_case(html, "<title")?;
     let start = open + tag_end(&html[open..]) + 1;
     let end = start + find_ignore_case(html.get(start..)?, "</title")?;
-    let words = unescape(&html[start..end]);
-    let words: Vec<&str> = words.split_whitespace().collect();
-    (!words.is_empty()).then(|| words.join(" "))
+    collapse(&unescape(&html[start..end]))
 }
 
 /// The `content` of the first `<meta>` whose `property` or `name` is
@@ -138,10 +137,9 @@ pub fn meta(html: &str, property: &str) -> Option<String> {
         if !named {
             continue;
         }
-        let content = unescape(attribute(tag, "content").unwrap_or_default());
-        let words: Vec<&str> = content.split_whitespace().collect();
-        if !words.is_empty() {
-            return Some(words.join(" "));
+        let content = collapse(&unescape(attribute(tag, "content").unwrap_or_default()));
+        if content.is_some() {
+            return content;
         }
     }
     None
@@ -188,17 +186,13 @@ pub fn links(html: &str) -> Vec<Link> {
         .min()
         .map_or(html.len(), |end| inner + end);
         let contents = &html[inner..close];
-        let words = text(contents);
-        let words: Vec<&str> = words.split_whitespace().collect();
         let image = find_ignore_case(contents, "<img").and_then(|found| {
             let tag = &contents[found + "<img".len()..];
-            let alt = unescape(attribute(&tag[..tag_end(tag)], "alt")?);
-            let alt: Vec<&str> = alt.split_whitespace().collect();
-            (!alt.is_empty()).then(|| alt.join(" "))
+            collapse(&unescape(attribute(&tag[..tag_end(tag)], "alt")?))
         });
         links.push(Link {
             href: unescape(href),
-            text: words.join(" "),
+            text: collapse(&text(contents)).unwrap_or_default(),
             image,
         });
         at = close;
@@ -257,9 +251,7 @@ pub fn element(html: &str, name: &str, class: Option<&str>) -> Option<String> {
         let inner = (end + 1).min(html.len());
         let finish =
             find_ignore_case(&html[inner..], &close).map_or(html.len(), |found| inner + found);
-        let words = text(&html[inner..finish]);
-        let words: Vec<&str> = words.split_whitespace().collect();
-        return (!words.is_empty()).then(|| words.join(" "));
+        return collapse(&text(&html[inner..finish]));
     }
     None
 }
@@ -285,6 +277,19 @@ fn find_ignore_case(s: &str, needle: &str) -> Option<usize> {
     s.as_bytes()
         .windows(needle.len())
         .position(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
+/// `s` with its whitespace collapsed to single spaces and trimmed; `None` when
+/// it is blank.
+fn collapse(s: &str) -> Option<String> {
+    let mut out = String::new();
+    for word in s.split_whitespace() {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(word);
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 fn finish(mut out: String) -> String {

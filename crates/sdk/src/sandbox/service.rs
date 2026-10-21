@@ -27,7 +27,7 @@ pub struct DeployRequest {
     pub crons: Option<BTreeMap<String, String>>,
     /// Bytes the service's database may hold, at most
     /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
-    #[serde(default = "database_size")]
+    #[serde(default = "host::database_size")]
     pub size: u64,
     /// The SHA-256, in hex, of a seed uploaded through
     /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
@@ -52,10 +52,6 @@ pub struct SeedUpload {
     /// A URL to `PUT` the bytes to, with their `Content-Length`, within an
     /// hour; none when Cloud holds that seed already.
     pub upload: Option<String>,
-}
-
-fn database_size() -> u64 {
-    host::DATABASE_SIZE
 }
 
 /// One day of a service's meter, with what Cloud charges past each

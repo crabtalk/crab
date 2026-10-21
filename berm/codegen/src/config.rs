@@ -1,8 +1,8 @@
 //! The arguments of `#[program(...)]` and `kit!(...)`.
 
-use crate::utils;
 use proc_macro2::TokenStream;
 use quote::quote;
+use serde_json::{Map, Value, json};
 use syn::{Token, parse::Parse};
 
 /// Default size of the argument buffer, and the most a result may be, in
@@ -43,11 +43,6 @@ pub(crate) struct Declarations {
     pub(crate) database: Option<(syn::LitStr, Vec<(String, String)>)>,
 }
 
-/// The arguments of `kit!(...)`.
-pub(crate) struct Kit {
-    pub(crate) declarations: Declarations,
-}
-
 /// The file at `path`, relative to the crate, for argument `key`.
 fn read(key: &syn::Ident, path: &syn::LitStr) -> syn::Result<String> {
     let root = std::env::var("CARGO_MANIFEST_DIR")
@@ -62,9 +57,6 @@ impl Declarations {
     /// was one.
     fn parse_key(&mut self, key: &syn::Ident, input: syn::parse::ParseStream) -> syn::Result<bool> {
         match key.to_string().as_str() {
-            // Declared, never inferred: a target the program computes at
-            // the call is invisible to anything reading the image, so a
-            // scan of this crate would report a list that is quietly short.
             // A directory of `*.sql` migrations, applied in name order.
             // Read here for the same reason `readme` is.
             "database" => {
@@ -139,24 +131,17 @@ impl Declarations {
 
     /// The manifest's `deps` object.
     pub(crate) fn deps(&self) -> String {
-        let list = |items: &[String]| {
-            items
-                .iter()
-                .map(|item| format!(r#""{}""#, utils::escape(item)))
-                .collect::<Vec<_>>()
-                .join(",")
-        };
-        let syscalls = self
+        let syscalls: Map<String, Value> = self
             .syscalls
             .iter()
-            .map(|(name, reached)| format!(r#""{}":[{}]"#, utils::escape(name), list(reached)))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(
-            r#"{{"programs":[{}],"syscalls":{{{syscalls}}},"secrets":[{}]}}"#,
-            list(&self.programs),
-            list(&self.secrets),
-        )
+            .map(|(name, reached)| (name.clone(), json!(reached)))
+            .collect();
+        json!({
+            "programs": self.programs,
+            "syscalls": syscalls,
+            "secrets": self.secrets,
+        })
+        .to_string()
     }
 
     /// `,"database":{...}` when it keeps a database, else nothing.
@@ -164,18 +149,11 @@ impl Declarations {
         let Some((_, migrations)) = &self.database else {
             return String::new();
         };
-        format!(
-            r#","database":{{"migrations":[{}]}}"#,
-            migrations
-                .iter()
-                .map(|(name, sql)| format!(
-                    r#"{{"name":"{}","sql":"{}"}}"#,
-                    utils::escape(name),
-                    utils::escape(sql)
-                ))
-                .collect::<Vec<_>>()
-                .join(",")
-        )
+        let migrations: Vec<Value> = migrations
+            .iter()
+            .map(|(name, sql)| json!({ "name": name, "sql": sql }))
+            .collect();
+        format!(r#","database":{}"#, json!({ "migrations": migrations }))
     }
 
     /// An `include_str!` of each migration the macro read, which cargo cannot
@@ -257,7 +235,8 @@ impl Parse for Config {
     }
 }
 
-impl Parse for Kit {
+/// The arguments of `kit!(...)`.
+impl Parse for Declarations {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut declarations = Declarations::default();
         while !input.is_empty() {
@@ -275,9 +254,7 @@ impl Parse for Kit {
                 input.parse::<Token![,]>()?;
             }
         }
-        Ok(Kit {
-            declarations: declarations.finish(),
-        })
+        Ok(declarations.finish())
     }
 }
 

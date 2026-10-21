@@ -29,10 +29,7 @@ match berm_lang::caller()? {
 - `user()` answers the end user a call runs for, as `User { issuer, subject }`:
   the identity provider or program that vouched for them and who they are to
   it. It is carried into every nested call.
-- `vouch(subject)` has the rest of this invocation, and every call it makes
-  after, run for `subject`, with the program as the issuer, named as the
-  programs it calls are told it is. The manifest declares `berm.vouch`, and it
-  is refused in a chain that already runs for a user.
+- `vouch(subject)` has the rest of this invocation, and every call it makes after, run for `subject`, with the program as the issuer, named as the programs it calls are told it is. The manifest declares `berm.vouch`, and it is refused in a chain that already runs for a user.
 - `client()` answers an opaque key naming the outside client for one day, or
   `None` when the host supplied none. It is carried into every nested call.
 - `deny(message)` makes an `Error` that fails the call as refusing its caller.

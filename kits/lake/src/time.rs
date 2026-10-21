@@ -1,5 +1,7 @@
 //! Times as feeds and pages spell them, in Unix milliseconds.
 
+use core::ops::Range;
+
 /// Midnight UTC starting `day` of `month` (1-based) of `year`. `None` before
 /// 1970 or for a month or day out of range.
 pub fn date(year: i64, month: i64, day: i64) -> Option<u64> {
@@ -17,11 +19,19 @@ pub fn date(year: i64, month: i64, day: i64) -> Option<u64> {
     u64::try_from(days * 86_400_000).ok()
 }
 
+/// An RFC 3339 time when `text` has a `-` fifth, else an RFC 822 time.
+pub fn parse(text: &str) -> Option<u64> {
+    match text.as_bytes().get(4) {
+        Some(b'-') => rfc3339(text),
+        _ => rfc822(text),
+    }
+}
+
 /// An RFC 3339 time, `2026-10-11T06:55:00+00:00`. Fractional seconds are
 /// dropped; a time with no zone is UTC; a date alone is its midnight UTC.
 pub fn rfc3339(text: &str) -> Option<u64> {
     let text = text.trim();
-    let digits = |range: core::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
+    let digits = |range: Range<usize>| text.get(range)?.parse::<i64>().ok();
     let day = date(digits(0..4)?, digits(5..7)?, digits(8..10)?)?;
     if text.len() == 10 {
         return Some(day);

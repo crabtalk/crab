@@ -9,14 +9,6 @@ const CUSTOMERS: &str = "https://api.stripe.com/v1/customers";
 const CHECKOUT: &str = "https://api.stripe.com/v1/checkout/sessions";
 const PORTAL: &str = "https://api.stripe.com/v1/billing_portal/sessions";
 
-fn header<'a>(fetched: &'a test::Fetched, name: &str) -> Option<&'a str> {
-    fetched
-        .headers
-        .iter()
-        .find(|(key, _)| key == name)
-        .map(|(_, value)| value.as_str())
-}
-
 fn body(fetched: &test::Fetched) -> String {
     String::from_utf8(fetched.body.clone()).expect("a form")
 }
@@ -41,10 +33,10 @@ fn a_price_is_found_by_its_lookup_key() {
     assert_eq!(fetched.method, "GET");
     assert!(fetched.body.is_empty());
     assert_eq!(
-        header(fetched, "Authorization"),
+        fetched.header("Authorization"),
         Some("Bearer {secret:STRIPE_SECRET_KEY}")
     );
-    assert_eq!(header(fetched, "Stripe-Version"), Some("2025-03-31.basil"));
+    assert_eq!(fetched.header("Stripe-Version"), Some("2025-03-31.basil"));
 }
 
 #[test]

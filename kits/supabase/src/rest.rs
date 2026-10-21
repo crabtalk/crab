@@ -1,7 +1,7 @@
 //! A PostgREST query on one table: its columns, filters, order and range, and
 //! what is done with the rows they select.
 
-use crate::{json, read, send};
+use crate::request;
 use alloc::{
     format,
     string::{String, ToString},
@@ -121,34 +121,39 @@ impl Query {
 
     /// The rows the query selects.
     pub fn get<T: DeserializeOwned>(&self) -> Result<Vec<T>> {
-        read(&send("GET", &self.url(true), &[], &[])?)
+        request::read(&request::send("GET", &self.url(true), &[], &[])?)
     }
 
     /// Inserts `rows`, one object or an array of them, and answers the rows
     /// inserted. Filters, order and range are not sent.
     pub fn insert<T: DeserializeOwned>(&self, rows: &impl Serialize) -> Result<Vec<T>> {
-        read(&send(
+        request::read(&request::send(
             "POST",
             &self.url(false),
             &[JSON, REPRESENTATION],
-            &json(rows)?,
+            &request::json(rows)?,
         )?)
     }
 
     /// Sets `values`, an object of columns, on the rows the query selects, and
     /// answers them as updated.
     pub fn update<T: DeserializeOwned>(&self, values: &impl Serialize) -> Result<Vec<T>> {
-        read(&send(
+        request::read(&request::send(
             "PATCH",
             &self.url(true),
             &[JSON, REPRESENTATION],
-            &json(values)?,
+            &request::json(values)?,
         )?)
     }
 
     /// Deletes the rows the query selects, and answers them.
     pub fn delete<T: DeserializeOwned>(&self) -> Result<Vec<T>> {
-        read(&send("DELETE", &self.url(true), &[REPRESENTATION], &[])?)
+        request::read(&request::send(
+            "DELETE",
+            &self.url(true),
+            &[REPRESENTATION],
+            &[],
+        )?)
     }
 
     /// The table's URL with `select`, and with the filters, order and range

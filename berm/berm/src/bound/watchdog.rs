@@ -3,7 +3,7 @@
 //! How long, and how a nested call inherits what is left, is berm's. Stopping
 //! a guest that has run past it is wasmtime's, counting down an epoch.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// How long a chain of invocations may run before it is asked to stop, unless
 /// [`crate::Config::deadline`] says otherwise.
@@ -15,8 +15,3 @@ use std::time::{Duration, Instant};
 /// A nested invocation runs under its caller's deadline, so depth *n* buys
 /// one deadline, not *n*.
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(60);
-
-/// The deadline of a chain entered now, `within` from now.
-pub(crate) fn fresh(within: Duration) -> Instant {
-    Instant::now() + within
-}

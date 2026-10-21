@@ -3,12 +3,7 @@
 //! stored in its database. Its tables are `lake_items`, `lake_threads` and
 //! `lake_records`.
 //!
-//! A tick fetches the feeds due, least recently fetched first, and stores each
-//! item new to one, or each record of a feed of records whose values changed.
-//! It then fetches the threads due, least recently fetched
-//! first, and stores each whose comment count changed in place of the last. It
-//! saves its state; all of it commits with the call. It logs what each fetch
-//! found and each fetch that failed, which is tried again when next due.
+//! A tick's writes and its state commit with the call.
 
 #![no_std]
 
@@ -184,7 +179,6 @@ fn posts<S: Source>(
         }
         let written = match feed.kind {
             Kind::Chronological if posted <= feed.watermark => 0,
-            Kind::Unordered if store::has(&feed.key, &id)? => 0,
             Kind::Chronological | Kind::Unordered => {
                 store::item(&id, &feed.key, posted, &S::post(feed, item))?
             }

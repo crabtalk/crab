@@ -50,6 +50,7 @@ tick = "*/5 * * * *"
 Implement `Source` to fetch items and threads and shape what is stored, and set a `Schedule` with fetch limits and intervals in milliseconds:
 
 ```rust,ignore
+use core::str;
 use crab_lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
 
 pub struct Blog;
@@ -73,7 +74,7 @@ impl Source for Blog {
 
     fn fetch(feed: &Feed) -> Result<Vec<Listed<Entry>>, String> {
         let response = berm_lang::http::fetch("GET", &feed.key, &[], b"").map_err(|e| format!("{e}"))?;
-        let xml = core::str::from_utf8(&response.body).map_err(|_| String::from("not UTF-8"))?;
+        let xml = str::from_utf8(&response.body).map_err(|_| String::from("not UTF-8"))?;
         Ok(rss::entries(xml)?
             .into_iter()
             .map(|entry| Listed { id: entry.id.clone(), posted: entry.posted.unwrap_or_default(), item: entry })
@@ -87,11 +88,11 @@ impl Source for Blog {
 }
 ```
 
-`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items posted after the newest it has shown; `Unordered`, the items it has not stored before, which `store::has` answers; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed. `store::record(id, feed, now, values)` stores a version the same way outside a fetch, in a feed the program names, and answers the bytes written.
+`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items posted after the newest it has shown; `Unordered`, the items it has not stored before; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed. `store::record(id, feed, now, values)` stores a version the same way outside a fetch, in a feed the program names, and answers the bytes written.
 
 ## A tick
 
-Each tick fetches the feeds due, least recently fetched first, stores each item new to one, and watches its thread when `Source::watches` says so. It then fetches the threads due and stores each whose comment count changed in place of the last, until the tick has stored 8 MiB. It logs a `Fetched` for each feed and a `FetchFailed` for each fetch that failed, which is retried when next due. State is stored under the service's `lake` key, and all of it commits with the call.
+A tick fetches the feeds due and then the threads due, least recently fetched first, and fetches no more threads once it has stored 8 MiB. A thread is stored in place of the last only when its comment count changed. It logs a `Fetched` for each feed and a `FetchFailed` for each fetch that failed, which is retried when next due. State is stored under the service's `lake` key, and all of it commits with the call.
 
 ## Reading
 

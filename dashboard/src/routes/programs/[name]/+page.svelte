@@ -67,7 +67,7 @@
 			await api.undeploy(name);
 			goto('#/');
 		} catch (e) {
-			error = `${e.status}: ${e.message}`;
+			error = e.message;
 		}
 	}
 

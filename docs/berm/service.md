@@ -114,12 +114,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 
 ## Budgets
 
-An invocation stops at its tool's CPU budget, checked every 100ms, and a row
-syscall it makes once it has read and written its row budget together is
-refused: `--max-cpu-millis` of CPU, 100 by default, and 1,000,000 rows, unless
-`PUT /programs/{name}/tools/{tool}/budget` set `{"cpu", "rows"}` lower, `cpu` in
-microseconds, from the next call. `cpu` in `Berm-Meter` is microseconds too,
-each invocation's own, nested calls excluded.
+An invocation stops at its tool's CPU budget, checked every 100ms, and a row syscall it makes once it has read and written its row budget together is refused: `--max-cpu-millis` of CPU, 100 by default, and 1,000,000 rows, unless `PUT /programs/{name}/tools/{tool}/budget` set `{"cpu", "rows"}` lower, `cpu` in microseconds, from the next call. `cpu` in `Berm-Meter` is microseconds too, each invocation's own, nested calls excluded.
 
 ## Crons, deprecation and Stripe events
 

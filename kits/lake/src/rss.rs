@@ -172,18 +172,10 @@ fn closed(
         (1, ("", "description" | "summary")) => entry.summary = owned(),
         (1, ("content", "encoded") | ("", "content")) => entry.content = owned(),
         (1, ("", "pubDate" | "published") | ("dc", "date")) => {
-            entry.posted = entry.posted.or(date(text))
+            entry.posted = entry.posted.or(time::parse(text))
         }
-        (1, ("", "updated")) => *updated = date(text),
+        (1, ("", "updated")) => *updated = time::parse(text),
         _ => {}
-    }
-}
-
-/// `text` as an RFC 3339 or an RFC 822 time.
-fn date(text: &str) -> Option<u64> {
-    match text.as_bytes().get(4) {
-        Some(b'-') => time::rfc3339(text),
-        _ => time::rfc822(text),
     }
 }
 

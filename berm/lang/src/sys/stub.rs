@@ -87,8 +87,8 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             0
         }
         abi::HOST_EMIT => {
-            let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-            let Some(fields) = crate::abi::wire::fields(request) else {
+            let request = bytes(a0, a1);
+            let Some(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
             let mut fields = fields
@@ -102,7 +102,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             0
         }
         abi::HOST_DONE => {
-            with(|host| host.done = Some(bytes(a0, a1)));
+            with(|host| host.done = Some(bytes(a0, a1).to_vec()));
             0
         }
         abi::HOST_FAIL => {
@@ -120,8 +120,8 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
         // decoded here rather than matched whole so a test names the program and
         // the tool, not a byte sequence.
         abi::HOST_CALL => {
-            let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-            let Some(fields) = crate::abi::wire::fields(request) else {
+            let request = bytes(a0, a1);
+            let Some(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
             let (program, tool) = match fields.as_slice() {
@@ -149,18 +149,18 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             }
         }
         abi::HOST_HTTP_FETCH | abi::HOST_HTTP_PROXY => {
-            let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
+            let request = bytes(a0, a1);
             let Some((status, body)) = respond(request) else {
                 no_host(number)
             };
             with(|host| {
-                host.result = crate::abi::wire::request(&[status.to_string().as_bytes(), &body]);
+                host.result = abi::wire::request(&[status.to_string().as_bytes(), &body]);
                 host.result.len() as u64
             })
         }
         abi::HOST_HTTP_FETCH_ALL => {
-            let batch = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-            let Some(requests) = crate::abi::wire::fields(batch) else {
+            let batch = bytes(a0, a1);
+            let Some(requests) = abi::wire::fields(batch) else {
                 no_host(number)
             };
             let answers: Vec<Vec<u8>> = requests
@@ -169,12 +169,12 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                     let Some((status, body)) = respond(request) else {
                         no_host(number)
                     };
-                    crate::abi::wire::request(&[b"ok", status.to_string().as_bytes(), &body])
+                    abi::wire::request(&[b"ok", status.to_string().as_bytes(), &body])
                 })
                 .collect();
             let fields: Vec<&[u8]> = answers.iter().map(Vec::as_slice).collect();
             with(|host| {
-                host.result = crate::abi::wire::request(&fields);
+                host.result = abi::wire::request(&fields);
                 host.result.len() as u64
             })
         }
@@ -185,7 +185,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
 /// The status and body arranged for one framed HTTP request, kept as
 /// fetched; `None` when it is not framed as one.
 fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
-    let fields = crate::abi::wire::fields(request)?;
+    let fields = abi::wire::fields(request)?;
     let [method, url, body, _timeout, limit, headers @ ..] = fields.as_slice() else {
         return None;
     };
@@ -229,12 +229,12 @@ fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
 
 /// Read a `(ptr, len)` pair the caller passed. Off-target these are real
 /// addresses in this process.
-fn bytes(ptr: u64, len: u64) -> Vec<u8> {
-    unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) }.to_vec()
+fn bytes<'a>(ptr: u64, len: u64) -> &'a [u8] {
+    unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) }
 }
 
 fn read(ptr: u64, len: u64) -> String {
-    String::from_utf8_lossy(&bytes(ptr, len)).into_owned()
+    String::from_utf8_lossy(bytes(ptr, len)).into_owned()
 }
 
 #[cold]

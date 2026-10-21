@@ -2,7 +2,7 @@
 
 use crate::{Customer, Price, Session, StripeError, Subscriber};
 use alloc::string::String;
-use berm_lang::{Result, rows};
+use berm_lang::Result;
 
 impl Subscriber {
     /// The end user the call carries.
@@ -13,7 +13,7 @@ impl Subscriber {
 
     /// Their Stripe customer, once they have checked out.
     pub fn customer(&self) -> Result<Option<Customer>> {
-        let found = rows::<(String,)>(
+        let found = berm_lang::rows::<(String,)>(
             "SELECT customer FROM stripe_customers WHERE issuer = ? AND subject = ?",
             &(&self.user.issuer, &self.user.subject),
         )?;
@@ -28,7 +28,7 @@ impl Subscriber {
             Some(customer) => customer,
             None => {
                 let customer = Customer::create(&self.user)?;
-                rows::<()>(
+                berm_lang::rows::<()>(
                     "INSERT INTO stripe_customers (issuer, subject, customer) VALUES (?, ?, ?)",
                     &(&self.user.issuer, &self.user.subject, &customer.id),
                 )?;
@@ -47,7 +47,7 @@ impl Subscriber {
     /// The `lookup_key` of the price their active or trialing subscription is
     /// on.
     pub fn plan(&self) -> Result<Option<String>> {
-        let plans = rows::<(Option<String>,)>(
+        let plans = berm_lang::rows::<(Option<String>,)>(
             "SELECT s.plan FROM stripe_subscriptions s
              JOIN stripe_customers c ON c.customer = s.customer
              WHERE c.issuer = ? AND c.subject = ? AND s.status IN ('active', 'trialing')

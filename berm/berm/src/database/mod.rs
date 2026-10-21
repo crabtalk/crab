@@ -18,7 +18,9 @@ pub use query::Answer;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     collections::HashMap,
+    fs,
     future::Future,
+    io::ErrorKind,
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
     thread,
@@ -88,6 +90,16 @@ impl Databases {
         self.dir.join(format!("{program}.sqlite"))
     }
 
+    /// Where `program`'s database's write-ahead log is.
+    pub fn wal(&self, program: &str) -> PathBuf {
+        self.dir.join(format!("{program}.sqlite-wal"))
+    }
+
+    /// Where `program`'s database's shared-memory index is.
+    pub fn shm(&self, program: &str) -> PathBuf {
+        self.dir.join(format!("{program}.sqlite-shm"))
+    }
+
     /// Make the SQLite file at `seed` `program`'s database, moving it into
     /// place. `seed` is on the same filesystem as the databases. Refused when
     /// `program` has a database, open or on disk.
@@ -98,12 +110,12 @@ impl Databases {
             bail!("{program} has a database, and a seed only starts one");
         }
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+            fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
-        for stale in [wal(&path), shm(&path)] {
+        for stale in [self.wal(program), self.shm(program)] {
             remove(&stale)?;
         }
-        std::fs::rename(seed, &path)
+        fs::rename(seed, &path)
             .with_context(|| format!("moving {} to {}", seed.display(), path.display()))
     }
 
@@ -121,7 +133,7 @@ impl Databases {
             }
         }
         let path = self.path(program);
-        for file in [wal(&path), shm(&path), path] {
+        for file in [self.wal(program), self.shm(program), path] {
             remove(&file)?;
         }
         Ok(())
@@ -179,20 +191,10 @@ impl Databases {
     }
 }
 
-/// `path`'s write-ahead log.
-fn wal(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}-wal", path.display()))
-}
-
-/// `path`'s shared-memory index.
-fn shm(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}-shm", path.display()))
-}
-
 /// Delete `path`, when there is one.
 fn remove(path: &Path) -> Result<()> {
-    match std::fs::remove_file(path) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != ErrorKind::NotFound => {
             Err(e).with_context(|| format!("deleting {}", path.display()))
         }
         _ => Ok(()),
@@ -216,7 +218,7 @@ impl Database {
     /// Open the database at `path`, creating it and its directory if needed.
     fn open(path: &Path, name: Arc<str>, graph: Arc<parking_lot::Mutex<Graph>>) -> Result<Self> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+            fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
         let mut conn =
             Connection::open(path).with_context(|| format!("opening {}", path.display()))?;

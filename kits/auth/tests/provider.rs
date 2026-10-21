@@ -10,14 +10,6 @@ const GOOGLE_TOKEN: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_USER: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 const REDIRECT: &str = "https://app.example.com/callback";
 
-fn header<'a>(fetched: &'a test::Fetched, name: &str) -> Option<&'a str> {
-    fetched
-        .headers
-        .iter()
-        .find(|(key, _)| key == name)
-        .map(|(_, value)| value.as_str())
-}
-
 #[test]
 fn github_exchanges_the_code_and_reads_the_user() {
     test::respond("POST", GITHUB_TOKEN, 200, br#"{"access_token":"gho_1"}"#);
@@ -42,8 +34,8 @@ fn github_exchanges_the_code_and_reads_the_user() {
         String::from_utf8(fetched[0].body.clone()).expect("a form"),
         "code=c0de&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&client_id={secret:GITHUB_CLIENT_ID}&client_secret={secret:GITHUB_CLIENT_SECRET}"
     );
-    assert_eq!(header(&fetched[1], "Authorization"), Some("Bearer gho_1"));
-    assert_eq!(header(&fetched[1], "User-Agent"), Some("crab-auth"));
+    assert_eq!(fetched[1].header("Authorization"), Some("Bearer gho_1"));
+    assert_eq!(fetched[1].header("User-Agent"), Some("crab-auth"));
 }
 
 #[test]

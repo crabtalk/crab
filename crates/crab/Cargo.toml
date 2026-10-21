@@ -21,7 +21,7 @@ bytesize.workspace = true
 chrono.workspace = true
 clap.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
-hex.workspace = true
+hex = { workspace = true, features = ["std"] }
 rusqlite.workspace = true
 self_update.workspace = true
 serde = { workspace = true, features = ["std"] }

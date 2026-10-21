@@ -144,7 +144,7 @@ mod tools {
     pub fn random() -> Result<String> {
         let mut bytes = [0; 32];
         berm_lang::random(&mut bytes);
-        Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+        Ok(hex::encode(bytes))
     }
 
     /// Says who called: `outside NAME`, `program NAME`, or `none`, then

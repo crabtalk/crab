@@ -15,7 +15,7 @@
 //! ```
 #![cfg(not(target_arch = "wasm32"))]
 
-use crate::{CallError, abi, sys};
+use crate::{CallError, abi, http, sys};
 use std::{
     string::String,
     sync::{Mutex, PoisonError},
@@ -108,6 +108,13 @@ pub struct Fetched {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+}
+
+impl Fetched {
+    /// The value of the header `name`, ASCII case ignored.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        http::header(&self.headers, name)
+    }
 }
 
 /// Arrange what a request answers, by method and URL, with no headers.

@@ -3,18 +3,8 @@
 //! names, fetched on its schedule into its database. Its tables are
 //! `crawl_sites`, `crawl_urls` and `crawl_pages`.
 //!
-//! A tick reads the sites due, those watched first before the rest, least
-//! recently read first: robots.txt, then the sitemaps it names, else
-//! `/sitemap.xml`, keeping each listed URL of a kind that robots.txt allows in
-//! place of the site's last. It then fetches the pages due, those of sites
-//! watched first before the rest, a site's least recently fetched before any
-//! site's next: new, their `lastmod` changed, or with none and fetched longer
-//! ago than the refetch interval, each conditionally on the validators it last
-//! answered with, and hands each page that answered with HTML to the crawler to
-//! read. Its sites are read at once, and its pages fetched a page a site a
-//! round, each round's requests sent as one batch, so a site sees one request
-//! at a time. A tick stops at its byte budget and leaves the rest due; all of
-//! it commits with the call.
+//! A site sees one request at a time. A tick stops at its byte budget and
+//! leaves the rest due; all of it commits with the call.
 
 #![no_std]
 
@@ -48,9 +38,8 @@ pub struct Schedule {
     pub refetch: u64,
     /// Sites read per tick.
     pub sites: usize,
-    /// Bytes of sitemaps a site is read for. The first site due is read for
-    /// this many of its own; the rest of a tick's share this many, and one
-    /// whose sitemaps would take more than are left is left due.
+    /// Bytes of sitemaps the first site due in a tick is read for; the rest
+    /// of the tick's sites share as many. A site cut at its share is left due.
     pub sitemaps: usize,
     /// Pages fetched per tick.
     pub pages: usize,
@@ -59,10 +48,8 @@ pub struct Schedule {
     /// 2026-10-21), about 11ns of CPU at 10,000 instructions a microsecond.
     pub html: usize,
     /// Bytes of HTML a page is read for, unless its program listed it with
-    /// its own. A round fetches no more pages than the HTML left holds at
-    /// their bytes each. The first page of a tick is read for its bytes past
-    /// `html`; a later one whose listed bytes would take more than are left is
-    /// left due.
+    /// its own. A page listed with more than the tick's HTML has left is left
+    /// due, unless it is the tick's first, which is read past `html`.
     pub page: usize,
     /// Failed reads in a row after which a site is read again only `recrawl`
     /// after its last failed.
@@ -115,17 +102,13 @@ pub struct FetchFailed {
 /// Watch `domains`, each a host name; one already watched is left as it is.
 /// Answers how many were new.
 pub fn watch(domains: &[String]) -> Result<usize, CallError> {
-    domains.iter().try_fold(0, |new, domain| {
-        Ok(new + usize::from(store::watch(&domain.to_ascii_lowercase(), false)?))
-    })
+    store::watch(domains, false)
 }
 
 /// [`watch`] `domains`, each read before the other sites due, one already
 /// watched included. Answers how many were new.
 pub fn watch_first(domains: &[String]) -> Result<usize, CallError> {
-    domains.iter().try_fold(0, |new, domain| {
-        Ok(new + usize::from(store::watch(&domain.to_ascii_lowercase(), true)?))
-    })
+    store::watch(domains, true)
 }
 
 /// Keep each of `urls` on `domain`'s site, a site watched, that is of a kind
@@ -141,18 +124,19 @@ pub fn list<C: Crawler>(
 ) -> Result<usize, CallError> {
     let domain = domain.to_ascii_lowercase();
     let robots = Robots::parse(&store::robots(&domain)?.unwrap_or_default(), C::AGENT);
-    urls.iter().try_fold(0, |new, listed| {
-        let Ok(url) = Url::parse(listed) else {
-            return Ok(new);
-        };
-        let on_site = url.host_str().is_some_and(|host| same_site(host, &domain));
-        match C::kind(&domain, &url) {
-            Some(kind) if on_site && robots.allows(&url) => {
-                Ok(new + usize::from(store::list(&domain, url.as_str(), kind, bytes)?))
+    let listed: Vec<(String, &str)> = urls
+        .iter()
+        .filter_map(|listed| {
+            let url = Url::parse(listed).ok()?;
+            let on_site = url.host_str().is_some_and(|host| same_site(host, &domain));
+            if !on_site || !robots.allows(&url) {
+                return None;
             }
-            _ => Ok(new),
-        }
-    })
+            let kind = C::kind(&domain, &url)?;
+            Some((String::from(url), kind))
+        })
+        .collect();
+    store::list(&domain, &listed, bytes)
 }
 
 /// Whether `host` belongs to `domain`'s site: either is the other or a

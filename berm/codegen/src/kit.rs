@@ -1,20 +1,23 @@
 //! What `kit!` expands into: the kit's record, for the manifest of each
 //! program that names the crate in `uses`.
 
-use crate::{config::Kit, utils};
-use proc_macro2::TokenStream;
+use crate::{config::Declarations, utils};
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
+use std::env;
 
-pub(crate) fn expand(kit: &Kit) -> TokenStream {
-    let package = |key: &str| utils::escape(&std::env::var(key).unwrap_or_default());
+pub(crate) fn expand(declarations: &Declarations) -> TokenStream {
+    let Ok(name) = env::var("CARGO_PKG_NAME") else {
+        return syn::Error::new(Span::call_site(), "kit! needs CARGO_PKG_NAME").to_compile_error();
+    };
     let record = format!(
         r#"{{"name":"{}","version":"{}","deps":{}{}}}"#,
-        package("CARGO_PKG_NAME"),
-        package("CARGO_PKG_VERSION"),
-        kit.declarations.deps(),
-        kit.declarations.database(),
+        utils::escape(&name),
+        utils::escape(&env::var("CARGO_PKG_VERSION").unwrap_or_default()),
+        declarations.deps(),
+        declarations.database(),
     );
-    let rebuild = kit.declarations.rebuild();
+    let rebuild = declarations.rebuild();
     quote! {
         /// This kit's record in the manifest of a program that uses it.
         #[doc(hidden)]

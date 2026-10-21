@@ -28,18 +28,14 @@ pub struct Version<T> {
 /// differ from its latest. Answers the bytes written, 0 when they do not.
 pub fn record(id: &str, feed: &str, now: u64, values: &impl Serialize) -> Result<usize, CallError> {
     let data = json::to(values)?;
-    let latest = berm_lang::rows::<(String,)>(
-        "SELECT data FROM lake_records WHERE id = ? AND feed = ? ORDER BY seq DESC LIMIT 1",
-        &(id, feed),
+    let inserted = berm_lang::rows::<(u64,)>(
+        "INSERT INTO lake_records (id, feed, since, data) SELECT ?, ?, ?, ?
+          WHERE ? IS NOT (SELECT data FROM lake_records WHERE id = ? AND feed = ?
+                           ORDER BY seq DESC LIMIT 1)
+         RETURNING seq",
+        &(id, feed, now, &data, &data, id, feed),
     )?;
-    if latest.first().is_some_and(|(stored,)| *stored == data) {
-        return Ok(0);
-    }
-    berm_lang::rows::<()>(
-        "INSERT INTO lake_records (id, feed, since, data) VALUES (?, ?, ?, ?)",
-        &(id, feed, now, &data),
-    )?;
-    Ok(data.len())
+    Ok(if inserted.is_empty() { 0 } else { data.len() })
 }
 
 /// Store `item`, posted at `posted`, as shown by `feed`. Answers the bytes
@@ -69,15 +65,6 @@ pub(crate) fn thread(id: &str, now: u64, thread: &impl Serialize) -> Result<usiz
         &(id, &data, now),
     )?;
     Ok(data.len())
-}
-
-/// Whether item `id` is stored as shown by `feed`.
-pub fn has(feed: &str, id: &str) -> Result<bool, CallError> {
-    let found = berm_lang::rows::<(u8,)>(
-        "SELECT 1 FROM lake_items WHERE id = ? AND feed = ?",
-        &(id, feed),
-    )?;
-    Ok(!found.is_empty())
 }
 
 /// Up to `limit` items stored after `after`, oldest first, of `feed` when

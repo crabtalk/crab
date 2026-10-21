@@ -6,7 +6,6 @@ use alloc::{format, string::String, vec::Vec};
 use berm_lang::{
     Result, User, http,
     serde::{Deserialize, de::DeserializeOwned},
-    serde_json,
 };
 
 const API: &str = "https://api.stripe.com/v1";
@@ -152,12 +151,14 @@ fn send<T: DeserializeOwned>(method: &str, path: &str, fields: &[(&str, &str)]) 
         ],
         body.as_bytes(),
     )?;
-    if !(200..300).contains(&response.status) {
-        let message = serde_json::from_slice::<Failure>(&response.body)
+    if !response.is_success() {
+        let message = response
+            .json::<Failure>()
             .map(|failure| failure.error.message)
             .unwrap_or_default();
         return Err(format!("Stripe answered {}: {message}", response.status).into());
     }
-    serde_json::from_slice(&response.body)
+    response
+        .json()
         .map_err(|_| String::from("Stripe answered what this service cannot read").into())
 }

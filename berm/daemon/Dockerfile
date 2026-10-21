@@ -25,6 +25,6 @@ RUN apt-get update \
 COPY --from=bermd /usr/local/bin/bermd /usr/local/bin/bermd
 VOLUME /data
 EXPOSE 7777
-# Every interface, inside the container: publish the port on loopback only,
-# since the service carries no authorization.
+# Listens on every interface in the container; the service carries no
+# authorization. Publish the port on loopback only.
 ENTRYPOINT ["bermd", "--addr", "0.0.0.0:7777", "--root", "/data"]

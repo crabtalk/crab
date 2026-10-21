@@ -3,10 +3,10 @@
 const CALLER = 'X-Berm-Caller';
 const METER = 'Berm-Meter';
 
-/** A request the API refused: its status and the `error` it answered. */
+/** A request the API refused; its `message` is `status: error`, the `error` it answered. */
 export class Refused extends Error {
-	constructor(status, message) {
-		super(message);
+	constructor(status, error) {
+		super(`${status}: ${error}`);
 		this.status = status;
 	}
 }
@@ -22,6 +22,14 @@ async function send(path, init) {
 
 async function get(path) {
 	return (await send(path)).json();
+}
+
+async function put(path, body) {
+	await send(path, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
 }
 
 /** The query `Link` names as `rel="next"`, or `null` on the last page. */
@@ -83,19 +91,9 @@ export async function call(name, tool, args, caller) {
 	return { output: await response.json(), meter: meter ? JSON.parse(meter) : null };
 }
 
-export async function setBudget(name, tool, budget) {
-	await send(`${at(name)}/tools/${encodeURIComponent(tool)}/budget`, {
-		method: 'PUT',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(budget)
-	});
-}
+export const setBudget = (name, tool, budget) =>
+	put(`${at(name)}/tools/${encodeURIComponent(tool)}/budget`, budget);
 
 /** Set a cron tool's expression; `null` stops it. */
-export async function setCron(name, tool, cron) {
-	await send(`${at(name)}/tools/${encodeURIComponent(tool)}/cron`, {
-		method: 'PUT',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ cron })
-	});
-}
+export const setCron = (name, tool, cron) =>
+	put(`${at(name)}/tools/${encodeURIComponent(tool)}/cron`, { cron });

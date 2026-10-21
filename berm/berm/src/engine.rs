@@ -8,7 +8,7 @@
 
 use crate::{
     Budget, Invocation, Meter,
-    bound::cpu::Clock,
+    bound::{cpu::Clock, watchdog},
     syscall::{self, Door, Table},
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -31,8 +31,7 @@ const MODULE: &str = "berm";
 const SYSCALL: &str = "syscall";
 
 /// How often the engine's epoch advances, and so how often a running guest's
-/// deadline and CPU time are checked. Fine enough that a runaway program is
-/// stopped promptly, coarse enough that the tick costs nothing.
+/// deadline and CPU time are checked.
 const TICK: Duration = Duration::from_millis(100);
 
 /// How a runtime compiles and holds code.
@@ -67,7 +66,7 @@ impl Default for Config {
             memory: 128 << 20,
             cpu: Duration::from_millis(100),
             rows: 1_000_000,
-            deadline: crate::bound::watchdog::TIMEOUT,
+            deadline: watchdog::TIMEOUT,
         }
     }
 }

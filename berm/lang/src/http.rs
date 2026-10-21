@@ -7,12 +7,30 @@
 
 use crate::abi::{self, host, host::CallError, wire};
 use alloc::{string::String, vec::Vec};
+use serde::de::DeserializeOwned;
 
 /// What the far end answered.
 pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+}
+
+impl Response {
+    /// Whether the status is 2xx.
+    pub fn is_success(&self) -> bool {
+        (200..300).contains(&self.status)
+    }
+
+    /// The value of the header `name`, ASCII case ignored.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        header(&self.headers, name)
+    }
+
+    /// The body read as JSON.
+    pub fn json<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
+        serde_json::from_slice(&self.body)
+    }
 }
 
 /// Make one request and wait for its answer.
@@ -179,6 +197,14 @@ fn response(fields: &[&[u8]]) -> Result<Response, CallError> {
         headers,
         body: body.to_vec(),
     })
+}
+
+/// The value of the header `name` in `headers`, ASCII case ignored.
+pub(crate) fn header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
 }
 
 /// What a reply this guest cannot read fails with.

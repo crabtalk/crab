@@ -1,7 +1,7 @@
 //! Stripe's events, kept as the subscriptions they name.
 
 use crate::{Data, Subscription};
-use berm_lang::{Result, rows};
+use berm_lang::Result;
 
 impl Data {
     /// Keeps the subscription this event names as Stripe answers it now: a
@@ -21,7 +21,7 @@ impl Data {
 impl Subscription {
     /// Records this subscription as it reads now, over what was recorded.
     pub fn keep(&self) -> Result<()> {
-        rows::<()>(
+        berm_lang::rows::<()>(
             "INSERT INTO stripe_subscriptions (id, customer, status, plan) VALUES (?, ?, ?, ?)
              ON CONFLICT (id) DO UPDATE
              SET customer = excluded.customer, status = excluded.status, plan = excluded.plan",

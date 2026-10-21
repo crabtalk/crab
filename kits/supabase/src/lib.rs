@@ -8,13 +8,13 @@
 
 extern crate alloc;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String};
 use berm_lang::{
     Result, http,
-    serde::{Deserialize, Serialize, de::DeserializeOwned},
-    serde_json,
+    serde::{Serialize, de::DeserializeOwned},
 };
 
+mod request;
 mod rest;
 mod storage;
 
@@ -23,8 +23,6 @@ pub use storage::Bucket;
 
 berm_lang::kit!(secrets = ["SUPABASE_KEY"]);
 
-const APIKEY: &str = "{secret:SUPABASE_KEY}";
-const AUTHORIZATION: &str = "Bearer {secret:SUPABASE_KEY}";
 const REST: &str = "/rest/v1";
 const STORAGE: &str = "/storage/v1/object";
 
@@ -51,11 +49,11 @@ impl Supabase {
     /// named arguments, and answers what it returned.
     pub fn rpc<T: DeserializeOwned>(&self, function: &str, args: &impl Serialize) -> Result<T> {
         let url = format!("{}{REST}/rpc/{}", self.url, http::encode(function));
-        read(&send(
+        request::read(&request::send(
             "POST",
             &url,
             &[("Content-Type", "application/json")],
-            &json(args)?,
+            &request::json(args)?,
         )?)
     }
 
@@ -63,49 +61,4 @@ impl Supabase {
     pub fn storage(&self, bucket: &str) -> Bucket {
         Bucket::new(format!("{}{STORAGE}/{}", self.url, http::encode(bucket)))
     }
-}
-
-/// An error body from PostgREST (`message`, `code`) or Storage (`message`,
-/// `error`).
-#[derive(Deserialize)]
-#[serde(crate = "berm_lang::serde")]
-struct Failure {
-    #[serde(default)]
-    message: String,
-    #[serde(default)]
-    code: Option<String>,
-    #[serde(default)]
-    error: Option<String>,
-}
-
-/// The body of a 2xx answer to the request.
-fn send(method: &str, url: &str, headers: &[(&str, &str)], body: &[u8]) -> Result<Vec<u8>> {
-    let mut all = Vec::from([("apikey", APIKEY), ("Authorization", AUTHORIZATION)]);
-    all.extend_from_slice(headers);
-    let response = http::fetch(method, url, &all, body)?;
-    if (200..300).contains(&response.status) {
-        return Ok(response.body);
-    }
-    let status = response.status;
-    Err(match serde_json::from_slice::<Failure>(&response.body) {
-        Ok(Failure {
-            message,
-            code,
-            error,
-        }) => match code.or(error) {
-            Some(code) => format!("Supabase answered {status}: {message} ({code})"),
-            None => format!("Supabase answered {status}: {message}"),
-        },
-        Err(_) => format!("Supabase answered {status}"),
-    }
-    .into())
-}
-
-fn json(value: &impl Serialize) -> Result<Vec<u8>> {
-    serde_json::to_vec(value).map_err(|_| String::from("Supabase was sent what is not JSON").into())
-}
-
-fn read<T: DeserializeOwned>(body: &[u8]) -> Result<T> {
-    serde_json::from_slice(body)
-        .map_err(|_| String::from("Supabase answered what this kit cannot read").into())
 }

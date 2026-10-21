@@ -74,7 +74,8 @@ pub struct Deploy {
     pub size: u64,
 }
 
-fn database_size() -> u64 {
+/// [`DATABASE_SIZE`], for `#[serde(default = "...")]`.
+pub fn database_size() -> u64 {
     DATABASE_SIZE
 }
 

@@ -4,11 +4,11 @@
 
 use crate::{host, record::usage, state::store::Store};
 use anyhow::Result;
-use berm::{Meter, Now};
+use berm::{Meter, Now, database::Databases};
 use berm_api::host::Metered;
 use parking_lot::Mutex;
 use rusqlite::params;
-use std::{collections::HashMap, mem, ops::AddAssign, path::Path};
+use std::{collections::HashMap, fs, mem, ops::AddAssign};
 
 /// What one service used on one day.
 pub(crate) struct Day {
@@ -146,11 +146,11 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
 pub(crate) async fn sample(
     store: &Store,
     service: &str,
-    database: &Path,
+    databases: &Databases,
     code: u64,
     day: i32,
 ) -> Result<()> {
-    let stored = stored(store, service, database, code).await?;
+    let stored = stored(store, service, databases, code).await?;
     let (scope, name) = host::split(service);
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
@@ -168,17 +168,17 @@ pub(crate) async fn sample(
 }
 
 /// The bytes `service` keeps now: its database file and its write-ahead log,
-/// if any, at `database`, its state, the logs kept, and `code`, its image and
+/// if any, in `databases`, its state, the logs kept, and `code`, its image and
 /// compiled code.
 pub(crate) async fn stored(
     store: &Store,
     service: &str,
-    database: &Path,
+    databases: &Databases,
     code: u64,
 ) -> Result<u64> {
-    let file: u64 = ["sqlite", "sqlite-wal"]
+    let file: u64 = [databases.path(service), databases.wal(service)]
         .iter()
-        .filter_map(|extension| std::fs::metadata(database.with_extension(extension)).ok())
+        .filter_map(|file| fs::metadata(file).ok())
         .map(|metadata| metadata.len())
         .sum();
     let (scope, name) = host::split(service);

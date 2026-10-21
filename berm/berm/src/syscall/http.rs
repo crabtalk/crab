@@ -2,13 +2,14 @@
 //! program's manifest declares under the syscall it makes.
 //!
 //! berm checks the request against the asking program's [`crate::Deps`] and
-//! substitutes every `{secret:NAME}` in a header value and in the body. Resolving a secret and
-//! sending the request are the host's, and arrive as the two closures below.
+//! substitutes every `{secret:NAME}` in a header value and in the body.
+//! Resolving a secret and sending the request are the host's, and arrive as
+//! the two closures below.
 
 use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
-use anyhow::{Result, bail};
-use futures_util::future::join_all;
-use std::{future::Future, sync::Arc, time::Duration};
+use anyhow::{Result, anyhow, bail};
+use futures_util::future;
+use std::{future::Future, str, sync::Arc, time::Duration};
 use url::{Host, Url};
 
 /// What opens a secret's name in a header value.
@@ -99,11 +100,8 @@ where
         call: Arc::new(move |at: Callsite, batch: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let requests: Vec<Vec<u8>> = wire::fields(&batch)?
-                    .into_iter()
-                    .map(<[u8]>::to_vec)
-                    .collect();
-                let answers = join_all(
+                let requests = wire::fields(&batch)?;
+                let answers = future::join_all(
                     requests
                         .iter()
                         .map(|request| answer(&at, abi::HTTP_FETCH, request, &*send, &*secret)),
@@ -112,13 +110,7 @@ where
                 let framed: Vec<Vec<u8>> = answers
                     .iter()
                     .map(|answered| match answered {
-                        Ok(response) => {
-                            let mut fields: Vec<&[u8]> = vec![b"ok"];
-                            let written = write(response);
-                            let inner = wire::fields(&written).unwrap_or_default();
-                            fields.extend(inner);
-                            wire::frame(&fields)
-                        }
+                        Ok(response) => [wire::frame(&[b"ok"]), write(response)].concat(),
                         Err(error) => {
                             let kind: &[u8] = match error.downcast_ref::<Refused>() {
                                 Some(_) => b"refused",
@@ -213,7 +205,7 @@ where
         let Some(end) = after.iter().position(|&byte| byte == b'}') else {
             bail!("{SECRET} is opened and never closed");
         };
-        let name = std::str::from_utf8(&after[..end])?;
+        let name = str::from_utf8(&after[..end])?;
         if !at.deps.secrets.iter().any(|declared| declared == name) {
             return Err(Refused(format!(
                 "{} does not declare the secret {name:?}",
@@ -268,7 +260,7 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option
     let timeout = match wire::text(&fields, 3, "timeout")? {
         "" => None,
         millis => Some(Duration::from_millis(millis.parse().map_err(|_| {
-            anyhow::anyhow!("timeout {millis:?} is not a count of milliseconds")
+            anyhow!("timeout {millis:?} is not a count of milliseconds")
         })?)),
     };
     let limit = match wire::text(&fields, 4, "limit")? {
@@ -276,7 +268,7 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option
         bytes => Some(
             bytes
                 .parse()
-                .map_err(|_| anyhow::anyhow!("limit {bytes:?} is not a count of bytes"))?,
+                .map_err(|_| anyhow!("limit {bytes:?} is not a count of bytes"))?,
         ),
     };
     let trailing = &fields[5..];
@@ -286,8 +278,8 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option
     let mut headers = Vec::with_capacity(trailing.len() / 2);
     for pair in trailing.chunks(2) {
         headers.push((
-            std::str::from_utf8(pair[0])?.to_owned(),
-            std::str::from_utf8(pair[1])?.to_owned(),
+            str::from_utf8(pair[0])?.to_owned(),
+            str::from_utf8(pair[1])?.to_owned(),
         ));
     }
     let parsed = Url::parse(url)

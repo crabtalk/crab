@@ -95,8 +95,9 @@ pub const HTTP_FETCH: &str = "berm.http.fetch";
 /// Request fields are the method, the URL, the body, the milliseconds to
 /// wait for an answer as decimal text, empty for the call's deadline alone,
 /// and the most bytes of the answer's body the guest takes as decimal text,
-/// empty for all of it, then header names and values in turn. The reply is the status as decimal text and the body, then
-/// header names and values in turn. A header value or the body may carry
+/// empty for all of it, then header names and values in turn. The reply is
+/// the status as decimal text and the body, then header names and values in
+/// turn. A header value or the body may carry
 /// `{secret:NAME}`, which the host substitutes; the guest never holds the
 /// value.
 pub const HOST_HTTP_FETCH: u64 = hash(HTTP_FETCH);
@@ -171,7 +172,8 @@ pub const HOST_CALLER: u64 = hash("berm.caller");
 /// ignored.
 ///
 /// The reply is no fields when neither the embedder nor a program vouched for
-/// one, else the issuer and the subject. berm serves this one itself, from the [`crate::Callsite`].
+/// one, else the issuer and the subject. berm serves this one itself, from
+/// the [`crate::Callsite`].
 pub const HOST_USER: u64 = hash("berm.user");
 
 /// What a manifest declares to make [`HOST_VOUCH`].

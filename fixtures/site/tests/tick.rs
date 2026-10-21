@@ -5,7 +5,8 @@
 //! tick, a page cut at the bytes it is read for, a failed read logged and
 //! retried, the URLs a program lists and the links its crawler lists fetched
 //! under the site's robots.txt, and a URL listed with its bytes read for them,
-//! past the tick's HTML when it is the tick's first.
+//! past the tick's HTML when it is the tick's first, and the sites after a
+//! tick's first sharing its sitemap bytes.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -567,5 +568,40 @@ async fn a_url_listed_past_the_html_left_is_left_due_and_read_first_on_a_tick_of
         call(&host, "read", json!({ "url": big })).await?,
         json!({"kind": "comparison", "length": long.len()})
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_sites_after_the_first_share_the_sitemap_bytes_of_a_round() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    for domain in ["a.com", "b.com"] {
+        host.arrange(
+            "GET",
+            &format!("https://{domain}/robots.txt"),
+            200,
+            "User-agent: *\nAllow: /\n",
+        );
+        // 3 MiB each: either fits the 4 MiB the rest share, not both.
+        host.arrange(
+            "GET",
+            &format!("https://{domain}/sitemap.xml"),
+            200,
+            format!(
+                r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://{domain}/pricing</loc></url>{}</urlset>"#,
+                " ".repeat(3 << 20)
+            ),
+        );
+    }
+    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
+    call(&host, "watch", json!({"domains": ["a.com", "b.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(kept(&host, "a.com").await?.is_empty());
+    assert!(kept(&host, "b.com").await?.is_empty());
+
+    // Left due, each is read on the next tick, a.com for bytes of its own.
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(kept(&host, "a.com").await?, ["https://a.com/pricing"]);
+    assert_eq!(kept(&host, "b.com").await?, ["https://b.com/pricing"]);
     Ok(())
 }

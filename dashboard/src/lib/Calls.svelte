@@ -2,15 +2,14 @@
 	import * as api from '$lib/api.js';
 	import { number, time } from '$lib/format.js';
 	import Logs from '$lib/Logs.svelte';
+	import { Paged } from '$lib/paged.svelte.js';
 
 	let { program, tools } = $props();
 
 	let tool = $state('');
 	let outcome = $state('');
-	let items = $state([]);
-	let next = $state(null);
 	let open = $state(null);
-	let error = $state('');
+	const calls = new Paged((query) => api.calls(program, query));
 
 	function filters() {
 		const query = new URLSearchParams();
@@ -19,24 +18,13 @@
 		return query.toString();
 	}
 
-	async function load(query, more) {
-		try {
-			const page = await api.calls(program, query);
-			items = more ? [...items, ...page.items] : page.items;
-			next = page.next;
-			error = '';
-		} catch (e) {
-			error = e.message;
-		}
-	}
-
 	export function refresh() {
 		open = null;
-		return load(filters(), false);
+		return calls.load(filters());
 	}
 
 	$effect(() => {
-		load(filters(), false);
+		calls.load(filters());
 	});
 </script>
 
@@ -58,7 +46,7 @@
 	<button class="ghost" onclick={refresh}>Refresh</button>
 </div>
 
-{#if error}<p class="error">{error}</p>{/if}
+{#if calls.error}<p class="error">{calls.error}</p>{/if}
 
 <table>
 	<thead>
@@ -68,7 +56,7 @@
 		</tr>
 	</thead>
 	<tbody>
-		{#each items as call (call.id)}
+		{#each calls.items as call (call.id)}
 			<tr>
 				<td class="num">{call.id}</td>
 				<td>{time(call.at)}</td>
@@ -96,6 +84,6 @@
 	</tbody>
 </table>
 
-{#if next}
-	<p><button class="ghost" onclick={() => load(next, true)}>Older</button></p>
+{#if calls.next}
+	<p><button class="ghost" onclick={() => calls.load(calls.next, true)}>Older</button></p>
 {/if}

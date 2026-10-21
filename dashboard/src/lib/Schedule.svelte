@@ -24,7 +24,7 @@
 			await api.setCron(program, tool, edits[tool].trim() || null);
 			await load();
 		} catch (e) {
-			error = `${e.status}: ${e.message}`;
+			error = e.message;
 		}
 	}
 
