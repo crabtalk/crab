@@ -136,7 +136,8 @@ pub(crate) fn read_failed(domain: &str, now: u64, error: &str) -> Result<(), Cal
     Ok(())
 }
 
-/// Up to `limit` pages due, least recently fetched first: never fetched, their
+/// Up to `limit` pages due, those of sites watched first before the rest, a
+/// site's least recently fetched before any site's next: never fetched, their
 /// URL's `lastmod` changed since, or with no `lastmod` and last fetched at
 /// `before` or earlier.
 pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError> {
@@ -149,11 +150,15 @@ pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError
         Option<String>,
     )>(
         "SELECT u.url, u.domain, u.kind, u.lastmod, p.etag, p.modified
-           FROM crawl_urls u LEFT JOIN crawl_pages p ON p.url = u.url
+           FROM crawl_urls u JOIN crawl_sites s ON s.domain = u.domain
+                LEFT JOIN crawl_pages p ON p.url = u.url
           WHERE p.url IS NULL
              OR (u.lastmod IS NOT NULL AND u.lastmod IS NOT p.lastmod)
              OR (u.lastmod IS NULL AND p.fetched <= ?)
-          ORDER BY p.fetched NULLS FIRST LIMIT ?",
+          ORDER BY s.first DESC,
+                   row_number() OVER (PARTITION BY u.domain ORDER BY p.fetched NULLS FIRST),
+                   p.fetched NULLS FIRST
+          LIMIT ?",
         &(before, limit as u64),
     )?
     .into_iter()

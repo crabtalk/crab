@@ -42,6 +42,8 @@ impl Crawler for Pages {
         sites: 20,
         listed: 20_000,
         pages: 50,
+        html: 2 << 20,
+        page: 256 << 10,
         failures: 3,
         timeout: 10_000,
     };
@@ -56,11 +58,11 @@ impl Crawler for Pages {
 - `watch(domains)` watches each domain; one already watched is left as it is. `watch_first(domains)` watches each to be read before the other sites due.
 - Each request fails when nothing answered within `Schedule::timeout` milliseconds. A site that answered a page with nothing is fetched no more that tick.
 - A tick reads the sites due, never read or read `recrawl` ago, those watched first before the rest, least recently read first: robots.txt, then the sitemaps it names, else `/sitemap.xml`, at most 12 sitemap files, `.gz` ones skipped. The URLs of a kind that robots.txt allows replace the site's last. robots.txt is read as RFC 9309 says, the group for the token before the `/` in `AGENT`, else `*`; a 4xx allows everything, and a 5xx or a failed request fails the read, which is tried again on a later tick until `failures` in a row, and then `recrawl` after the last. A site keeps its last error and when it failed, a page that answered nothing its last error.
-- It then fetches the pages due, least recently fetched first: new, their URL's `lastmod` changed, or with no `lastmod` and fetched `refetch` ago, with `If-None-Match` and `If-Modified-Since` from what each last answered. A redirect is followed within the site, five at most.
+- It then fetches the pages due, those of sites watched first before the rest, a site's least recently fetched before any site's next: new, their URL's `lastmod` changed, or with no `lastmod` and fetched `refetch` ago, with `If-None-Match` and `If-Modified-Since` from what each last answered. A redirect is followed within the site, five at most.
 - A page keeps its title (`<title>`, else `og:title`), its description (`description`, else `og:description`) and up to 64 KiB of its text. A page that holds no text, such as one rendered by JavaScript, is stored without text.
 - `Crawler::read` is handed each page that answered `200` with HTML, its domain, URL, kind and HTML, in the call that stored it, and answers the bytes it stored itself; by default it stores nothing.
-- A tick reads its sites at once and fetches its pages a page a site a round, each round's requests sent as one batch over `berm.http.fetch_all`, so a site sees one request at a time. Each page of a round is read for its share of the HTML left.
-- A tick stops at 8 MiB stored, or at 2 MiB of HTML read, and leaves the rest due. The first site due is read for `listed` sitemap URLs of its own; the rest share `listed`, and one that would list more than are left is left due. It logs `Read` for each site read and `ReadFailed` and `FetchFailed` for each failure.
+- A tick reads its sites at once and fetches its pages a page a site a round, each round's requests sent as one batch over `berm.http.fetch_all`, so a site sees one request at a time. Each page is read for its first `page` bytes of HTML, and a round fetches no more pages than the HTML left holds at `page` bytes each.
+- A tick stops at 8 MiB stored, or at `html` bytes of HTML read, and leaves the rest due. The first site due is read for `listed` sitemap URLs of its own; the rest share `listed`, and one that would list more than are left is left due. It logs `Read` for each site read and `ReadFailed` and `FetchFailed` for each failure.
 - `store::site`, `store::urls` and `store::page` read back a site, its URLs by kind, and a page; `store::failed` the sites whose last read failed.
 
 ## License

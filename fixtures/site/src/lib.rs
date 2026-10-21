@@ -72,6 +72,8 @@ impl Crawler for Pages {
         sites: 10,
         listed: 20_000,
         pages: 10,
+        html: 2 << 20,
+        page: 256 << 10,
         failures: 2,
         timeout: 10_000,
     };

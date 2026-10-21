@@ -1,7 +1,8 @@
 //! `crab-crawl`'s tick in berm-site, against an arranged site: robots.txt
 //! rules and sitemaps read, pages of a kind fetched, handed to the crawler and
-//! recrawled when due, sites watched first read first, a silent site fetched
-//! no more in its tick, and a failed read logged and retried.
+//! recrawled when due, sites watched first read and fetched first, a page of
+//! each site before a second of any, a silent site fetched no more in its
+//! tick, and a failed read logged and retried.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -250,6 +251,68 @@ async fn a_site_watched_first_is_read_first() -> Result<()> {
     assert_eq!(
         fetched(&host).first().map(String::as_str),
         Some("https://example.com/robots.txt")
+    );
+    Ok(())
+}
+
+/// elsewhere.com, its sitemap listing twelve comparison pages, none of them
+/// arranged, and read in a tick: its first page answers nothing, the rest are
+/// left due.
+async fn elsewhere_read(host: &TestHost) -> Result<()> {
+    host.arrange(
+        "GET",
+        "https://elsewhere.com/robots.txt",
+        200,
+        "User-agent: *\nAllow: /\n",
+    );
+    let urls: String = (0..12)
+        .map(|n| format!("<url><loc>https://elsewhere.com/compare/elsewhere-vs-{n}</loc></url>"))
+        .collect();
+    host.arrange(
+        "GET",
+        "https://elsewhere.com/sitemap.xml",
+        200,
+        format!(r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>"#),
+    );
+    call(host, "watch", json!({"domains": ["elsewhere.com"]})).await?;
+    call(host, "tick", json!({})).await?;
+    Ok(())
+}
+
+/// The pages a tick fetches.
+async fn ticked_pages(host: &TestHost) -> Result<Vec<String>> {
+    let before = fetched(host).len();
+    call(host, "tick", json!({})).await?;
+    Ok(fetched(host)[before..]
+        .iter()
+        .filter(|url| !url.ends_with(".xml") && !url.ends_with(".txt"))
+        .cloned()
+        .collect())
+}
+
+#[tokio::test]
+async fn the_pages_of_a_site_watched_first_are_fetched_first() -> Result<()> {
+    let host = deployed().await?;
+    elsewhere_read(&host).await?;
+    arrange(&host);
+    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
+    let pages = ticked_pages(&host).await?;
+    assert!(pages[0].starts_with("https://example.com/"), "{pages:?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_tick_takes_a_page_of_each_site_due_before_a_second_of_any() -> Result<()> {
+    let host = deployed().await?;
+    elsewhere_read(&host).await?;
+    arrange(&host);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    let pages = ticked_pages(&host).await?;
+    assert!(
+        pages
+            .iter()
+            .any(|url| url.starts_with("https://example.com/")),
+        "{pages:?}"
     );
     Ok(())
 }

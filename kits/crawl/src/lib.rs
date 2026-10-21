@@ -6,14 +6,15 @@
 //! A tick reads the sites due, those watched first before the rest, least
 //! recently read first: robots.txt, then the sitemaps it names, else
 //! `/sitemap.xml`, keeping each listed URL of a kind that robots.txt allows in
-//! place of the site's last. It then fetches the
-//! pages due, least recently fetched first: new, their `lastmod` changed, or
-//! with none and fetched longer ago than the refetch interval, each
-//! conditionally on the validators it last answered with, and hands each page
-//! that answered with HTML to the crawler to read. Its sites are read at once,
-//! and its pages fetched a page a site a round, each round's requests sent as
-//! one batch, so a site sees one request at a time. A tick stops at its
-//! byte budget and leaves the rest due; all of it commits with the call.
+//! place of the site's last. It then fetches the pages due, those of sites
+//! watched first before the rest, a site's least recently fetched before any
+//! site's next: new, their `lastmod` changed, or with none and fetched longer
+//! ago than the refetch interval, each conditionally on the validators it last
+//! answered with, and hands each page that answered with HTML to the crawler to
+//! read. Its sites are read at once, and its pages fetched a page a site a
+//! round, each round's requests sent as one batch, so a site sees one request
+//! at a time. A tick stops at its byte budget and leaves the rest due; all of
+//! it commits with the call.
 
 #![no_std]
 
@@ -38,10 +39,6 @@ berm_lang::kit!(
 /// Bytes a tick stores before it reads and fetches no more.
 const BUDGET: usize = 8 << 20;
 
-/// Bytes of HTML a tick reads before it fetches no more pages. A page's
-/// HTML costs about 114 instructions a byte to read (measured 2026-10-21).
-const HTML: usize = 2 << 20;
-
 /// When a crawler reads and fetches. Times are in milliseconds.
 pub struct Schedule {
     /// Before a site's robots.txt and sitemaps are read again.
@@ -56,6 +53,12 @@ pub struct Schedule {
     pub listed: usize,
     /// Pages fetched per tick.
     pub pages: usize,
+    /// Bytes of HTML a tick reads before it fetches no more pages. A page's
+    /// HTML costs about 114 instructions a byte to read (measured 2026-10-21).
+    pub html: usize,
+    /// Bytes of HTML a page is read for. A round fetches no more pages than
+    /// the HTML left holds at this many each.
+    pub page: usize,
     /// Failed reads in a row after which a site is read again only `recrawl`
     /// after its last failed.
     pub failures: u64,
@@ -165,15 +168,17 @@ pub fn tick<C: Crawler>() -> Result<()> {
     let mut read = 0;
     // The sites that answered a page with nothing this tick.
     let mut silent: Vec<String> = Vec::new();
-    while !due.is_empty() && stored < BUDGET && read < HTML {
+    while !due.is_empty() && stored < BUDGET && read < schedule.html {
         // A page a site a round.
+        let left = schedule.html - read;
+        let width = (left / schedule.page).max(1);
         let mut round: Vec<store::Due> = Vec::new();
         let mut later: VecDeque<store::Due> = VecDeque::new();
         for page in due.drain(..) {
             if silent.contains(&page.domain) {
                 continue;
             }
-            match round.iter().any(|taken| taken.domain == page.domain) {
+            match round.len() == width || round.iter().any(|taken| taken.domain == page.domain) {
                 true => later.push_back(page),
                 false => round.push(page),
             }
@@ -182,9 +187,8 @@ pub fn tick<C: Crawler>() -> Result<()> {
         if round.is_empty() {
             break;
         }
-        let limit = (HTML - read) / round.len();
         let pages: Vec<&store::Due> = round.iter().collect();
-        let fetched = page::fetch_all::<C>(&pages, limit);
+        let fetched = page::fetch_all::<C>(&pages, schedule.page.min(left));
         for (page, fetched) in round.iter().zip(fetched) {
             if let page::Fetched::Failed(error) = &fetched {
                 silent.push(page.domain.clone());
