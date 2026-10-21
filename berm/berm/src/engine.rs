@@ -8,27 +8,31 @@
 
 use crate::{
     Budget, Invocation, Meter,
+    bound::cpu::Clock,
     syscall::{self, Door, Table},
 };
 use anyhow::{Context, Result, anyhow, bail};
 use std::{
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
 use wasmtime::{
     Caller, Extern, InstanceAllocationStrategy, InstancePre, Linker, Memory, Module,
-    PoolingAllocationConfig, Store, ToWasmtimeResult,
+    PoolingAllocationConfig, Store, ToWasmtimeResult, Trap, UpdateDeadline,
 };
 
 /// The module every syscall is imported from, and the one name under it.
 const MODULE: &str = "berm";
 const SYSCALL: &str = "syscall";
 
-/// How often the engine's epoch advances, and so the granularity a guest's
-/// deadline is rounded up to. Fine enough that a runaway program is stopped
-/// promptly, coarse enough that the tick costs nothing.
+/// How often the engine's epoch advances, and so how often a running guest's
+/// deadline and CPU time are checked. Fine enough that a runaway program is
+/// stopped promptly, coarse enough that the tick costs nothing.
 const TICK: Duration = Duration::from_millis(100);
 
 /// How a runtime compiles and holds code.
@@ -45,8 +49,8 @@ pub struct Config {
     pub instances: u32,
     /// The largest linear memory one guest may grow to, in bytes.
     pub memory: usize,
-    /// The most wasm instructions one invocation may execute.
-    pub fuel: u64,
+    /// The most CPU time one invocation may spend, nested calls excluded.
+    pub cpu: Duration,
     /// The most rows one invocation may read and write together. A row
     /// syscall made once they are used is refused; the statement that crosses
     /// the budget runs to its end.
@@ -61,7 +65,7 @@ impl Default for Config {
             cache_dir: None,
             instances: 1_000,
             memory: 128 << 20,
-            fuel: 1_000_000_000,
+            cpu: Duration::from_millis(100),
             rows: 1_000_000,
             deadline: crate::bound::watchdog::TIMEOUT,
         }
@@ -74,8 +78,8 @@ impl Default for Config {
 #[derive(Clone)]
 pub struct Engine {
     wasmtime: wasmtime::Engine,
-    /// [`Config::fuel`].
-    fuel: u64,
+    /// [`Config::cpu`].
+    cpu: Duration,
     /// [`Config::rows`].
     rows: u64,
     /// [`Config::deadline`].
@@ -85,12 +89,10 @@ pub struct Engine {
 impl Engine {
     pub fn new(config: &Config) -> Result<Self> {
         let mut wasmtime = wasmtime::Config::new();
-        // Without this the compiled code has no checks to notice a deadline,
-        // and a guest that loops forever holds the calling thread forever.
+        // Without this the compiled code has no checks to notice a deadline
+        // or a spent CPU budget, and a guest that loops forever holds the
+        // calling thread forever.
         wasmtime.epoch_interruption(true);
-        // Instructions are counted in fuel, one per wasm operator. A guest
-        // bound by computation runs measurably slower for it.
-        wasmtime.consume_fuel(true);
         if let Some(dir) = &config.cache_dir {
             let mut cache = wasmtime::CacheConfig::new();
             cache.with_directory(dir.join("wasm"));
@@ -112,7 +114,7 @@ impl Engine {
         tick(&engine);
         Ok(Self {
             wasmtime: engine,
-            fuel: config.fuel,
+            cpu: config.cpu,
             rows: config.rows,
             deadline: config.deadline,
         })
@@ -148,7 +150,7 @@ fn tick(engine: &wasmtime::Engine) {
 /// One compiled program, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
-    /// [`Config::fuel`] and [`Config::rows`].
+    /// [`Config::cpu`] and [`Config::rows`].
     pub(crate) budget: Budget,
     /// Imports resolved once, at deploy. A guest reaching for something no
     /// syscall is registered for is refused by the deploy that introduced it,
@@ -163,7 +165,7 @@ impl Image {
     /// Compile `image` against `table`.
     pub(crate) fn compile(engine: &Engine, image: &[u8], table: Table) -> Result<Self> {
         let budget = Budget {
-            instructions: engine.fuel,
+            cpu: engine.cpu.as_micros() as u64,
             rows: engine.rows,
         };
         let engine = engine.wasmtime.clone();
@@ -212,9 +214,9 @@ impl Image {
         self.exports.iter().map(String::as_str).collect()
     }
 
-    /// Instantiate and run one tool, executing at most `fuel` instructions, and
-    /// meter the instructions it executed and the linear memory it reached
-    /// against its program, trapped or not.
+    /// Instantiate and run one tool, spending at most `cpu` microseconds of
+    /// CPU, and meter the CPU it spent and the linear memory it reached against
+    /// its program, trapped or not.
     ///
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
@@ -223,44 +225,58 @@ impl Image {
         &self,
         symbol: &str,
         invocation: Invocation,
-        fuel: u64,
+        cpu: u64,
     ) -> Result<Invocation> {
         let deadline = invocation.at.deadline;
         let mut store = Store::new(&self.engine, invocation);
         store.limiter(|invocation| &mut invocation.held);
 
-        // Rounded up, and never zero: a guest gets at least what is left of the
-        // bound it inherited, and a deadline of no ticks would trap it before
-        // it ran an instruction.
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let ticks = remaining.div_duration_f64(TICK).ceil() as u64;
-        store.set_epoch_deadline(ticks.max(1));
-        store.set_fuel(fuel)?;
+        // Checked at every tick: a guest past its deadline traps as interrupted,
+        // and one past its CPU budget is stopped and marked so.
+        let clock = Arc::new(Clock::default());
+        let over = Arc::new(AtomicBool::new(false));
+        store.set_epoch_deadline(1);
+        store.epoch_deadline_callback({
+            let (clock, over) = (clock.clone(), over.clone());
+            move |_| {
+                if Instant::now() >= deadline {
+                    return Err(Trap::Interrupt.into());
+                }
+                if clock.spent() / 1_000 > cpu {
+                    over.store(true, Ordering::Relaxed);
+                    return Err(Trap::Interrupt.into());
+                }
+                Ok(UpdateDeadline::Continue(1))
+            }
+        });
 
         // Instantiating runs the guest's own start-up, which is counted with
         // its call.
-        let instance = self.pre.instantiate_async(&mut store).await;
-        let called = match &instance {
-            Ok(instance) => match instance.get_typed_func::<(), ()>(&mut store, symbol) {
-                Ok(tool) => tool.call_async(&mut store, ()).await,
-                Err(error) => Err(error),
-            },
-            Err(_) => Ok(()),
-        };
-        let left = store.get_fuel()?;
-        let instructions = fuel - left;
+        let (instance, called) = clock
+            .time(async {
+                let instance = self.pre.instantiate_async(&mut store).await;
+                let called = match &instance {
+                    Ok(instance) => match instance.get_typed_func::<(), ()>(&mut store, symbol) {
+                        Ok(tool) => tool.call_async(&mut store, ()).await,
+                        Err(error) => Err(error),
+                    },
+                    Err(_) => Ok(()),
+                };
+                (instance, called)
+            })
+            .await;
         let memory = instance.as_ref().ok().map_or(0, |instance| {
             instance
                 .get_memory(&mut store, "memory")
                 .map_or(0, |memory| memory.data_size(&store) as u64)
         });
         store.data().at.meter(Meter {
-            instructions,
+            cpu: clock.spent() / 1_000,
             memory,
             ..Meter::default()
         });
-        if (instance.is_err() || called.is_err()) && left == 0 {
-            bail!("ran past its budget of {} instructions", fuel);
+        if over.load(Ordering::Relaxed) {
+            bail!("ran past its budget of {cpu}µs of CPU");
         }
         instance?;
         called?;

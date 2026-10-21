@@ -1,6 +1,6 @@
 //! `crab rates` — what use past the included amounts costs.
 
-use crate::{format, utils};
+use crate::utils;
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
@@ -17,9 +17,9 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
     let rates = &metering.rates;
     println!("calls         {}", per_million(rates.calls));
     println!(
-        "compute       ${} per trillion instructions past each call's first {}",
-        rates.overage as f64 / 1e3,
-        format::count(metering.included_instructions)
+        "compute       ${} per million CPU-ms past each call's first {}µs",
+        rates.overage as f64 / 1e6,
+        metering.included_cpu
     );
     println!("rows read     {}", per_million(rates.read));
     println!("rows written  {}", per_million(rates.written));

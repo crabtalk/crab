@@ -13,9 +13,9 @@ pub struct Config {
     /// The largest linear memory one guest may grow to, in bytes.
     #[serde(default = "memory")]
     pub memory: usize,
-    /// The most wasm instructions one invocation may execute.
-    #[serde(default = "fuel")]
-    pub fuel: u64,
+    /// The most CPU time one invocation may spend, nested calls excluded.
+    #[serde(default = "cpu")]
+    pub cpu: Duration,
     /// The most rows one invocation may read and write together.
     #[serde(default = "rows")]
     pub rows: u64,
@@ -42,7 +42,7 @@ impl Default for Config {
         Self {
             instances: instances(),
             memory: memory(),
-            fuel: fuel(),
+            cpu: cpu(),
             rows: rows(),
             deadline: deadline(),
             depth: depth(),
@@ -65,8 +65,8 @@ fn deadline() -> Duration {
     berm::Config::default().deadline
 }
 
-fn fuel() -> u64 {
-    berm::Config::default().fuel
+fn cpu() -> Duration {
+    berm::Config::default().cpu
 }
 
 fn rows() -> u64 {

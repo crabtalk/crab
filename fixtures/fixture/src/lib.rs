@@ -9,7 +9,7 @@
 //! their own: `echo` reads its arguments and answers them back, `carry` takes
 //! the same payload without reading it to price a parse, `chatty` makes a
 //! hundred host calls to price one, `probe` allocates to show the heap arrives without
-//! a second entry into the guest, `spin` loops past the instructions a call
+//! a second entry into the guest, `spin` loops past the CPU time a call
 //! includes, and `boom` fails on purpose.
 //! `tick` arms itself, to show a wake outliving the invocation that asked for
 //! it, `wait` makes one host call a host can make slow, `fetch` makes one
@@ -71,7 +71,7 @@ mod tools {
         Ok(())
     }
 
-    /// Loops `rounds` times, to run a call past the instructions it includes.
+    /// Loops `rounds` times, to run a call past the CPU time it includes.
     #[public]
     pub fn spin(rounds: u64) -> Result<u64> {
         let mut acc = 0u64;

@@ -54,7 +54,8 @@ pub struct Schedule {
     /// Pages fetched per tick.
     pub pages: usize,
     /// Bytes of HTML a tick reads before it fetches no more pages. A page's
-    /// HTML costs about 114 instructions a byte to read (measured 2026-10-21).
+    /// HTML costs about 114 wasm instructions a byte to read (measured
+    /// 2026-10-21), about 11ns of CPU at 10,000 instructions a microsecond.
     pub html: usize,
     /// Bytes of HTML a page is read for. A round fetches no more pages than
     /// the HTML left holds at this many each.

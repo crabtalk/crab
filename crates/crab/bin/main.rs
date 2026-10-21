@@ -159,8 +159,9 @@ enum Command {
     Budget {
         name: String,
         tool: String,
+        /// CPU time, in microseconds.
         #[arg(long)]
-        instructions: u64,
+        cpu: u64,
         #[arg(long)]
         rows: u64,
     },
@@ -484,18 +485,18 @@ fn main() -> Result<ExitCode> {
         Command::Budget {
             name,
             tool,
-            instructions,
+            cpu,
             rows,
         } => {
             utils::wait(client()?.budget(
                 name,
                 tool,
                 Budget {
-                    instructions: *instructions,
+                    cpu: *cpu,
                     rows: *rows,
                 },
             ))?;
-            eprintln!("{name}.{tool}: at most {instructions} instructions and {rows} rows a call");
+            eprintln!("{name}.{tool}: at most {cpu}µs of CPU and {rows} rows a call");
         }
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {

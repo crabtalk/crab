@@ -14,7 +14,7 @@ async fn a_budget_is_published_in_the_terms() -> Result<()> {
     assert_eq!(host.terms("fixture")?.tools["echo"].budget, host.budget);
 
     let budget = Budget {
-        instructions: 100_000,
+        cpu: 10_000,
         rows: 10,
     };
     host.set_budget("fixture", "echo", budget).await?;

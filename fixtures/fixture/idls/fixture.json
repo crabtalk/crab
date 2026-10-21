@@ -51,7 +51,7 @@
     },
     {
       "name": "spin",
-      "description": "Loops `rounds` times, to run a call past the instructions it includes.",
+      "description": "Loops `rounds` times, to run a call past the CPU time it includes.",
       "parameters": {
         "properties": {
           "rounds": {

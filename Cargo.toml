@@ -56,6 +56,7 @@ rmcp = { version = "2.2", default-features = false, features = [
     "transport-streamable-http-server",
 ] }
 hex = "0.4"
+libc = "0.2"
 rusqlite = { package = "berm-rusqlite", version = "0.39", features = ["bundled", "hooks"] }
 rust-embed = "8"
 self_update = { version = "1.3", default-features = false, features = [

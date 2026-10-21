@@ -30,9 +30,9 @@ struct Args {
     #[arg(long)]
     proxy: Option<String>,
 
-    /// The most wasm instructions one call may execute.
-    #[arg(long, default_value_t = berm::Config::default().fuel)]
-    max_instructions: u64,
+    /// How many milliseconds of CPU one call may spend, nested calls excluded.
+    #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
+    max_cpu_millis: u64,
 
     /// How many seconds a call may run before it is stopped.
     #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
     let service = Service::new(
         root,
         args.max_call_depth,
-        args.max_instructions,
+        Duration::from_millis(args.max_cpu_millis),
         Duration::from_secs(args.max_call_seconds),
         args.proxy.as_deref(),
     )

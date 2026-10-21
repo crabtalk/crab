@@ -43,19 +43,19 @@ pub struct Service {
 impl Service {
     /// Open `root`, restoring whatever was deployed before this process.
     /// Chains of programs calling programs nest at most `depth` deep, and a
-    /// call executes at most `fuel` instructions and runs at most `deadline`.
+    /// call spends at most `cpu` of CPU and runs at most `deadline`.
     /// `berm.http.proxy` goes through `proxy`, or direct without one.
     pub async fn new(
         root: PathBuf,
         depth: u32,
-        fuel: u64,
+        cpu: Duration,
         deadline: Duration,
         proxy: Option<&str>,
     ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
         let config = Config {
             depth,
-            fuel,
+            cpu,
             deadline,
             cache_dir: Some(root.join("cache")),
             databases: root.join("databases"),

@@ -411,8 +411,8 @@ pub struct Live {
     /// Bytes it keeps: its database file, its write-ahead log, its state, its
     /// logs kept, and its image and compiled code.
     pub stored: u64,
-    /// Wasm instructions executed.
-    pub instructions: Count,
+    /// CPU time spent, in microseconds.
+    pub cpu: Count,
     /// Rows read and written in its database and state.
     pub read: Count,
     pub written: Count,
@@ -441,8 +441,8 @@ pub struct Metered {
     /// Invocations of the service: from outside, from other services, and
     /// wakes.
     pub calls: u64,
-    /// Wasm instructions those invocations executed.
-    pub instructions: u64,
+    /// CPU time those invocations spent, in microseconds.
+    pub cpu: u64,
     /// The largest linear memory one of them reached, in bytes.
     pub memory: u64,
     /// Rows read and written in the service's database and state.
@@ -471,7 +471,7 @@ impl std::ops::AddAssign<Meter> for Metered {
     /// Sums every count but `memory`, which keeps the larger.
     fn add_assign(&mut self, used: Meter) {
         self.calls += used.calls;
-        self.instructions += used.instructions;
+        self.cpu += used.cpu;
         self.memory = self.memory.max(used.memory);
         self.read += used.read;
         self.written += used.written;

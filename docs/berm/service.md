@@ -17,7 +17,7 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
 | `--root` | Where deployed images, the code cache and `secrets.toml` live. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
-| `--max-instructions` | The most wasm instructions one call executes, 1,000,000,000 by default. |
+| `--max-cpu-millis` | How many milliseconds of CPU one call spends, nested calls excluded, 100 by default. |
 | `--max-call-seconds` | How long one call runs before it is stopped, 60 by default. |
 | `--proxy` | The proxy `berm.http.proxy` goes through, e.g. `http://user:pass@gate.example.com:3120`. Without one it goes direct. |
 
@@ -42,7 +42,7 @@ The feature is off by default.
 docker compose up --build
 ```
 
-Inside the container bermd listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes bermd its other flags: `--proxy`, `--max-call-depth`, `--max-instructions`, `--max-call-seconds`.
+Inside the container bermd listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes bermd its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
 
 ## Deploying
 
@@ -74,7 +74,7 @@ curl -X DELETE http://127.0.0.1:7777/programs/example
 | `GET /programs/{name}` | Its IDL under `program`, and under `served` the calls of its tools from outside that ended done, per day over the last 30 days and in total. |
 | `GET /programs/{name}/idl` | The IDL alone: name, version, digest, package fields and public tools. |
 | `GET /programs/{name}/runtime` | Its other tools, `deps`, `events`, and the `deps` nothing here answers to. |
-| `GET /programs/{name}/terms` | Each public tool's budget, as `{"tools": {"<tool>": {"budget": {"instructions", "rows"}}}}`. |
+| `GET /programs/{name}/terms` | Each public tool's budget, as `{"tools": {"<tool>": {"budget": {"cpu", "rows"}}}}`. |
 | `GET /programs/{name}/usage` | Each caller of each tool and event over the last 30 days. |
 | `GET /programs/{name}/live` | What it is using now: invocations running, memory, bytes stored, and each resource's total and rate. |
 | `GET /programs/{name}/meters` | Its meters over the last 30 days, a day each, with the bytes it stored. |
@@ -101,7 +101,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
   but `id` optional. bermd checks none of it. A call without one, or an app's
   call without a `user`, has no caller and reaches only `#[anonymous]` tools.
 - The answer carries `Berm-Meter`, what the call used across every program it
-  reached: `{"calls", "instructions", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
+  reached: `{"calls", "cpu", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
   A deprecated tool's answer carries `Deprecation`, and `Sunset` once one is set.
 
 | Status | When |
@@ -114,12 +114,12 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 
 ## Budgets
 
-An invocation stops at its tool's instruction budget, and a row syscall it makes
-once it has read and written its row budget together is refused: the
-`--max-instructions` instructions, 1,000,000,000 by default, and 1,000,000 rows,
-unless
-`PUT /programs/{name}/tools/{tool}/budget` set `{"instructions", "rows"}` lower,
-from the next call.
+An invocation stops at its tool's CPU budget, checked every 100ms, and a row
+syscall it makes once it has read and written its row budget together is
+refused: `--max-cpu-millis` of CPU, 100 by default, and 1,000,000 rows, unless
+`PUT /programs/{name}/tools/{tool}/budget` set `{"cpu", "rows"}` lower, `cpu` in
+microseconds, from the next call. `cpu` in `Berm-Meter` is microseconds too,
+each invocation's own, nested calls excluded.
 
 ## Crons, deprecation and Stripe events
 

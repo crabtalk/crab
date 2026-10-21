@@ -158,7 +158,7 @@ impl<E: Env> Host<E> {
             cache_dir: config.cache_dir.clone(),
             instances: config.instances,
             memory: config.memory,
-            fuel: config.fuel,
+            cpu: config.cpu,
             rows: config.rows,
             deadline: config.deadline,
         })?;
@@ -205,7 +205,7 @@ impl<E: Env> Host<E> {
                 secrets,
                 layers,
                 budget: Budget {
-                    instructions: config.fuel,
+                    cpu: config.cpu.as_micros() as u64,
                     rows: config.rows,
                 },
                 terms,

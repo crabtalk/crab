@@ -61,7 +61,7 @@ pub struct Warning {
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
     Calls,
-    Instructions,
+    Cpu,
     Read,
     Written,
     Stored,
@@ -71,7 +71,7 @@ pub enum Unit {
 
 text_enum!(Unit {
     Calls => "calls",
-    Instructions => "instructions",
+    Cpu => "cpu",
     Read => "read",
     Written => "written",
     Stored => "stored",
@@ -140,8 +140,9 @@ text_enum!(InvoiceStatus {
 #[serde(default)]
 pub struct Included {
     pub calls: u64,
-    /// Wasm instructions past each call's first 1M.
-    pub instructions: u64,
+    /// CPU microseconds past each call's first
+    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU).
+    pub cpu: u64,
     /// Rows read.
     pub read: u64,
     /// Rows written.

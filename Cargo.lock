@@ -229,6 +229,7 @@ dependencies = [
  "berm-rusqlite",
  "futures-util",
  "hex",
+ "libc",
  "parking_lot",
  "ring",
  "serde",

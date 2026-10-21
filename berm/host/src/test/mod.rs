@@ -46,6 +46,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     task::{self, Poll},
+    time::Duration,
 };
 
 mod clock;
@@ -94,11 +95,11 @@ impl TestHost {
     /// A host with nothing deployed, its clock at `now` in milliseconds since
     /// the Unix epoch.
     pub async fn open(now: u64) -> Result<Self> {
-        Self::open_with(now, crate::Config::default().fuel).await
+        Self::open_with(now, crate::Config::default().cpu).await
     }
 
-    /// [`TestHost::open`], each call executing at most `fuel` instructions.
-    pub async fn open_with(now: u64, fuel: u64) -> Result<Self> {
+    /// [`TestHost::open`], each call spending at most `cpu` of CPU.
+    pub async fn open_with(now: u64, cpu: Duration) -> Result<Self> {
         static OPENED: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "berm-test-{}-{}",
@@ -111,7 +112,7 @@ impl TestHost {
         let clock = Manual(Arc::new(AtomicU64::new(now)));
         let config = crate::Config {
             databases: dir.join("databases"),
-            fuel,
+            cpu,
             ..crate::Config::default()
         };
         let host = Host::open(

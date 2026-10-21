@@ -420,7 +420,7 @@ impl Program {
         };
         let ended = self
             .image
-            .call(symbol, invocation, budget.instructions)
+            .call(symbol, invocation, budget.cpu)
             .await
             .with_context(|| format!("program trapped in {tool}"))
             .and_then(ended);

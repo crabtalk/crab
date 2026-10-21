@@ -107,13 +107,13 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                 let (scope, name) = host::split(&service);
                 tx.prepare_cached(
                     "INSERT INTO service_meters
-                        (scope, name, day, calls, instructions, memory, read, written,
+                        (scope, name, day, calls, cpu, memory, read, written,
                          proxied, logged, failed, sent)
                  SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
                  ON CONFLICT (scope, name, day) DO UPDATE SET
                     calls = calls + excluded.calls,
-                    instructions = instructions + excluded.instructions,
+                    cpu = cpu + excluded.cpu,
                     memory = MAX(memory, excluded.memory),
                     read = read + excluded.read,
                     written = written + excluded.written,
@@ -127,7 +127,7 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                     name,
                     day,
                     meter.calls as i64,
-                    meter.instructions as i64,
+                    meter.cpu as i64,
                     meter.memory as i64,
                     meter.read as i64,
                     meter.written as i64,
@@ -212,7 +212,7 @@ pub(crate) async fn read(
     store
         .read(move |conn| {
             let mut statement = conn.prepare(
-                "SELECT day, calls, instructions, memory, read, written, proxied, stored,
+                "SELECT day, calls, cpu, memory, read, written, proxied, stored,
                         logged, failed, sent
                    FROM service_meters
                   WHERE scope = ?1 AND name = ?2 AND day > ?3
@@ -222,7 +222,7 @@ pub(crate) async fn read(
                 Ok(Metered {
                     day: row.get(0)?,
                     calls: row.get::<_, i64>(1)? as u64,
-                    instructions: row.get::<_, i64>(2)? as u64,
+                    cpu: row.get::<_, i64>(2)? as u64,
                     memory: row.get::<_, i64>(3)? as u64,
                     read: row.get::<_, i64>(4)? as u64,
                     written: row.get::<_, i64>(5)? as u64,
@@ -256,7 +256,7 @@ pub(crate) async fn since(
     store
         .read(move |conn| {
             let mut statement = conn.prepare(
-                "SELECT scope, name, day, calls, instructions, memory, read, written, proxied,
+                "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
                         stored, logged, failed, sent
                    FROM service_meters
                   WHERE day >= ?1",
@@ -268,7 +268,7 @@ pub(crate) async fn since(
                     Metered {
                         day: row.get(2)?,
                         calls: row.get::<_, i64>(3)? as u64,
-                        instructions: row.get::<_, i64>(4)? as u64,
+                        cpu: row.get::<_, i64>(4)? as u64,
                         memory: row.get::<_, i64>(5)? as u64,
                         read: row.get::<_, i64>(6)? as u64,
                         written: row.get::<_, i64>(7)? as u64,
@@ -312,10 +312,10 @@ pub(crate) async fn used(store: &Store, scope: &str, name: &str, day: i32) -> Re
     store
         .read(move |conn| {
             conn.query_row(
-                "SELECT COALESCE(SUM(instructions), 0), COALESCE(SUM(read), 0),
+                "SELECT COALESCE(SUM(cpu), 0), COALESCE(SUM(read), 0),
                         COALESCE(SUM(written), 0), COALESCE(SUM(proxied), 0),
                         COALESCE(SUM(logged), 0),
-                        COALESCE(SUM(instructions) FILTER (WHERE day = ?3), 0),
+                        COALESCE(SUM(cpu) FILTER (WHERE day = ?3), 0),
                         COALESCE(SUM(read) FILTER (WHERE day = ?3), 0),
                         COALESCE(SUM(written) FILTER (WHERE day = ?3), 0),
                         COALESCE(SUM(proxied) FILTER (WHERE day = ?3), 0),
@@ -326,7 +326,7 @@ pub(crate) async fn used(store: &Store, scope: &str, name: &str, day: i32) -> Re
                 |row| {
                     let meter = |i: usize| -> rusqlite::Result<Meter> {
                         Ok(Meter {
-                            instructions: row.get::<_, i64>(i)? as u64,
+                            cpu: row.get::<_, i64>(i)? as u64,
                             read: row.get::<_, i64>(i + 1)? as u64,
                             written: row.get::<_, i64>(i + 2)? as u64,
                             proxied: row.get::<_, i64>(i + 3)? as u64,

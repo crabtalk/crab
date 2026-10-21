@@ -117,16 +117,16 @@ impl<E: Env> Host<E> {
         budget: Budget,
     ) -> Result<(), Denied> {
         self.exported(service, tool)?;
-        if budget.instructions == 0
+        if budget.cpu == 0
             || budget.rows == 0
-            || budget.instructions > self.budget.instructions
+            || budget.cpu > self.budget.cpu
             || budget.rows > self.budget.rows
         {
             return Err(deny(
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "a budget is between 1 and {} instructions, and 1 and {} rows",
-                    self.budget.instructions, self.budget.rows
+                    "a budget is between 1 and {}µs of CPU, and 1 and {} rows",
+                    self.budget.cpu, self.budget.rows
                 ),
             ));
         }
@@ -484,7 +484,7 @@ impl<E: Env> Host<E> {
                 program.bytes(),
             )
             .await?,
-            instructions: count(used.all.instructions, used.on.instructions),
+            cpu: count(used.all.cpu, used.on.cpu),
             read: count(used.all.read, used.on.read),
             written: count(used.all.written, used.on.written),
             proxied: count(used.all.proxied, used.on.proxied),

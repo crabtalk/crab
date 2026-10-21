@@ -36,14 +36,14 @@ fn database_size() -> u64 {
 }
 
 /// One day of a service's meter, with what Cloud charges past each
-/// invocation's included instructions.
+/// invocation's included CPU time.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeteredDay {
     #[serde(flatten)]
     pub used: berm_api::host::Metered,
-    /// The instructions each invocation executed past its first
-    /// [`INCLUDED_INSTRUCTIONS`](crate::system::meta::INCLUDED_INSTRUCTIONS), summed.
+    /// The CPU microseconds each invocation spent past its first
+    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU), summed.
     #[serde(default)]
     pub overage: u64,
 }
