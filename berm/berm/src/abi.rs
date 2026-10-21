@@ -92,10 +92,14 @@ pub const HTTP_FETCH: &str = "berm.http.fetch";
 
 /// Make one HTTP request. `(ptr, len) -> staged length`
 ///
-/// Request fields are the method, the URL and the body, then header names and
-/// values in turn. The reply is the status as decimal text and the body, then
-/// header names and values in turn. A header value may carry `{secret:NAME}`,
-/// which the host substitutes; the guest never holds the value.
+/// Request fields are the method, the URL, the body, the milliseconds to
+/// wait for an answer as decimal text, empty for the call's deadline alone,
+/// and the most bytes of the answer's body the guest takes as decimal text,
+/// empty for all of it, then header names and values in turn. The reply is
+/// the status as decimal text and the body, then header names and values in
+/// turn. A header value or the body may carry
+/// `{secret:NAME}`, which the host substitutes; the guest never holds the
+/// value.
 pub const HOST_HTTP_FETCH: u64 = hash(HTTP_FETCH);
 
 /// What a host registers to serve [`HOST_HTTP_PROXY`].
@@ -104,6 +108,17 @@ pub const HTTP_PROXY: &str = "berm.http.proxy";
 /// Make one HTTP request through the host's proxy. The request and reply are
 /// [`HOST_HTTP_FETCH`]'s.
 pub const HOST_HTTP_PROXY: u64 = hash(HTTP_PROXY);
+
+/// What a host registers to serve [`HOST_HTTP_FETCH_ALL`].
+pub const HTTP_FETCH_ALL: &str = "berm.http.fetch_all";
+
+/// Make a batch of HTTP requests at once, each to a host the manifest
+/// declares under [`HTTP_FETCH`]. `(ptr, len) -> staged length`
+///
+/// Each request field is one [`HOST_HTTP_FETCH`] request, framed. Each reply
+/// field answers the request in its place, framed: `ok`, then
+/// [`HOST_HTTP_FETCH`]'s reply fields; or `refused` or `failed`, then why.
+pub const HOST_HTTP_FETCH_ALL: u64 = hash(HTTP_FETCH_ALL);
 
 /// What a host registers to serve [`HOST_EMIT`].
 pub const EMIT: &str = "berm.emit";
@@ -156,9 +171,23 @@ pub const HOST_CALLER: u64 = hash("berm.caller");
 /// The end user the chain runs for. `(ptr, len) -> staged length`, the pair
 /// ignored.
 ///
-/// The reply is no fields when the embedder vouched for none, else the issuer
-/// and the subject. berm serves this one itself, from the [`crate::Callsite`].
+/// The reply is no fields when neither the embedder nor a program vouched for
+/// one, else the issuer and the subject. berm serves this one itself, from
+/// the [`crate::Callsite`].
 pub const HOST_USER: u64 = hash("berm.user");
+
+/// What a manifest declares to make [`HOST_VOUCH`].
+pub const VOUCH: &str = "berm.vouch";
+
+/// Vouch for the end user the chain runs for from here on. `(ptr, len) ->
+/// staged length`
+///
+/// The request is the subject; the issuer is the program, as the programs it
+/// calls are told it is named. The reply is empty. Refused to a program whose
+/// manifest does not declare [`VOUCH`], and in a chain that already runs for a
+/// user. berm serves this one itself, onto the invocation's
+/// [`crate::Callsite`], which every call it makes after carries.
+pub const HOST_VOUCH: u64 = hash(VOUCH);
 
 /// The outside client the chain runs for. `(ptr, len) -> staged length`, the
 /// pair ignored.
@@ -180,6 +209,12 @@ pub const HOST_DENY: u64 = hash("berm.deny");
 /// woke has no other way to tell how long it was away — a wake that came due
 /// while the process was down arrives late, and says so only against this.
 pub const HOST_NOW: u64 = hash("berm.now");
+
+/// Fill `(ptr, len)` with bytes from the operating system's secure random
+/// source. `(ptr, len) -> 0`
+///
+/// berm serves this one itself.
+pub const HOST_RANDOM: u64 = hash("berm.random");
 
 /// Prefix on every tool's exported symbol. A tool is resolved by name like any
 /// other symbol; the prefix keeps one called `init` from colliding with the

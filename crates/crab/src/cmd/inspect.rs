@@ -76,8 +76,8 @@ pub fn show(program: &Program, runtime: &Runtime, terms: &Terms) {
         println!("    {}", tool.description);
         if let Some(held) = terms.tools.get(&tool.name) {
             println!(
-                "    at most {} instructions and {} rows a call",
-                held.budget.instructions, held.budget.rows
+                "    at most {}µs of CPU and {} rows a call",
+                held.budget.cpu, held.budget.rows
             );
         }
         for parameter in properties(&tool.parameters) {

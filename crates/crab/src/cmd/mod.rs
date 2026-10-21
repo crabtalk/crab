@@ -22,6 +22,7 @@ pub mod rm;
 pub mod secret;
 pub mod status;
 pub mod sunset;
+pub mod upgrade;
 pub mod usage;
 pub mod visibility;
 pub mod wakes;

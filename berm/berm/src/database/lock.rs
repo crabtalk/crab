@@ -2,14 +2,10 @@
 
 use crate::{
     Refused,
-    database::{self, Database, Job},
+    database::{self, Database},
 };
 use anyhow::{Result, bail};
-use std::{
-    collections::HashMap,
-    sync::{Arc, mpsc},
-    time::Instant,
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::OwnedMutexGuard;
 
 /// The savepoint a nested call takes on each database its chain holds.
@@ -31,7 +27,7 @@ impl Database {
 
     /// Take the writer for `chain` and open a transaction, held until the
     /// [`Writing`] is committed or dropped. A dropped one rolls back.
-    pub(crate) async fn write(&self, chain: u64, deadline: Instant) -> Result<Writing> {
+    pub(crate) async fn write(self: &Arc<Self>, chain: u64, deadline: Instant) -> Result<Writing> {
         let waiting = {
             let mut graph = self.graph.lock();
             let mut wanted = self.name.clone();
@@ -71,9 +67,7 @@ impl Database {
         };
         self.graph.lock().holders.insert(self.name.clone(), chain);
         let writing = Writing {
-            jobs: self.jobs.clone(),
-            name: self.name.clone(),
-            graph: self.graph.clone(),
+            database: self.clone(),
             _held: held,
             open: true,
         };
@@ -97,7 +91,7 @@ pub struct Held {
 impl Held {
     /// The program whose writer the invocation took, if it took one.
     pub fn took(&self) -> Option<&str> {
-        self.writing.as_ref().map(|writing| &*writing.name)
+        self.writing.as_ref().map(|writing| &*writing.database.name)
     }
 
     /// Commit the writer the invocation took, and release every savepoint.
@@ -131,16 +125,18 @@ impl Drop for Held {
 
 /// A chain's hold on the writer and its open transaction.
 pub(crate) struct Writing {
-    jobs: mpsc::Sender<Job>,
-    name: Arc<str>,
-    graph: Arc<parking_lot::Mutex<Graph>>,
+    database: Arc<Database>,
     _held: OwnedMutexGuard<()>,
     open: bool,
 }
 
 impl Writing {
     async fn commit(mut self) -> Result<()> {
-        database::on(&self.jobs, |conn| Ok(conn.execute_batch("COMMIT")?)).await?;
+        database::on(
+            &self.database.jobs,
+            |conn| Ok(conn.execute_batch("COMMIT")?),
+        )
+        .await?;
         self.open = false;
         Ok(())
     }
@@ -149,8 +145,8 @@ impl Writing {
 impl Drop for Writing {
     fn drop(&mut self) {
         if self.open {
-            let name = self.name.clone();
-            let _ = self.jobs.send(Box::new(move |conn| {
+            let name = self.database.name.clone();
+            let _ = self.database.jobs.send(Box::new(move |conn| {
                 if !conn.is_autocommit()
                     && let Err(error) = conn.execute_batch("ROLLBACK")
                 {
@@ -158,7 +154,11 @@ impl Drop for Writing {
                 }
             }));
         }
-        self.graph.lock().holders.remove(&self.name);
+        self.database
+            .graph
+            .lock()
+            .holders
+            .remove(&self.database.name);
     }
 }
 

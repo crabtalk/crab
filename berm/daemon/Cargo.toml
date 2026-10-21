@@ -13,6 +13,11 @@ categories = ["virtualization", "wasm"]
 name = "bermd"
 path = "bin/main.rs"
 
+[features]
+# Serves the dashboard's build, which `bun run build` in `dashboard/` writes,
+# at `/`.
+dashboard = ["dep:rust-embed"]
+
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
@@ -25,6 +30,7 @@ rmcp.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }
 reqwest = { workspace = true, features = ["rustls"] }
+rust-embed = { workspace = true, optional = true, features = ["mime-guess"] }
 tokio.workspace = true
 toml.workspace = true
 tower.workspace = true

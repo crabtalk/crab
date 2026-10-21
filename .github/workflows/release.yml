@@ -1,0 +1,91 @@
+name: Release
+
+# `install.sh` on crab.talk and `crab upgrade` download
+# `releases/latest/download/crab-<target>.{tar.gz,zip}`. Renaming an asset
+# breaks both.
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # `crab upgrade` compares the tag against the version `crab` was built
+      # as.
+      - name: check the tag names the crate version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "crab-agent") | .version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not name crab-agent $version"
+            exit 1
+          fi
+
+      # The release's notes are the version's changelog.json entry. A draft is
+      # not `releases/latest`, so nothing downloads a release before every
+      # target is on it.
+      - name: create the draft release with its changelog entry
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          if ! .github/scripts/release-notes "$version" > notes.md; then
+            echo "::error::changelog.json has no entry for $version"; exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-assets:
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-14
+          # The oldest hosted glibc, so the binary runs on the most systems.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: crab
+          package: crab-agent
+          target: ${{ matrix.target }}
+          archive: crab-$target
+          locked: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: upload-assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

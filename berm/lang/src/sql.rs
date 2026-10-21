@@ -5,8 +5,12 @@
 //! one transaction, committed when the invocation returns ok; transaction
 //! statements are refused. Under a `query`, a statement that writes is refused.
 
-use crate::abi::{self, host, host::CallError, wire};
-use alloc::string::String;
+use crate::{
+    abi::{self, host, host::CallError, wire},
+    json,
+};
+use alloc::{string::String, vec::Vec};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Run `statement` with `params`, a JSON array bound to its `?` placeholders,
 /// and answer `{"columns": [..], "rows": [[..]], "read": n, "written": n}`.
@@ -21,4 +25,24 @@ pub fn sql(statement: &str, params: &str) -> Result<String, CallError> {
     )?;
     String::from_utf8(reply)
         .map_err(|_| CallError::Failed(String::from("host answered SQL with invalid UTF-8")))
+}
+
+/// What [`sql`] answers, each row as `T`.
+#[derive(Deserialize)]
+struct Answer<T> {
+    rows: Vec<T>,
+}
+
+/// Run `statement` with `params`, a tuple bound to its `?`s in order, and
+/// answer its rows, each a tuple of its columns in order.
+///
+/// ```ignore
+/// let found = berm_lang::rows::<(String,)>("SELECT title FROM items WHERE id = ?", &(42,))?;
+/// ```
+pub fn rows<T: DeserializeOwned>(
+    statement: &str,
+    params: &impl Serialize,
+) -> Result<Vec<T>, CallError> {
+    let answer: Answer<T> = json::from(&sql(statement, &json::to(params)?)?)?;
+    Ok(answer.rows)
 }

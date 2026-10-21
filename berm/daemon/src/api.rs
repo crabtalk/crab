@@ -4,7 +4,9 @@
 //! a UI, a CLI and `curl`, and a program is a resource. The MCP endpoint that
 //! agents reach sits on the same server at `/mcp`.
 
-use crate::Service;
+#[cfg(feature = "dashboard")]
+use crate::dashboard;
+use crate::{Service, mcp::Mcp};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -29,7 +31,7 @@ pub fn router(service: Arc<Service>) -> Router {
     let mcp = StreamableHttpService::new(
         {
             let service = service.clone();
-            move || Ok(crate::mcp::Mcp::new(service.clone()))
+            move || Ok(Mcp::new(service.clone()))
         },
         Arc::new(LocalSessionManager::default()),
         Default::default(),
@@ -42,11 +44,14 @@ pub fn router(service: Arc<Service>) -> Router {
         )
         .route_layer(middleware::from_fn(named));
 
-    Router::new()
+    let router = Router::new()
         .route("/programs", get(list))
         .with_state(service)
         .nest("/programs/{name}", program)
-        .route_service("/mcp", mcp)
+        .route_service("/mcp", mcp);
+    #[cfg(feature = "dashboard")]
+    let router = router.fallback(get(dashboard::serve));
+    router
 }
 
 /// The program a request names.
@@ -85,10 +90,10 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}` on a deploy: the
-/// tools it may make public, whether to deploy over what it would break or
-/// undo, and each cron tool's expression, as a JSON object, when the deploy
-/// sets them.
+/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}&size=1073741824` on a
+/// deploy: the tools it may make public, whether to deploy over what it would
+/// break or undo, each cron tool's expression, as a JSON object, when the
+/// deploy sets them, and the bytes its database may hold.
 #[derive(Deserialize)]
 struct Confirmed {
     #[serde(default)]
@@ -96,6 +101,8 @@ struct Confirmed {
     #[serde(default)]
     force: bool,
     crons: Option<String>,
+    #[serde(default = "host::database_size")]
+    size: u64,
 }
 
 /// Deploy the image in the body under `name`. `PUT` because the name is the
@@ -124,7 +131,14 @@ async fn deploy(
             )
         })?;
     let (deployed, breaks) = service
-        .deploy(&name, image.to_vec(), &public, confirmed.force, crons)
+        .deploy(
+            &name,
+            image.to_vec(),
+            &public,
+            confirmed.force,
+            crons,
+            confirmed.size,
+        )
         .await?;
     Ok(Json(Deployed {
         program: deployed.idl(&name),

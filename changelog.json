@@ -1,0 +1,45 @@
+[
+  {
+    "version": "0.1.1",
+    "date": "2026-10-22",
+    "summary": "Kits replace guests: auth, crawl, lake, neon, stripe and supabase link into a service's own program. Calls are metered and bounded by CPU time, databases by the size berm.toml gives them, and crab installs and upgrades itself from GitHub releases.",
+    "new": [
+      "Link a kit into a service with #[berm_lang::program(uses = [...])]: its secrets, hosts and migrations join the service's manifest and its tables live in the service's database",
+      "Use the auth kit for accounts and sessions, stripe for checkout and subscriptions, supabase for PostgREST and Storage, and neon for Postgres over HTTP",
+      "Crawl the sites a service watches with the crawl kit: robots.txt and sitemaps, pages of the kinds it names, the URLs it lists and the links its crawler finds, recrawled when they change",
+      "Follow feeds and records with the lake kit: RSS 2.0, RSS 1.0 and Atom, threads under items, and a version stored per change of a record",
+      "Install crab with curl -fsSL https://crab.talk/install.sh | sh, and upgrade it in place with crab upgrade, each checked against GitHub's digest of the release asset",
+      "Start a service's database on Cloud from the seed berm.toml names, on its first deploy",
+      "Bound a service's database with [database] size in berm.toml, from 64KiB to 10GiB, 1GiB when unset",
+      "Subscribe from a trial at once with crab billing plan",
+      "Fetch many URLs in one call with berm_lang::http::fetch_all, each with its own timeout and the body bytes it takes",
+      "Declare fetch hosts as *.domain or *, a host reached only by a pattern refused at an address that is not public",
+      "Read random bytes with berm.random, and name the end user the rest of a call's chain runs for with berm.vouch",
+      "Run bermd with a development dashboard behind its dashboard feature, from ghcr.io/crabtalk/crab/berm or the repository's compose file",
+      "Build a product's services on crab with the crab skill in skills/crab"
+    ],
+    "changed": [
+      "Meter and bound each call by CPU time in microseconds in place of wasm instructions: budgets take cpu, and bermd takes --max-cpu-millis",
+      "Have crab new take berm-lang from crab's git tag of the CLI's release, its binary at bin/main.rs",
+      "Name a feed's Kind (chronological, unordered or records) in lake in place of its chronological flag, and give a listed item's posted as an Option, None when the feed gives no date",
+      "Collapse the crawl kit's migrations into one",
+      "Cut a response at the body bytes its request names in bermd, where it failed past 16MiB",
+      "Take Duration fields of berm_host::Config as \"50ms\" or \"60s\"",
+      "Move auth and stripe's services into fixtures, the kits staying libraries",
+      "Move berm_lang::html into the crab-html crate, which reads a page's title, meta, links and text",
+      "Drop the plan's storage rate, a plan's stored bytes the cap its services reserve against"
+    ],
+    "fixed": [
+      "Read a fetch's host as the URL reaches it, so a URL spelled to look like another host, or an address written as a number, is held to the manifest and to bermd's public-address check",
+      "Bound every read of guest memory, so berm.random and berm.vouch cannot make the host allocate past it",
+      "Refuse a Supabase Storage path with an empty, . or .. segment, which reached another bucket",
+      "Hold the URLs a program lists to the site's robots.txt, match its * patterns in linear time, read it past a byte order mark, and compare its patterns percent-encoded",
+      "Keep a site's URLs when every sitemap fails, and split a round's shared sitemap budget so it cannot be overrun",
+      "Store an undated item and one posted at the watermark in a chronological feed, read nested RSS elements' text apart, and refuse out-of-range dates",
+      "End HTML tags at their real end and match tag names whole in crab-html, and keep an unknown entity as written",
+      "Refuse a database size under 64KiB, which left a database unlimited, and put the old size back when a deploy is refused",
+      "Show CPU in the dashboard, which broke on the renamed meter",
+      "Copy a deploy's seed through a temporary directory removed on every exit"
+    ]
+  }
+]

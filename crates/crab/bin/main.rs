@@ -159,8 +159,9 @@ enum Command {
     Budget {
         name: String,
         tool: String,
+        /// CPU time, in microseconds.
         #[arg(long)]
-        instructions: u64,
+        cpu: u64,
         #[arg(long)]
         rows: u64,
     },
@@ -194,6 +195,8 @@ enum Command {
     /// Name the hosts `crab` talks to, and pick one.
     #[command(subcommand)]
     Context(ContextCommand),
+    /// Replace this `crab` with the latest release, when it is newer.
+    Upgrade,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -229,7 +232,7 @@ enum SecretCommand {
 
 #[derive(Subcommand)]
 enum BillingCommand {
-    /// Subscribe to a plan, in Stripe Checkout.
+    /// Subscribe to a plan, in Stripe Checkout; from a trial, at once.
     Plan { slug: String },
     /// Start the free trial, in Stripe Checkout.
     Trial,
@@ -482,18 +485,18 @@ fn main() -> Result<ExitCode> {
         Command::Budget {
             name,
             tool,
-            instructions,
+            cpu,
             rows,
         } => {
             utils::wait(client()?.budget(
                 name,
                 tool,
                 Budget {
-                    instructions: *instructions,
+                    cpu: *cpu,
                     rows: *rows,
                 },
             ))?;
-            eprintln!("{name}.{tool}: at most {instructions} instructions and {rows} rows a call");
+            eprintln!("{name}.{tool}: at most {cpu}µs of CPU and {rows} rows a call");
         }
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {
@@ -591,6 +594,7 @@ fn main() -> Result<ExitCode> {
         } => cmd::invites::accept(&client()?, token)?,
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
+        Command::Upgrade => cmd::upgrade::run(yes)?,
         // The one command whose exit code carries a result rather than a
         // verdict on berm.
         Command::Call {

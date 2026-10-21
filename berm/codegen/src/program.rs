@@ -116,21 +116,14 @@ pub(crate) fn expand(config: &Config, mut module: ItemMod) -> TokenStream {
     });
 
     // Each migration was read by the macro too.
-    let database_rebuild = config.database.iter().flat_map(|(dir, migrations)| {
-        migrations.iter().map(move |(name, _)| {
-            let path = format!("{}/{name}", dir.value());
-            quote! {
-                const _: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", #path));
-            }
-        })
-    });
+    let database_rebuild = config.declarations.rebuild();
 
     quote! {
         #module
 
         #readme_rebuild
 
-        #(#database_rebuild)*
+        #database_rebuild
 
         const _BERM_BUFFER: usize = #buffer;
         static mut _BERM_ARGS: [u8; _BERM_BUFFER] = [0; _BERM_BUFFER];
@@ -492,40 +485,26 @@ fn manifest(config: &Config, tools: &[Tool]) -> Vec<proc_macro2::TokenStream> {
         out.text("}");
     }
 
-    let list = |items: &[String]| {
-        items
-            .iter()
-            .map(|item| format!(r#""{}""#, utils::escape(item)))
-            .collect::<Vec<_>>()
-            .join(",")
-    };
-    let programs = list(&config.programs);
-    let secrets = list(&config.secrets);
-    let syscalls = config
-        .syscalls
-        .iter()
-        .map(|(name, reached)| format!(r#""{}":[{}]"#, utils::escape(name), list(reached)))
-        .collect::<Vec<_>>()
-        .join(",");
-    let database = match &config.database {
-        Some((_, migrations)) => format!(
-            r#","database":{{"migrations":[{}]}}"#,
-            migrations
-                .iter()
-                .map(|(name, sql)| format!(
-                    r#"{{"name":"{}","sql":"{}"}}"#,
-                    utils::escape(name),
-                    utils::escape(sql)
-                ))
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        None => String::new(),
-    };
     out.text(&format!(
-        r#"],"readme":"{}","deps":{{"programs":[{programs}],"syscalls":{{{syscalls}}},"secrets":[{secrets}]}}{database}}}"#,
+        r#"],"readme":"{}","deps":{}{}"#,
         utils::escape(&config.readme),
+        config.declarations.deps(),
+        config.declarations.database(),
     ));
+    // Each kit's record is a const of the kit's crate, rendered in its place.
+    if !config.uses.is_empty() {
+        out.text(r#","kits":["#);
+        for (at, kit) in config.uses.iter().enumerate() {
+            if at > 0 {
+                out.text(",");
+            }
+            out.flush();
+            out.pieces
+                .push(quote!(::berm_lang::schema::Piece::Text(#kit::__BERM_KIT)));
+        }
+        out.text("]");
+    }
+    out.text("}");
     out.flush();
     out.pieces
 }

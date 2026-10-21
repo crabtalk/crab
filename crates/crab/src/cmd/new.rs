@@ -4,8 +4,8 @@ use crate::project::{self, TARGET};
 use anyhow::{Context, Result, bail};
 use std::{fs, path::Path};
 
-/// The SDK a scaffold depends on. Taken from this binary so a program is
-/// generated against the `berm-lang` that shipped with the CLI that wrote it.
+/// The release a scaffold's `berm-lang` comes from: crab's tag `v<SDK>`, the
+/// one this binary was released as.
 const SDK: &str = env!("CARGO_PKG_VERSION");
 
 /// Each template beside the path it is written to. A crate name is a valid
@@ -15,7 +15,7 @@ const FILES: [(&str, &str); 5] = [
     ("Cargo.toml", include_str!("../../templates/manifest.toml")),
     (project::FILE, include_str!("../../templates/berm.toml")),
     ("src/lib.rs", include_str!("../../templates/lib.rs")),
-    ("src/bin/main.rs", include_str!("../../templates/main.rs")),
+    ("bin/main.rs", include_str!("../../templates/main.rs")),
     ("tests/tools.rs", include_str!("../../templates/tools.rs")),
 ];
 

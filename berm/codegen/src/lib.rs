@@ -13,6 +13,7 @@ use syn::{DeriveInput, ItemMod, parse_macro_input};
 
 mod config;
 mod declare;
+mod kit;
 mod program;
 mod schema;
 mod syscalls;
@@ -109,11 +110,32 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// daemon takes for the program: the event object is the argument object, so
 /// the tool's parameters are the event's fields it reads. A program has at
 /// most one, and it is not `#[public]`.
+///
+/// `uses = [crab_auth]` names crates that expanded [`kit!`]: the manifest
+/// carries each kit's declarations and migrations as the kit's own.
 #[proc_macro_attribute]
 pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
     let config = parse_macro_input!(args as Config);
     let module = parse_macro_input!(item as ItemMod);
     program::expand(&config, module).into()
+}
+
+/// Declare a library crate a kit: what it reaches for and the migrations of
+/// the tables it keeps, for each program naming it in `#[program(uses)]`.
+///
+/// ```ignore
+/// berm_lang::kit!(
+///     syscalls = { "berm.http.fetch" = ["api.example.com"] },
+///     secrets = ["example"],
+///     database = "migrations",
+/// );
+/// ```
+///
+/// Takes `#[program]`'s `programs`, `syscalls`, `secrets` and `database`, once
+/// at the crate's root. The kit is named for its crate.
+#[proc_macro]
+pub fn kit(input: TokenStream) -> TokenStream {
+    kit::expand(&parse_macro_input!(input as config::Declarations)).into()
 }
 
 /// A type's JSON Schema, and the serde impls that read and write it.

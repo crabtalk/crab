@@ -1,6 +1,9 @@
 //! Service wire types.
 
-use berm_api::{Program, host::Call};
+use berm_api::{
+    Program,
+    host::{self, Call},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -22,17 +25,45 @@ pub struct DeployRequest {
     /// it leaves out has none. Absent, each stays as its owners set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crons: Option<BTreeMap<String, String>>,
+    /// Bytes the service's database may hold, from
+    /// [`MIN_DATABASE_SIZE`](berm_api::host::MIN_DATABASE_SIZE) to
+    /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
+    #[serde(default = "host::database_size")]
+    pub size: u64,
+    /// The SHA-256, in hex, of a seed uploaded through
+    /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
+    /// database starts as, held to the image's migrations. Refused when the
+    /// service has a database.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
+}
+
+/// A seed to upload: its SHA-256 in hex, and its size in bytes.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeedRequest {
+    pub sha256: String,
+    pub size: u64,
+}
+
+/// Where a seed's bytes go.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeedUpload {
+    /// A URL to `PUT` the bytes to, with their `Content-Length`, within an
+    /// hour; none when Cloud holds that seed already.
+    pub upload: Option<String>,
 }
 
 /// One day of a service's meter, with what Cloud charges past each
-/// invocation's included instructions.
+/// invocation's included CPU time.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeteredDay {
     #[serde(flatten)]
     pub used: berm_api::host::Metered,
-    /// The instructions each invocation executed past its first
-    /// [`INCLUDED_INSTRUCTIONS`](crate::system::meta::INCLUDED_INSTRUCTIONS), summed.
+    /// The CPU microseconds each invocation spent past its first
+    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU), summed.
     #[serde(default)]
     pub overage: u64,
 }

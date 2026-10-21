@@ -56,9 +56,12 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Subscribe to `plan` through Checkout.
+/// Subscribe to `plan` through Checkout, or at once from a trial.
 pub fn plan(client: &Client, plan: &str) -> Result<()> {
-    utils::open(&utils::wait(client.checkout(plan, Surface::Terminal))?.url);
+    match utils::wait(client.checkout(plan, Surface::Terminal))?.url {
+        Some(url) => utils::open(&url),
+        None => println!("subscribed to {plan}"),
+    }
     Ok(())
 }
 

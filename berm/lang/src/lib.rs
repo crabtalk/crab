@@ -32,10 +32,10 @@
 //!
 //! This crate declares the standard syscalls: [`call`] and [`after`] for
 //! reaching programs, [`get`] and [`set`] for a program's own bytes, [`emit`]
-//! for logs ([`emit!`] for an `#[event]` struct), and [`http::fetch`] and
-//! [`http::proxy`] for the network. berm serves [`call`] and [`emit`] itself;
-//! the rest run only under a host that registers them, and trap as unknown host
-//! calls otherwise.
+//! for logs ([`emit!`] for an `#[event]` struct), [`http::fetch`] and
+//! [`http::proxy`] for the network. berm serves [`call`], [`emit`], [`now`]
+//! and [`random`] itself; the rest run only under a host that
+//! registers them, and trap as unknown host calls otherwise.
 //!
 //! What [`set`] writes is kept only if the call the host started returns a
 //! result. What [`emit`] emits is kept whatever the call returns: logs are what
@@ -54,15 +54,15 @@ extern crate alloc;
 // So `#[derive(Schema)]` resolves `::berm_lang` inside this crate too.
 extern crate self as berm_lang;
 
-pub use abi::{args_len, now, trace};
-pub use berm_codegen::{Schema, declare_program, error_code, event, program, syscalls};
-pub use call::{CallError, Caller, User, after, call, caller, client, deny, user};
+pub use abi::{args_len, now, random, trace};
+pub use berm_codegen::{Schema, declare_program, error_code, event, kit, program, syscalls};
+pub use call::{CallError, Caller, User, after, call, caller, client, deny, user, vouch};
 #[doc(hidden)]
 pub use emit::event as __event;
 pub use emit::{Event, emit};
 pub use error::{Error, Result};
 pub use schema::Schema;
-pub use sql::sql;
+pub use sql::{rows, sql};
 pub use store::{get, get_json, set, set_json};
 // Re-exported so a program declares this SDK and nothing else. What the macros
 // generate reaches serde as `::berm_lang::serde`, which only resolves if the
@@ -79,7 +79,6 @@ pub mod dispatch;
 mod emit;
 mod error;
 mod heap;
-pub mod html;
 pub mod http;
 #[doc(hidden)]
 pub mod json;

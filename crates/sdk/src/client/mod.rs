@@ -98,7 +98,7 @@ impl Client {
     }
 
     /// A request against `path`, carrying the token when one is set.
-    pub(crate) fn at(&self, method: Method, path: &str) -> RequestBuilder {
+    pub fn at(&self, method: Method, path: &str) -> RequestBuilder {
         let req = self.http.request(method, format!("{}{path}", self.base));
         match &self.token {
             Some(token) => req.bearer_auth(token),
@@ -107,14 +107,14 @@ impl Client {
     }
 
     /// Send, and decode the body a success carries.
-    pub(crate) async fn json<T: DeserializeOwned>(&self, req: RequestBuilder) -> Result<T, Error> {
+    pub async fn json<T: DeserializeOwned>(&self, req: RequestBuilder) -> Result<T, Error> {
         let body = self.ok(req).await?;
         serde_json::from_str(&body).map_err(|e| Error::Decode(e.to_string()))
     }
 
     /// Send, and read the body a success carries, turning anything outside 2xx
     /// into an [`Error::Api`].
-    pub(crate) async fn ok(&self, req: RequestBuilder) -> Result<String, Error> {
+    pub async fn ok(&self, req: RequestBuilder) -> Result<String, Error> {
         let res = req.send().await?;
         let status = res.status();
         let body = res.text().await?;

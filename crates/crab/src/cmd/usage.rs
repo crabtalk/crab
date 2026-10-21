@@ -21,7 +21,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         "DAY",
         "CALLS",
         "FAILED",
-        "INSTRUCTIONS",
+        "CPU µs",
         "OVERAGE",
         "READ",
         "WRITTEN",
@@ -35,7 +35,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             format::day(day.used.day.into()),
             day.used.calls,
             day.used.failed,
-            day.used.instructions,
+            day.used.cpu,
             day.overage,
             day.used.read,
             day.used.written,
@@ -106,12 +106,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
     );
     let included = [
         ("calls", period.used.calls, period.included.calls, false),
-        (
-            "instructions",
-            period.used.instructions,
-            period.included.instructions,
-            false,
-        ),
+        ("CPU µs", period.used.cpu, period.included.cpu, false),
         ("rows read", period.used.read, period.included.read, false),
         (
             "rows written",

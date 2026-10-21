@@ -17,9 +17,32 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
 | `--root` | Where deployed images, the code cache and `secrets.toml` live. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
+| `--max-cpu-millis` | How many milliseconds of CPU one call spends, nested calls excluded, 100 by default. |
+| `--max-call-seconds` | How long one call runs before it is stopped, 60 by default. |
 | `--proxy` | The proxy `berm.http.proxy` goes through, e.g. `http://user:pass@gate.example.com:3120`. Without one it goes direct. |
 
 The service carries no authorization and binds loopback by default.
+
+## Dashboard
+
+Built from this repository with the `dashboard` feature, bermd serves a development dashboard at `/`: the deployed programs, a form to call each tool, its calls, logs, crons, wakes, usage and meters, and a deploy.
+
+```sh
+(cd dashboard && bun install && bun run build)
+cargo run -p bermd --features dashboard
+```
+
+The feature is off by default.
+
+## Docker
+
+`docker-compose.yml` at the repository root builds the image from the checkout and runs bermd with the dashboard on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
+
+```sh
+docker compose up --build
+```
+
+Inside the container bermd listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes bermd its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
 
 ## Deploying
 
@@ -51,7 +74,7 @@ curl -X DELETE http://127.0.0.1:7777/programs/example
 | `GET /programs/{name}` | Its IDL under `program`, and under `served` the calls of its tools from outside that ended done, per day over the last 30 days and in total. |
 | `GET /programs/{name}/idl` | The IDL alone: name, version, digest, package fields and public tools. |
 | `GET /programs/{name}/runtime` | Its other tools, `deps`, `events`, and the `deps` nothing here answers to. |
-| `GET /programs/{name}/terms` | Each public tool's budget, as `{"tools": {"<tool>": {"budget": {"instructions", "rows"}}}}`. |
+| `GET /programs/{name}/terms` | Each public tool's budget, as `{"tools": {"<tool>": {"budget": {"cpu", "rows"}}}}`. |
 | `GET /programs/{name}/usage` | Each caller of each tool and event over the last 30 days. |
 | `GET /programs/{name}/live` | What it is using now: invocations running, memory, bytes stored, and each resource's total and rate. |
 | `GET /programs/{name}/meters` | Its meters over the last 30 days, a day each, with the bytes it stored. |
@@ -78,7 +101,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
   but `id` optional. bermd checks none of it. A call without one, or an app's
   call without a `user`, has no caller and reaches only `#[anonymous]` tools.
 - The answer carries `Berm-Meter`, what the call used across every program it
-  reached: `{"calls", "instructions", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
+  reached: `{"calls", "cpu", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
   A deprecated tool's answer carries `Deprecation`, and `Sunset` once one is set.
 
 | Status | When |
@@ -91,11 +114,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 
 ## Budgets
 
-An invocation stops at its tool's instruction budget, and a row syscall it makes
-once it has read and written its row budget together is refused: 1,000,000,000
-instructions and 1,000,000 rows, unless
-`PUT /programs/{name}/tools/{tool}/budget` set `{"instructions", "rows"}` lower,
-from the next call.
+An invocation stops at its tool's CPU budget, checked every 100ms, and a row syscall it makes once it has read and written its row budget together is refused: `--max-cpu-millis` of CPU, 100 by default, and 1,000,000 rows, unless `PUT /programs/{name}/tools/{tool}/budget` set `{"cpu", "rows"}` lower, `cpu` in microseconds, from the next call. `cpu` in `Berm-Meter` is microseconds too, each invocation's own, nested calls excluded.
 
 ## Crons, deprecation and Stripe events
 
@@ -109,7 +128,7 @@ from the next call.
 
 ## Secrets
 
-A request header may name `{secret:NAME}` for a secret the manifest declares.
+A request header or body may name `{secret:NAME}` for a secret the manifest declares.
 bermd substitutes what `{root}/secrets.toml` grants that program for that host,
 read again whenever the file changes:
 
@@ -121,11 +140,7 @@ hosts = ["api.example.com"]
 
 ## What a deployed program can reach
 
-Everything in [the guest API](./guest-api.md): its keys, a database, logs, the
-clock, wakes, HTTP to the hosts its manifest declares, itself, and the programs
-deployed beside it that its manifest declares in `programs`. bermd registers no
-files and no commands. `Manifest::from_image` reads what an image claims without
-compiling or running it.
+Everything in [the guest API](./guest-api.md): its keys, a database, logs, the clock, wakes, HTTP to the hosts its manifest declares, randomness, itself, and the programs deployed beside it that its manifest declares in `programs`. bermd registers no files and no commands. `Manifest::from_image` reads what an image claims without compiling or running it.
 
 ## MCP
 

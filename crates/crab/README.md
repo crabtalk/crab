@@ -31,9 +31,15 @@ public = ["search"]
 # week, in UTC.
 [crons]
 tick = "*/5 * * * *"
+
+# What the service's database may hold: 1GiB when unset, from 64KiB to 10GiB.
+[database]
+size = "2GiB"
+# A SQLite database, relative to this file, a service on Cloud starts from on its first deploy.
+seed = "seed.sqlite"
 ```
 
-A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them.
+A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and a bermd takes none.
 
 ## Contexts
 
@@ -61,7 +67,7 @@ crab login                     # --github for GitHub
 crab status
 crab usage                     # the account's services and its plan this period
 crab billing                   # plan, credit, refill, card
-crab billing plan pro          # plan, trial, credit and portal open Stripe
+crab billing plan pro          # plan, trial, credit and portal open Stripe; plan from a trial ends it at once
 crab key create ci --days 90
 crab app ls
 crab org create acme
@@ -95,7 +101,7 @@ a program crate pinning the `berm-lang` that shipped with this binary.
 `inspect` renders a tool's JSON Schema as the argument list it describes, since
 a schema printed raw is something to read past rather than read.
 
-`inspect` shows the most one call of each tool may use, and `budget NAME TOOL --instructions N --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On bermd, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
+`inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On bermd, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 
 ## License
 

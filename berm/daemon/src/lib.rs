@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use berm::Program;
 use berm_host::{Config, Edges, Host, Layers, System};
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::broadcast};
 
 pub use env::Local;
@@ -17,6 +17,8 @@ pub use peers::Alone;
 pub use secrets::Grants;
 
 mod api;
+#[cfg(feature = "dashboard")]
+mod dashboard;
 mod env;
 mod fetch;
 mod images;
@@ -40,12 +42,21 @@ pub struct Service {
 
 impl Service {
     /// Open `root`, restoring whatever was deployed before this process.
-    /// Chains of programs calling programs nest at most `depth` deep.
+    /// Chains of programs calling programs nest at most `depth` deep, and a
+    /// call spends at most `cpu` of CPU and runs at most `deadline`.
     /// `berm.http.proxy` goes through `proxy`, or direct without one.
-    pub async fn new(root: PathBuf, depth: u32, proxy: Option<&str>) -> Result<Arc<Self>> {
+    pub async fn new(
+        root: PathBuf,
+        depth: u32,
+        cpu: Duration,
+        deadline: Duration,
+        proxy: Option<&str>,
+    ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
         let config = Config {
             depth,
+            cpu,
+            deadline,
             cache_dir: Some(root.join("cache")),
             databases: root.join("databases"),
             ..Config::default()

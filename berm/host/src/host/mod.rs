@@ -6,6 +6,7 @@ use crate::{
     api::outside::Layers,
     config::Config,
     env::{Clock, Edges, Env, Images, Peers},
+    host::fetch::Door,
     record::{
         calls, logs,
         meter::{self, Meters as Pending},
@@ -30,13 +31,17 @@ use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     ops::Deref,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc, Weak,
         atomic::{AtomicI32, Ordering},
     },
+    time::Duration,
 };
-use tokio::sync::{Notify, RwLock, Semaphore};
+use tokio::{
+    sync::{self, Notify, RwLock, Semaphore},
+    task, time,
+};
 
 pub(crate) use invoke::Invoked;
 
@@ -67,6 +72,9 @@ pub struct Inner<E: Env> {
     /// Chains in flight. Each holds up to `depth + 1` guests, and a guest past
     /// `Config::instances` fails to instantiate.
     pub(crate) gate: Semaphore,
+    /// Chains the host may run at once: the permits [`Self::gate`] was made
+    /// with.
+    pub chains: usize,
     /// Chains each scope may run at once, beside [`Self::gate`].
     pub(crate) caps: Caps,
     /// Wakes the timer.
@@ -82,12 +90,10 @@ pub struct Inner<E: Env> {
     /// Held to write what is pending, and shared to read it beside what is
     /// written.
     pub(crate) flushing: RwLock<()>,
-    /// Where the databases of the services that keep one live.
-    pub(crate) databases_dir: PathBuf,
     /// The last day stored bytes were sampled, in days since the Unix epoch.
     sampled: AtomicI32,
     /// The databases of the services that keep one.
-    pub(crate) databases: Arc<Databases>,
+    pub databases: Arc<Databases>,
     /// Where a chain's changes are committed.
     pub(crate) commits: Commits,
     /// Where the services this host does not run live.
@@ -105,12 +111,17 @@ pub struct Inner<E: Env> {
     /// Each tool's budget its owner set.
     pub(crate) terms: Terms,
     /// Held by a deploy of the service keyed by its key.
-    deploying: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    deploying: Mutex<HashMap<String, Arc<sync::Mutex<()>>>>,
     /// [`Edges::clock`].
     pub(crate) now: Now,
 }
 
 impl<E: Env> Inner<E> {
+    /// Chains in flight now, out of [`Self::chains`].
+    pub fn running(&self) -> usize {
+        self.chains - self.gate.available_permits()
+    }
+
     /// The database of `program`, when it is deployed and keeps one.
     pub(crate) fn kept(&self, program: &str) -> Option<Result<Arc<Database>>> {
         self.berm
@@ -148,9 +159,10 @@ impl<E: Env> Host<E> {
         let engine = Engine::new(&berm::Config {
             cache_dir: config.cache_dir.clone(),
             instances: config.instances,
-            fuel: config.fuel,
+            memory: config.memory,
+            cpu: config.cpu,
             rows: config.rows,
-            ..Default::default()
+            deadline: config.deadline,
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
         let commits = Commits::new(store.clone(), databases.clone());
@@ -159,9 +171,12 @@ impl<E: Env> Host<E> {
         terms.load(&store).await?;
         let chains = (config.instances / (config.depth + 1)).max(1);
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
-            let mut syscalls = vec![fetch::syscall(host, fetch, false)];
+            let mut syscalls = vec![
+                fetch::syscall(host, fetch.clone(), Door::Fetch),
+                fetch::syscall(host, fetch, Door::FetchAll),
+            ];
             if let Some(proxy) = proxy {
-                syscalls.push(fetch::syscall(host, proxy, true));
+                syscalls.push(fetch::syscall(host, proxy, Door::Proxy));
             }
             syscalls.extend(state::syscalls(host));
             syscalls.push(logs::syscall(host));
@@ -173,6 +188,7 @@ impl<E: Env> Host<E> {
                 store,
                 berm,
                 gate: Semaphore::new(chains as usize),
+                chains: chains as usize,
                 caps: Caps::new(config.cap),
                 waking: Notify::new(),
                 usage: Counts::new(now.clone()),
@@ -180,7 +196,6 @@ impl<E: Env> Host<E> {
                 logs: logs::Pending::new(now.clone()),
                 meters: Pending::new(now.clone()),
                 flushing: RwLock::default(),
-                databases_dir: config.databases.clone(),
                 sampled: AtomicI32::default(),
                 databases,
                 commits,
@@ -191,7 +206,7 @@ impl<E: Env> Host<E> {
                 secrets,
                 layers,
                 budget: Budget {
-                    instructions: config.fuel,
+                    cpu: config.cpu.as_micros() as u64,
                     rows: config.rows,
                 },
                 terms,
@@ -207,7 +222,7 @@ impl<E: Env> Host<E> {
         let flushing = self.clone();
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(FLUSH).await;
+                time::sleep(FLUSH).await;
                 if let Err(e) = flushing.flush().await {
                     tracing::error!("writing service usage failed: {e:#}");
                 }
@@ -230,9 +245,15 @@ impl<E: Env> Host<E> {
         };
         for row in rows {
             let key = join(&row.scope, &row.name);
+            let size = row.size;
             match self.load(row).await {
                 Ok(program) => {
                     tracing::debug!(service = key, digest = %program.digest, "loaded");
+                    if keeps(&program)
+                        && let Err(e) = async { self.databases.get(&key)?.limit(size).await }.await
+                    {
+                        tracing::error!(service = key, "limiting its database failed: {e:#}");
+                    }
                 }
                 Err(e) => tracing::error!(service = key, "loading failed: {e:#}"),
             }
@@ -282,7 +303,7 @@ impl<E: Env> Host<E> {
                 meter::sample(
                     &self.store,
                     &program.name,
-                    &self.databases_dir.join(&*program.name),
+                    &self.databases,
                     program.bytes(),
                     today,
                 )
@@ -345,7 +366,7 @@ impl<E: Env> Host<E> {
     /// Compile an image into the runtime, off the async workers.
     async fn compile(&self, key: String, image: Vec<u8>) -> Result<Arc<Program>> {
         let berm = self.berm.clone();
-        tokio::task::spawn_blocking(move || berm.deploy(&key, &image))
+        task::spawn_blocking(move || berm.deploy(&key, &image))
             .await
             .context("compilation panicked")?
     }
@@ -358,11 +379,11 @@ pub(crate) fn alive<E: Env>(host: &Weak<Inner<E>>) -> Result<Arc<Inner<E>>> {
 
 /// Whether `program` keeps a database.
 pub(crate) fn keeps(program: &Program) -> bool {
-    program.manifest().database.is_some()
+    program.manifest().keeps_database()
 }
 
 /// How often counted uses are written.
-const FLUSH: std::time::Duration = std::time::Duration::from_secs(60);
+const FLUSH: Duration = Duration::from_secs(60);
 
 /// The service named `name` in `scope`.
 pub(crate) fn join(scope: &str, name: &str) -> String {

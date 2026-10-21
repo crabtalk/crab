@@ -86,17 +86,17 @@ A program is a crate with one bin target and `berm-lang` as a dependency:
 rustup target add wasm32-unknown-unknown
 cargo new --lib my-program
 cd my-program
-cargo add berm-lang
+cargo add berm-lang --git https://github.com/crabtalk/crab
 ```
 
 ```toml
 [[bin]]
 name = "my-program"
-path = "src/bin/main.rs"
+path = "bin/main.rs"
 ```
 
 ```rust,ignore
-// src/bin/main.rs
+// bin/main.rs
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
 extern crate my_program as _;
@@ -109,14 +109,14 @@ fn main() {}
 `target/wasm32-unknown-unknown/release/my-program.wasm`.
 
 The tools live in `src/lib.rs` under a three-line
-`src/bin/main.rs` that does nothing but `extern crate` them, because cargo emits
+`bin/main.rs` that does nothing but `extern crate` them, because cargo emits
 an image for a bin target and an archive for a lib — the library alone never
 gets linked, and the binary alone cannot be reached from `tests/`.
 
 Off a guest target the crate is an ordinary library, so tools can be unit tested
 natively instead of cross-compiling to run anything at all. `berm_lang::test`
 stands in for the host: it holds the argument blob and collects what a program
-logged. A call reaching a syscall that has no stand-in panics naming it,
+logged. `test::answer` arranges what another program answers, and `test::respond` what an HTTP request answers by method and URL, with `test::fetched` the requests sent as the program wrote them, `{secret:NAME}` unsubstituted. A call reaching a syscall that has no stand-in panics naming it,
 rather than reading a plausible zero.
 
 `berm_host::test::TestHost`, behind `berm-host`'s `test` feature, runs the built

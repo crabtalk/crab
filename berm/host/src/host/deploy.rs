@@ -9,12 +9,12 @@ use crate::{
     wake::{cron, table},
 };
 use axum::http::StatusCode;
-use berm::Program;
+use berm::{Program, database::Database};
 use berm_api::{
     Manifest, Surface,
-    host::{Deploy, Kind, Outcome},
+    host::{Deploy, Kind, MAX_DATABASE_SIZE, MIN_DATABASE_SIZE, Outcome},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 impl<E: Env> Host<E> {
     /// Run the index entry `deploy` names as `service`. Refused when it
@@ -22,15 +22,37 @@ impl<E: Env> Host<E> {
     /// that the program it replaces did not and `public` does not confirm it,
     /// or, unless `force`, when it breaks a public tool or event of the program
     /// it replaces that a caller used, with a call that was done, in the last
-    /// [`usage::WINDOW`] days.
-    pub async fn deploy(&self, service: &str, deploy: Deploy) -> Result<Arc<Program>, Denied> {
+    /// [`usage::WINDOW`] days. Refused too when its `size` is outside
+    /// [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`] or below what its
+    /// database holds. A refused deploy leaves the database held to the size
+    /// it was.
+    ///
+    /// `seed`, a SQLite file on the databases' filesystem, starts the
+    /// service's database, held to the image's migrations like any other:
+    /// refused when the service has a database or the image keeps none. A
+    /// deploy refused once the seed is in place deletes it.
+    pub async fn deploy(
+        &self,
+        service: &str,
+        deploy: Deploy,
+        seed: Option<&Path>,
+    ) -> Result<Arc<Program>, Denied> {
         let Deploy {
             reference,
             digest,
             public,
             force,
             crons,
+            size,
         } = deploy;
+        if !(MIN_DATABASE_SIZE..=MAX_DATABASE_SIZE).contains(&size) {
+            return Err(deny(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "a database holds from {MIN_DATABASE_SIZE} to {MAX_DATABASE_SIZE} bytes, not {size}"
+                ),
+            ));
+        }
         let image = self
             .images
             .pull(&reference, &digest)
@@ -69,32 +91,77 @@ impl<E: Env> Host<E> {
         {
             self.unbroken(service, current, &manifest).await?;
         }
-        self.migrate(&key, &manifest).await?;
-        let deprecated: Vec<String> = manifest
-            .tools
-            .iter()
-            .filter(|spec| spec.deprecated)
-            .map(|spec| spec.name.clone())
-            .collect();
-        let program = self
-            .compile(key, image)
-            .await
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-        service::install(
-            &self.store,
-            scope,
-            name,
-            &reference,
-            &digest,
-            &manifest.version,
-            deprecated,
-            cron_tools,
-            crons,
-            (self.now)() as i64,
-        )
-        .await?;
-        self.waking.notify_one();
-        Ok(program)
+        if let Some(seed) = seed {
+            if !manifest.keeps_database() {
+                return Err(deny(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("{service} keeps no database to seed"),
+                ));
+            }
+            self.databases
+                .seed(&key, seed)
+                .map_err(|e| deny(StatusCode::CONFLICT, format!("{e:#}")))?;
+        }
+        let mut limited: Option<(Arc<Database>, u64)> = None;
+        let installed = async {
+            if manifest.keeps_database() {
+                let database = self
+                    .databases
+                    .get(&key)
+                    .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+                let before = database
+                    .limit(size)
+                    .await
+                    .map_err(|e| deny(StatusCode::UNPROCESSABLE_ENTITY, format!("{e:#}")))?;
+                limited = Some((database.clone(), before));
+                database
+                    .migrate(manifest.migrations())
+                    .await
+                    .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            }
+            let deprecated: Vec<String> = manifest
+                .tools
+                .iter()
+                .filter(|spec| spec.deprecated)
+                .map(|spec| spec.name.clone())
+                .collect();
+            let program = self
+                .compile(key.clone(), image)
+                .await
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            service::install(
+                &self.store,
+                scope,
+                name,
+                &reference,
+                &digest,
+                &manifest.version,
+                size,
+                deprecated,
+                cron_tools,
+                crons,
+                (self.now)() as i64,
+            )
+            .await?;
+            Ok(program)
+        }
+        .await;
+        if installed.is_err()
+            && let Some((database, before)) = limited
+            && let Err(e) = database.limit(before).await
+        {
+            tracing::error!(service, error = %e, "the refused size stays");
+        }
+        if seed.is_some()
+            && installed.is_err()
+            && let Err(e) = self.databases.remove(&key)
+        {
+            tracing::error!(service, error = %e, "the refused seed stays");
+        }
+        if installed.is_ok() {
+            self.waking.notify_one();
+        }
+        installed
     }
 
     /// Refuses `manifest` when it needs a syscall this host does not serve.
@@ -221,21 +288,6 @@ impl<E: Env> Host<E> {
                 ),
             ));
         }
-        Ok(())
-    }
-
-    /// Migrate the database of `service` to `manifest`'s, when it keeps one.
-    /// A failed migration leaves the version it replaces serving.
-    async fn migrate(&self, service: &str, manifest: &Manifest) -> Result<(), Denied> {
-        let Some(database) = &manifest.database else {
-            return Ok(());
-        };
-        self.databases
-            .get(service)
-            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?
-            .migrate(database.migrations.clone())
-            .await
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         Ok(())
     }
 }

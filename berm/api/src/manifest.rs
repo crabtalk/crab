@@ -24,7 +24,8 @@ pub struct Manifest {
     #[serde(default)]
     pub readme: String,
     pub tools: Vec<ToolSpec>,
-    /// What this program reaches for once it runs.
+    /// What this program reaches for once it runs, its kits' declarations
+    /// included.
     ///
     /// Runtime, and resolved wherever the image lands — nothing here is
     /// fetched or installed, and a name nothing answers to is reported rather
@@ -36,6 +37,24 @@ pub struct Manifest {
     #[serde(default)]
     pub events: Vec<EventSpec>,
     /// The SQLite database it keeps, when it keeps one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database: Option<Database>,
+    /// The kits it links, in the order `#[program(uses)]` names them.
+    #[serde(default)]
+    pub kits: Vec<Kit>,
+}
+
+/// A library a program links with `#[program(uses)]`, as `kit!` declared it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Kit {
+    /// The kit's crate, which its applied migrations are kept under.
+    pub name: String,
+    /// The crate's version when the program was built.
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub deps: Deps,
+    /// The tables it keeps in the program's database.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
 }
@@ -87,6 +106,57 @@ impl Deps {
     pub fn is_empty(&self) -> bool {
         self.programs.is_empty() && self.syscalls.is_empty() && self.secrets.is_empty()
     }
+
+    /// Add what `other` reaches that this does not.
+    pub fn merge(&mut self, other: &Deps) {
+        let missing = |into: &mut Vec<String>, from: &[String]| {
+            for item in from {
+                if !into.contains(item) {
+                    into.push(item.clone());
+                }
+            }
+        };
+        missing(&mut self.programs, &other.programs);
+        missing(&mut self.secrets, &other.secrets);
+        for (name, reached) in &other.syscalls {
+            missing(self.syscalls.entry(name.clone()).or_default(), reached);
+        }
+    }
+
+    /// How `host` is declared under `syscall`, or `None` when it is not.
+    ///
+    /// A declared host is a name, matched whole; `*.example.com`, matching
+    /// every subdomain of `example.com` and not `example.com` itself; or `*`,
+    /// matching every host. Matching ignores ASCII case. A host declared by
+    /// name is [`Reach::Named`] even when a pattern matches it too.
+    pub fn reach(&self, syscall: &str, host: &str) -> Option<Reach> {
+        let declared = self.syscalls.get(syscall)?;
+        if declared.iter().any(|item| item.eq_ignore_ascii_case(host)) {
+            return Some(Reach::Named);
+        }
+        declared
+            .iter()
+            .any(|item| match item.strip_prefix("*") {
+                Some("") => true,
+                Some(suffix) => {
+                    suffix.starts_with('.')
+                        && host.len().checked_sub(suffix.len()).is_some_and(|at| {
+                            host.as_bytes()[at..].eq_ignore_ascii_case(suffix.as_bytes())
+                        })
+                }
+                None => false,
+            })
+            .then_some(Reach::Pattern)
+    }
+}
+
+/// How a manifest declares a host it reaches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// By its name.
+    Named,
+    /// Only through `*` or `*.domain`.
+    Pattern,
 }
 
 /// `inner, berm.http.fetch (example.com), secret openai` — every program,
@@ -108,6 +178,26 @@ impl fmt::Display for Deps {
 }
 
 impl Manifest {
+    /// Whether it keeps a database: its own, or a kit's tables.
+    pub fn keeps_database(&self) -> bool {
+        self.database.is_some() || self.kits.iter().any(|kit| kit.database.is_some())
+    }
+
+    /// Each sequence of migrations its database is built by, under the name
+    /// its applied migrations are kept by: each kit's under the kit's, in
+    /// `uses` order, then its own under `""`.
+    pub fn migrations(&self) -> Vec<(String, Vec<Migration>)> {
+        let kits = self.kits.iter().filter_map(|kit| {
+            let database = kit.database.as_ref()?;
+            Some((kit.name.clone(), database.migrations.clone()))
+        });
+        let own = self
+            .database
+            .iter()
+            .map(|database| (String::new(), database.migrations.clone()));
+        kits.chain(own).collect()
+    }
+
     /// Read what an image claims to be, without compiling or running it.
     ///
     /// This is what the section is *for* (RFC 0205): learning a program's tools,
@@ -146,6 +236,12 @@ impl Manifest {
         let mut manifest = program.context("program manifest holds no program record")?;
         events.sort_by(|a, b| a.name.cmp(&b.name));
         manifest.events.extend(events);
+        for (at, kit) in manifest.kits.iter().enumerate() {
+            if manifest.kits[..at].iter().any(|seen| seen.name == kit.name) {
+                bail!("program manifest uses kit {} twice", kit.name);
+            }
+            manifest.deps.merge(&kit.deps);
+        }
         if manifest.abi_version != ABI_VERSION {
             bail!(
                 "program was built against ABI version {}, this host speaks {ABI_VERSION}",

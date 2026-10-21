@@ -24,18 +24,17 @@ impl Terms {
     pub(crate) async fn load(&self, store: &Store) -> Result<()> {
         let rows = store
             .read(|conn| {
-                let mut statement = conn
-                    .prepare("SELECT scope, name, tool, instructions, rows FROM service_terms")?;
+                let mut statement =
+                    conn.prepare("SELECT scope, name, tool, cpu, rows FROM service_terms")?;
                 let rows = statement.query_map([], |row| {
                     let (scope, name): (String, String) = (row.get(0)?, row.get(1)?);
-                    let (instructions, rows): (Option<i64>, Option<i64>) =
-                        (row.get(3)?, row.get(4)?);
+                    let (cpu, rows): (Option<i64>, Option<i64>) = (row.get(3)?, row.get(4)?);
                     Ok((
                         host::join(&scope, &name),
                         row.get::<_, String>(2)?,
                         Set {
-                            budget: instructions.zip(rows).map(|(instructions, rows)| Budget {
-                                instructions: instructions as u64,
+                            budget: cpu.zip(rows).map(|(cpu, rows)| Budget {
+                                cpu: cpu as u64,
                                 rows: rows as u64,
                             }),
                         },
@@ -76,17 +75,11 @@ impl Terms {
             .run(move |conn| {
                 let [scope, name, tool] = row;
                 conn.execute(
-                    "INSERT INTO service_terms (scope, name, tool, instructions, rows)
+                    "INSERT INTO service_terms (scope, name, tool, cpu, rows)
                      VALUES (?1, ?2, ?3, ?4, ?5)
                      ON CONFLICT (scope, name, tool) DO UPDATE
-                        SET instructions = excluded.instructions, rows = excluded.rows",
-                    params![
-                        scope,
-                        name,
-                        tool,
-                        budget.instructions as i64,
-                        budget.rows as i64
-                    ],
+                        SET cpu = excluded.cpu, rows = excluded.rows",
+                    params![scope, name, tool, budget.cpu as i64, budget.rows as i64],
                 )?;
                 Ok(())
             })

@@ -2,7 +2,6 @@
 
 use crate::{
     Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi,
-    bound::watchdog,
     engine::{Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Running},
@@ -15,11 +14,12 @@ use anyhow::{Context, Result, bail};
 use berm_api::{Callers, Manifest, Output, Runtime};
 use std::{
     collections::BTreeMap,
+    error, fmt,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// The last [`Callsite::chain`] handed out.
@@ -55,10 +55,15 @@ pub struct Program {
     budget: Budgeted,
     /// What `berm.now` answers.
     now: Now,
+    /// What the programs it calls are told it is named: the issuer of a user
+    /// it vouches for.
+    issuer: Arc<str>,
     /// Told of each invocation once it ran.
     invoked: Invoked,
     /// What its invocations hold while they run.
     pub running: Arc<Running>,
+    /// How long a chain it starts runs, [`crate::Config::deadline`].
+    deadline: Duration,
 }
 
 struct Tool {
@@ -134,8 +139,10 @@ impl Program {
             }
         }
 
+        let name: Arc<str> = name.into();
         Ok(Self {
-            name: name.into(),
+            issuer: (calls.named)(&name).into(),
+            name,
             digest: digest(image),
             image: compiled,
             deps: Arc::new(manifest.deps.clone()),
@@ -146,6 +153,7 @@ impl Program {
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running: Arc::default(),
+            deadline: engine.deadline,
         })
     }
 
@@ -203,6 +211,7 @@ impl Program {
         let Manifest {
             abi_version: _,
             database: _,
+            kits: _,
             deps: _,
             events: _,
             version,
@@ -283,7 +292,7 @@ impl Program {
                 client,
                 1,
                 false,
-                watchdog::fresh(),
+                Instant::now() + self.deadline,
                 chain,
                 journal.clone(),
                 meters,
@@ -409,6 +418,7 @@ impl Program {
             held: Held::new(self.running.clone()),
             at,
             now: self.now.clone(),
+            issuer: self.issuer.clone(),
             args,
             staged: Vec::new(),
             outcome: None,
@@ -416,7 +426,7 @@ impl Program {
         };
         let ended = self
             .image
-            .call(symbol, invocation, budget.instructions)
+            .call(symbol, invocation, budget.cpu)
             .await
             .with_context(|| format!("program trapped in {tool}"))
             .and_then(ended);
@@ -536,6 +546,8 @@ pub struct Invocation {
     pub(crate) at: Callsite,
     /// What `berm.now` answers.
     pub(crate) now: Now,
+    /// Its program's [`Program::issuer`].
+    pub(crate) issuer: Arc<str>,
     pub(crate) args: Vec<u8>,
     /// The last syscall's reply, waiting for the guest to pull it. Staged
     /// rather than pushed because its size is not known until the work is
@@ -559,10 +571,10 @@ pub struct Invocation {
 #[derive(Debug)]
 pub struct Refused(pub String);
 
-impl std::fmt::Display for Refused {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Refused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl std::error::Error for Refused {}
+impl error::Error for Refused {}

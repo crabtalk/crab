@@ -1,0 +1,10 @@
+[package]
+name = "crab-html"
+version.workspace = true
+description = "Text out of HTML: the fields feeds and APIs carry, and the meta of a page."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["html", "no-std", "berm", "crabtalk"]
+categories = ["no-std", "parser-implementations"]

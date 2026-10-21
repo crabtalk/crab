@@ -2,7 +2,7 @@
 
 use berm::syscall::call::DEFAULT_CALL_DEPTH;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 /// A missing field takes its default.
 #[derive(Debug, Clone, Deserialize)]
@@ -10,12 +10,20 @@ pub struct Config {
     /// Guests live at once across every service, nested calls included.
     #[serde(default = "instances")]
     pub instances: u32,
-    /// The most wasm instructions one invocation may execute.
-    #[serde(default = "fuel")]
-    pub fuel: u64,
+    /// The largest linear memory one guest may grow to, in bytes.
+    #[serde(default = "memory")]
+    pub memory: usize,
+    /// The most CPU time one invocation may spend, nested calls excluded, as a
+    /// duration like `"50ms"`.
+    #[serde(default = "cpu", with = "humantime_serde")]
+    pub cpu: Duration,
     /// The most rows one invocation may read and write together.
     #[serde(default = "rows")]
     pub rows: u64,
+    /// How long a chain of calls runs before it is stopped, as a duration like
+    /// `"60s"`.
+    #[serde(default = "deadline", with = "humantime_serde")]
+    pub deadline: Duration,
     /// How deep a chain of services calling services may go.
     #[serde(default = "depth")]
     pub depth: u32,
@@ -35,8 +43,10 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             instances: instances(),
-            fuel: fuel(),
+            memory: memory(),
+            cpu: cpu(),
             rows: rows(),
+            deadline: deadline(),
             depth: depth(),
             cap: None,
             cache_dir: None,
@@ -49,8 +59,16 @@ fn instances() -> u32 {
     berm::Config::default().instances
 }
 
-fn fuel() -> u64 {
-    berm::Config::default().fuel
+fn memory() -> usize {
+    berm::Config::default().memory
+}
+
+fn deadline() -> Duration {
+    berm::Config::default().deadline
+}
+
+fn cpu() -> Duration {
+    berm::Config::default().cpu
 }
 
 fn rows() -> u64 {

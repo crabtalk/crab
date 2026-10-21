@@ -1,7 +1,8 @@
 //! A host for tests: a service's built image runs under the real engine,
 //! against edges the test holds. Fetches answer what the test arranged, images
-//! are bytes it handed in, there are no peers, secrets are what it granted, and
-//! the clock stands where it set it. Wakes are fired by the test, not a timer.
+//! are bytes it handed in, there are no peers, secrets are what it granted,
+//! each service signs with a key generated on first use, and the clock stands
+//! where it set it. Wakes are fired by the test, not a timer.
 //!
 //! ```ignore
 //! let host = TestHost::open(0).await?;
@@ -11,6 +12,8 @@
 //! for (wake, ran) in host.fire().await? { /* … */ }
 //! let logs = host.logs("feeds", Some("Item")).await?;
 //! ```
+
+pub use berm::User;
 
 use crate::{
     api::outside::Layers,
@@ -29,7 +32,7 @@ use berm::{
 };
 use berm_api::{
     Logged, Output,
-    host::{Deploy, Page},
+    host::{DATABASE_SIZE, Deploy, Page},
 };
 use parking_lot::Mutex;
 use std::{
@@ -43,6 +46,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     task::{self, Poll},
+    time::Duration,
 };
 
 mod clock;
@@ -91,6 +95,11 @@ impl TestHost {
     /// A host with nothing deployed, its clock at `now` in milliseconds since
     /// the Unix epoch.
     pub async fn open(now: u64) -> Result<Self> {
+        Self::open_with(now, crate::Config::default().cpu).await
+    }
+
+    /// [`TestHost::open`], each call spending at most `cpu` of CPU.
+    pub async fn open_with(now: u64, cpu: Duration) -> Result<Self> {
         static OPENED: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "berm-test-{}-{}",
@@ -103,6 +112,7 @@ impl TestHost {
         let clock = Manual(Arc::new(AtomicU64::new(now)));
         let config = crate::Config {
             databases: dir.join("databases"),
+            cpu,
             ..crate::Config::default()
         };
         let host = Host::open(
@@ -147,8 +157,8 @@ impl TestHost {
         );
     }
 
-    /// Every request sent so far, as method and URL, in order.
-    pub fn fetched(&self) -> Vec<(String, String)> {
+    /// Every request sent so far, in order, with its secrets substituted.
+    pub fn fetched(&self) -> Vec<Request> {
         self.fetch.0.lock().sent.clone()
     }
 
@@ -178,6 +188,32 @@ impl TestHost {
     /// Run `image` as `service`, every public tool confirmed and each cron tool
     /// without an expression.
     pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+        self.seeded(service, image, None).await
+    }
+
+    /// [`TestHost::deploy`], its database started from the SQLite file at
+    /// `seed`, which is moved.
+    pub async fn seeded(
+        &self,
+        service: &str,
+        image: &[u8],
+        seed: Option<&Path>,
+    ) -> Result<Arc<Program>> {
+        self.installed(service, image, seed, DATABASE_SIZE).await
+    }
+
+    /// [`TestHost::deploy`], its database held to `size` bytes.
+    pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Program>> {
+        self.installed(service, image, None, size).await
+    }
+
+    async fn installed(
+        &self,
+        service: &str,
+        image: &[u8],
+        seed: Option<&Path>,
+        size: u64,
+    ) -> Result<Arc<Program>> {
         let manifest = Manifest::from_image(image)?;
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
@@ -200,7 +236,9 @@ impl TestHost {
                         .collect(),
                     force: true,
                     crons: None,
+                    size,
                 },
+                seed,
             )
             .await?)
     }
@@ -208,6 +246,21 @@ impl TestHost {
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
     /// and commit what it did.
     pub async fn call(&self, service: &str, tool: &str, args: &[u8]) -> Result<Ran> {
+        self.run(service, tool, args, None).await
+    }
+
+    /// [`TestHost::call`], for `user`.
+    pub async fn call_for(
+        &self,
+        service: &str,
+        tool: &str,
+        args: &[u8],
+        user: User,
+    ) -> Result<Ran> {
+        self.run(service, tool, args, Some(user)).await
+    }
+
+    async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
         let program = self
             .host
             .get(service)
@@ -218,7 +271,7 @@ impl TestHost {
                 &program,
                 self.host.calls.start().id,
                 None,
-                None,
+                user,
                 None,
                 tool,
                 args.to_vec(),
@@ -402,7 +455,7 @@ pub struct Arranged(Arc<Mutex<Fetches>>);
 #[derive(Default)]
 struct Fetches {
     answers: HashMap<(String, String), Response>,
-    sent: Vec<(String, String)>,
+    sent: Vec<Request>,
 }
 
 impl tower::Service<Request> for Arranged {
@@ -416,9 +469,6 @@ impl tower::Service<Request> for Arranged {
 
     fn call(&mut self, request: Request) -> Self::Future {
         let mut fetches = self.0.lock();
-        fetches
-            .sent
-            .push((request.method.clone(), request.url.clone()));
         let answer = match fetches
             .answers
             .get(&(request.method.clone(), request.url.clone()))
@@ -426,7 +476,10 @@ impl tower::Service<Request> for Arranged {
             Some(response) => Ok(Response {
                 status: response.status,
                 headers: response.headers.clone(),
-                body: response.body.clone(),
+                body: response.body[..request
+                    .limit
+                    .map_or(response.body.len(), |limit| limit.min(response.body.len()))]
+                    .to_vec(),
             }),
             None => Err(anyhow::anyhow!(
                 "no response arranged for {} {}",
@@ -434,6 +487,7 @@ impl tower::Service<Request> for Arranged {
                 request.url
             )),
         };
+        fetches.sent.push(request);
         Box::pin(std::future::ready(answer))
     }
 }

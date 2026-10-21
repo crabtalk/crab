@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Instructions an invocation executes before those past them are charged as
+/// CPU microseconds an invocation spends before those past them are charged as
 /// overage.
-pub const INCLUDED_INSTRUCTIONS: u64 = 1_000_000;
+pub const INCLUDED_CPU: u64 = 100;
 
 /// What is deployed, served unauthenticated at `GET /meta/version`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -30,8 +30,8 @@ pub struct VersionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metering {
     pub rates: Rates,
-    /// Instructions of each call `overage` does not count.
-    pub included_instructions: u64,
+    /// CPU microseconds of each call `overage` does not count.
+    pub included_cpu: u64,
     /// Bytes one log holds at most.
     pub max_log: usize,
 }
@@ -42,12 +42,10 @@ pub struct Metering {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Rates {
     pub calls: u64,
-    /// Instructions past each call's first 1M.
+    /// CPU microseconds past each call's first [`INCLUDED_CPU`].
     pub overage: u64,
     pub read: u64,
     pub written: u64,
-    /// Bytes stored for a month; a day is charged a thirtieth.
-    pub stored: u64,
     /// Bytes through `berm.http.proxy`; unset is free.
     pub proxied: Option<u64>,
 }

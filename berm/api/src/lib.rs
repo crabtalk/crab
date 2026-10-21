@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use compat::{Break, Surface};
-pub use manifest::{Database, Deps, EventSpec, Manifest, Migration};
+pub use manifest::{Database, Deps, EventSpec, Kit, Manifest, Migration, Reach};
 
 mod compat;
 pub mod host;
@@ -121,12 +121,12 @@ pub struct Cron {
     pub cron: Option<String>,
 }
 
-/// The most one invocation may use: wasm instructions, and rows read and
-/// written together.
+/// The most one invocation may use: CPU time in microseconds, nested calls
+/// excluded, and rows read and written together.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Budget {
-    pub instructions: u64,
+    pub cpu: u64,
     pub rows: u64,
 }
 
@@ -211,15 +211,16 @@ impl From<Output> for Result<String, String> {
 /// The most bytes one log may hold, its data and topics together.
 pub const MAX_LOG: usize = 4096;
 
-/// What a call used of one program: its invocations, the wasm instructions
-/// they executed, the largest linear memory one reached, in bytes, the rows
-/// they read and wrote, the bytes sent and received through the proxy, the
-/// bytes of the logs they emitted, and the bytes sent off the host.
+/// What a call used of one program: its invocations, the CPU time they spent
+/// in microseconds, nested calls excluded, the largest linear memory one
+/// reached, in bytes, the rows they read and wrote, the bytes sent and
+/// received through the proxy, the bytes of the logs they emitted, and the
+/// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meter {
     pub calls: u64,
-    pub instructions: u64,
+    pub cpu: u64,
     pub memory: u64,
     pub read: u64,
     pub written: u64,
@@ -236,7 +237,7 @@ impl std::ops::AddAssign for Meter {
     /// Sums every count but `memory`, which keeps the larger.
     fn add_assign(&mut self, other: Meter) {
         self.calls += other.calls;
-        self.instructions += other.instructions;
+        self.cpu += other.cpu;
         self.memory = self.memory.max(other.memory);
         self.read += other.read;
         self.written += other.written;

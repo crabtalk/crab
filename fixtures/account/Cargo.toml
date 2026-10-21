@@ -1,0 +1,24 @@
+[package]
+name = "berm-account"
+description = "The reference sign-in service, GitHub and Google sign-in through crab-auth, what crab-auth is tested against"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "account"
+path = "bin/main.rs"
+
+[dependencies]
+berm-lang.workspace = true
+auth.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+berm-api.workspace = true
+berm-host = { workspace = true, features = ["test"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio.workspace = true

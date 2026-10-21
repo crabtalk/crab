@@ -13,8 +13,11 @@
 //! Every one of them, berm's own included, is reached through the one table
 //! below.
 
-use crate::{Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, abi, engine, wire};
-use anyhow::{Result, bail};
+use crate::{
+    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine, wire,
+};
+use anyhow::{Result, anyhow, bail};
+use ring::rand::{SecureRandom, SystemRandom};
 use std::{collections::HashMap, sync::Arc};
 use wasmtime::Caller;
 
@@ -145,6 +148,15 @@ fn builtins() -> Table {
     );
 
     table.insert(
+        abi::HOST_VOUCH,
+        handler(|guest, ptr, len| {
+            let subject = engine::read(guest, ptr, len)?;
+            let answer = vouch(guest.data_mut(), subject);
+            Ok(stage(guest, answer))
+        }),
+    );
+
+    table.insert(
         abi::HOST_CLIENT,
         handler(|guest, _, _| {
             let reply = match &guest.data().at.client {
@@ -220,7 +232,40 @@ fn builtins() -> Table {
         handler(|guest, _, _| Ok((guest.data().now)())),
     );
 
+    table.insert(
+        abi::HOST_RANDOM,
+        handler(|guest, ptr, len| {
+            SystemRandom::new()
+                .fill(engine::slice_mut(guest, ptr, len)?)
+                .map_err(|_| anyhow!("the system's random source failed"))?;
+            Ok(0)
+        }),
+    );
+
     table
+}
+
+/// Have the rest of `invocation`'s chain run for `subject`, vouched for by its
+/// program.
+fn vouch(invocation: &mut Invocation, subject: Vec<u8>) -> Result<Vec<u8>> {
+    let issuer = invocation.issuer.clone();
+    let at = &mut invocation.at;
+    if !at.deps.syscalls.contains_key(abi::VOUCH) {
+        return Err(Refused(format!("{} does not declare {}", at.program, abi::VOUCH)).into());
+    }
+    if at.user.is_some() {
+        return Err(Refused(String::from("the chain already runs for a user")).into());
+    }
+    let subject =
+        String::from_utf8(subject).map_err(|_| Refused(String::from("a subject is UTF-8 text")))?;
+    if subject.is_empty() {
+        return Err(Refused(String::from("a subject names someone")).into());
+    }
+    at.user = Some(User {
+        issuer,
+        subject: subject.into(),
+    });
+    Ok(Vec::new())
 }
 
 fn handler(

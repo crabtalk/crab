@@ -12,6 +12,15 @@ pub const METER: &str = "berm-meter";
 /// verifies none of it.
 pub const CALLER: &str = "x-berm-caller";
 
+/// Bytes a service's database may hold when its deploy sets none.
+pub const DATABASE_SIZE: u64 = 1 << 30;
+
+/// The fewest bytes a deploy may let a service's database hold.
+pub const MIN_DATABASE_SIZE: u64 = 64 << 10;
+
+/// The most bytes a deploy may let a service's database hold.
+pub const MAX_DATABASE_SIZE: u64 = 10 << 30;
+
 /// Who called from outside, as the daemon hands them to the host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Caller {
@@ -63,6 +72,15 @@ pub struct Deploy {
     /// owner set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crons: Option<BTreeMap<String, String>>,
+    /// Bytes the service's database may hold, from [`MIN_DATABASE_SIZE`] to
+    /// [`MAX_DATABASE_SIZE`].
+    #[serde(default = "database_size")]
+    pub size: u64,
+}
+
+/// [`DATABASE_SIZE`], for `#[serde(default = "...")]`.
+pub fn database_size() -> u64 {
+    DATABASE_SIZE
 }
 
 /// A change to one of a service's tools.
@@ -398,8 +416,8 @@ pub struct Live {
     /// Bytes it keeps: its database file, its write-ahead log, its state, its
     /// logs kept, and its image and compiled code.
     pub stored: u64,
-    /// Wasm instructions executed.
-    pub instructions: Count,
+    /// CPU time spent, in microseconds.
+    pub cpu: Count,
     /// Rows read and written in its database and state.
     pub read: Count,
     pub written: Count,
@@ -428,8 +446,8 @@ pub struct Metered {
     /// Invocations of the service: from outside, from other services, and
     /// wakes.
     pub calls: u64,
-    /// Wasm instructions those invocations executed.
-    pub instructions: u64,
+    /// CPU time those invocations spent, in microseconds.
+    pub cpu: u64,
     /// The largest linear memory one of them reached, in bytes.
     pub memory: u64,
     /// Rows read and written in the service's database and state.
@@ -458,7 +476,7 @@ impl std::ops::AddAssign<Meter> for Metered {
     /// Sums every count but `memory`, which keeps the larger.
     fn add_assign(&mut self, used: Meter) {
         self.calls += used.calls;
-        self.instructions += used.instructions;
+        self.cpu += used.cpu;
         self.memory = self.memory.max(used.memory);
         self.read += used.read;
         self.written += used.written;

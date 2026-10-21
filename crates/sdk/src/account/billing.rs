@@ -39,8 +39,10 @@ pub struct Period {
     pub since: i32,
     pub until: i32,
     pub included: Included,
-    /// In the units of `included`; `stored` is the most bytes kept on one day.
+    /// In the units of `included`; `stored` is the bytes its services reserve.
     pub used: Included,
+    /// Bytes its placed services keep, as each was last sampled.
+    pub stored: u64,
     /// Each share of an included amount reached, and running out of credit.
     pub warnings: Vec<Warning>,
 }
@@ -61,7 +63,7 @@ pub struct Warning {
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
     Calls,
-    Instructions,
+    Cpu,
     Read,
     Written,
     Stored,
@@ -71,7 +73,7 @@ pub enum Unit {
 
 text_enum!(Unit {
     Calls => "calls",
-    Instructions => "instructions",
+    Cpu => "cpu",
     Read => "read",
     Written => "written",
     Stored => "stored",
@@ -140,13 +142,15 @@ text_enum!(InvoiceStatus {
 #[serde(default)]
 pub struct Included {
     pub calls: u64,
-    /// Wasm instructions past each call's first 1M.
-    pub instructions: u64,
+    /// CPU microseconds past each call's first
+    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU).
+    pub cpu: u64,
     /// Rows read.
     pub read: u64,
     /// Rows written.
     pub written: u64,
-    /// Bytes stored.
+    /// Bytes the account's services reserve for their databases together. A
+    /// deploy that would reserve past it is refused.
     pub stored: u64,
     /// Bytes sent off the nodes: answers to outside callers and requests to
     /// other sites. Past it the account's services take no calls until the
@@ -158,6 +162,14 @@ pub struct Included {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckoutResponse {
     pub url: String,
+}
+
+/// A plan subscribed: the Checkout URL to pay at, or `None` when the plan
+/// took effect at once, a trial ended and billed to the card on file.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscribeResponse {
+    pub url: Option<String>,
 }
 
 /// An account's credit, in USD micros. All of it was bought; it never

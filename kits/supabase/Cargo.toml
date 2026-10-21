@@ -1,0 +1,13 @@
+[package]
+name = "crab-supabase"
+version.workspace = true
+description = "Supabase over HTTPS: PostgREST tables and functions, and Storage objects."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["supabase", "postgrest", "berm", "wasm", "crabtalk"]
+categories = ["wasm", "database", "web-programming"]
+
+[dependencies]
+berm-lang.workspace = true

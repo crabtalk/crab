@@ -15,7 +15,7 @@
 //! ```
 #![cfg(not(target_arch = "wasm32"))]
 
-use crate::{CallError, abi, sys};
+use crate::{CallError, abi, http, sys};
 use std::{
     string::String,
     sync::{Mutex, PoisonError},
@@ -90,7 +90,50 @@ pub fn answer(program: &str, tool: &str, result: Result<&[u8], CallError>) {
     });
 }
 
-/// Drop every answer [`answer`] arranged.
+/// Drop every answer [`answer`] and response [`respond`] arranged, and every
+/// request [`fetched`] recorded.
 pub fn forget() {
-    sys::with(|host| host.answers.clear());
+    sys::with(|host| {
+        host.answers.clear();
+        host.responses.clear();
+        host.fetched.clear();
+    });
+}
+
+/// One request a program sent through `berm.http.fetch` or `berm.http.proxy`,
+/// `{secret:NAME}` as the program wrote it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fetched {
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl Fetched {
+    /// The value of the header `name`, ASCII case ignored.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        http::header(&self.headers, name)
+    }
+}
+
+/// Arrange what a request answers, by method and URL, with no headers.
+///
+/// Responses persist until [`forget`]. A request nothing was arranged for
+/// panics naming it.
+///
+/// ```ignore
+/// test::respond("GET", "https://api.example.com/items", 200, b"[]");
+/// ```
+pub fn respond(method: &str, url: &str, status: u16, body: &[u8]) {
+    sys::with(|host| {
+        host.responses.retain(|(m, u, ..)| m != method || u != url);
+        host.responses
+            .push((method.into(), url.into(), status, body.to_vec()));
+    });
+}
+
+/// Each request sent since [`forget`], in order.
+pub fn fetched() -> Vec<Fetched> {
+    sys::with(|host| host.fetched.clone())
 }

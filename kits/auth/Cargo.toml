@@ -1,0 +1,16 @@
+[package]
+name = "crab-auth"
+version.workspace = true
+description = "Sign-in for a product's users: GitHub and Google logins as sessions kept in its own database."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["oauth", "oidc", "berm", "wasm", "crabtalk"]
+categories = ["wasm", "authentication"]
+
+[dependencies]
+berm-lang.workspace = true
+hex = { workspace = true, features = ["alloc"] }
+sha2.workspace = true
+

@@ -17,11 +17,17 @@ path = "bin/main.rs"
 anyhow.workspace = true
 berm-api.workspace = true
 berm-oci.workspace = true
+bytesize.workspace = true
 chrono.workspace = true
 clap.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
+hex = { workspace = true, features = ["std"] }
+rusqlite.workspace = true
+self_update.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }
+sha2.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 toml.workspace = true
 toml_edit.workspace = true

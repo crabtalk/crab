@@ -23,8 +23,9 @@
 //! and that list is the linker it is instantiated with: a call to anything else
 //! traps because nothing is registered for it, not because a check said no.
 //! The standard ones — `berm.get`/`berm.set`, `berm.emit`, `berm.call.after`,
-//! `berm.http.fetch` — are built with [`syscall`]'s constructors, which read
-//! and check the request and hand the work to the embedder's closures.
+//! `berm.http.fetch` — are built with [`syscall`]'s
+//! constructors, which read and check the request and hand the work to the
+//! embedder's closures.
 //!
 //! What `berm.set` and `berm.emit` leave to berm is held in a journal and
 //! handed back from [`Program::call`] as [`Changes`], for the host to commit as
@@ -36,7 +37,7 @@
 // cannot pick a version the generated code disagrees with.
 pub use anyhow;
 use anyhow::Result;
-pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, ToolSpec};
+pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine};
 use journal::Journal;
@@ -91,8 +92,9 @@ pub struct Callsite {
     /// call, or the program that called this one. `None` when the host
     /// started the chain on the program's own behalf.
     pub caller: Option<Caller>,
-    /// The end user the embedder vouched for at the chain's first call.
-    /// Carried unchanged into every nested call.
+    /// The end user the embedder vouched for at the chain's first call, or a
+    /// program in the chain vouched for through `berm.vouch`. Carried into
+    /// every call made after.
     pub user: Option<User>,
     /// The outside client, as the per-day pseudonymous key the embedder
     /// supplied at the chain's first call. Carried unchanged into every nested
@@ -148,8 +150,8 @@ pub enum Caller {
     Program(Arc<str>),
 }
 
-/// An end user, as the embedder verified them: who vouched for them, and who
-/// they are to it.
+/// An end user, as the embedder verified them or a program vouched for them:
+/// who vouched for them, and who they are to it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct User {
     pub issuer: Arc<str>,

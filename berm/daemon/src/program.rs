@@ -12,7 +12,7 @@ impl Service {
     /// breaks callers of the program it replaced. Refused as the host refuses
     /// a deploy: a tool made public that `public` does not confirm, or, unless
     /// `force`, a break of what a caller used or a cron its owner set that
-    /// `crons` undoes.
+    /// `crons` undoes, or a `size` the host refuses.
     pub async fn deploy(
         &self,
         name: &str,
@@ -20,6 +20,7 @@ impl Service {
         public: &[String],
         force: bool,
         crons: Option<BTreeMap<String, String>>,
+        size: u64,
     ) -> Result<(Arc<Program>, Vec<Break>), Denied> {
         validate(name)?;
         let replaced = self.get(name);
@@ -34,7 +35,9 @@ impl Service {
                     public: public.to_vec(),
                     force,
                     crons,
+                    size,
                 },
+                None,
             )
             .await?;
         let breaks = replaced

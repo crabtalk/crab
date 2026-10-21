@@ -1,0 +1,24 @@
+[package]
+name = "berm-feed"
+description = "The reference source service, an RSS feed through crab-lake, what lake's ticks are tested against"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "feed"
+path = "bin/main.rs"
+
+[dependencies]
+berm-lang.workspace = true
+lake.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+berm-api.workspace = true
+berm-host = { workspace = true, features = ["test"] }
+serde_json = { workspace = true, features = ["std"] }
+tokio.workspace = true

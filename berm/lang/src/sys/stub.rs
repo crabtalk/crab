@@ -3,13 +3,17 @@
 //! Off wasm this crate is an ordinary library, so a program author can build
 //! and unit test their handlers natively rather than cross-compiling to see
 //! anything at all. The calls a test can reasonably answer — the argument blob,
-//! the trace, emitted logs, the failure channel — are served from
-//! [`crate::test`]'s state.
+//! the trace, emitted logs, the failure channel, other programs and HTTP —
+//! are served from [`crate::test`]'s state.
 //! Anything else panics naming the syscall, because a test that reached a
 //! real syscall should say so rather than read a plausible zero.
 
-use crate::abi;
-use std::{cell::RefCell, string::String, vec::Vec};
+use crate::{abi, test::Fetched};
+use std::{
+    cell::RefCell,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 std::thread_local! {
     static HOST: RefCell<Host> = const { RefCell::new(Host::new()) };
@@ -32,6 +36,11 @@ pub(crate) struct Host {
     /// tool, the outcome bits, and the bytes. A short list rather than a map
     /// because a program calls a handful of things, not a thousand.
     pub answers: Vec<(String, String, u64, Vec<u8>)>,
+    /// What a test has arranged a request to answer: the method, the URL,
+    /// the status, and the body.
+    pub responses: Vec<(String, String, u16, Vec<u8>)>,
+    /// Each request sent, in order.
+    pub fetched: Vec<Fetched>,
 }
 
 impl Host {
@@ -44,6 +53,8 @@ impl Host {
             failure: None,
             result: Vec::new(),
             answers: Vec::new(),
+            responses: Vec::new(),
+            fetched: Vec::new(),
         }
     }
 }
@@ -76,8 +87,8 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             0
         }
         abi::HOST_EMIT => {
-            let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-            let Some(fields) = crate::abi::wire::fields(request) else {
+            let request = bytes(a0, a1);
+            let Some(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
             let mut fields = fields
@@ -91,7 +102,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             0
         }
         abi::HOST_DONE => {
-            with(|host| host.done = Some(bytes(a0, a1)));
+            with(|host| host.done = Some(bytes(a0, a1).to_vec()));
             0
         }
         abi::HOST_FAIL => {
@@ -109,8 +120,8 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
         // decoded here rather than matched whole so a test names the program and
         // the tool, not a byte sequence.
         abi::HOST_CALL => {
-            let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-            let Some(fields) = crate::abi::wire::fields(request) else {
+            let request = bytes(a0, a1);
+            let Some(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
             let (program, tool) = match fields.as_slice() {
@@ -137,18 +148,93 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                 ),
             }
         }
+        abi::HOST_HTTP_FETCH | abi::HOST_HTTP_PROXY => {
+            let request = bytes(a0, a1);
+            let Some((status, body)) = respond(request) else {
+                no_host(number)
+            };
+            with(|host| {
+                host.result = abi::wire::request(&[status.to_string().as_bytes(), &body]);
+                host.result.len() as u64
+            })
+        }
+        abi::HOST_HTTP_FETCH_ALL => {
+            let batch = bytes(a0, a1);
+            let Some(requests) = abi::wire::fields(batch) else {
+                no_host(number)
+            };
+            let answers: Vec<Vec<u8>> = requests
+                .into_iter()
+                .map(|request| {
+                    let Some((status, body)) = respond(request) else {
+                        no_host(number)
+                    };
+                    abi::wire::request(&[b"ok", status.to_string().as_bytes(), &body])
+                })
+                .collect();
+            let fields: Vec<&[u8]> = answers.iter().map(Vec::as_slice).collect();
+            with(|host| {
+                host.result = abi::wire::request(&fields);
+                host.result.len() as u64
+            })
+        }
         _ => no_host(number),
     }
 }
 
+/// The status and body arranged for one framed HTTP request, kept as
+/// fetched; `None` when it is not framed as one.
+fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
+    let fields = abi::wire::fields(request)?;
+    let [method, url, body, _timeout, limit, headers @ ..] = fields.as_slice() else {
+        return None;
+    };
+    let text = |field: &[u8]| String::from_utf8_lossy(field).into_owned();
+    let fetched = Fetched {
+        method: text(method),
+        url: text(url),
+        headers: headers
+            .chunks(2)
+            .map(|pair| {
+                (
+                    text(pair[0]),
+                    pair.get(1).map(|value| text(value)).unwrap_or_default(),
+                )
+            })
+            .collect(),
+        body: body.to_vec(),
+    };
+    let response = with(|host| {
+        host.responses
+            .iter()
+            .find(|(m, u, ..)| *m == fetched.method && *u == fetched.url)
+            .map(|(.., status, body)| (*status, body.clone()))
+    });
+    let limit: Option<usize> = match core::str::from_utf8(limit).ok()? {
+        "" => None,
+        limit => Some(limit.parse().ok()?),
+    };
+    let Some((status, mut body)) = response else {
+        panic!(
+            "nothing arranged for {} {}; call berm_lang::test::respond first",
+            fetched.method, fetched.url
+        )
+    };
+    with(|host| host.fetched.push(fetched));
+    if let Some(limit) = limit {
+        body.truncate(limit);
+    }
+    Some((status, body))
+}
+
 /// Read a `(ptr, len)` pair the caller passed. Off-target these are real
 /// addresses in this process.
-fn bytes(ptr: u64, len: u64) -> Vec<u8> {
-    unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) }.to_vec()
+fn bytes<'a>(ptr: u64, len: u64) -> &'a [u8] {
+    unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) }
 }
 
 fn read(ptr: u64, len: u64) -> String {
-    String::from_utf8_lossy(&bytes(ptr, len)).into_owned()
+    String::from_utf8_lossy(bytes(ptr, len)).into_owned()
 }
 
 #[cold]
