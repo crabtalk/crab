@@ -423,6 +423,7 @@ dependencies = [
  "berm-host",
  "berm-lang",
  "crab-crawl",
+ "crab-html",
  "serde_json",
  "tokio",
  "url",

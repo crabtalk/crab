@@ -15,6 +15,7 @@ path = "bin/main.rs"
 [dependencies]
 berm-lang.workspace = true
 crawl.workspace = true
+html.workspace = true
 url.workspace = true
 
 [dev-dependencies]

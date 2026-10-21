@@ -1,7 +1,8 @@
 //! A robots.txt, read as RFC 9309 says: the group for a crawler's token, else
 //! the group for `*`, its rules matched longest first, `allow` winning a tie.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
+use url::Url;
 
 /// What a crawler reads out of a robots.txt.
 #[derive(Default)]
@@ -57,8 +58,12 @@ impl Robots {
         robots
     }
 
-    /// Whether the crawler may fetch `path`, the path and query of a URL.
-    pub fn allows(&self, path: &str) -> bool {
+    /// Whether the crawler may fetch `url`, matched by its path and query.
+    pub fn allows(&self, url: &Url) -> bool {
+        let path = match url.query() {
+            Some(query) => format!("{}?{query}", url.path()),
+            None => String::from(url.path()),
+        };
         self.rules
             .iter()
             .filter(|(_, pattern)| matches(pattern.as_bytes(), path.as_bytes()))

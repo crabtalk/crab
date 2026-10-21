@@ -25,6 +25,8 @@ const ROBOTS_READ: usize = 500 << 10;
 pub struct Site {
     /// Its robots.txt, up to 64 KiB; `None` when it answered 4xx.
     pub robots: Option<String>,
+    /// What the crawler reads out of its robots.txt.
+    pub rules: Robots,
     pub signal: Option<String>,
     /// Each URL of a kind that robots.txt allows: the URL, its kind and its
     /// `lastmod` as written.
@@ -232,11 +234,7 @@ fn keep<C: Crawler>(reading: &mut Reading<'_>, listed: Vec<(String, Option<Strin
         {
             continue;
         }
-        let path = match url.query() {
-            Some(query) => format!("{}?{query}", url.path()),
-            None => String::from(url.path()),
-        };
-        if !reading.robots.allows(&path) {
+        if !reading.robots.allows(&url) {
             continue;
         }
         if let Some(kind) = C::kind(reading.domain, &url) {
@@ -253,6 +251,7 @@ fn finish(reading: &mut Reading<'_>) -> Site {
             text
         }),
         signal: reading.robots.signal.take(),
+        rules: core::mem::take(&mut reading.robots),
         urls: core::mem::take(&mut reading.urls),
     }
 }

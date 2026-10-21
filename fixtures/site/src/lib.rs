@@ -1,14 +1,15 @@
 //! The reference crawler: the sites it watches, read through `crab-crawl`.
 //!
-//! `watch` watches domains, `tick` reads the sites and fetches the pages due,
-//! and `urls` and `page` read back what was kept, and `read` what the crawler
-//! read of a page.
+//! `watch` watches domains, `list` lists URLs on a site, `tick` reads the sites
+//! and fetches the pages due, and `urls` and `page` read back what was kept,
+//! and `read` what the crawler read of a page. The crawler lists the links of
+//! each page it reads.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
 extern crate alloc;
 
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 use berm_lang::{CallError, Schema};
 use crawl::{Crawler, Schedule};
 use url::Url;
@@ -31,6 +32,12 @@ mod tools {
     #[public]
     pub fn watch_first(domains: Vec<String>) -> Result<u64> {
         Ok(crawl::watch_first(&domains)? as u64)
+    }
+
+    /// Lists `urls` on `domain`'s site, and answers how many were new.
+    #[public]
+    pub fn list(domain: String, urls: Vec<String>) -> Result<u64> {
+        Ok(crawl::list::<Pages>(&domain, &urls)? as u64)
     }
 
     /// Reads the sites due and fetches the pages due.
@@ -87,12 +94,19 @@ impl Crawler for Pages {
         }
     }
 
-    fn read(_domain: &str, url: &str, kind: &str, html: &str) -> Result<usize, CallError> {
+    fn read(domain: &str, url: &str, kind: &str, html: &str) -> Result<usize, CallError> {
         let read = Read {
             kind: String::from(kind),
             length: html.len() as u64,
         };
         berm_lang::set_json(&read_key(url), &read)?;
+        let base = Url::parse(url).map_err(|error| CallError::Failed(format!("{url}: {error}")))?;
+        let links: Vec<String> = html::links(html)
+            .into_iter()
+            .filter_map(|link| base.join(&link.href).ok())
+            .map(String::from)
+            .collect();
+        crawl::list::<Pages>(domain, &links)?;
         Ok(0)
     }
 }

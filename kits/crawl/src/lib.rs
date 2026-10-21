@@ -124,6 +124,27 @@ pub fn watch_first(domains: &[String]) -> Result<usize, CallError> {
     })
 }
 
+/// Keep each of `urls` on `domain`'s site, a site watched, that is of a kind
+/// `C` names, to be fetched as its sitemaps' URLs are once the site is read,
+/// under its robots.txt. A sitemap read leaves them; a robots.txt that
+/// disallows one drops it. `Crawler::read` may list the links of the page it
+/// is handed, in the same call. Answers how many were new.
+pub fn list<C: Crawler>(domain: &str, urls: &[String]) -> Result<usize, CallError> {
+    let domain = domain.to_ascii_lowercase();
+    urls.iter().try_fold(0, |new, listed| {
+        let Ok(url) = Url::parse(listed) else {
+            return Ok(new);
+        };
+        let on_site = url.host_str().is_some_and(|host| same_site(host, &domain));
+        match C::kind(&domain, &url) {
+            Some(kind) if on_site => {
+                Ok(new + usize::from(store::list(&domain, url.as_str(), kind)?))
+            }
+            _ => Ok(new),
+        }
+    })
+}
+
 /// Whether `host` belongs to `domain`'s site: either is the other or a
 /// subdomain of it.
 pub fn same_site(host: &str, domain: &str) -> bool {

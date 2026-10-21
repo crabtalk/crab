@@ -4,6 +4,7 @@
 use crate::{page::Fetched, site::Site};
 use alloc::{string::String, vec::Vec};
 use berm_lang::{CallError, Schema};
+use url::Url;
 
 /// A watched site as last read.
 #[derive(Schema)]
@@ -102,20 +103,34 @@ pub(crate) fn sites_due(
     .collect())
 }
 
-/// Store `site` as `domain`'s read at `now`, its URLs in place of the last.
-/// Answers the bytes written.
+/// Store `site` as `domain`'s read at `now`: its sitemaps' URLs in place of
+/// the last, and the URLs its program listed that its robots.txt still
+/// allows. Answers the bytes written.
 pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallError> {
     berm_lang::rows::<()>(
         "UPDATE crawl_sites SET robots = ?, signal = ?, read = ?, failures = 0, error = NULL
           WHERE domain = ?",
         &(&site.robots, &site.signal, now, domain),
     )?;
-    berm_lang::rows::<()>("DELETE FROM crawl_urls WHERE domain = ?", &(domain,))?;
+    berm_lang::rows::<()>(
+        "DELETE FROM crawl_urls WHERE domain = ? AND listed = 0",
+        &(domain,),
+    )?;
     for (url, kind, lastmod) in &site.urls {
         berm_lang::rows::<()>(
-            "INSERT OR REPLACE INTO crawl_urls (url, domain, kind, lastmod) VALUES (?, ?, ?, ?)",
+            "INSERT INTO crawl_urls (url, domain, kind, lastmod) VALUES (?, ?, ?, ?)
+             ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod",
             &(url, domain, kind, lastmod),
         )?;
+    }
+    let listed = berm_lang::rows::<(String,)>(
+        "SELECT url FROM crawl_urls WHERE domain = ? AND listed = 1",
+        &(domain,),
+    )?;
+    for (url,) in listed {
+        if Url::parse(&url).is_ok_and(|parsed| !site.rules.allows(&parsed)) {
+            berm_lang::rows::<()>("DELETE FROM crawl_urls WHERE url = ?", &(&url,))?;
+        }
     }
     let urls: usize = site
         .urls
@@ -136,10 +151,22 @@ pub(crate) fn read_failed(domain: &str, now: u64, error: &str) -> Result<(), Cal
     Ok(())
 }
 
-/// Up to `limit` pages due, those of sites watched first before the rest, a
-/// site's least recently fetched before any site's next: never fetched, their
-/// URL's `lastmod` changed since, or with no `lastmod` and last fetched at
-/// `before` or earlier.
+/// Keep `url`, of `kind`, as listed for `domain`, a site watched. Answers
+/// whether it was new.
+pub(crate) fn list(domain: &str, url: &str, kind: &str) -> Result<bool, CallError> {
+    let known = berm_lang::rows::<(u8,)>("SELECT listed FROM crawl_urls WHERE url = ?", &(url,))?;
+    berm_lang::rows::<()>(
+        "INSERT INTO crawl_urls (url, domain, kind, listed) VALUES (?, ?, ?, 1)
+         ON CONFLICT (url) DO UPDATE SET listed = 1",
+        &(url, domain, kind),
+    )?;
+    Ok(known.is_empty())
+}
+
+/// Up to `limit` pages due on sites read, those of sites watched first before
+/// the rest, a site's least recently fetched before any site's next: never
+/// fetched, their URL's `lastmod` changed since, or with no `lastmod` and last
+/// fetched at `before` or earlier.
 pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError> {
     Ok(berm_lang::rows::<(
         String,
@@ -152,9 +179,10 @@ pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError
         "SELECT u.url, u.domain, u.kind, u.lastmod, p.etag, p.modified
            FROM crawl_urls u JOIN crawl_sites s ON s.domain = u.domain
                 LEFT JOIN crawl_pages p ON p.url = u.url
-          WHERE p.url IS NULL
-             OR (u.lastmod IS NOT NULL AND u.lastmod IS NOT p.lastmod)
-             OR (u.lastmod IS NULL AND p.fetched <= ?)
+          WHERE s.read > 0
+            AND (p.url IS NULL
+                 OR (u.lastmod IS NOT NULL AND u.lastmod IS NOT p.lastmod)
+                 OR (u.lastmod IS NULL AND p.fetched <= ?))
           ORDER BY s.first DESC,
                    row_number() OVER (PARTITION BY u.domain ORDER BY p.fetched NULLS FIRST),
                    p.fetched NULLS FIRST

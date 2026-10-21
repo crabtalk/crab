@@ -2,8 +2,9 @@
 //! rules and sitemaps read, pages of a kind fetched, handed to the crawler and
 //! recrawled when due, sites watched first read and fetched first, a page of
 //! each site before a second of any, a silent site fetched no more in its
-//! tick, a page cut at the bytes it is read for, and a failed read logged and
-//! retried.
+//! tick, a page cut at the bytes it is read for, a failed read logged and
+//! retried, and the URLs a program lists and the links its crawler lists
+//! fetched under the site's robots.txt.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -348,5 +349,95 @@ async fn a_page_reaches_the_crawler_cut_at_the_bytes_a_page_is_read_for() -> Res
         call(&host, "read", json!({"url": "https://example.com/pricing"})).await?,
         json!({"kind": "pricing", "length": 256 << 10})
     );
+    Ok(())
+}
+
+/// The URLs `domain`'s site keeps.
+async fn kept(host: &TestHost, domain: &str) -> Result<Vec<String>> {
+    let urls = call(host, "urls", json!({ "domain": domain })).await?;
+    Ok(urls
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|listed| listed["url"].as_str().map(String::from))
+        .collect())
+}
+
+#[tokio::test]
+async fn a_url_its_program_lists_is_fetched_once_its_site_is_read_and_kept_by_its_next_read()
+-> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let listed = "https://example.com/compare/listed-vs-other";
+    host.arrange("GET", listed, 200, COMPARE);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    let new = call(
+        &host,
+        "list",
+        json!({"domain": "example.com", "urls": [listed, "https://example.com/blog/hello", "https://elsewhere.com/pricing"]}),
+    )
+    .await?;
+    assert_eq!(new, 1);
+    call(&host, "tick", json!({})).await?;
+    assert!(fetched(&host).contains(&listed.to_owned()));
+
+    // A week on, the site's sitemaps are read again and the listed URL stays.
+    host.advance(7 * DAY);
+    call(&host, "tick", json!({})).await?;
+    assert!(
+        kept(&host, "example.com")
+            .await?
+            .contains(&listed.to_owned())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_listed_url_its_robots_txt_disallows_is_not_fetched() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let secret = "https://example.com/compare/secret";
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(
+        &host,
+        "list",
+        json!({"domain": "example.com", "urls": [secret]}),
+    )
+    .await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(!fetched(&host).contains(&secret.to_owned()));
+    assert!(
+        !kept(&host, "example.com")
+            .await?
+            .contains(&secret.to_owned())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_link_its_crawler_lists_is_fetched_on_a_later_tick() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    let linked = "https://example.com/compare/linked-vs-other";
+    host.arrange(
+        "GET",
+        "https://example.com/pricing",
+        200,
+        r#"<html><body><a href="/compare/linked-vs-other">Compared</a> <a href="/blog/hello">Blog</a> <a href="https://elsewhere.com/compare/a-vs-b">Elsewhere</a></body></html>"#,
+    );
+    host.arrange("GET", linked, 200, COMPARE);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(!fetched(&host).contains(&linked.to_owned()));
+    assert_eq!(
+        kept(&host, "example.com").await?,
+        [
+            "https://example.com/compare/example-vs-other",
+            linked,
+            "https://example.com/pricing"
+        ]
+    );
+    call(&host, "tick", json!({})).await?;
+    assert!(fetched(&host).contains(&linked.to_owned()));
     Ok(())
 }
