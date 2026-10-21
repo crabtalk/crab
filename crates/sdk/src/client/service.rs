@@ -3,7 +3,10 @@
 
 use crate::{
     client::{Client, Error},
-    sandbox::service::{Billing, Costed, DeployRequest, MeteredDay, Secret, SetSecret, Visibility},
+    sandbox::service::{
+        Billing, Costed, DeployRequest, MeteredDay, Secret, SeedRequest, SeedUpload, SetSecret,
+        Visibility,
+    },
 };
 use berm_api::{
     Budget, Cron, Deployed, Logged, Meter, Output, Program, Runtime, Terms,
@@ -11,6 +14,7 @@ use berm_api::{
 };
 use reqwest::{Method, RequestBuilder};
 use std::collections::BTreeMap;
+use tokio::fs::File;
 
 impl Client {
     /// Every service the owner runs on Cloud, or every program on a bermd.
@@ -66,6 +70,24 @@ impl Client {
     pub async fn deploy(&self, name: &str, deploy: &DeployRequest) -> Result<Deployed, Error> {
         let request = self.at(Method::PUT, &self.program(name)).json(deploy);
         self.json(request).await
+    }
+
+    /// Where to upload `seed` for a deploy of `name` on Cloud to name.
+    pub async fn seed(&self, name: &str, seed: &SeedRequest) -> Result<SeedUpload, Error> {
+        self.account()?;
+        let path = format!("{}/seed", self.program(name));
+        self.json(self.at(Method::POST, &path).json(seed)).await
+    }
+
+    /// Upload the `size` bytes of `file` to `url`, an upload [`Client::seed`]
+    /// answered.
+    pub async fn upload_seed(&self, url: &str, file: File, size: u64) -> Result<(), Error> {
+        let request = self
+            .http
+            .put(url)
+            .header(reqwest::header::CONTENT_LENGTH, size)
+            .body(file);
+        self.ok(request).await.map(drop)
     }
 
     /// Call `tool` of `program`, as `caller` on a bermd, which takes it

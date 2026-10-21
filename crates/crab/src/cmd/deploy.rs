@@ -5,15 +5,27 @@ use crate::{
     project::{self, FILE, Project},
     utils,
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use berm_api::Manifest;
 use berm_oci::{Access, Reference, Registry};
-use crabtalk_sdk::{client::Client, sandbox::service::DeployRequest};
-use std::{path::Path, str::FromStr};
+use crabtalk_sdk::{
+    client::{Client, Error},
+    sandbox::service::{DeployRequest, SeedRequest},
+};
+use rusqlite::{Connection, OpenFlags};
+use sha2::{Digest, Sha256};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::Path,
+    str::FromStr,
+};
+use tokio::fs::File as AsyncFile;
 
 /// Deploy the project in `dir` as its `berm.toml` names it. On Cloud, the image
 /// is pushed to `image`, or `berm.toml`'s, tagged with the crate's version, and
-/// deployed from there. With `pull`, the crons the service's owners set on the
+/// deployed from there, and a service deployed for the first time starts from
+/// `[database] seed`. With `pull`, the crons the service's owners set on the
 /// host are written into `berm.toml`'s `[crons]` first.
 pub fn run(
     client: &Client,
@@ -35,6 +47,9 @@ pub fn run(
     }
     let bytes = project::build(dir)?;
     let deployed = match &client.owner {
+        None if project.database.seed.is_some() => {
+            bail!("a seed starts a service on Cloud; bermd's own database is where one is made")
+        }
         None => utils::wait(client.deploy_image(
             &project.name,
             bytes,
@@ -49,6 +64,12 @@ pub fn run(
             })?;
             let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
             push(&reference, &bytes)?;
+            let seed = match &project.database.seed {
+                Some(seed) if first(client, &project.name)? => {
+                    Some(upload(client, &project.name, &dir.join(seed))?)
+                }
+                _ => None,
+            };
             utils::wait(client.deploy(
                 &project.name,
                 &DeployRequest {
@@ -57,6 +78,7 @@ pub fn run(
                     force,
                     crons: project.crons.clone(),
                     size: project.database.size.0,
+                    seed,
                 },
             ))?
         }
@@ -85,6 +107,57 @@ pub fn run(
         }
     }
     Ok(())
+}
+
+/// Whether `name` is not deployed yet.
+fn first(client: &Client, name: &str) -> Result<bool> {
+    match utils::wait(client.runtime(name)) {
+        Ok(_) => Ok(false),
+        Err(Error::Api { status: 404, .. }) => Ok(true),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Upload a copy of the database at `seed` for `name`'s deploy unless Cloud
+/// holds it already, answering its SHA-256.
+fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
+    let copy = std::env::temp_dir().join(format!("crab-seed-{}.sqlite", std::process::id()));
+    let _ = fs::remove_file(&copy);
+    // One consistent file, its write-ahead log folded in, while a bermd may
+    // hold the database open.
+    Connection::open_with_flags(seed, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .with_context(|| format!("opening the seed {}", seed.display()))?
+        .execute("VACUUM INTO ?1", [copy.to_string_lossy()])
+        .with_context(|| format!("copying the seed {}", seed.display()))?;
+    let (sha256, size) = hash(&copy)?;
+    let request = SeedRequest {
+        sha256: sha256.clone(),
+        size,
+    };
+    if let Some(url) = utils::wait(client.seed(name, &request))?.upload {
+        eprintln!("uploading the seed, {size} bytes");
+        utils::wait(async {
+            let file = AsyncFile::open(&copy).await?;
+            client.upload_seed(&url, file, size).await?;
+            anyhow::Ok(())
+        })?;
+    }
+    fs::remove_file(&copy)?;
+    Ok(sha256)
+}
+
+/// The SHA-256 of the file at `path`, in hex, and its size.
+fn hash(path: &Path) -> Result<(String, u64)> {
+    let mut file = File::open(path)?;
+    let (mut hasher, mut size, mut buffer) = (Sha256::new(), 0, vec![0; 1 << 20]);
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            return Ok((hex::encode(hasher.finalize()), size));
+        }
+        hasher.update(&buffer[..read]);
+        size += read as u64;
+    }
 }
 
 /// Upload `image` as `reference`, answering with its digest.

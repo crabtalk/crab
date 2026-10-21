@@ -321,6 +321,11 @@ impl<E: Env> Host<E> {
         }
     }
 
+    /// Where `service`'s database file is.
+    pub fn database(&self, service: &str) -> PathBuf {
+        self.databases.path(service)
+    }
+
     /// The program `service` runs.
     pub fn get(&self, service: &str) -> Option<Arc<Program>> {
         self.berm.get(service)

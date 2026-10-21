@@ -14,7 +14,7 @@ use berm_api::{
     Manifest, Surface,
     host::{Deploy, Kind, MAX_DATABASE_SIZE, Outcome},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 impl<E: Env> Host<E> {
     /// Run the index entry `deploy` names as `service`. Refused when it
@@ -24,7 +24,17 @@ impl<E: Env> Host<E> {
     /// it replaces that a caller used, with a call that was done, in the last
     /// [`usage::WINDOW`] days. Refused too when its `size` is past
     /// [`MAX_DATABASE_SIZE`] or below what its database holds.
-    pub async fn deploy(&self, service: &str, deploy: Deploy) -> Result<Arc<Program>, Denied> {
+    ///
+    /// `seed`, a SQLite file on the databases' filesystem, starts the
+    /// service's database, held to the image's migrations like any other:
+    /// refused when the service has a database or the image keeps none. A
+    /// deploy refused once the seed is in place deletes it.
+    pub async fn deploy(
+        &self,
+        service: &str,
+        deploy: Deploy,
+        seed: Option<&Path>,
+    ) -> Result<Arc<Program>, Denied> {
         let Deploy {
             reference,
             digest,
@@ -77,33 +87,56 @@ impl<E: Env> Host<E> {
         {
             self.unbroken(service, current, &manifest).await?;
         }
-        self.migrate(&key, &manifest, size).await?;
-        let deprecated: Vec<String> = manifest
-            .tools
-            .iter()
-            .filter(|spec| spec.deprecated)
-            .map(|spec| spec.name.clone())
-            .collect();
-        let program = self
-            .compile(key, image)
-            .await
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-        service::install(
-            &self.store,
-            scope,
-            name,
-            &reference,
-            &digest,
-            &manifest.version,
-            size,
-            deprecated,
-            cron_tools,
-            crons,
-            (self.now)() as i64,
-        )
-        .await?;
-        self.waking.notify_one();
-        Ok(program)
+        if let Some(seed) = seed {
+            if !manifest.keeps_database() {
+                return Err(deny(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("{service} keeps no database to seed"),
+                ));
+            }
+            self.databases
+                .seed(&key, seed)
+                .map_err(|e| deny(StatusCode::CONFLICT, format!("{e:#}")))?;
+        }
+        let installed = async {
+            self.migrate(&key, &manifest, size).await?;
+            let deprecated: Vec<String> = manifest
+                .tools
+                .iter()
+                .filter(|spec| spec.deprecated)
+                .map(|spec| spec.name.clone())
+                .collect();
+            let program = self
+                .compile(key.clone(), image)
+                .await
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            service::install(
+                &self.store,
+                scope,
+                name,
+                &reference,
+                &digest,
+                &manifest.version,
+                size,
+                deprecated,
+                cron_tools,
+                crons,
+                (self.now)() as i64,
+            )
+            .await?;
+            Ok(program)
+        }
+        .await;
+        if seed.is_some()
+            && installed.is_err()
+            && let Err(e) = self.databases.remove(&key)
+        {
+            tracing::error!(service, error = %e, "the refused seed stays");
+        }
+        if installed.is_ok() {
+            self.waking.notify_one();
+        }
+        installed
     }
 
     /// Refuses `manifest` when it needs a syscall this host does not serve.

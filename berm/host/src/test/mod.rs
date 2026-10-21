@@ -188,6 +188,17 @@ impl TestHost {
     /// Run `image` as `service`, every public tool confirmed and each cron tool
     /// without an expression.
     pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+        self.seeded(service, image, None).await
+    }
+
+    /// [`TestHost::deploy`], its database started from the SQLite file at
+    /// `seed`, which is moved.
+    pub async fn seeded(
+        &self,
+        service: &str,
+        image: &[u8],
+        seed: Option<&Path>,
+    ) -> Result<Arc<Program>> {
         let manifest = Manifest::from_image(image)?;
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
@@ -212,6 +223,7 @@ impl TestHost {
                     crons: None,
                     size: DATABASE_SIZE,
                 },
+                seed,
             )
             .await?)
     }

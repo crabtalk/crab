@@ -29,6 +29,29 @@ pub struct DeployRequest {
     /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
     #[serde(default = "database_size")]
     pub size: u64,
+    /// The SHA-256, in hex, of a seed uploaded through
+    /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
+    /// database starts as, held to the image's migrations. Refused when the
+    /// service has a database.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
+}
+
+/// A seed to upload: its SHA-256 in hex, and its size in bytes.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeedRequest {
+    pub sha256: String,
+    pub size: u64,
+}
+
+/// Where a seed's bytes go.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeedUpload {
+    /// A URL to `PUT` the bytes to, with their `Content-Length`, within an
+    /// hour; none when Cloud holds that seed already.
+    pub upload: Option<String>,
 }
 
 fn database_size() -> u64 {

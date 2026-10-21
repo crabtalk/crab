@@ -47,12 +47,17 @@ pub struct Database {
     /// [`host::MAX_DATABASE_SIZE`] bytes.
     #[serde(default = "database_size")]
     pub size: ByteSize,
+    /// A SQLite database, relative to `berm.toml`, a service on Cloud with no
+    /// database yet starts from, such as one a bermd filled.
+    #[serde(default)]
+    pub seed: Option<PathBuf>,
 }
 
 impl Default for Database {
     fn default() -> Self {
         Self {
             size: database_size(),
+            seed: None,
         }
     }
 }

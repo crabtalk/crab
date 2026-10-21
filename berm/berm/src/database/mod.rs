@@ -75,12 +75,56 @@ impl Databases {
             return Ok(database.clone());
         }
         let database = Arc::new(Database::open(
-            &self.dir.join(format!("{program}.sqlite")),
+            &self.path(program),
             program.into(),
             self.graph.clone(),
         )?);
         open.insert(program.to_owned(), database.clone());
         Ok(database)
+    }
+
+    /// Where `program`'s database file is.
+    pub fn path(&self, program: &str) -> PathBuf {
+        self.dir.join(format!("{program}.sqlite"))
+    }
+
+    /// Make the SQLite file at `seed` `program`'s database, moving it into
+    /// place. `seed` is on the same filesystem as the databases. Refused when
+    /// `program` has a database, open or on disk.
+    pub fn seed(&self, program: &str, seed: &Path) -> Result<()> {
+        let open = self.open.lock();
+        let path = self.path(program);
+        if open.contains_key(program) || path.exists() {
+            bail!("{program} has a database, and a seed only starts one");
+        }
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+        }
+        for stale in [wal(&path), shm(&path)] {
+            remove(&stale)?;
+        }
+        std::fs::rename(seed, &path)
+            .with_context(|| format!("moving {} to {}", seed.display(), path.display()))
+    }
+
+    /// Close `program`'s database and delete its files. Refused while
+    /// anything but this holds it open.
+    pub fn remove(&self, program: &str) -> Result<()> {
+        let mut open = self.open.lock();
+        if let Some(database) = open.remove(program) {
+            match Arc::try_unwrap(database) {
+                Ok(database) => database.close(),
+                Err(database) => {
+                    open.insert(program.to_owned(), database);
+                    bail!("{program}'s database is in use");
+                }
+            }
+        }
+        let path = self.path(program);
+        for file in [wal(&path), shm(&path), path] {
+            remove(&file)?;
+        }
+        Ok(())
     }
 
     /// What an invocation of `program` at `at` holds: a savepoint on each
@@ -135,6 +179,26 @@ impl Databases {
     }
 }
 
+/// `path`'s write-ahead log.
+fn wal(path: &Path) -> PathBuf {
+    PathBuf::from(format!("{}-wal", path.display()))
+}
+
+/// `path`'s shared-memory index.
+fn shm(path: &Path) -> PathBuf {
+    PathBuf::from(format!("{}-shm", path.display()))
+}
+
+/// Delete `path`, when there is one.
+fn remove(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            Err(e).with_context(|| format!("deleting {}", path.display()))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// One program's database.
 pub struct Database {
     readers: Arc<Readers>,
@@ -142,6 +206,7 @@ pub struct Database {
     name: Arc<str>,
     /// The writer's thread, which owns the writing connection.
     jobs: mpsc::Sender<Job>,
+    writer: thread::JoinHandle<()>,
     /// Held by the call writing or a migration.
     writing: Arc<Mutex<()>>,
     graph: Arc<parking_lot::Mutex<Graph>>,
@@ -171,7 +236,7 @@ impl Database {
         }
         query::guard(&conn)?;
         let (jobs, queue) = mpsc::channel::<Job>();
-        thread::Builder::new()
+        let writer = thread::Builder::new()
             .name("berm-sqlite".to_owned())
             .spawn(move || {
                 for job in queue {
@@ -182,9 +247,26 @@ impl Database {
             readers: Arc::new(Readers::new(path.to_owned(), query::guard)),
             name,
             jobs,
+            writer,
             writing: Arc::new(Mutex::new(())),
             graph,
         })
+    }
+
+    /// Close every connection to the file, once the writer has run the jobs
+    /// it was sent.
+    fn close(self) {
+        let Self {
+            readers,
+            jobs,
+            writer,
+            ..
+        } = self;
+        drop(readers);
+        drop(jobs);
+        if writer.join().is_err() {
+            tracing::error!("the database writer panicked");
+        }
     }
 
     /// Hold the database to `size` bytes: a write past it fails as

@@ -11,11 +11,12 @@ categories = ["api-bindings", "web-programming::http-client"]
 
 [dependencies]
 berm-api.workspace = true
-reqwest = { workspace = true, optional = true, features = ["json", "query", "rustls"] }
+reqwest = { workspace = true, optional = true, features = ["json", "query", "rustls", "stream"] }
 serde = { workspace = true, features = ["std"] }
+tokio = { workspace = true, optional = true, features = ["fs"] }
 serde_json = { workspace = true, features = ["std"] }
 utoipa = { workspace = true, optional = true }
 
 [features]
-client = ["dep:reqwest"]
+client = ["dep:reqwest", "dep:tokio"]
 utoipa = ["dep:utoipa", "berm-api/utoipa"]
