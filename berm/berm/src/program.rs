@@ -55,6 +55,9 @@ pub struct Program {
     budget: Budgeted,
     /// What `berm.now` answers.
     now: Now,
+    /// What the programs it calls are told it is named: the issuer of a user
+    /// it vouches for.
+    issuer: Arc<str>,
     /// Told of each invocation once it ran.
     invoked: Invoked,
     /// What its invocations hold while they run.
@@ -136,8 +139,10 @@ impl Program {
             }
         }
 
+        let name: Arc<str> = name.into();
         Ok(Self {
-            name: name.into(),
+            issuer: (calls.named)(&name).into(),
+            name,
             digest: digest(image),
             image: compiled,
             deps: Arc::new(manifest.deps.clone()),
@@ -413,6 +418,7 @@ impl Program {
             held: Held::new(self.running.clone()),
             at,
             now: self.now.clone(),
+            issuer: self.issuer.clone(),
             args,
             staged: Vec::new(),
             outcome: None,
@@ -540,6 +546,8 @@ pub struct Invocation {
     pub(crate) at: Callsite,
     /// What `berm.now` answers.
     pub(crate) now: Now,
+    /// Its program's [`Program::issuer`].
+    pub(crate) issuer: Arc<str>,
     pub(crate) args: Vec<u8>,
     /// The last syscall's reply, waiting for the guest to pull it. Staged
     /// rather than pushed because its size is not known until the work is

@@ -18,7 +18,8 @@
 //! `relay` calls `note` on `inner`, to show what a failed call takes with it.
 //! `seen` takes the `Noted` events of whatever is deployed as `fixture`, read
 //! through `declare_program!(fixture)`, the fixture's own IDL in `idls/`, and
-//! `ask` calls `peek` and `echo` on `fixture` through it. `peek`
+//! `ask` calls `peek` and `echo` on `fixture` through it, and `vouched` vouches
+//! for a user before calling `whoami` on it. `peek`
 //! is a query: it reads `note`, tries to write, emit, arm a wake and call
 //! `note` on `inner`, and answers what each was told.
 //! `berm/berm/examples/measure.rs` and `load.rs` read the numbers off them,
@@ -45,6 +46,7 @@ berm_lang::declare_program!(fixture);
         "berm.set",
         "berm.call.after",
         "berm.http.fetch" = ["127.0.0.1"],
+        "berm.vouch",
     },
     secrets = ["fixture"],
 )]
@@ -188,6 +190,17 @@ mod tools {
     /// Calls `whoami` on `fixture`, and answers what it said.
     #[public]
     pub fn askwho() -> Result<String> {
+        Ok(crate::fixture::calls::whoami()?)
+    }
+
+    /// Vouches for `subject`, then calls `whoami` on `fixture`, and answers
+    /// what it said.
+    #[public]
+    pub fn vouched(
+        /// Who the chain runs for from here on.
+        subject: String,
+    ) -> Result<String> {
+        berm_lang::vouch(&subject)?;
         Ok(crate::fixture::calls::whoami()?)
     }
 

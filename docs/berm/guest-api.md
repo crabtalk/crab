@@ -4,7 +4,7 @@ description: "What berm-lang gives a program past its arguments: who called, sta
 ---
 
 Each function here is a syscall. berm serves the call's own context — caller,
-user, client, the clock, `trace` and `deny` — and `berm.call`. The rest are
+user, `vouch`, client, the clock, `trace` and `deny` — and `berm.call`. The rest are
 served by the host the program is deployed to, and a call its host does not
 serve traps.
 
@@ -27,8 +27,12 @@ match berm_lang::caller()? {
 
 - `caller()` is set by the host, never by the caller.
 - `user()` answers the end user a call runs for, as `User { issuer, subject }`:
-  the identity provider that vouched for them and who they are to it. It is
-  carried into every nested call.
+  the identity provider or program that vouched for them and who they are to
+  it. It is carried into every nested call.
+- `vouch(subject)` has the rest of this invocation, and every call it makes
+  after, run for `subject`, with the program as the issuer, named as the
+  programs it calls are told it is. The manifest declares `berm.vouch`, and it
+  is refused in a chain that already runs for a user.
 - `client()` answers an opaque key naming the outside client for one day, or
   `None` when the host supplied none. It is carried into every nested call.
 - `deny(message)` makes an `Error` that fails the call as refusing its caller.

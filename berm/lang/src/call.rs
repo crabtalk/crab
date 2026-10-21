@@ -97,7 +97,9 @@ pub fn caller() -> Result<Option<Caller>, CallError> {
 /// An end user, as the host verified them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
-    /// Who vouched for them: an identity provider's issuer URL.
+    /// Who vouched for them: an identity provider's issuer URL, or the
+    /// program that called [`vouch`], as the programs it calls are told it is
+    /// named.
     pub issuer: String,
     /// Who they are to that issuer.
     pub subject: String,
@@ -118,6 +120,22 @@ pub fn user() -> Result<Option<User>, CallError> {
         })),
         _ => Err(unreadable()),
     }
+}
+
+/// Run the rest of this invocation, and every call it makes after, for the end
+/// user `subject`, with this program as the issuer [`user`] answers.
+///
+/// ```ignore
+/// let account = verified_session(&token)?;
+/// berm_lang::vouch(&account)?;
+/// let plan = berm_lang::call("billing", "plan", "{}")?;
+/// ```
+///
+/// The manifest declares `berm.vouch`. [`CallError::Refused`] in a chain that
+/// already runs for a user, and for an empty subject.
+pub fn vouch(subject: &str) -> Result<(), CallError> {
+    host::call(abi::HOST_VOUCH, subject.as_bytes())?;
+    Ok(())
 }
 
 /// The outside client this chain runs for, as an opaque key that names it for

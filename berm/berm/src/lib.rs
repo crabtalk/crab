@@ -92,8 +92,9 @@ pub struct Callsite {
     /// call, or the program that called this one. `None` when the host
     /// started the chain on the program's own behalf.
     pub caller: Option<Caller>,
-    /// The end user the embedder vouched for at the chain's first call.
-    /// Carried unchanged into every nested call.
+    /// The end user the embedder vouched for at the chain's first call, or a
+    /// program in the chain vouched for through `berm.vouch`. Carried into
+    /// every call made after.
     pub user: Option<User>,
     /// The outside client, as the per-day pseudonymous key the embedder
     /// supplied at the chain's first call. Carried unchanged into every nested
@@ -149,8 +150,8 @@ pub enum Caller {
     Program(Arc<str>),
 }
 
-/// An end user, as the embedder verified them: who vouched for them, and who
-/// they are to it.
+/// An end user, as the embedder verified them or a program vouched for them:
+/// who vouched for them, and who they are to it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct User {
     pub issuer: Arc<str>,

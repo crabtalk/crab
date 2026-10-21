@@ -18,3 +18,15 @@ async fn a_fetch_is_refused_without_the_declaration() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn vouching_is_refused_without_the_declaration() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    host.deploy("bare", &test::build("berm-bare", "bare")?)
+        .await?;
+    let Output::Failed(failure) = host.call("bare", "vouch", b"{}").await?.result else {
+        panic!("vouch is refused");
+    };
+    assert!(failure.contains("does not declare berm.vouch"), "{failure}");
+    Ok(())
+}

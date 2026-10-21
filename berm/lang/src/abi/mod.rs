@@ -63,6 +63,8 @@ pub const HOST_RANDOM: u64 = hash("berm.random");
 pub const HOST_CALLER: u64 = hash("berm.caller");
 /// The end user the chain runs for.
 pub const HOST_USER: u64 = hash("berm.user");
+/// Vouch for the end user the chain runs for from here on.
+pub const HOST_VOUCH: u64 = hash("berm.vouch");
 /// The outside client the chain runs for.
 pub const HOST_CLIENT: u64 = hash("berm.client");
 /// Mark this invocation's failure as refusing its caller.

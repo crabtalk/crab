@@ -170,9 +170,22 @@ pub const HOST_CALLER: u64 = hash("berm.caller");
 /// The end user the chain runs for. `(ptr, len) -> staged length`, the pair
 /// ignored.
 ///
-/// The reply is no fields when the embedder vouched for none, else the issuer
-/// and the subject. berm serves this one itself, from the [`crate::Callsite`].
+/// The reply is no fields when neither the embedder nor a program vouched for
+/// one, else the issuer and the subject. berm serves this one itself, from the [`crate::Callsite`].
 pub const HOST_USER: u64 = hash("berm.user");
+
+/// What a manifest declares to make [`HOST_VOUCH`].
+pub const VOUCH: &str = "berm.vouch";
+
+/// Vouch for the end user the chain runs for from here on. `(ptr, len) ->
+/// staged length`
+///
+/// The request is the subject; the issuer is the program, as the programs it
+/// calls are told it is named. The reply is empty. Refused to a program whose
+/// manifest does not declare [`VOUCH`], and in a chain that already runs for a
+/// user. berm serves this one itself, onto the invocation's
+/// [`crate::Callsite`], which every call it makes after carries.
+pub const HOST_VOUCH: u64 = hash(VOUCH);
 
 /// The outside client the chain runs for. `(ptr, len) -> staged length`, the
 /// pair ignored.

@@ -205,6 +205,26 @@
       "public": true
     },
     {
+      "name": "vouched",
+      "description": "Vouches for `subject`, then calls `whoami` on `fixture`, and answers what it said.",
+      "parameters": {
+        "properties": {
+          "subject": {
+            "description": "Who the chain runs for from here on.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "returns": {
+        "type": "string"
+      },
+      "public": true
+    },
+    {
       "name": "boom",
       "description": "Always fails, to exercise the error path.",
       "parameters": {
