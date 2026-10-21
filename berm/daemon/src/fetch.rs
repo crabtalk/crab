@@ -19,8 +19,9 @@ use std::{
 use tokio::net;
 use tower::Service;
 
-/// The largest body a response may carry. The guest reads it into its own
-/// heap.
+/// The largest body a response may carry: over it, a request naming no limit
+/// fails and one naming a limit has its body cut here. The guest reads it into
+/// its own heap.
 const MAX_BODY: usize = 16 << 20;
 
 /// A client that answers a redirect to the guest as one.
@@ -146,10 +147,15 @@ impl Service<Request> for Fetch {
                     )
                 })
                 .collect();
+            let cut = request.limit.map(|limit| limit.min(MAX_BODY));
             let mut body = Vec::new();
             while let Some(chunk) = response.chunk().await? {
-                if body.len() + chunk.len() > MAX_BODY {
-                    bail!("{} answered with more than {MAX_BODY} bytes", request.host);
+                if body.len() + chunk.len() > cut.unwrap_or(MAX_BODY) {
+                    let Some(cut) = cut else {
+                        bail!("{} answered with more than {MAX_BODY} bytes", request.host);
+                    };
+                    body.extend_from_slice(&chunk[..cut - body.len()]);
+                    break;
                 }
                 body.extend_from_slice(&chunk);
             }

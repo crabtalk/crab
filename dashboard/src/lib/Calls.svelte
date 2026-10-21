@@ -52,7 +52,7 @@
 	<thead>
 		<tr>
 			<th class="num">#</th><th>At</th><th>Tool</th><th>Source</th><th>Caller</th><th>Outcome</th>
-			<th class="num">ms</th><th class="num">Instructions</th><th class="num">Rows r/w</th><th class="num">Logs</th>
+			<th class="num">ms</th><th class="num">CPU µs</th><th class="num">Rows r/w</th><th class="num">Logs</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -65,7 +65,7 @@
 				<td>{call.caller}</td>
 				<td class="outcome-{call.outcome}">{call.outcome}</td>
 				<td class="num">{call.ms}</td>
-				<td class="num">{call.meter ? number(call.meter.instructions) : ''}</td>
+				<td class="num">{call.meter ? number(call.meter.cpu) : ''}</td>
 				<td class="num">{call.meter ? `${call.meter.read}/${call.meter.written}` : ''}</td>
 				<td class="num">
 					{#if call.logs}

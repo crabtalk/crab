@@ -7,7 +7,7 @@ edition = "2024"
 # built from.
 [[bin]]
 name = "__NAME__"
-path = "src/bin/main.rs"
+path = "bin/main.rs"
 
 [dependencies]
-berm-lang = "__VERSION__"
+berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v__VERSION__" }

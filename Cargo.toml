@@ -46,6 +46,7 @@ croner = "4"
 dlmalloc = { version = "0.2", features = ["global"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 hex = { version = "0.4", default-features = false }
+humantime-serde = "1"
 libc = "0.2"
 object = { version = "0.40", features = ["wasm"] }
 parking_lot = "0.12"
@@ -75,6 +76,7 @@ serde_json = { version = "1", default-features = false }
 serde_urlencoded = "0.7"
 sha2 = "0.11"
 syn = { version = "2", features = ["full"] }
+tempfile = "3.27"
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

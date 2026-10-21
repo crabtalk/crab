@@ -13,8 +13,9 @@ const LONGEST_ENTITY: usize = 8;
 /// `html` as text. Tags are dropped, and `<script>` and `<style>` with their
 /// contents, except that a block boundary becomes a line break and a link
 /// becomes `[text](href)`, or its text alone when that is its href or it has
-/// none. Entities are decoded; an `&` with no `;` within 8 bytes is kept. An
-/// unclosed tag drops the rest.
+/// none. Entities are decoded; an unknown named one, and an `&` with no `;`
+/// within 8 bytes, are kept as written. An unclosed tag, quoted values
+/// considered, drops the rest.
 ///
 /// ```
 /// let said = crab_html::text("It&#x27;s <i>fine</i>.<p>Next");
@@ -32,9 +33,10 @@ pub fn text(html: &str) -> String {
             at = entity(&mut out, html, mark);
             continue;
         }
-        let Some(end) = bytes[mark..].iter().position(|&b| b == b'>') else {
+        let end = tag_end(&html[mark..]);
+        if mark + end == html.len() {
             return finish(out);
-        };
+        }
         let tag = &html[mark + 1..mark + end];
         at = mark + end + 1;
 
@@ -156,7 +158,7 @@ pub struct Link {
 }
 
 /// Each `<a>` with an `href`, in page order. A link whose `</a>` is missing
-/// runs to the next `<a`.
+/// runs to the next `<a>`.
 ///
 /// ```
 /// let links = crab_html::links(r#"<a href="/a?x=1&amp;y=2">A <b>b</b></a><a href="/c"><img src="c.png" alt="C &amp; D"></a>"#);
@@ -166,10 +168,10 @@ pub struct Link {
 pub fn links(html: &str) -> Vec<Link> {
     let mut links = Vec::new();
     let mut at = 0;
-    while let Some(found) = find_ignore_case(&html[at..], "<a") {
+    while let Some((found, closing)) = find_tag(&html[at..], "a") {
         let start = at + found + "<a".len();
         at = start;
-        if !html[start..].starts_with(|c: char| c.is_ascii_whitespace()) {
+        if closing {
             continue;
         }
         let open = start + tag_end(&html[start..]);
@@ -177,14 +179,7 @@ pub fn links(html: &str) -> Vec<Link> {
             continue;
         };
         let inner = (open + 1).min(html.len());
-        let close = [
-            find_ignore_case(&html[inner..], "</a"),
-            find_ignore_case(&html[inner..], "<a"),
-        ]
-        .into_iter()
-        .flatten()
-        .min()
-        .map_or(html.len(), |end| inner + end);
+        let close = find_tag(&html[inner..], "a").map_or(html.len(), |(end, _)| inner + end);
         let contents = &html[inner..close];
         let image = find_ignore_case(contents, "<img").and_then(|found| {
             let tag = &contents[found + "<img".len()..];
@@ -231,13 +226,11 @@ pub fn scripts<'a>(html: &'a str, kind: &str) -> Vec<&'a str> {
 /// assert_eq!(crab_html::element(page, "p", Some("tag")).as_deref(), Some("Ada L."));
 /// ```
 pub fn element(html: &str, name: &str, class: Option<&str>) -> Option<String> {
-    let open = alloc::format!("<{name}");
-    let close = alloc::format!("</{name}");
     let mut at = 0;
-    while let Some(found) = find_ignore_case(&html[at..], &open) {
-        let start = at + found + open.len();
+    while let Some((found, closing)) = find_tag(&html[at..], name) {
+        let start = at + found + 1 + name.len();
         at = start;
-        if !html[start..].starts_with(|c: char| c.is_ascii_whitespace() || c == '>') {
+        if closing {
             continue;
         }
         let end = start + tag_end(&html[start..]);
@@ -249,8 +242,14 @@ pub fn element(html: &str, name: &str, class: Option<&str>) -> Option<String> {
             continue;
         }
         let inner = (end + 1).min(html.len());
-        let finish =
-            find_ignore_case(&html[inner..], &close).map_or(html.len(), |found| inner + found);
+        let mut finish = inner;
+        let finish = loop {
+            match find_tag(&html[finish..], name) {
+                Some((found, true)) => break finish + found,
+                Some((found, false)) => finish += found + 1,
+                None => break html.len(),
+            }
+        };
         return collapse(&text(&html[inner..finish]));
     }
     None
@@ -277,6 +276,28 @@ fn find_ignore_case(s: &str, needle: &str) -> Option<usize> {
     s.as_bytes()
         .windows(needle.len())
         .position(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
+/// The offset of the first `<name` or `</name` in `s`, `name` an ASCII
+/// lowercase tag name, ASCII case ignored, followed by whitespace, `>`, `/` or
+/// the end of `s`; and whether it is the closing one.
+fn find_tag(s: &str, name: &str) -> Option<(usize, bool)> {
+    let bytes = s.as_bytes();
+    let mut at = 0;
+    while let Some(found) = bytes[at..].iter().position(|&b| b == b'<') {
+        let mark = at + found;
+        at = mark + 1;
+        let closing = bytes.get(at) == Some(&b'/');
+        let start = at + usize::from(closing);
+        let candidate = bytes.get(start..start + name.len())?;
+        let bounded = bytes
+            .get(start + name.len())
+            .is_none_or(|&b| b.is_ascii_whitespace() || b == b'>' || b == b'/');
+        if bounded && candidate.eq_ignore_ascii_case(name.as_bytes()) {
+            return Some((mark, closing));
+        }
+    }
+    None
 }
 
 /// `s` with its whitespace collapsed to single spaces and trimmed; `None` when
@@ -373,8 +394,8 @@ fn entity(out: &mut String, s: &str, mark: usize) -> usize {
     }
 }
 
-/// Decode one entity body, the text between `&` and `;`. An unknown one is
-/// dropped.
+/// Decode one entity body, the text between `&` and `;`. An unknown name is
+/// kept as written, `&` and `;` included; an invalid number is dropped.
 fn push_entity(out: &mut String, name: &str) {
     if let Some(num) = name.strip_prefix('#') {
         let code = match num.strip_prefix(['x', 'X']) {
@@ -386,13 +407,19 @@ fn push_entity(out: &mut String, name: &str) {
         }
         return;
     }
-    out.push_str(match name {
+    let known = match name {
         "amp" => "&",
         "lt" => "<",
         "gt" => ">",
         "quot" => "\"",
         "apos" => "'",
         "nbsp" => " ",
-        _ => "",
-    });
+        _ => {
+            out.push('&');
+            out.push_str(name);
+            out.push(';');
+            return;
+        }
+    };
+    out.push_str(known);
 }

@@ -1,6 +1,6 @@
 ---
 name: crab
-description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries. Use before writing, changing or deploying a service on CrabTalk Cloud or bermd, before using a kit (auth, crawl, lake, neon, stripe, supabase), and before changing a local crab checkout from a product's repository.
+description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries. Use before writing, changing or deploying a service on CrabTalk Cloud or bermd, before using a kit under `kits/`, and before changing a local crab checkout from a product's repository.
 ---
 
 # Building on crab
@@ -11,8 +11,17 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 
 - A service is a crate in the product's repository, with a `berm.toml` beside its `Cargo.toml`. `crab new` writes one; `crab deploy` deploys it.
 - Its tools, its database, its secrets and its public surface are the product's.
+- On Cloud each service reserves its `[database] size` of the account's plan storage, 1GiB when unset, whatever it holds. A deploy refused for storage is met by sizing each service to what it holds (`crab usage <service>` reports `stored`) before any change of plan.
 
 ## Kits are libraries
+
+- `berm-lang` and the kits come from crab's git repository, at one tag or branch for all of them; the kits are not on crates.io. `crab new` writes `berm-lang` at the tag of the CLI's release, and a kit goes beside it:
+
+  ```toml
+  [dependencies]
+  berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v0.1.0" }
+  crab-auth = { git = "https://github.com/crabtalk/crab", tag = "v0.1.0" }
+  ```
 
 - A kit is linked with `#[berm_lang::program(uses = [crab_x])]` and called from the service's own tools. The kit's secrets, fetched hosts and migrations reach the service's manifest through `uses`; its tables live in the service's database.
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
@@ -34,7 +43,7 @@ Read the source before writing code. Paths are relative to the crab repository.
 
 ## A local crab checkout
 
-- A product builds against a local checkout by patching crab's source in its root `Cargo.toml`, one path per crate it uses:
+- A product builds against a local checkout by patching crab's git source in its root `Cargo.toml`, one path per crate it uses:
 
   ```toml
   [patch."https://github.com/crabtalk/crab"]

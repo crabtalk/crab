@@ -32,7 +32,7 @@ public = ["search"]
 [crons]
 tick = "*/5 * * * *"
 
-# What the service's database may hold: 1GiB when unset, at most 10GiB.
+# What the service's database may hold: 1GiB when unset, from 64KiB to 10GiB.
 [database]
 size = "2GiB"
 # A SQLite database, relative to this file, a service on Cloud starts from on its first deploy.

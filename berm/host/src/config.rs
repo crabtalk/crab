@@ -13,14 +13,16 @@ pub struct Config {
     /// The largest linear memory one guest may grow to, in bytes.
     #[serde(default = "memory")]
     pub memory: usize,
-    /// The most CPU time one invocation may spend, nested calls excluded.
-    #[serde(default = "cpu")]
+    /// The most CPU time one invocation may spend, nested calls excluded, as a
+    /// duration like `"50ms"`.
+    #[serde(default = "cpu", with = "humantime_serde")]
     pub cpu: Duration,
     /// The most rows one invocation may read and write together.
     #[serde(default = "rows")]
     pub rows: u64,
-    /// How long a chain of calls runs before it is stopped.
-    #[serde(default = "deadline")]
+    /// How long a chain of calls runs before it is stopped, as a duration like
+    /// `"60s"`.
+    #[serde(default = "deadline", with = "humantime_serde")]
     pub deadline: Duration,
     /// How deep a chain of services calling services may go.
     #[serde(default = "depth")]

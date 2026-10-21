@@ -15,6 +15,9 @@ pub const CALLER: &str = "x-berm-caller";
 /// Bytes a service's database may hold when its deploy sets none.
 pub const DATABASE_SIZE: u64 = 1 << 30;
 
+/// The fewest bytes a deploy may let a service's database hold.
+pub const MIN_DATABASE_SIZE: u64 = 64 << 10;
+
 /// The most bytes a deploy may let a service's database hold.
 pub const MAX_DATABASE_SIZE: u64 = 10 << 30;
 
@@ -69,7 +72,8 @@ pub struct Deploy {
     /// owner set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crons: Option<BTreeMap<String, String>>,
-    /// Bytes the service's database may hold, at most [`MAX_DATABASE_SIZE`].
+    /// Bytes the service's database may hold, from [`MIN_DATABASE_SIZE`] to
+    /// [`MAX_DATABASE_SIZE`].
     #[serde(default = "database_size")]
     pub size: u64,
 }

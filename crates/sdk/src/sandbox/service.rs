@@ -25,7 +25,8 @@ pub struct DeployRequest {
     /// it leaves out has none. Absent, each stays as its owners set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crons: Option<BTreeMap<String, String>>,
-    /// Bytes the service's database may hold, at most
+    /// Bytes the service's database may hold, from
+    /// [`MIN_DATABASE_SIZE`](berm_api::host::MIN_DATABASE_SIZE) to
     /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
     #[serde(default = "host::database_size")]
     pub size: u64,

@@ -44,8 +44,10 @@ pub struct Schedule {
 /// One item a feed showed, or one record.
 pub struct Listed<T> {
     pub id: String,
-    /// When it was posted, in Unix milliseconds; unread for a record.
-    pub posted: u64,
+    /// When it was posted, in Unix milliseconds; `None` when the feed gives no
+    /// date. An undated item is stored and watched as posted when the tick
+    /// first stores it. Unread for a record.
+    pub posted: Option<u64>,
     pub item: T,
 }
 
@@ -167,7 +169,9 @@ fn posts<S: Source>(
     let mut newest = feed.watermark;
     let (mut stored, mut new, count) = (0, 0, listed.len() as u64);
     for Listed { id, posted, item } in listed {
-        newest = newest.max(posted);
+        newest = newest.max(posted.unwrap_or_default());
+        let shown = posted.is_some_and(|posted| posted < feed.watermark);
+        let posted = posted.unwrap_or(now);
         if watches && !watched.iter().any(|watch| watch.id == id) {
             watched.push(Watch {
                 id: id.clone(),
@@ -178,7 +182,7 @@ fn posts<S: Source>(
             });
         }
         let written = match feed.kind {
-            Kind::Chronological if posted <= feed.watermark => 0,
+            Kind::Chronological if shown => 0,
             Kind::Chronological | Kind::Unordered => {
                 store::item(&id, &feed.key, posted, &S::post(feed, item))?
             }

@@ -41,6 +41,8 @@ pub struct Period {
     pub included: Included,
     /// In the units of `included`; `stored` is the bytes its services reserve.
     pub used: Included,
+    /// Bytes its placed services keep, as each was last sampled.
+    pub stored: u64,
     /// Each share of an included amount reached, and running out of credit.
     pub warnings: Vec<Warning>,
 }

@@ -149,3 +149,27 @@ fn a_feed_with_no_items_has_no_entries() {
 fn malformed_xml_is_an_error() {
     assert!(rss::entries("<rss><channel><item><title>Open</item").is_err());
 }
+
+#[test]
+fn a_nested_element_reads_its_own_text() {
+    let entries = rss::entries(
+        "<feed><entry><id>1</id>\
+         <author><email>a@b</email><name>Bob</name></author></entry>\
+         <entry><id>2</id><author><email>a@b</email></author></entry></feed>",
+    )
+    .unwrap();
+    assert_eq!(entries[0].author.as_deref(), Some("Bob"));
+    assert_eq!(entries[1].author, None);
+}
+
+#[test]
+fn a_summary_or_content_reads_the_text_of_its_elements() {
+    let entries = rss::entries(
+        "<feed><entry><id>1</id>\
+         <summary type=\"xhtml\"><div>A <b>bold</b> one</div></summary>\
+         <content type=\"xhtml\"><div><p>Long</p> <p>body</p></div></content></entry></feed>",
+    )
+    .unwrap();
+    assert_eq!(entries[0].summary.as_deref(), Some("A bold one"));
+    assert_eq!(entries[0].content.as_deref(), Some("Long body"));
+}

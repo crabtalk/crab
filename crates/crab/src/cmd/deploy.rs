@@ -14,12 +14,8 @@ use crabtalk_sdk::{
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
-use std::{
-    fs::{self, File},
-    io::Read,
-    path::Path,
-    str::FromStr,
-};
+use std::{fs::File, io::Read, path::Path, str::FromStr};
+use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
 /// Deploy the project in `dir` as its `berm.toml` names it. On Cloud, the image
@@ -121,13 +117,16 @@ fn first(client: &Client, name: &str) -> Result<bool> {
 /// Upload a copy of the database at `seed` for `name`'s deploy unless Cloud
 /// holds it already, answering its SHA-256.
 fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
-    let copy = std::env::temp_dir().join(format!("crab-seed-{}.sqlite", std::process::id()));
-    let _ = fs::remove_file(&copy);
+    let dir = TempDir::new().context("creating a directory for the seed's copy")?;
+    let copy = dir.path().join("seed.sqlite");
+    let Some(into) = copy.to_str() else {
+        bail!("the seed's copy {} is not a UTF-8 path", copy.display());
+    };
     // One consistent file, its write-ahead log folded in, while a bermd may
     // hold the database open.
     Connection::open_with_flags(seed, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .with_context(|| format!("opening the seed {}", seed.display()))?
-        .execute("VACUUM INTO ?1", [copy.to_string_lossy()])
+        .execute("VACUUM INTO ?1", [into])
         .with_context(|| format!("copying the seed {}", seed.display()))?;
     let (sha256, size) = hash(&copy)?;
     let request = SeedRequest {
@@ -136,13 +135,9 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
     };
     if let Some(url) = utils::wait(client.seed(name, &request))?.upload {
         eprintln!("uploading the seed, {size} bytes");
-        utils::wait(async {
-            let file = AsyncFile::open(&copy).await?;
-            client.upload_seed(&url, file, size).await?;
-            anyhow::Ok(())
-        })?;
+        let file = utils::wait(AsyncFile::open(&copy))?;
+        utils::wait(client.upload_seed(&url, file, size))?;
     }
-    fs::remove_file(&copy)?;
     Ok(sha256)
 }
 

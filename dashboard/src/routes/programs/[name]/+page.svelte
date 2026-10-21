@@ -95,7 +95,7 @@
 			<div class="panel"><span class="muted">Memory</span><strong>{bytes(live.memory)}</strong></div>
 			<div class="panel"><span class="muted">Stored</span><strong>{bytes(live.stored)}</strong></div>
 			<div class="panel">
-				<span class="muted">Instructions</span><strong>{number(live.instructions.total)}</strong>
+				<span class="muted">CPU µs</span><strong>{number(live.cpu.total)}</strong>
 			</div>
 			<div class="panel">
 				<span class="muted">Rows r/w</span>
@@ -166,7 +166,7 @@
 		<table>
 			<thead>
 				<tr>
-					<th>Day</th><th class="num">Calls</th><th class="num">Failed</th><th class="num">Instructions</th>
+					<th>Day</th><th class="num">Calls</th><th class="num">Failed</th><th class="num">CPU µs</th>
 					<th class="num">Memory</th><th class="num">Read</th><th class="num">Written</th>
 					<th class="num">Proxied</th><th class="num">Sent</th><th class="num">Logged</th><th class="num">Stored</th>
 				</tr>
@@ -177,7 +177,7 @@
 						<td>{day(one.day)}</td>
 						<td class="num">{number(one.calls)}</td>
 						<td class="num">{number(one.failed)}</td>
-						<td class="num">{number(one.instructions)}</td>
+						<td class="num">{number(one.cpu)}</td>
 						<td class="num">{bytes(one.memory)}</td>
 						<td class="num">{number(one.read)}</td>
 						<td class="num">{number(one.written)}</td>

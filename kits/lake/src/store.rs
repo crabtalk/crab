@@ -55,6 +55,15 @@ pub(crate) fn item(
     Ok(if inserted.is_empty() { 0 } else { data.len() })
 }
 
+/// Whether item `id` is stored as shown by `feed`.
+pub fn has(feed: &str, id: &str) -> Result<bool, CallError> {
+    let found = berm_lang::rows::<(u8,)>(
+        "SELECT 1 FROM lake_items WHERE id = ? AND feed = ?",
+        &(id, feed),
+    )?;
+    Ok(!found.is_empty())
+}
+
 /// Store `thread` as the last fetched under item `id`, at `now`. Answers the
 /// bytes written.
 pub(crate) fn thread(id: &str, now: u64, thread: &impl Serialize) -> Result<usize, CallError> {

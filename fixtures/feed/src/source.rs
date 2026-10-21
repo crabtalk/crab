@@ -44,7 +44,7 @@ impl Source for Rss {
             .into_iter()
             .map(|entry| Listed {
                 id: entry.id.clone(),
-                posted: entry.posted.unwrap_or_default(),
+                posted: entry.posted,
                 item: entry,
             })
             .collect())

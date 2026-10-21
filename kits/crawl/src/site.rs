@@ -8,7 +8,6 @@ use crate::{
     sitemap::Sitemap,
 };
 use alloc::{collections::VecDeque, format, string::String, vec::Vec};
-use berm_lang::http::Response;
 use core::mem;
 use url::Url;
 
@@ -41,6 +40,10 @@ struct Reading<'a> {
     queue: VecDeque<String>,
     seen: Vec<String>,
     urls: Vec<(String, &'static str, Option<String>)>,
+    /// Whether a sitemap answered that names no sitemaps or lists URLs.
+    answered: bool,
+    /// Why the first sitemap that failed failed.
+    failed: Option<String>,
     /// What the read came to, once it did.
     done: Option<Result<Option<Site>, String>>,
 }
@@ -49,8 +52,10 @@ struct Reading<'a> {
 /// first is read for `budget` bytes of sitemaps of its own; the rest share
 /// another `budget`, each round's split evenly among those reading, and one
 /// whose sitemap is cut at its share answers `None`, left for a later tick. A
-/// read fails when robots.txt cannot be read or answers 5xx; a sitemap that
-/// fails is left out.
+/// read fails when robots.txt cannot be read or answers 5xx, or when a
+/// sitemap failed and none answered that names no sitemaps or lists URLs; the
+/// `/sitemap.xml` read when robots.txt names none answering 404 or 410 is no
+/// failure. A sitemap that fails is otherwise left out.
 pub fn read_all<C: Crawler>(
     domains: &[String],
     budget: usize,
@@ -65,6 +70,8 @@ pub fn read_all<C: Crawler>(
             queue: VecDeque::new(),
             seen: Vec::new(),
             urls: Vec::new(),
+            answered: false,
+            failed: None,
             done: None,
         })
         .collect();
@@ -129,7 +136,7 @@ pub fn read_all<C: Crawler>(
             }
             match next(reading) {
                 Some(url) => next_urls.push((at, url)),
-                None => reading.done = Some(Ok(Some(finish(reading)))),
+                None => reading.done = Some(finish(reading).map(Some)),
             }
         }
         // Each site after the first is read for an even share of `shared`: a
@@ -143,7 +150,7 @@ pub fn read_all<C: Crawler>(
             let left = if at == 0 { own } else { share };
             match left {
                 0 if at > 0 => reading.done = Some(Ok(None)),
-                0 => reading.done = Some(Ok(Some(finish(reading)))),
+                0 => reading.done = Some(finish(reading).map(Some)),
                 _ => {
                     round.push(at);
                     gets.push(Get {
@@ -168,8 +175,26 @@ pub fn read_all<C: Crawler>(
                 0 => &mut own,
                 _ => &mut shared,
             };
-            let Some(body) = sitemap(get, answer) else {
-                continue;
+            let body = match answer {
+                Ok(answer) if answer.status == 200 => answer.body,
+                // The `/sitemap.xml` read for want of a sitemap robots.txt
+                // names, absent.
+                Ok(answer)
+                    if reading.robots.sitemaps.is_empty()
+                        && reading.seen.len() == 1
+                        && matches!(answer.status, 404 | 410) =>
+                {
+                    continue;
+                }
+                answer => {
+                    let error = match answer {
+                        Ok(answer) => format!("{} answered {}", get.url, answer.status),
+                        Err(error) => error,
+                    };
+                    berm_lang::trace(&error);
+                    reading.failed.get_or_insert(error);
+                    continue;
+                }
             };
             // An answer as long as its limit was cut there.
             let cut = body.len() >= get.limit;
@@ -179,10 +204,11 @@ pub fn read_all<C: Crawler>(
             }
             *left = left.saturating_sub(body.len());
             let sitemap = Sitemap::parse(&String::from_utf8_lossy(&body));
+            reading.answered |= sitemap.sitemaps.is_empty() || !sitemap.urls.is_empty();
             reading.queue.extend(sitemap.sitemaps);
             keep::<C>(reading, sitemap.urls);
             if cut {
-                reading.done = Some(Ok(Some(finish(reading))));
+                reading.done = Some(finish(reading).map(Some));
             }
         }
     }
@@ -216,22 +242,6 @@ fn next(reading: &mut Reading<'_>) -> Option<Url> {
     None
 }
 
-/// The body of the sitemap `answer` holds, when it answered 200.
-fn sitemap(get: &Get<'_>, answer: Result<Response, String>) -> Option<Vec<u8>> {
-    let answer = match answer {
-        Ok(answer) => answer,
-        Err(error) => {
-            berm_lang::trace(&error);
-            return None;
-        }
-    };
-    if answer.status != 200 {
-        berm_lang::trace(&format!("{} answered {}", get.url, answer.status));
-        return None;
-    }
-    Some(answer.body)
-}
-
 /// Keep each of `listed` on `reading`'s site that its robots.txt allows and
 /// that is of a kind `C` names.
 fn keep<C: Crawler>(reading: &mut Reading<'_>, listed: Vec<(String, Option<String>)>) {
@@ -254,14 +264,18 @@ fn keep<C: Crawler>(reading: &mut Reading<'_>, listed: Vec<(String, Option<Strin
     }
 }
 
-/// What `reading` read.
-fn finish(reading: &mut Reading<'_>) -> Site {
-    Site {
+/// What `reading` read; its first sitemap's failure when one failed and none
+/// answered that names no sitemaps or lists URLs.
+fn finish(reading: &mut Reading<'_>) -> Result<Site, String> {
+    if let Some(error) = reading.failed.take().filter(|_| !reading.answered) {
+        return Err(error);
+    }
+    Ok(Site {
         robots: reading.text.take().map(|mut text| {
             text.truncate(text.floor_char_boundary(ROBOTS));
             text
         }),
         rules: mem::take(&mut reading.robots),
         urls: mem::take(&mut reading.urls),
-    }
+    })
 }

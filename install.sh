@@ -37,13 +37,45 @@ case "$os" in
   *) err "no release for $os; on Windows, download crab-x86_64-pc-windows-msvc.zip from https://github.com/$REPO/releases/latest" ;;
 esac
 
-url="https://github.com/$REPO/releases/latest/download/crab-$target.tar.gz"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256() { sha256sum "$1" | cut -d' ' -f1; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
+else
+  err "this script needs \`sha256sum\` or \`shasum\`"
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# The latest release's asset for this target, and the sha256 GitHub records for
+# it. The API answers one field a line, an asset's `digest` before its
+# `browser_download_url`.
+api="https://api.github.com/repos/$REPO/releases/latest"
+curl -fsSL "$api" -o "$tmp/release.json" || err "could not read $api"
+asset=$(awk -v name="crab-$target.tar.gz" '
+  /"digest":/ { digest = $2 }
+  /"browser_download_url":/ {
+    url = $2
+    gsub(/[",]/, "", url)
+    if (substr(url, length(url) - length(name)) == "/" name) {
+      gsub(/[",]/, "", digest)
+      print digest, url
+      exit
+    }
+  }
+' "$tmp/release.json")
+[ -n "$asset" ] || err "the latest release has no crab-$target.tar.gz"
+digest=${asset%% *}
+url=${asset#* }
+case "$digest" in
+  sha256:*) digest=${digest#sha256:} ;;
+  *) err "GitHub records no sha256 for $url" ;;
+esac
+
 echo "downloading $url" >&2
 curl -fL --progress-bar "$url" -o "$tmp/crab.tar.gz" || err "could not download $url"
+[ "$(sha256 "$tmp/crab.tar.gz")" = "$digest" ] || err "$url does not match the sha256 GitHub records for it"
 tar -xzf "$tmp/crab.tar.gz" -C "$tmp"
 mkdir -p "$INSTALL_DIR"
 mv "$tmp/crab" "$INSTALL_DIR/crab"

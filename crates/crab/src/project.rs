@@ -43,8 +43,8 @@ pub struct Project {
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Database {
-    /// What the service's database may hold, such as `"2GiB"`, at most
-    /// [`host::MAX_DATABASE_SIZE`] bytes.
+    /// What the service's database may hold, such as `"2GiB"`, from
+    /// [`host::MIN_DATABASE_SIZE`] to [`host::MAX_DATABASE_SIZE`] bytes.
     pub size: ByteSize,
     /// A SQLite database, relative to `berm.toml`, a service on Cloud with no
     /// database yet starts from, such as one a bermd filled.

@@ -33,7 +33,8 @@ pub struct Feed {
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "berm_lang::serde", rename_all = "lowercase")]
 pub enum Kind {
-    /// Ordered by post time: an item is new past the feed's `watermark`.
+    /// Ordered by post time: an item undated or at or past the feed's
+    /// `watermark` is new when `lake_items` does not hold it for the feed.
     Chronological,
     /// An item is new when `lake_items` does not hold it for the feed.
     Unordered,

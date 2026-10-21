@@ -1,9 +1,15 @@
 //! A host reached only through a pattern is refused at an address that is not
-//! public; a host declared by name is sent.
+//! public; a host declared by name is sent; a body over the request's limit is
+//! answered cut there.
 
 use anyhow::Result;
 use berm::{Reach, syscall::http::Request};
 use bermd::Fetch;
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+    thread,
+};
 use tower::Service;
 
 fn request(host: &str, reach: Reach) -> Request {
@@ -15,6 +21,7 @@ fn request(host: &str, reach: Reach) -> Request {
         headers: Vec::new(),
         body: Vec::new(),
         timeout: None,
+        limit: None,
     }
 }
 
@@ -57,5 +64,33 @@ async fn a_pattern_is_refused_a_name_resolving_only_to_loopback() -> Result<()> 
 async fn a_named_host_is_sent_wherever_it_points() -> Result<()> {
     let found = refusal("127.0.0.1", Reach::Named).await;
     assert!(!found.contains("public"), "{found}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_body_over_the_limit_is_answered_cut() -> Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    thread::spawn(move || -> Result<()> {
+        let (mut stream, _) = listener.accept()?;
+        let _ = stream.read(&mut [0; 1024])?;
+        let body = vec![b'x'; 1 << 16];
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n",
+            body.len()
+        )?;
+        stream.write_all(&body)?;
+        Ok(())
+    });
+    let mut fetch = Fetch::new(None)?;
+    let response = fetch
+        .call(Request {
+            url: format!("http://127.0.0.1:{port}/"),
+            limit: Some(10),
+            ..request("127.0.0.1", Reach::Named)
+        })
+        .await?;
+    assert_eq!(response.body, b"xxxxxxxxxx");
     Ok(())
 }

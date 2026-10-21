@@ -13,7 +13,7 @@
 	let answer = $state(null);
 	let refused = $state('');
 
-	let instructions = $state(untrack(() => budget?.instructions ?? 0));
+	let cpu = $state(untrack(() => budget?.cpu ?? 0));
 	let rows = $state(untrack(() => budget?.rows ?? 0));
 
 	async function run(event) {
@@ -40,7 +40,7 @@
 		refused = '';
 		try {
 			await api.setBudget(program, tool.name, {
-				instructions: Number(instructions),
+				cpu: Number(cpu),
 				rows: Number(rows)
 			});
 			onchange?.();
@@ -93,7 +93,7 @@
 		{/if}
 		{#if answer.meter}
 			<p class="muted">
-				{number(answer.meter.instructions)} instructions · {number(answer.meter.read)} read ·
+				{number(answer.meter.cpu)} CPU µs · {number(answer.meter.read)} read ·
 				{number(answer.meter.written)} written · {answer.meter.calls} calls
 			</p>
 		{/if}
@@ -101,7 +101,7 @@
 
 	{#if budget}
 		<div class="row">
-			<label>Instruction budget <input type="number" bind:value={instructions} /></label>
+			<label>CPU budget (µs) <input type="number" bind:value={cpu} /></label>
 			<label>Row budget <input type="number" bind:value={rows} /></label>
 			<button class="ghost" onclick={save}>Set budget</button>
 		</div>

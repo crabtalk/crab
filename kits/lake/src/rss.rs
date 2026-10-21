@@ -41,8 +41,8 @@ pub fn entries(xml: &str) -> Result<Vec<Entry>, String> {
     // The element whose start tag is being read, and its attributes.
     let mut start = ("", "");
     let mut attrs: Vec<(&str, &str, String)> = Vec::new();
-    // The text since an entry's child, or an element outside an entry,
-    // started. A child's own elements add to it.
+    // The text since the last element started or ended. Within an entry's
+    // `description`, `summary` or `content`, the text since it started.
     let mut text = String::new();
     for token in Tokenizer::from(xml) {
         let token = token.map_err(|error| format!("feed: {error}"))?;
@@ -50,7 +50,7 @@ pub fn entries(xml: &str) -> Result<Vec<Entry>, String> {
             Token::ElementStart { prefix, local, .. } => {
                 start = (prefix.as_str(), local.as_str());
                 attrs.clear();
-                if entry.is_none() || open.len() <= depth {
+                if entry.is_none() || !whole(&open, depth) {
                     text.clear();
                 }
             }
@@ -105,6 +105,9 @@ pub fn entries(xml: &str) -> Result<Vec<Entry>, String> {
                     child => {
                         let parent = open.last().copied().unwrap_or_default();
                         closed(current, &mut updated, element, parent, child, &text);
+                        if !whole(&open, depth) {
+                            text.clear();
+                        }
                     }
                 }
             }
@@ -112,6 +115,15 @@ pub fn entries(xml: &str) -> Result<Vec<Entry>, String> {
         }
     }
     Ok(entries)
+}
+
+/// Whether `open` is within an entry's child whose nested elements' text adds
+/// to its own, the entry's children being at `depth`.
+fn whole(open: &[(&str, &str)], depth: usize) -> bool {
+    matches!(
+        open.get(depth),
+        Some(("", "description" | "summary" | "content") | ("content", "encoded"))
+    )
 }
 
 /// Read what `element`'s start tag carries into `entry`.

@@ -3,9 +3,17 @@
 use core::ops::Range;
 
 /// Midnight UTC starting `day` of `month` (1-based) of `year`. `None` before
-/// 1970 or for a month or day out of range.
+/// 1970, after 9999, or for a month or day out of range.
 pub fn date(year: i64, month: i64, day: i64) -> Option<u64> {
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days_in_month = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => return None,
+    };
+    if !(1..=9999).contains(&year) || !(1..=days_in_month).contains(&day) {
         return None;
     }
     // Days from 1970-01-01 to the civil date, after Howard Hinnant's
@@ -98,12 +106,18 @@ fn offset(zone: &str) -> Option<i64> {
     };
     let hours: i64 = zone.get(1..3)?.parse().ok()?;
     let minutes: i64 = zone.get(3..)?.trim_start_matches(':').parse().ok()?;
+    if hours >= 24 || !(0..60).contains(&minutes) {
+        return None;
+    }
     Some(sign * (hours * 3600 + minutes * 60))
 }
 
 /// `day`, in Unix milliseconds, at the given wall clock `offset` seconds east
-/// of UTC.
+/// of UTC. `None` for an hour past 23, a minute past 59 or a second past 60.
 fn clock(day: u64, hour: i64, minute: i64, second: i64, offset: i64) -> Option<u64> {
+    if !(0..24).contains(&hour) || !(0..60).contains(&minute) || !(0..=60).contains(&second) {
+        return None;
+    }
     let seconds = hour * 3600 + minute * 60 + second - offset;
     u64::try_from(day as i64 + seconds * 1000).ok()
 }

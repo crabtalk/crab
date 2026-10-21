@@ -3,7 +3,8 @@
 //! recrawled when due, sites watched first read and fetched first, a page of
 //! each site before a second of any, a silent site fetched no more in its
 //! tick, a page cut at the bytes it is read for, a failed read logged and
-//! retried, the URLs a program lists and the links its crawler lists fetched
+//! retried, a read whose sitemaps all fail failed and a site with no sitemap
+//! read empty, robots.txt patterns matched percent-encoded, the URLs a program lists and the links its crawler lists fetched
 //! under the site's robots.txt, and a URL listed with its bytes read for them,
 //! past the tick's HTML when it is the tick's first, and the sites after a
 //! tick's first sharing its sitemap bytes.
@@ -603,5 +604,93 @@ async fn the_sites_after_the_first_share_the_sitemap_bytes_of_a_round() -> Resul
     call(&host, "tick", json!({})).await?;
     assert_eq!(kept(&host, "a.com").await?, ["https://a.com/pricing"]);
     assert_eq!(kept(&host, "b.com").await?, ["https://b.com/pricing"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_read_whose_sitemaps_all_fail_fails_and_keeps_the_urls_it_had() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    let urls = kept(&host, "example.com").await?;
+    assert_eq!(urls.len(), 2, "{urls:?}");
+
+    // The index answers, its one sitemap fails.
+    host.arrange(
+        "GET",
+        "https://example.com/sitemap-pages.xml",
+        503,
+        "unavailable",
+    );
+    host.advance(7 * DAY);
+    call(&host, "tick", json!({})).await?;
+    let failed = host.logs("site", Some("ReadFailed")).await?;
+    assert_eq!(failed.len(), 1);
+    let error: Value = serde_json::from_str(&failed[0].data)?;
+    assert_eq!(
+        error["error"],
+        "https://example.com/sitemap-pages.xml answered 503"
+    );
+
+    // As does the index itself.
+    host.arrange(
+        "GET",
+        "https://example.com/sitemap-index.xml",
+        503,
+        "unavailable",
+    );
+    host.advance(7 * DAY);
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(host.logs("site", Some("ReadFailed")).await?.len(), 2);
+    assert_eq!(kept(&host, "example.com").await?, urls);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_site_whose_sitemap_xml_answers_404_is_read_with_no_urls() -> Result<()> {
+    let host = deployed().await?;
+    host.arrange(
+        "GET",
+        "https://example.com/robots.txt",
+        200,
+        "User-agent: *\nAllow: /\n",
+    );
+    host.arrange("GET", "https://example.com/sitemap.xml", 404, "not found");
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(host.logs("site", Some("Read")).await?.len(), 1);
+    assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
+    assert!(kept(&host, "example.com").await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_pattern_outside_ascii_matches_its_percent_encoded_path() -> Result<()> {
+    let host = deployed().await?;
+    arrange(&host);
+    host.arrange(
+        "GET",
+        "https://example.com/robots.txt",
+        200,
+        "User-agent: *\nDisallow: /compare/café\nDisallow: /compare/%c3%bc\nSitemap: https://example.com/sitemap-index.xml\n",
+    );
+    host.arrange(
+        "GET",
+        "https://example.com/sitemap-pages.xml",
+        200,
+        r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/compare/café-vs-other</loc></url>
+  <url><loc>https://example.com/compare/caf%c3%a9-vs-another</loc></url>
+  <url><loc>https://example.com/compare/ü-vs-other</loc></url>
+  <url><loc>https://example.com/compare/cafe-vs-other</loc></url>
+</urlset>"#,
+    );
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(
+        kept(&host, "example.com").await?,
+        ["https://example.com/compare/cafe-vs-other"]
+    );
     Ok(())
 }

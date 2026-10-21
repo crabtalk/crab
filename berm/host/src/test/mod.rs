@@ -199,6 +199,21 @@ impl TestHost {
         image: &[u8],
         seed: Option<&Path>,
     ) -> Result<Arc<Program>> {
+        self.installed(service, image, seed, DATABASE_SIZE).await
+    }
+
+    /// [`TestHost::deploy`], its database held to `size` bytes.
+    pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Program>> {
+        self.installed(service, image, None, size).await
+    }
+
+    async fn installed(
+        &self,
+        service: &str,
+        image: &[u8],
+        seed: Option<&Path>,
+        size: u64,
+    ) -> Result<Arc<Program>> {
         let manifest = Manifest::from_image(image)?;
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
@@ -221,7 +236,7 @@ impl TestHost {
                         .collect(),
                     force: true,
                     crons: None,
-                    size: DATABASE_SIZE,
+                    size,
                 },
                 seed,
             )
@@ -461,7 +476,10 @@ impl tower::Service<Request> for Arranged {
             Some(response) => Ok(Response {
                 status: response.status,
                 headers: response.headers.clone(),
-                body: response.body.clone(),
+                body: response.body[..request
+                    .limit
+                    .map_or(response.body.len(), |limit| limit.min(response.body.len()))]
+                    .to_vec(),
             }),
             None => Err(anyhow::anyhow!(
                 "no response arranged for {} {}",

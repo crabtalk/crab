@@ -16,6 +16,7 @@ berm = { workspace = true, features = ["sqlite"] }
 berm-api = { workspace = true, features = ["rusqlite"] }
 chrono.workspace = true
 croner.workspace = true
+humantime-serde.workspace = true
 parking_lot.workspace = true
 rusqlite.workspace = true
 serde = { workspace = true, features = ["std"] }
@@ -27,3 +28,6 @@ tracing.workspace = true
 [features]
 # `berm_host::test`: a host whose edges a test holds.
 test = []
+
+[dev-dependencies]
+toml.workspace = true

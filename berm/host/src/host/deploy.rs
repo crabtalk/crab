@@ -9,10 +9,10 @@ use crate::{
     wake::{cron, table},
 };
 use axum::http::StatusCode;
-use berm::Program;
+use berm::{Program, database::Database};
 use berm_api::{
     Manifest, Surface,
-    host::{Deploy, Kind, MAX_DATABASE_SIZE, Outcome},
+    host::{Deploy, Kind, MAX_DATABASE_SIZE, MIN_DATABASE_SIZE, Outcome},
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
@@ -22,8 +22,10 @@ impl<E: Env> Host<E> {
     /// that the program it replaces did not and `public` does not confirm it,
     /// or, unless `force`, when it breaks a public tool or event of the program
     /// it replaces that a caller used, with a call that was done, in the last
-    /// [`usage::WINDOW`] days. Refused too when its `size` is past
-    /// [`MAX_DATABASE_SIZE`] or below what its database holds.
+    /// [`usage::WINDOW`] days. Refused too when its `size` is outside
+    /// [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`] or below what its
+    /// database holds. A refused deploy leaves the database held to the size
+    /// it was.
     ///
     /// `seed`, a SQLite file on the databases' filesystem, starts the
     /// service's database, held to the image's migrations like any other:
@@ -43,10 +45,12 @@ impl<E: Env> Host<E> {
             crons,
             size,
         } = deploy;
-        if size > MAX_DATABASE_SIZE {
+        if !(MIN_DATABASE_SIZE..=MAX_DATABASE_SIZE).contains(&size) {
             return Err(deny(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                format!("a database holds at most {MAX_DATABASE_SIZE} bytes, not {size}"),
+                format!(
+                    "a database holds from {MIN_DATABASE_SIZE} to {MAX_DATABASE_SIZE} bytes, not {size}"
+                ),
             ));
         }
         let image = self
@@ -98,8 +102,23 @@ impl<E: Env> Host<E> {
                 .seed(&key, seed)
                 .map_err(|e| deny(StatusCode::CONFLICT, format!("{e:#}")))?;
         }
+        let mut limited: Option<(Arc<Database>, u64)> = None;
         let installed = async {
-            self.migrate(&key, &manifest, size).await?;
+            if manifest.keeps_database() {
+                let database = self
+                    .databases
+                    .get(&key)
+                    .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+                let before = database
+                    .limit(size)
+                    .await
+                    .map_err(|e| deny(StatusCode::UNPROCESSABLE_ENTITY, format!("{e:#}")))?;
+                limited = Some((database.clone(), before));
+                database
+                    .migrate(manifest.migrations())
+                    .await
+                    .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            }
             let deprecated: Vec<String> = manifest
                 .tools
                 .iter()
@@ -127,6 +146,12 @@ impl<E: Env> Host<E> {
             Ok(program)
         }
         .await;
+        if installed.is_err()
+            && let Some((database, before)) = limited
+            && let Err(e) = database.limit(before).await
+        {
+            tracing::error!(service, error = %e, "the refused size stays");
+        }
         if seed.is_some()
             && installed.is_err()
             && let Err(e) = self.databases.remove(&key)
@@ -263,27 +288,6 @@ impl<E: Env> Host<E> {
                 ),
             ));
         }
-        Ok(())
-    }
-
-    /// Migrate the database of `service` to `manifest`'s, when it keeps one.
-    /// A failed migration leaves the version it replaces serving.
-    async fn migrate(&self, service: &str, manifest: &Manifest, size: u64) -> Result<(), Denied> {
-        if !manifest.keeps_database() {
-            return Ok(());
-        }
-        let database = self
-            .databases
-            .get(service)
-            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
-        database
-            .limit(size)
-            .await
-            .map_err(|e| deny(StatusCode::UNPROCESSABLE_ENTITY, format!("{e:#}")))?;
-        database
-            .migrate(manifest.migrations())
-            .await
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         Ok(())
     }
 }

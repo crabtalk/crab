@@ -120,17 +120,22 @@ impl Databases {
     }
 
     /// Close `program`'s database and delete its files. Refused while
-    /// anything but this holds it open.
+    /// anything but this holds it open: an invocation's [`Held`] holds it.
+    /// Blocks until the writer has run the jobs it was sent.
     pub fn remove(&self, program: &str) -> Result<()> {
-        let mut open = self.open.lock();
-        if let Some(database) = open.remove(program) {
-            match Arc::try_unwrap(database) {
-                Ok(database) => database.close(),
-                Err(database) => {
+        let closing = {
+            let mut open = self.open.lock();
+            match open.remove(program).map(Arc::try_unwrap) {
+                Some(Ok(database)) => Some(database),
+                Some(Err(database)) => {
                     open.insert(program.to_owned(), database);
                     bail!("{program}'s database is in use");
                 }
+                None => None,
             }
+        };
+        if let Some(database) = closing {
+            database.close();
         }
         let path = self.path(program);
         for file in [self.wal(program), self.shm(program), path] {
@@ -272,18 +277,24 @@ impl Database {
     }
 
     /// Hold the database to `size` bytes: a write past it fails as
-    /// `SQLITE_FULL`. Refused when it holds more already. Lasts as long as the
-    /// writer's connection, the life of this [`Database`].
-    pub async fn limit(&self, size: u64) -> Result<()> {
+    /// `SQLITE_FULL`. Refused when it holds more already, or when `size` is
+    /// under one page. Lasts as long as the writer's connection, the life of
+    /// this [`Database`]. Answers the bytes it was held to before, which
+    /// restore that limit when passed back.
+    pub async fn limit(&self, size: u64) -> Result<u64> {
         on(&self.jobs, move |conn| {
             let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
             let held: i64 = conn.pragma_query_value(None, "page_count", |row| row.get(0))?;
+            let before: i64 = conn.pragma_query_value(None, "max_page_count", |row| row.get(0))?;
             let pages = i64::try_from(size)? / page;
+            if pages == 0 {
+                bail!("{size} bytes is under the database's page of {page}");
+            }
             if held > pages {
                 bail!("the database holds {} bytes, more than {size}", held * page);
             }
             conn.pragma_update(None, "max_page_count", pages)?;
-            Ok(())
+            Ok(u64::try_from(before * page)?)
         })
         .await
     }

@@ -30,6 +30,10 @@ pub struct Request {
     /// How long the asking program waits for an answer, within its call's
     /// deadline; `None` for the deadline alone.
     pub timeout: Option<Duration>,
+    /// The most body bytes the asking program takes of its answer. The host
+    /// stops reading the body there and answers it cut; `None` for the host's
+    /// own bound.
+    pub limit: Option<usize>,
 }
 
 impl Request {
@@ -162,7 +166,7 @@ where
     R: Fn(Callsite, String, String) -> Found,
     Found: Future<Output = Result<Option<String>>>,
 {
-    let (mut request, limit) = read(at, syscall, request)?;
+    let mut request = read(at, syscall, request)?;
     for (_, value) in &mut request.headers {
         let found = substitute(at, secret, &request.host, value.as_bytes()).await?;
         if let Some(found) = found {
@@ -172,11 +176,7 @@ where
     if let Some(found) = substitute(at, secret, &request.host, &request.body).await? {
         request.body = found;
     }
-    let mut response = send(at.clone(), request).await?;
-    if let Some(limit) = limit {
-        response.body.truncate(limit);
-    }
-    Ok(response)
+    send(at.clone(), request).await
 }
 
 /// `text` with every `{secret:NAME}` replaced by what `secret` grants the
@@ -249,8 +249,8 @@ fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
 }
 
 /// `request` off the wire, refused unless the asking program declares its host
-/// under `syscall`, with the most body bytes the program takes of its answer.
-fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option<usize>)> {
+/// under `syscall`.
+fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     let fields = wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?;
@@ -296,18 +296,16 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<(Request, Option
         bail!("{url} is not an http or https URL with a host");
     };
     let reach = permitted(at, syscall, &host)?;
-    Ok((
-        Request {
-            method,
-            host,
-            reach,
-            url,
-            headers,
-            body: body.to_vec(),
-            timeout,
-        },
+    Ok(Request {
+        method,
+        host,
+        reach,
+        url,
+        headers,
+        body: body.to_vec(),
+        timeout,
         limit,
-    ))
+    })
 }
 
 fn write(response: &Response) -> Vec<u8> {

@@ -1,5 +1,6 @@
 //! `crab-lake`'s tick in berm-feed, against an arranged RSS feed: items stored
-//! once, a failed fetch logged and retried, and the items read back in order.
+//! once, undated or at the watermark included, a failed fetch logged and
+//! retried, and the items read back in order.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -189,5 +190,50 @@ async fn items_read_back_in_the_order_stored() -> Result<()> {
     assert_eq!(page["posts"].as_array().map(Vec::len), Some(1));
     assert_eq!(page["posts"][0]["id"], "a");
     assert_eq!(page["next"], 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_undated_item_is_stored_once() -> Result<()> {
+    let host = deployed().await?;
+    // An empty pubDate leaves the item undated.
+    host.arrange("GET", FEED, 200, feed(&[("u", "")]));
+    tick(&host).await?;
+    assert_eq!(count(&host).await?, 1);
+
+    host.advance(REFETCH);
+    tick(&host).await?;
+    assert_eq!(count(&host).await?, 1);
+    let fetched = logged(&host, "Fetched").await?;
+    assert_eq!(fetched[0]["new"], 1);
+    assert_eq!(fetched[1]["new"], 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_item_posted_at_the_watermark_is_stored() -> Result<()> {
+    let host = deployed().await?;
+    host.arrange("GET", FEED, 200, feed(&[B, A]));
+    tick(&host).await?;
+    host.arrange("GET", FEED, 200, feed(&[("d", B.1), B, A]));
+    host.advance(REFETCH);
+    tick(&host).await?;
+    assert_eq!(count(&host).await?, 3);
+    let fetched = logged(&host, "Fetched").await?;
+    assert_eq!(fetched[1]["new"], 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_undated_item_after_a_dated_one_is_stored() -> Result<()> {
+    let host = deployed().await?;
+    host.arrange("GET", FEED, 200, feed(&[B, A]));
+    tick(&host).await?;
+    host.arrange("GET", FEED, 200, feed(&[("u", ""), B, A]));
+    host.advance(REFETCH);
+    tick(&host).await?;
+    assert_eq!(count(&host).await?, 3);
+    let fetched = logged(&host, "Fetched").await?;
+    assert_eq!(fetched[1]["new"], 1);
     Ok(())
 }

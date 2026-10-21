@@ -8,7 +8,7 @@ use url::Url;
 #[derive(Default)]
 pub struct Robots {
     /// Each rule of the crawler's group: whether it allows, and its path
-    /// pattern.
+    /// pattern, [`encoded`].
     rules: Vec<(bool, String)>,
     /// The `Sitemap:` URLs, in the order written.
     pub sitemaps: Vec<String>,
@@ -48,7 +48,7 @@ impl Robots {
                 if value.is_empty() {
                     continue;
                 }
-                let rule = (is("allow"), String::from(value));
+                let rule = (is("allow"), encoded(value));
                 if agents.iter().any(|agent| agent.eq_ignore_ascii_case(token)) {
                     named.push(rule.clone());
                 }
@@ -63,16 +63,40 @@ impl Robots {
 
     /// Whether the crawler may fetch `url`, matched by its path and query.
     pub fn allows(&self, url: &Url) -> bool {
-        let path = match url.query() {
+        let path = encoded(&match url.query() {
             Some(query) => format!("{}?{query}", url.path()),
             None => String::from(url.path()),
-        };
+        });
         self.rules
             .iter()
             .filter(|(_, pattern)| matches(pattern.as_bytes(), path.as_bytes()))
             .max_by_key(|(allow, pattern)| (pattern.len(), *allow))
             .is_none_or(|(allow, _)| *allow)
     }
+}
+
+/// `text` with each octet outside ASCII percent-encoded and the hex digits of
+/// each `%XX` already in it uppercased, as RFC 9309 §2.2.2 compares paths.
+fn encoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut encoded = String::with_capacity(text.len());
+    for (at, &byte) in bytes.iter().enumerate() {
+        // Whether `byte` is a hex digit of a `%XX` begun one or two before.
+        let escaped = (1..=2).any(|back| {
+            at.checked_sub(back).is_some_and(|start| {
+                bytes[start] == b'%'
+                    && bytes
+                        .get(start + 1..start + 3)
+                        .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit))
+            })
+        });
+        match byte {
+            0x80.. => encoded.push_str(&format!("%{byte:02X}")),
+            _ if escaped => encoded.push(char::from(byte.to_ascii_uppercase())),
+            _ => encoded.push(char::from(byte)),
+        }
+    }
+    encoded
 }
 
 /// Whether `pattern`, with `*` for any run and a final `$` for the end,

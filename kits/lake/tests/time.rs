@@ -70,3 +70,41 @@ fn parse_reads_either_spelling() {
     assert_eq!(time::parse("Fri, 09 Oct 2026 23:27:00 +0000"), Some(NIGHT));
     assert_eq!(time::parse("yesterday"), None);
 }
+
+#[test]
+fn a_day_past_its_month_or_a_year_past_9999_is_none() {
+    assert_eq!(time::date(2026, 2, 29), None);
+    assert_eq!(time::date(2026, 2, 31), None);
+    assert_eq!(time::date(2026, 4, 31), None);
+    assert_eq!(time::date(2000, 2, 29), Some(951_782_400_000));
+    assert_eq!(time::date(2100, 2, 29), None);
+    assert_eq!(time::date(10_000, 1, 1), None);
+    assert_eq!(time::date(i64::MAX, 1, 1), None);
+    assert_eq!(time::rfc3339("2026-02-30T00:00:00Z"), None);
+    assert_eq!(time::rfc822("31 Feb 2026 00:00 GMT"), None);
+}
+
+#[test]
+fn a_clock_or_offset_out_of_range_is_none() {
+    assert_eq!(time::rfc3339("2026-10-11T24:00:00Z"), None);
+    assert_eq!(time::rfc3339("2026-10-11T06:60:00Z"), None);
+    assert_eq!(time::rfc3339("2026-10-11T06:55:61Z"), None);
+    assert_eq!(
+        time::rfc3339("2026-10-11T06:55:60Z"),
+        Some(MORNING + 60_000)
+    );
+    assert_eq!(time::rfc3339("2026-10-11T06:55:00+24:00"), None);
+    assert_eq!(time::rfc822("Fri, 09 Oct 2026 23:27:00 +0099"), None);
+    assert_eq!(
+        time::rfc822("Fri, 09 Oct 2026 23:27:00 +00999999999999999999"),
+        None
+    );
+    assert_eq!(
+        time::rfc822("Fri, 09 Oct 2026 9999999999999999:27:00 GMT"),
+        None
+    );
+    assert_eq!(
+        time::rfc822("Fri, 09 Oct 922337203685477580 23:27:00 GMT"),
+        None
+    );
+}
