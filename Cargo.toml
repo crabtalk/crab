@@ -4,37 +4,37 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-version = "0.1.0"
+version = "0.1.1"
 repository = "https://github.com/crabtalk/crab"
 license = "Apache-2.0"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
 
 [workspace.dependencies]
-crab = { package = "crab-agent", path = "crates/crab", version = "0.1.0" }
-crabtalk-sdk = { path = "crates/sdk", version = "0.1.0" }
+crab = { package = "crab-agent", path = "crates/crab", version = "0.1.1" }
+crabtalk-sdk = { path = "crates/sdk", version = "0.1.1" }
 
 # berm
-berm = { path = "berm/berm", version = "0.1.0" }
-berm-api = { path = "berm/api", version = "0.1.0" }
-berm-codegen = { path = "berm/codegen", version = "0.1.0" }
-berm-host = { path = "berm/host", version = "0.1.0" }
-berm-lang = { path = "berm/lang", version = "0.1.0" }
-berm-oci = { path = "berm/oci", version = "0.1.0" }
-bermd = { path = "berm/daemon", version = "0.1.0" }
+berm = { path = "berm/berm", version = "0.1.1" }
+berm-api = { path = "berm/api", version = "0.1.1" }
+berm-codegen = { path = "berm/codegen", version = "0.1.1" }
+berm-host = { path = "berm/host", version = "0.1.1" }
+berm-lang = { path = "berm/lang", version = "0.1.1" }
+berm-oci = { path = "berm/oci", version = "0.1.1" }
+bermd = { path = "berm/daemon", version = "0.1.1" }
 
 # html
-html = { package = "crab-html", path = "crates/html", version = "0.1.0" }
+html = { package = "crab-html", path = "crates/html", version = "0.1.1" }
 
 # fixtures
 berm-kit = { path = "fixtures/kit" }
 
 # kits
-auth = { package = "crab-auth", path = "kits/auth", version = "0.1.0" }
-crawl = { package = "crab-crawl", path = "kits/crawl", version = "0.1.0" }
-lake = { package = "crab-lake", path = "kits/lake", version = "0.1.0" }
-neon = { package = "crab-neon", path = "kits/neon", version = "0.1.0" }
-stripe = { package = "crab-stripe", path = "kits/stripe", version = "0.1.0" }
-supabase = { package = "crab-supabase", path = "kits/supabase", version = "0.1.0" }
+auth = { package = "crab-auth", path = "kits/auth", version = "0.1.1" }
+crawl = { package = "crab-crawl", path = "kits/crawl", version = "0.1.1" }
+lake = { package = "crab-lake", path = "kits/lake", version = "0.1.1" }
+neon = { package = "crab-neon", path = "kits/neon", version = "0.1.1" }
+stripe = { package = "crab-stripe", path = "kits/stripe", version = "0.1.1" }
+supabase = { package = "crab-supabase", path = "kits/supabase", version = "0.1.1" }
 
 # crates-io
 anyhow = "1.0"

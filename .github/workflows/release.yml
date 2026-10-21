@@ -33,12 +33,19 @@ jobs:
             exit 1
           fi
 
-      # A draft is not `releases/latest`, so nothing downloads a release
-      # before every target is on it.
-      - uses: taiki-e/create-gh-release-action@v1
-        with:
-          draft: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # The release's notes are the version's changelog.json entry. A draft is
+      # not `releases/latest`, so nothing downloads a release before every
+      # target is on it.
+      - name: create the draft release with its changelog entry
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          if ! .github/scripts/release-notes "$version" > notes.md; then
+            echo "::error::changelog.json has no entry for $version"; exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   upload-assets:
     needs: create-release
