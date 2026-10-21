@@ -215,6 +215,7 @@ impl<E: Env> Host<E> {
         if let Err(e) = table::settle(&self.store, &wake, failed, now, now + RETRY).await {
             tracing::error!(service = wake.name, "settling a wake failed: {e:#}");
         }
+        self.waking.notify_one();
         ran
     }
 }

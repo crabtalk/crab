@@ -150,47 +150,74 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
         }
         abi::HOST_HTTP_FETCH | abi::HOST_HTTP_PROXY => {
             let request = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
-            let Some(fields) = crate::abi::wire::fields(request) else {
+            let Some((status, body)) = respond(request) else {
                 no_host(number)
-            };
-            let [method, url, body, headers @ ..] = fields.as_slice() else {
-                no_host(number)
-            };
-            let text = |field: &[u8]| String::from_utf8_lossy(field).into_owned();
-            let fetched = Fetched {
-                method: text(method),
-                url: text(url),
-                headers: headers
-                    .chunks(2)
-                    .map(|pair| {
-                        (
-                            text(pair[0]),
-                            pair.get(1).map(|value| text(value)).unwrap_or_default(),
-                        )
-                    })
-                    .collect(),
-                body: body.to_vec(),
-            };
-            let response = with(|host| {
-                host.responses
-                    .iter()
-                    .find(|(m, u, ..)| *m == fetched.method && *u == fetched.url)
-                    .map(|(.., status, body)| (*status, body.clone()))
-            });
-            let Some((status, body)) = response else {
-                panic!(
-                    "nothing arranged for {} {}; call berm_lang::test::respond first",
-                    fetched.method, fetched.url
-                )
             };
             with(|host| {
-                host.fetched.push(fetched);
                 host.result = crate::abi::wire::request(&[status.to_string().as_bytes(), &body]);
+                host.result.len() as u64
+            })
+        }
+        abi::HOST_HTTP_FETCH_ALL => {
+            let batch = unsafe { core::slice::from_raw_parts(a0 as *const u8, a1 as usize) };
+            let Some(requests) = crate::abi::wire::fields(batch) else {
+                no_host(number)
+            };
+            let answers: Vec<Vec<u8>> = requests
+                .into_iter()
+                .map(|request| {
+                    let Some((status, body)) = respond(request) else {
+                        no_host(number)
+                    };
+                    crate::abi::wire::request(&[b"ok", status.to_string().as_bytes(), &body])
+                })
+                .collect();
+            let fields: Vec<&[u8]> = answers.iter().map(Vec::as_slice).collect();
+            with(|host| {
+                host.result = crate::abi::wire::request(&fields);
                 host.result.len() as u64
             })
         }
         _ => no_host(number),
     }
+}
+
+/// The status and body arranged for one framed HTTP request, kept as
+/// fetched; `None` when it is not framed as one.
+fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
+    let fields = crate::abi::wire::fields(request)?;
+    let [method, url, body, _timeout, headers @ ..] = fields.as_slice() else {
+        return None;
+    };
+    let text = |field: &[u8]| String::from_utf8_lossy(field).into_owned();
+    let fetched = Fetched {
+        method: text(method),
+        url: text(url),
+        headers: headers
+            .chunks(2)
+            .map(|pair| {
+                (
+                    text(pair[0]),
+                    pair.get(1).map(|value| text(value)).unwrap_or_default(),
+                )
+            })
+            .collect(),
+        body: body.to_vec(),
+    };
+    let response = with(|host| {
+        host.responses
+            .iter()
+            .find(|(m, u, ..)| *m == fetched.method && *u == fetched.url)
+            .map(|(.., status, body)| (*status, body.clone()))
+    });
+    let Some((status, body)) = response else {
+        panic!(
+            "nothing arranged for {} {}; call berm_lang::test::respond first",
+            fetched.method, fetched.url
+        )
+    };
+    with(|host| host.fetched.push(fetched));
+    Some((status, body))
 }
 
 /// Read a `(ptr, len)` pair the caller passed. Off-target these are real

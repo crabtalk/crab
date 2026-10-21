@@ -17,6 +17,8 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
 | `--root` | Where deployed images, the code cache and `secrets.toml` live. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
+| `--max-instructions` | The most wasm instructions one call executes, 1,000,000,000 by default. |
+| `--max-call-seconds` | How long one call runs before it is stopped, 60 by default. |
 | `--proxy` | The proxy `berm.http.proxy` goes through, e.g. `http://user:pass@gate.example.com:3120`. Without one it goes direct. |
 
 The service carries no authorization and binds loopback by default.
@@ -92,8 +94,9 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 ## Budgets
 
 An invocation stops at its tool's instruction budget, and a row syscall it makes
-once it has read and written its row budget together is refused: 1,000,000,000
-instructions and 1,000,000 rows, unless
+once it has read and written its row budget together is refused: the
+`--max-instructions` instructions, 1,000,000,000 by default, and 1,000,000 rows,
+unless
 `PUT /programs/{name}/tools/{tool}/budget` set `{"instructions", "rows"}` lower,
 from the next call.
 

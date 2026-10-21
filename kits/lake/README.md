@@ -87,7 +87,7 @@ impl Source for Blog {
 }
 ```
 
-`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items posted after the newest it has shown; `Unordered`, the items it has not stored before, which `store::has` answers; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed.
+`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items posted after the newest it has shown; `Unordered`, the items it has not stored before, which `store::has` answers; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed. `store::record(id, feed, now, values)` stores a version the same way outside a fetch, in a feed the program names, and answers the bytes written.
 
 ## A tick
 

@@ -44,7 +44,7 @@ bytesize = { version = "2.7", features = ["serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 croner = "4"
-linked_list_allocator = "0.10"
+dlmalloc = { version = "0.2", features = ["global"] }
 object = { version = "0.40", features = ["wasm"] }
 parking_lot = "0.12"
 proc-macro2 = "1"
@@ -73,6 +73,7 @@ serde_json = { version = "1", default-features = false }
 serde_urlencoded = "0.7"
 sha2 = "0.11"
 syn = { version = "2", features = ["full"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

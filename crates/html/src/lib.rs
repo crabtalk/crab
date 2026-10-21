@@ -1,5 +1,5 @@
-//! Text out of HTML: the fields feeds and APIs carry, and the `<meta>` of a
-//! page.
+//! Text out of HTML: the fields feeds and APIs carry, and the `<meta>`,
+//! links, scripts and elements of a page.
 
 #![no_std]
 
@@ -143,6 +143,111 @@ pub fn meta(html: &str, property: &str) -> Option<String> {
         if !words.is_empty() {
             return Some(words.join(" "));
         }
+    }
+    None
+}
+
+/// A link on a page: its `href` with entities decoded, and its text.
+pub struct Link {
+    pub href: String,
+    /// What [`text`] makes of its contents, whitespace collapsed.
+    pub text: String,
+}
+
+/// Each `<a>` with an `href`, in page order. A link whose `</a>` is missing
+/// runs to the next `<a`.
+///
+/// ```
+/// let links = crab_html::links(r#"<a href="/a?x=1&amp;y=2">A <b>b</b></a>"#);
+/// assert_eq!((links[0].href.as_str(), links[0].text.as_str()), ("/a?x=1&y=2", "A b"));
+/// ```
+pub fn links(html: &str) -> Vec<Link> {
+    let mut links = Vec::new();
+    let mut at = 0;
+    while let Some(found) = find_ignore_case(&html[at..], "<a") {
+        let start = at + found + "<a".len();
+        at = start;
+        if !html[start..].starts_with(|c: char| c.is_ascii_whitespace()) {
+            continue;
+        }
+        let open = start + tag_end(&html[start..]);
+        let Some(href) = attribute(&html[start..open], "href") else {
+            continue;
+        };
+        let inner = (open + 1).min(html.len());
+        let close = [
+            find_ignore_case(&html[inner..], "</a"),
+            find_ignore_case(&html[inner..], "<a"),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .map_or(html.len(), |end| inner + end);
+        let words = text(&html[inner..close]);
+        let words: Vec<&str> = words.split_whitespace().collect();
+        links.push(Link {
+            href: unescape(href),
+            text: words.join(" "),
+        });
+        at = close;
+    }
+    links
+}
+
+/// The contents of each `<script>` whose `type` is `kind`, ASCII case
+/// ignored, as written: `application/ld+json` for a page's JSON-LD.
+pub fn scripts<'a>(html: &'a str, kind: &str) -> Vec<&'a str> {
+    let mut scripts = Vec::new();
+    let mut at = 0;
+    while let Some(found) = find_ignore_case(&html[at..], "<script") {
+        let start = at + found + "<script".len();
+        let open = start + tag_end(&html[start..]);
+        let inner = (open + 1).min(html.len());
+        let close =
+            find_ignore_case(&html[inner..], "</script").map_or(html.len(), |end| inner + end);
+        at = close;
+        if attribute(&html[start..open], "type")
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case(kind))
+        {
+            scripts.push(&html[inner..close]);
+        }
+    }
+    scripts
+}
+
+/// What [`text`] makes of the first element named `name`, an ASCII lowercase
+/// tag name, of `class` when given, one of the words of its `class`;
+/// whitespace collapsed to single spaces. The element ends at the first
+/// closing tag of its name. `None` when there is none or it is blank.
+///
+/// ```
+/// let page = r#"<p>Not this</p><p class="tag line">Ada <i>L.</i></p>"#;
+/// assert_eq!(crab_html::element(page, "p", Some("tag")).as_deref(), Some("Ada L."));
+/// ```
+pub fn element(html: &str, name: &str, class: Option<&str>) -> Option<String> {
+    let open = alloc::format!("<{name}");
+    let close = alloc::format!("</{name}");
+    let mut at = 0;
+    while let Some(found) = find_ignore_case(&html[at..], &open) {
+        let start = at + found + open.len();
+        at = start;
+        if !html[start..].starts_with(|c: char| c.is_ascii_whitespace() || c == '>') {
+            continue;
+        }
+        let end = start + tag_end(&html[start..]);
+        let classed = class.is_none_or(|class| {
+            attribute(&html[start..end], "class")
+                .is_some_and(|classes| classes.split_ascii_whitespace().any(|word| word == class))
+        });
+        if !classed {
+            continue;
+        }
+        let inner = (end + 1).min(html.len());
+        let finish =
+            find_ignore_case(&html[inner..], &close).map_or(html.len(), |found| inner + found);
+        let words = text(&html[inner..finish]);
+        let words: Vec<&str> = words.split_whitespace().collect();
+        return (!words.is_empty()).then(|| words.join(" "));
     }
     None
 }

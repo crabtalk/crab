@@ -51,6 +51,8 @@ pub struct Config {
     /// syscall made once they are used is refused; the statement that crosses
     /// the budget runs to its end.
     pub rows: u64,
+    /// How long a chain of invocations runs before it is stopped.
+    pub deadline: Duration,
 }
 
 impl Default for Config {
@@ -61,6 +63,7 @@ impl Default for Config {
             memory: 128 << 20,
             fuel: 1_000_000_000,
             rows: 1_000_000,
+            deadline: crate::bound::watchdog::TIMEOUT,
         }
     }
 }
@@ -75,6 +78,8 @@ pub struct Engine {
     fuel: u64,
     /// [`Config::rows`].
     rows: u64,
+    /// [`Config::deadline`].
+    pub(crate) deadline: Duration,
 }
 
 impl Engine {
@@ -109,6 +114,7 @@ impl Engine {
             wasmtime: engine,
             fuel: config.fuel,
             rows: config.rows,
+            deadline: config.deadline,
         })
     }
 }

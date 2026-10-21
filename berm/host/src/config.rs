@@ -2,7 +2,7 @@
 
 use berm::syscall::call::DEFAULT_CALL_DEPTH;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 /// A missing field takes its default.
 #[derive(Debug, Clone, Deserialize)]
@@ -19,6 +19,9 @@ pub struct Config {
     /// The most rows one invocation may read and write together.
     #[serde(default = "rows")]
     pub rows: u64,
+    /// How long a chain of calls runs before it is stopped.
+    #[serde(default = "deadline")]
+    pub deadline: Duration,
     /// How deep a chain of services calling services may go.
     #[serde(default = "depth")]
     pub depth: u32,
@@ -41,6 +44,7 @@ impl Default for Config {
             memory: memory(),
             fuel: fuel(),
             rows: rows(),
+            deadline: deadline(),
             depth: depth(),
             cap: None,
             cache_dir: None,
@@ -55,6 +59,10 @@ fn instances() -> u32 {
 
 fn memory() -> usize {
     berm::Config::default().memory
+}
+
+fn deadline() -> Duration {
+    berm::Config::default().deadline
 }
 
 fn fuel() -> u64 {

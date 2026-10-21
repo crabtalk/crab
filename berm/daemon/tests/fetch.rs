@@ -14,6 +14,7 @@ fn request(host: &str, reach: Reach) -> Request {
         reach,
         headers: Vec::new(),
         body: Vec::new(),
+        timeout: None,
     }
 }
 

@@ -26,12 +26,7 @@ pub struct Version<T> {
 
 /// Store `values` as a version of record `id` in `feed` since `now`, when they
 /// differ from its latest. Answers the bytes written, 0 when they do not.
-pub(crate) fn record(
-    id: &str,
-    feed: &str,
-    now: u64,
-    values: &impl Serialize,
-) -> Result<usize, CallError> {
+pub fn record(id: &str, feed: &str, now: u64, values: &impl Serialize) -> Result<usize, CallError> {
     let data = json::to(values)?;
     let latest = berm_lang::rows::<(String,)>(
         "SELECT data FROM lake_records WHERE id = ? AND feed = ? ORDER BY seq DESC LIMIT 1",

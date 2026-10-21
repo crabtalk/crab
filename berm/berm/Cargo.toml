@@ -13,6 +13,7 @@ categories = ["wasm", "virtualization"]
 anyhow.workspace = true
 berm-api.workspace = true
 berm-codegen.workspace = true
+futures-util.workspace = true
 hex.workspace = true
 parking_lot.workspace = true
 ring.workspace = true

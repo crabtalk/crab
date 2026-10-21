@@ -92,8 +92,9 @@ pub const HTTP_FETCH: &str = "berm.http.fetch";
 
 /// Make one HTTP request. `(ptr, len) -> staged length`
 ///
-/// Request fields are the method, the URL and the body, then header names and
-/// values in turn. The reply is the status as decimal text and the body, then
+/// Request fields are the method, the URL, the body and the milliseconds to
+/// wait for an answer as decimal text, empty for the call's deadline alone,
+/// then header names and values in turn. The reply is the status as decimal text and the body, then
 /// header names and values in turn. A header value or the body may carry
 /// `{secret:NAME}`, which the host substitutes; the guest never holds the
 /// value.
@@ -105,6 +106,17 @@ pub const HTTP_PROXY: &str = "berm.http.proxy";
 /// Make one HTTP request through the host's proxy. The request and reply are
 /// [`HOST_HTTP_FETCH`]'s.
 pub const HOST_HTTP_PROXY: u64 = hash(HTTP_PROXY);
+
+/// What a host registers to serve [`HOST_HTTP_FETCH_ALL`].
+pub const HTTP_FETCH_ALL: &str = "berm.http.fetch_all";
+
+/// Make a batch of HTTP requests at once, each to a host the manifest
+/// declares under [`HTTP_FETCH`]. `(ptr, len) -> staged length`
+///
+/// Each request field is one [`HOST_HTTP_FETCH`] request, framed. Each reply
+/// field answers the request in its place, framed: `ok`, then
+/// [`HOST_HTTP_FETCH`]'s reply fields; or `refused` or `failed`, then why.
+pub const HOST_HTTP_FETCH_ALL: u64 = hash(HTTP_FETCH_ALL);
 
 /// What a host registers to serve [`HOST_EMIT`].
 pub const EMIT: &str = "berm.emit";

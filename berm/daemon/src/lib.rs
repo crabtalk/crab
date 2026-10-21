@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use berm::Program;
 use berm_host::{Config, Edges, Host, Layers, System};
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::broadcast};
 
 pub use env::Local;
@@ -40,12 +40,21 @@ pub struct Service {
 
 impl Service {
     /// Open `root`, restoring whatever was deployed before this process.
-    /// Chains of programs calling programs nest at most `depth` deep.
+    /// Chains of programs calling programs nest at most `depth` deep, and a
+    /// call executes at most `fuel` instructions and runs at most `deadline`.
     /// `berm.http.proxy` goes through `proxy`, or direct without one.
-    pub async fn new(root: PathBuf, depth: u32, proxy: Option<&str>) -> Result<Arc<Self>> {
+    pub async fn new(
+        root: PathBuf,
+        depth: u32,
+        fuel: u64,
+        deadline: Duration,
+        proxy: Option<&str>,
+    ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
         let config = Config {
             depth,
+            fuel,
+            deadline,
             cache_dir: Some(root.join("cache")),
             databases: root.join("databases"),
             ..Config::default()

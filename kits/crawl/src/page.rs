@@ -1,7 +1,12 @@
-//! One fetch of a page due.
+//! The fetches of pages due, a batch at a time.
 
-use crate::{Crawler, fetch, store::Due};
-use alloc::{format, string::String};
+use crate::{
+    Crawler,
+    fetch::{self, Get},
+    store::Due,
+};
+use alloc::{format, string::String, vec::Vec};
+use berm_lang::http::Response;
 use url::Url;
 
 /// The most of a page's text kept, in bytes.
@@ -20,28 +25,55 @@ pub enum Fetched {
         /// Up to 64 KiB of its text; `None` when it holds no text or names
         /// a `Content-Type` other than HTML.
         text: Option<String>,
+        /// The HTML read of it, when it answered `200` with HTML.
+        html: Option<String>,
     },
     /// Nothing was answered.
     Failed(String),
 }
 
-/// Fetch `due` as `C`, conditionally on the validators it last answered with.
-pub fn fetch<C: Crawler>(due: &Due) -> Fetched {
-    let url = match Url::parse(&due.url) {
-        Ok(url) => url,
-        Err(error) => return Fetched::Failed(format!("{}: {error}", due.url)),
-    };
-    let mut headers = alloc::vec![("Accept", "text/html")];
-    if let Some(etag) = &due.etag {
-        headers.push(("If-None-Match", etag));
+/// Fetch each of `dues` as `C`, at once, each conditionally on the validators
+/// it last answered with and read for its first `limit` bytes of HTML, and
+/// answer each in its place.
+pub fn fetch_all<C: Crawler>(dues: &[&Due], limit: usize) -> Vec<Fetched> {
+    let mut gets: Vec<Get<'_>> = Vec::new();
+    let mut parsed: Vec<Result<(), String>> = Vec::new();
+    for due in dues {
+        match Url::parse(&due.url) {
+            Ok(url) => {
+                let mut headers = alloc::vec![("Accept", "text/html")];
+                if let Some(etag) = &due.etag {
+                    headers.push(("If-None-Match", etag.as_str()));
+                }
+                if let Some(modified) = &due.modified {
+                    headers.push(("If-Modified-Since", modified.as_str()));
+                }
+                gets.push(Get {
+                    url,
+                    domain: &due.domain,
+                    headers,
+                });
+                parsed.push(Ok(()));
+            }
+            Err(error) => parsed.push(Err(format!("{}: {error}", due.url))),
+        }
     }
-    if let Some(modified) = &due.modified {
-        headers.push(("If-Modified-Since", modified));
-    }
-    let answer = match fetch::get(&url, &due.domain, C::AGENT, &headers) {
-        Ok(answer) => answer,
-        Err(error) => return Fetched::Failed(error),
-    };
+    let mut answers = fetch::get_all(&gets, C::AGENT, C::SCHEDULE.timeout).into_iter();
+    parsed
+        .into_iter()
+        .map(|parsed| match parsed {
+            Ok(()) => match answers.next() {
+                Some(Ok(answer)) => read(answer, limit),
+                Some(Err(error)) => Fetched::Failed(error),
+                None => Fetched::Failed(String::from("no answer")),
+            },
+            Err(error) => Fetched::Failed(error),
+        })
+        .collect()
+}
+
+/// What `answer` holds, its first `limit` bytes of HTML read.
+fn read(answer: Response, limit: usize) -> Fetched {
     let status = answer.status;
     if status == 304 {
         return Fetched::Unchanged;
@@ -58,9 +90,11 @@ pub fn fetch<C: Crawler>(due: &Due) -> Fetched {
             title: None,
             description: None,
             text: None,
+            html: None,
         };
     }
-    let page = String::from_utf8_lossy(&answer.body);
+    let read = answer.body.len().min(limit);
+    let page = String::from_utf8_lossy(&answer.body[..read]).into_owned();
     let mut text = html::text(&page);
     text.truncate(text.floor_char_boundary(TEXT));
     Fetched::Answered {
@@ -71,5 +105,6 @@ pub fn fetch<C: Crawler>(due: &Due) -> Fetched {
         description: html::meta(&page, "description")
             .or_else(|| html::meta(&page, "og:description")),
         text: (!text.is_empty()).then_some(text),
+        html: Some(page),
     }
 }

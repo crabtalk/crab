@@ -1,6 +1,7 @@
 //! `crab-crawl`'s tick in berm-site, against an arranged site: robots.txt
-//! rules and sitemaps read, pages of a kind fetched and recrawled when due, and
-//! a failed read logged and retried.
+//! rules and sitemaps read, pages of a kind fetched, handed to the crawler and
+//! recrawled when due, sites watched first read first, a silent site fetched
+//! no more in its tick, and a failed read logged and retried.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -28,8 +29,8 @@ const INDEX: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 </sitemapindex>"#;
 
 const PAGES: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://example.com/pricing</loc><lastmod>2026-10-01</lastmod></url>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url><loc>https://example.com/pricing</loc><image:image><image:loc>https://example.com/plans.png</image:loc></image:image><lastmod>2026-10-01</lastmod></url>
   <url><loc>https://example.com/compare/example-vs-other</loc></url>
   <url><loc>https://example.com/compare/secret</loc></url>
   <url><loc>https://example.com/blog/hello</loc></url>
@@ -127,6 +128,21 @@ async fn a_tick_keeps_the_pages_of_a_kind_robots_allows() -> Result<()> {
     assert_eq!(compare["title"], "Example vs Other");
     assert!(compare.get("text").is_none(), "{compare}");
 
+    // Each page that answered with HTML is handed to the crawler.
+    assert_eq!(
+        call(&host, "read", json!({"url": "https://example.com/pricing"})).await?,
+        json!({"kind": "pricing", "length": PRICING.len()})
+    );
+    assert_eq!(
+        call(
+            &host,
+            "read",
+            json!({"url": "https://example.com/compare/example-vs-other"})
+        )
+        .await?,
+        json!({"kind": "comparison", "length": COMPARE.len()})
+    );
+
     let site = host
         .sql(
             "site",
@@ -189,7 +205,7 @@ async fn pages_are_fetched_again_only_when_due() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_failed_read_is_logged_and_retried_up_to_the_cap() -> Result<()> {
+async fn a_failed_read_is_kept_and_retried_up_to_the_cap_then_a_week_on() -> Result<()> {
     let host = deployed().await?;
     host.arrange("GET", "https://example.com/robots.txt", 503, "unavailable");
     call(&host, "watch", json!({"domains": ["example.com"]})).await?;
@@ -204,8 +220,54 @@ async fn a_failed_read_is_logged_and_retried_up_to_the_cap() -> Result<()> {
         "https://example.com/robots.txt answered 503"
     );
 
-    // Two failures in a row is this crawler's cap: the site is read no more.
+    // Two failures in a row is this crawler's cap: the site keeps its last
+    // error, and is not read again until a week after its last failure.
     call(&host, "tick", json!({})).await?;
     assert_eq!(host.logs("site", Some("ReadFailed")).await?.len(), 2);
+    let site = host
+        .sql(
+            "site",
+            "SELECT failures, error, failed FROM crawl_sites WHERE domain = 'example.com'",
+            json!([]),
+        )
+        .await?;
+    assert_eq!(
+        site["rows"][0],
+        json!([2, "https://example.com/robots.txt answered 503", NOW])
+    );
+    host.advance(7 * DAY);
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(host.logs("site", Some("ReadFailed")).await?.len(), 3);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_site_watched_first_is_read_first() -> Result<()> {
+    let host = deployed().await?;
+    call(&host, "watch", json!({"domains": ["elsewhere.com"]})).await?;
+    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    assert_eq!(
+        fetched(&host).first().map(String::as_str),
+        Some("https://example.com/robots.txt")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_site_that_answers_a_page_with_nothing_is_fetched_no_more_that_tick() -> Result<()> {
+    let host = deployed().await?;
+    host.arrange("GET", "https://example.com/robots.txt", 200, ROBOTS);
+    host.arrange("GET", "https://example.com/sitemap-index.xml", 200, INDEX);
+    host.arrange("GET", "https://example.com/sitemap-pages.xml", 200, PAGES);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(&host, "tick", json!({})).await?;
+    // Neither page is arranged: the first answers nothing, the second is left.
+    let pages: Vec<String> = fetched(&host)
+        .into_iter()
+        .filter(|url| !url.ends_with(".xml") && !url.ends_with(".txt"))
+        .collect();
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert_eq!(host.logs("site", Some("FetchFailed")).await?.len(), 1);
     Ok(())
 }

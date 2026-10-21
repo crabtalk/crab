@@ -96,6 +96,8 @@ let page = berm_lang::http::fetch(
 - It reaches only the hosts the manifest declares under `berm.http.fetch`, by name or by `*.domain` or `*` ([manifest](manifest.md)).
 - `http::proxy` sends the same request through the host's proxy, to the hosts
   listed under `berm.http.proxy`.
+- `http::fetch_within` sends one request given up when nothing answered within its milliseconds, or at the call's deadline when that comes first; otherwise a request waits for the call's deadline.
+- `http::fetch_all` sends a batch of `http::Request`s at once, each to a host declared under `berm.http.fetch` and with its own timeout, and answers each in its place, a refusal or failure answering its own.
 - A header value or the body may carry `{secret:NAME}` for a secret the manifest lists in `secrets`. The host substitutes it, and the program never holds the value.
 - `CallError::Refused` means nothing was sent: a host or secret the manifest
   does not list, or a secret the host has not granted.

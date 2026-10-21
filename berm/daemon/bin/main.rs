@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use berm::syscall::call;
 use bermd::Service;
 use clap::Parser;
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use tokio::net::TcpListener;
 
 #[derive(Parser)]
@@ -29,6 +29,14 @@ struct Args {
     /// `http://user:pass@gate.example.com:3120`. Without one it goes direct.
     #[arg(long)]
     proxy: Option<String>,
+
+    /// The most wasm instructions one call may execute.
+    #[arg(long, default_value_t = berm::Config::default().fuel)]
+    max_instructions: u64,
+
+    /// How many seconds a call may run before it is stopped.
+    #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
+    max_call_seconds: u64,
 }
 
 #[tokio::main]
@@ -49,7 +57,14 @@ async fn main() -> Result<()> {
         None => PathBuf::from(std::env::var("HOME").context("HOME is not set")?).join(".berm"),
     };
 
-    let service = Service::new(root, args.max_call_depth, args.proxy.as_deref()).await?;
+    let service = Service::new(
+        root,
+        args.max_call_depth,
+        args.max_instructions,
+        Duration::from_secs(args.max_call_seconds),
+        args.proxy.as_deref(),
+    )
+    .await?;
     let listener = TcpListener::bind(args.addr)
         .await
         .with_context(|| format!("failed to bind {}", args.addr))?;

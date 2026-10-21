@@ -6,6 +6,7 @@ use crate::{
     api::outside::Layers,
     config::Config,
     env::{Clock, Edges, Env, Images, Peers},
+    host::fetch::Door,
     record::{
         calls, logs,
         meter::{self, Meters as Pending},
@@ -159,6 +160,7 @@ impl<E: Env> Host<E> {
             memory: config.memory,
             fuel: config.fuel,
             rows: config.rows,
+            deadline: config.deadline,
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
         let commits = Commits::new(store.clone(), databases.clone());
@@ -167,9 +169,12 @@ impl<E: Env> Host<E> {
         terms.load(&store).await?;
         let chains = (config.instances / (config.depth + 1)).max(1);
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
-            let mut syscalls = vec![fetch::syscall(host, fetch, false)];
+            let mut syscalls = vec![
+                fetch::syscall(host, fetch.clone(), Door::Fetch),
+                fetch::syscall(host, fetch, Door::FetchAll),
+            ];
             if let Some(proxy) = proxy {
-                syscalls.push(fetch::syscall(host, proxy, true));
+                syscalls.push(fetch::syscall(host, proxy, Door::Proxy));
             }
             syscalls.extend(state::syscalls(host));
             syscalls.push(logs::syscall(host));

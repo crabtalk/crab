@@ -7,7 +7,8 @@
 
 use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
 use anyhow::{Result, bail};
-use std::{future::Future, sync::Arc};
+use futures_util::future::join_all;
+use std::{future::Future, sync::Arc, time::Duration};
 
 /// What opens a secret's name in a header value.
 const SECRET: &str = "{secret:";
@@ -24,6 +25,9 @@ pub struct Request {
     pub reach: Reach,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// How long the asking program waits for an answer, within its call's
+    /// deadline; `None` for the deadline alone.
+    pub timeout: Option<Duration>,
 }
 
 impl Request {
@@ -78,6 +82,58 @@ where
     serve(abi::HTTP_PROXY, send, secret)
 }
 
+/// Serve `berm.http.fetch_all`: a batch of [`fetch`] requests, each to a
+/// host the manifest declares under `berm.http.fetch`, sent through `send` at
+/// once and answered in order, a refusal or failure answering its own place.
+pub fn fetch_all<S, Sent, R, Found>(send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
+    let (send, secret) = (Arc::new(send), Arc::new(secret));
+    Syscall {
+        name: abi::HTTP_FETCH_ALL.to_owned(),
+        call: Arc::new(move |at: Callsite, batch: Vec<u8>| {
+            let (send, secret) = (send.clone(), secret.clone());
+            Box::pin(async move {
+                let requests: Vec<Vec<u8>> = wire::fields(&batch)?
+                    .into_iter()
+                    .map(<[u8]>::to_vec)
+                    .collect();
+                let answers = join_all(
+                    requests
+                        .iter()
+                        .map(|request| answer(&at, abi::HTTP_FETCH, request, &*send, &*secret)),
+                )
+                .await;
+                let framed: Vec<Vec<u8>> = answers
+                    .iter()
+                    .map(|answered| match answered {
+                        Ok(response) => {
+                            let mut fields: Vec<&[u8]> = vec![b"ok"];
+                            let written = write(response);
+                            let inner = wire::fields(&written).unwrap_or_default();
+                            fields.extend(inner);
+                            wire::frame(&fields)
+                        }
+                        Err(error) => {
+                            let kind: &[u8] = match error.downcast_ref::<Refused>() {
+                                Some(_) => b"refused",
+                                None => b"failed",
+                            };
+                            wire::frame(&[kind, format!("{error:#}").as_bytes()])
+                        }
+                    })
+                    .collect();
+                let fields: Vec<&[u8]> = framed.iter().map(Vec::as_slice).collect();
+                Ok(wire::frame(&fields))
+            })
+        }),
+    }
+}
+
 fn serve<S, Sent, R, Found>(name: &'static str, send: S, secret: R) -> Syscall
 where
     S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
@@ -91,22 +147,39 @@ where
         call: Arc::new(move |at: Callsite, request: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let mut request = read(&at, name, &request)?;
-                for (_, value) in &mut request.headers {
-                    let found = substitute(&at, &*secret, &request.host, value.as_bytes()).await?;
-                    if let Some(found) = found {
-                        *value = String::from_utf8(found)?;
-                    }
-                }
-                if let Some(found) = substitute(&at, &*secret, &request.host, &request.body).await?
-                {
-                    request.body = found;
-                }
-                let response = send(at.clone(), request).await?;
+                let response = answer(&at, name, &request, &*send, &*secret).await?;
                 Ok(write(&response))
             })
         }),
     }
+}
+
+/// Send `request`, read off the wire and allowed under `syscall`, its secrets
+/// substituted, through `send`.
+async fn answer<S, Sent, R, Found>(
+    at: &Callsite,
+    syscall: &str,
+    request: &[u8],
+    send: &S,
+    secret: &R,
+) -> Result<Response>
+where
+    S: Fn(Callsite, Request) -> Sent,
+    Sent: Future<Output = Result<Response>>,
+    R: Fn(Callsite, String, String) -> Found,
+    Found: Future<Output = Result<Option<String>>>,
+{
+    let mut request = read(at, syscall, request)?;
+    for (_, value) in &mut request.headers {
+        let found = substitute(at, secret, &request.host, value.as_bytes()).await?;
+        if let Some(found) = found {
+            *value = String::from_utf8(found)?;
+        }
+    }
+    if let Some(found) = substitute(at, secret, &request.host, &request.body).await? {
+        request.body = found;
+    }
+    send(at.clone(), request).await
 }
 
 /// `text` with every `{secret:NAME}` replaced by what `secret` grants the
@@ -187,7 +260,13 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     let Some(body) = fields.get(2) else {
         bail!("request has no body");
     };
-    let trailing = &fields[3..];
+    let timeout = match wire::text(&fields, 3, "timeout")? {
+        "" => None,
+        millis => Some(Duration::from_millis(millis.parse().map_err(|_| {
+            anyhow::anyhow!("timeout {millis:?} is not a count of milliseconds")
+        })?)),
+    };
+    let trailing = &fields[4..];
     if trailing.len() % 2 != 0 {
         bail!("a header has a name and no value");
     }
@@ -210,6 +289,7 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
         url,
         headers,
         body: body.to_vec(),
+        timeout,
     })
 }
 

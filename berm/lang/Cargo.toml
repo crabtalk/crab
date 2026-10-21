@@ -21,6 +21,6 @@ serde_json = { workspace = true, features = ["alloc"] }
 
 # The allocator is installed as *the* global allocator, which only a guest
 # target may do — off one, this crate is a library inside someone's tests and
-# std already has one. It takes its heap from the host on first use.
+# std already has one. It grows the guest's memory on first use.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-linked_list_allocator.workspace = true
+dlmalloc.workspace = true

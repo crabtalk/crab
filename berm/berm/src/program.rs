@@ -19,7 +19,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// The last [`Callsite::chain`] handed out.
@@ -59,6 +59,8 @@ pub struct Program {
     invoked: Invoked,
     /// What its invocations hold while they run.
     pub running: Arc<Running>,
+    /// How long a chain it starts runs, [`crate::Config::deadline`].
+    deadline: Duration,
 }
 
 struct Tool {
@@ -146,6 +148,7 @@ impl Program {
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running: Arc::default(),
+            deadline: engine.deadline,
         })
     }
 
@@ -284,7 +287,7 @@ impl Program {
                 client,
                 1,
                 false,
-                watchdog::fresh(),
+                watchdog::fresh(self.deadline),
                 chain,
                 journal.clone(),
                 meters,
