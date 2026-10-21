@@ -1,6 +1,6 @@
 [package]
 name = "berm-site"
-description = "The reference crawler, sites read through crab-crawl, what crawl's ticks are tested against"
+description = "The reference crawler, sites read through crabkit-crawl, what crawl's ticks are tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

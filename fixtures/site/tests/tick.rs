@@ -1,4 +1,4 @@
-//! `crab-crawl`'s tick in berm-site, against an arranged site: robots.txt
+//! `crabkit-crawl`'s tick in berm-site, against an arranged site: robots.txt
 //! rules and sitemaps read, pages of a kind fetched, handed to the crawler and
 //! recrawled when due, sites watched first read and fetched first, a page of
 //! each site before a second of any, a silent site fetched no more in its

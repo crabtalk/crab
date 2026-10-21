@@ -2,7 +2,7 @@
 //! and how they read what GitHub and Google answer.
 
 use berm_lang::test;
-use crab_auth::Identity;
+use crabkit_auth::Identity;
 
 const GITHUB_TOKEN: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_USER: &str = "https://api.github.com/user";
@@ -35,7 +35,7 @@ fn github_exchanges_the_code_and_reads_the_user() {
         "code=c0de&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&client_id={secret:GITHUB_CLIENT_ID}&client_secret={secret:GITHUB_CLIENT_SECRET}"
     );
     assert_eq!(fetched[1].header("Authorization"), Some("Bearer gho_1"));
-    assert_eq!(fetched[1].header("User-Agent"), Some("crab-auth"));
+    assert_eq!(fetched[1].header("User-Agent"), Some("crabkit-auth"));
 }
 
 #[test]

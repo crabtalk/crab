@@ -8,17 +8,17 @@ Add the kit to your program's crate:
 
 ```toml
 [dependencies]
-crab-auth = "0.1"
+crabkit-auth = "0.1"
 ```
 
 Name it in `uses`, and call it from your own tools:
 
 ```rust,ignore
-#[berm_lang::program(uses = [crab_auth])]
+#[berm_lang::program(uses = [crabkit_auth])]
 mod tools {
     use alloc::string::String;
     use berm_lang::Result;
-    use crab_auth::{Account, Identity, Session};
+    use crabkit_auth::{Account, Identity, Session};
 
     /// Signs in with a GitHub authorization code.
     #[public]

@@ -1,6 +1,6 @@
 [package]
 name = "berm-account"
-description = "The reference sign-in service, GitHub and Google sign-in through crab-auth, what crab-auth is tested against"
+description = "The reference sign-in service, GitHub and Google sign-in through crabkit-auth, what crabkit-auth is tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

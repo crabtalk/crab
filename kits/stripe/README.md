@@ -8,17 +8,17 @@ Add the kit to your program's crate:
 
 ```toml
 [dependencies]
-crab-stripe = "0.1"
+crabkit-stripe = "0.1"
 ```
 
 Name it in `uses`, and call it from your own tools:
 
 ```rust,ignore
-#[berm_lang::program(uses = [crab_stripe])]
+#[berm_lang::program(uses = [crabkit_stripe])]
 mod tools {
     use alloc::string::String;
     use berm_lang::Result;
-    use crab_stripe::{Data, Session, Subscriber};
+    use crabkit_stripe::{Data, Session, Subscriber};
 
     /// Opens a Checkout session subscribing the calling user to `plan`.
     #[public]

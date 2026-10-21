@@ -11,6 +11,7 @@ authors = ["clearloop <tianyi.gc@gmail.com>"]
 
 [workspace.dependencies]
 crab = { package = "crab-agent", path = "crates/crab", version = "0.1.1" }
+crabkit = { path = "crates/crabkit", version = "0.1.1" }
 crabtalk-sdk = { path = "crates/sdk", version = "0.1.1" }
 
 # berm
@@ -29,12 +30,12 @@ html = { package = "crab-html", path = "crates/html", version = "0.1.1" }
 berm-kit = { path = "fixtures/kit" }
 
 # kits
-auth = { package = "crab-auth", path = "kits/auth", version = "0.1.1" }
-crawl = { package = "crab-crawl", path = "kits/crawl", version = "0.1.1" }
-lake = { package = "crab-lake", path = "kits/lake", version = "0.1.1" }
-neon = { package = "crab-neon", path = "kits/neon", version = "0.1.1" }
-stripe = { package = "crab-stripe", path = "kits/stripe", version = "0.1.1" }
-supabase = { package = "crab-supabase", path = "kits/supabase", version = "0.1.1" }
+auth = { package = "crabkit-auth", path = "kits/auth", version = "0.1.1" }
+crawl = { package = "crabkit-crawl", path = "kits/crawl", version = "0.1.1" }
+lake = { package = "crabkit-lake", path = "kits/lake", version = "0.1.1" }
+neon = { package = "crabkit-neon", path = "kits/neon", version = "0.1.1" }
+stripe = { package = "crabkit-stripe", path = "kits/stripe", version = "0.1.1" }
+supabase = { package = "crabkit-supabase", path = "kits/supabase", version = "0.1.1" }
 
 # crates-io
 anyhow = "1.0"

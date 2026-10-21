@@ -15,15 +15,15 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 
 ## Kits are libraries
 
-- `berm-lang` and the kits come from crab's git repository, at one tag or branch for all of them; the kits are not on crates.io. `crab new` writes `berm-lang` at the tag of the CLI's release, and a kit goes beside it:
+- `berm-lang` and `crabkit` come from crab's git repository, at one tag or branch for both; the kits are not on crates.io. `crab new` writes `berm-lang` at the tag of the CLI's release, and `crabkit` goes beside it with a feature per kit:
 
   ```toml
   [dependencies]
-  berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v0.1.0" }
-  crab-auth = { git = "https://github.com/crabtalk/crab", tag = "v0.1.0" }
+  berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v0.1.1" }
+  crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.1", features = ["auth"] }
   ```
 
-- A kit is linked with `#[berm_lang::program(uses = [crab_x])]` and called from the service's own tools. The kit's secrets, fetched hosts and migrations reach the service's manifest through `uses`; its tables live in the service's database.
+- A kit is linked with `#[berm_lang::program(uses = [crabkit::auth])]` and called from the service's own tools. The kit's secrets, fetched hosts and migrations reach the service's manifest through `uses`; its tables live in the service's database.
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
 - Each kit's `README.md` lists what the service still declares itself.
 
@@ -48,7 +48,8 @@ Read the source before writing code. Paths are relative to the crab repository.
   ```toml
   [patch."https://github.com/crabtalk/crab"]
   berm-lang = { path = "../crab/berm/lang" }
-  crab-auth = { path = "../crab/kits/auth" }
+  crabkit = { path = "../crab/crates/crabkit" }
+  crabkit-auth = { path = "../crab/kits/auth" }
   ```
 
 - What a service needs from berm or a kit and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.

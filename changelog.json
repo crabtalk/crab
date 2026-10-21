@@ -5,6 +5,7 @@
     "summary": "Kits replace guests: auth, crawl, lake, neon, stripe and supabase link into a service's own program. Calls are metered and bounded by CPU time, databases by the size berm.toml gives them, and crab installs and upgrades itself from GitHub releases.",
     "new": [
       "Link a kit into a service with #[berm_lang::program(uses = [...])]: its secrets, hosts and migrations join the service's manifest and its tables live in the service's database",
+      "Link kits through crabkit, a feature per kit: crabkit = { features = [\"stripe\"] } and uses = [crabkit::stripe]",
       "Use the auth kit for accounts and sessions, stripe for checkout and subscriptions, supabase for PostgREST and Storage, and neon for Postgres over HTTP",
       "Crawl the sites a service watches with the crawl kit: robots.txt and sitemaps, pages of the kinds it names, the URLs it lists and the links its crawler finds, recrawled when they change",
       "Follow feeds and records with the lake kit: RSS 2.0, RSS 1.0 and Atom, threads under items, and a version stored per change of a record",
@@ -27,7 +28,8 @@
       "Take Duration fields of berm_host::Config as \"50ms\" or \"60s\"",
       "Move auth and stripe's services into fixtures, the kits staying libraries",
       "Move berm_lang::html into the crab-html crate, which reads a page's title, meta, links and text",
-      "Drop the plan's storage rate, a plan's stored bytes the cap its services reserve against"
+      "Drop the plan's storage rate, a plan's stored bytes the cap its services reserve against",
+      "Name the kit crates crabkit-auth, crabkit-crawl, crabkit-lake, crabkit-neon, crabkit-stripe and crabkit-supabase. A kit's migrations are recorded under its crate's name, so a database that ran them as crab-* runs them again and must be recreated"
     ],
     "fixed": [
       "Read a fetch's host as the URL reaches it, so a URL spelled to look like another host, or an address written as a number, is held to the manifest and to bermd's public-address check",

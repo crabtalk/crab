@@ -1,5 +1,5 @@
 //! The reference sign-in service: GitHub and Google sign-in through
-//! `crab-auth`, each identity's account and its sessions as tools.
+//! `crabkit-auth`, each identity's account and its sessions as tools.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 

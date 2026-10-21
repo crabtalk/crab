@@ -1,5 +1,5 @@
 [package]
-name = "crab-supabase"
+name = "crabkit-supabase"
 version.workspace = true
 description = "Supabase over HTTPS: PostgREST tables and functions, and Storage objects."
 edition.workspace = true

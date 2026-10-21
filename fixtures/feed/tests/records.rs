@@ -1,4 +1,4 @@
-//! `crab-lake`'s records in berm-feed, against an arranged feed of records: a
+//! `crabkit-lake`'s records in berm-feed, against an arranged feed of records: a
 //! version stored for each record new to the feed or whose values changed,
 //! and the versions read back.
 

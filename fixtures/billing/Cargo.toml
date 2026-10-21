@@ -1,6 +1,6 @@
 [package]
 name = "berm-billing"
-description = "The reference subscriptions service, Stripe Checkout and plans through crab-stripe, what crab-stripe is tested against"
+description = "The reference subscriptions service, Stripe Checkout and plans through crabkit::stripe, what crabkit-stripe is tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -14,7 +14,7 @@ path = "bin/main.rs"
 
 [dependencies]
 berm-lang.workspace = true
-stripe.workspace = true
+crabkit = { workspace = true, features = ["stripe"] }
 
 [dev-dependencies]
 anyhow.workspace = true

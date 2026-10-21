@@ -6,26 +6,26 @@ The runtime of a source service: the feeds it follows, the items they show and t
 
 ```toml
 [dependencies]
-crab-lake = "0.1"
+crabkit-lake = "0.1"
 ```
 
 The kit declares `berm.get`, `berm.set` and its migrations, which give the program `berm.sql`. The hosts a source fetches from differ per source, so the program declares them under `berm.http.fetch`:
 
 ```rust,ignore
 #[berm_lang::program(
-    uses = [crab_lake],
+    uses = [crabkit_lake],
     syscalls = { "berm.http.fetch" = ["example.com"] },
 )]
 mod tools {
     use crate::{Post, source::Blog};
     use alloc::vec::Vec;
     use berm_lang::Result;
-    use crab_lake::store;
+    use crabkit_lake::store;
 
     /// Fetches the feeds due and stores each item new to one.
     #[cron]
     pub fn tick() -> Result<()> {
-        crab_lake::tick::<Blog>()
+        crabkit_lake::tick::<Blog>()
     }
 
     /// Lists the posts stored after `after`, oldest first.
@@ -51,7 +51,7 @@ Implement `Source` to fetch items and threads and shape what is stored, and set 
 
 ```rust,ignore
 use core::str;
-use crab_lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
+use crabkit_lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
 
 pub struct Blog;
 

@@ -1,5 +1,5 @@
 [package]
-name = "crab-auth"
+name = "crabkit-auth"
 version.workspace = true
 description = "Sign-in for a product's users: GitHub and Google logins as sessions kept in its own database."
 edition.workspace = true

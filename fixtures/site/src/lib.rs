@@ -1,4 +1,4 @@
-//! The reference crawler: the sites it watches, read through `crab-crawl`.
+//! The reference crawler: the sites it watches, read through `crabkit-crawl`.
 //!
 //! `watch` watches domains, `list` lists URLs on a site, `tick` reads the sites
 //! and fetches the pages due, and `urls` and `page` read back what was kept,

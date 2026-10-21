@@ -1,4 +1,4 @@
-//! `crab-lake`'s tick in berm-feed, against an arranged RSS feed: items stored
+//! `crabkit-lake`'s tick in berm-feed, against an arranged RSS feed: items stored
 //! once, undated or at the watermark included, a failed fetch logged and
 //! retried, and the items read back in order.
 
@@ -76,7 +76,7 @@ async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
         .await?;
     let manifest = program.manifest();
     assert_eq!(manifest.kits.len(), 1);
-    assert_eq!(manifest.kits[0].name, "crab-lake");
+    assert_eq!(manifest.kits[0].name, "crabkit-lake");
     for syscall in ["berm.get", "berm.set", "berm.sql"] {
         assert!(manifest.deps.syscalls.contains_key(syscall), "{syscall}");
     }

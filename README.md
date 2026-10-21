@@ -61,7 +61,7 @@ crab usage example
 
 ## Use ours
 
-[crab-kits](crates/kits/README.md) collects the kits crab provides. A service links a kit as a library with `#[berm_lang::program(uses = [crab_auth])]` and calls it from its own tools.
+[crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each. A service links a kit as a library with `#[berm_lang::program(uses = [crabkit::auth])]` and calls it from its own tools.
 
 - [auth](kits/auth/README.md): Sign-in for a product's users. GitHub and Google logins as sessions kept in its own database.
 - [lake](kits/lake/README.md): Feeds a source service follows. Items and threads fetched on its schedule into its database, and RSS and Atom reading.

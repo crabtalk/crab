@@ -1,15 +1,15 @@
 //! The reference subscriptions service: Stripe Checkout, the customer portal
-//! and each user's plan through `crab-stripe`, and its webhook.
+//! and each user's plan through `crabkit-stripe`, and its webhook.
 
 #![cfg_attr(target_arch = "wasm32", no_std, no_main)]
 
 extern crate alloc;
 
-#[berm_lang::program(uses = [stripe])]
+#[berm_lang::program(uses = [crabkit::stripe])]
 mod tools {
     use alloc::string::String;
     use berm_lang::Result;
-    use stripe::{Data, Session, Subscriber};
+    use crabkit::stripe::{Data, Session, Subscriber};
 
     /// Opens a Stripe Checkout session subscribing the calling user to a
     /// plan, and answers the URL to send them to.

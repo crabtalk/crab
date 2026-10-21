@@ -1,4 +1,4 @@
-//! The reference source service: one RSS feed, followed through `crab-lake`.
+//! The reference source service: one RSS feed, followed through `crabkit-lake`.
 //!
 //! `tick` fetches the feed and stores each item new to it, and `posts` reads
 //! the stored items back, oldest first. `list` follows a feed of records, each

@@ -1,0 +1,29 @@
+[package]
+name = "crabkit"
+description = "The kits crab provides, one feature each"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords = ["berm", "wasm", "kit", "crabtalk"]
+categories = ["wasm"]
+
+[features]
+auth = ["dep:auth"]
+crawl = ["dep:crawl"]
+lake = ["dep:lake"]
+neon = ["dep:neon"]
+stripe = ["dep:stripe"]
+supabase = ["dep:supabase"]
+
+[dependencies]
+auth = { workspace = true, optional = true }
+crawl = { workspace = true, optional = true }
+lake = { workspace = true, optional = true }
+neon = { workspace = true, optional = true }
+stripe = { workspace = true, optional = true }
+supabase = { workspace = true, optional = true }
+
+[package.metadata.docs.rs]
+all-features = true

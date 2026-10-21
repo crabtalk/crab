@@ -111,7 +111,7 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// the tool's parameters are the event's fields it reads. A program has at
 /// most one, and it is not `#[public]`.
 ///
-/// `uses = [crab_auth]` names crates that expanded [`kit!`]: the manifest
+/// `uses = [crabkit_auth]` names crates that expanded [`kit!`]: the manifest
 /// carries each kit's declarations and migrations as the kit's own.
 #[proc_macro_attribute]
 pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {

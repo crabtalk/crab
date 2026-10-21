@@ -250,7 +250,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "berm-lang",
- "crab-auth",
+ "crabkit-auth",
  "serde_json",
  "tokio",
 ]
@@ -287,7 +287,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "berm-lang",
- "crab-stripe",
+ "crabkit",
  "serde_json",
  "tokio",
 ]
@@ -310,7 +310,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "berm-lang",
- "crab-lake",
+ "crabkit-lake",
  "serde_json",
  "tokio",
 ]
@@ -426,8 +426,8 @@ dependencies = [
  "berm-api",
  "berm-host",
  "berm-lang",
- "crab-crawl",
  "crab-html",
+ "crabkit-crawl",
  "serde_json",
  "tokio",
  "url",
@@ -757,7 +757,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-auth"
+name = "crab-html"
+version = "0.1.1"
+
+[[package]]
+name = "crabkit"
+version = "0.1.1"
+dependencies = [
+ "crabkit-auth",
+ "crabkit-crawl",
+ "crabkit-lake",
+ "crabkit-neon",
+ "crabkit-stripe",
+ "crabkit-supabase",
+]
+
+[[package]]
+name = "crabkit-auth"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
@@ -766,7 +782,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-crawl"
+name = "crabkit-crawl"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
@@ -776,23 +792,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-html"
-version = "0.1.1"
-
-[[package]]
-name = "crab-kits"
-version = "0.1.1"
-dependencies = [
- "crab-auth",
- "crab-crawl",
- "crab-lake",
- "crab-neon",
- "crab-stripe",
- "crab-supabase",
-]
-
-[[package]]
-name = "crab-lake"
+name = "crabkit-lake"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
@@ -801,21 +801,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-neon"
+name = "crabkit-neon"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
-name = "crab-stripe"
+name = "crabkit-stripe"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
-name = "crab-supabase"
+name = "crabkit-supabase"
 version = "0.1.1"
 dependencies = [
  "berm-lang",

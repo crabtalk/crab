@@ -1,5 +1,5 @@
 [package]
-name = "crab-stripe"
+name = "crabkit-stripe"
 version.workspace = true
 description = "Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan."
 edition.workspace = true

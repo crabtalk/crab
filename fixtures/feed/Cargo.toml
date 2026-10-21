@@ -1,6 +1,6 @@
 [package]
 name = "berm-feed"
-description = "The reference source service, an RSS feed through crab-lake, what lake's ticks are tested against"
+description = "The reference source service, an RSS feed through crabkit-lake, what lake's ticks are tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

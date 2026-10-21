@@ -6,13 +6,13 @@ An incremental crawler for berm programs: the domains a program watches, each si
 
 ```toml
 [dependencies]
-crab-crawl = "0.1"
+crabkit-crawl = "0.1"
 ```
 
 The kit declares `"berm.http.fetch" = ["*"]` and its migrations, which give the program `berm.sql`. bermd refuses a host matched only by a pattern when it resolves to an address that is not public.
 
 ```rust,ignore
-#[berm_lang::program(uses = [crab_crawl])]
+#[berm_lang::program(uses = [crabkit_crawl])]
 mod tools {
     use crate::Pages;
     use berm_lang::Result;
@@ -20,7 +20,7 @@ mod tools {
     /// Reads the sites due and fetches the pages due.
     #[cron]
     pub fn crawl() -> Result<()> {
-        crab_crawl::tick::<Pages>()
+        crabkit_crawl::tick::<Pages>()
     }
 }
 ```
@@ -30,7 +30,7 @@ mod tools {
 Implement `Crawler` with a `Schedule`, its `User-Agent`, and the kind of each URL a sitemap lists that it fetches:
 
 ```rust,ignore
-use crab_crawl::{Crawler, Schedule};
+use crabkit_crawl::{Crawler, Schedule};
 use url::Url;
 
 pub struct Pages;
