@@ -12,7 +12,7 @@
 
 use crate::{Callsite, Program, database::lock::Graph, readers::Readers, syscall::sql::Statement};
 use anyhow::{Context, Result, anyhow, bail};
-use berm_api::Migration;
+use berm_api::Sequence;
 pub use lock::Held;
 pub use query::Answer;
 use rusqlite::{Connection, OptionalExtension};
@@ -358,19 +358,44 @@ impl Database {
 
     /// Apply the migrations not yet applied, in one transaction, answering
     /// their names, a kit's as `{kit}/{name}`. Each sequence is applied under
-    /// its kit, `""` the program's own. Refused, with nothing applied, when a
-    /// kit's applied migrations are not the first of its sequence, unchanged,
-    /// or when one fails.
-    pub async fn migrate(&self, sequences: Vec<(String, Vec<Migration>)>) -> Result<Vec<String>> {
+    /// its kit, `""` the program's own, its migrations kept under a former key
+    /// moved under its kit first. Refused, with nothing applied, when a kit's
+    /// applied migrations are kept under more than one of its keys, are not
+    /// the first of its sequence, unchanged, or when one fails.
+    pub async fn migrate(&self, sequences: Vec<Sequence>) -> Result<Vec<String>> {
         let _held = self.writing.clone().lock_owned().await;
         on(&self.jobs, move |conn| {
             let tx = conn.transaction()?;
             let mut ran = Vec::new();
-            for (kit, migrations) in &sequences {
+            for Sequence {
+                kit,
+                formerly,
+                migrations,
+            } in &sequences
+            {
                 let named = |name: &str| match kit.as_str() {
                     "" => name.to_owned(),
                     kit => format!("{kit}/{name}"),
                 };
+                let kept = |key: &str| -> Result<bool> {
+                    Ok(tx.query_row(
+                        "SELECT EXISTS (SELECT 1 FROM _berm_migrations WHERE kit = ?1)",
+                        [key],
+                        |row| row.get(0),
+                    )?)
+                };
+                for former in formerly {
+                    if !kept(former)? {
+                        continue;
+                    }
+                    if kept(kit)? {
+                        bail!("kit {kit}'s applied migrations are kept under {kit} and {former}");
+                    }
+                    tx.execute(
+                        "UPDATE _berm_migrations SET kit = ?1 WHERE kit = ?2",
+                        (kit, former),
+                    )?;
+                }
                 let applied: Vec<(String, String)> = tx
                     .prepare(
                         "SELECT name, sql FROM _berm_migrations WHERE kit = ?1 ORDER BY rowid",

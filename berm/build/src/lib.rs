@@ -149,6 +149,7 @@ fn kits(artifacts: &[Artifact], program: &Path, guest: &Path) -> Result<Vec<Kit>
                 database: migrations(artifact.dir(), &project)?,
                 deps: project.deps(),
                 id: project.id.clone(),
+                formerly: project.formerly.clone(),
                 name,
                 version,
             })

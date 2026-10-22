@@ -93,11 +93,11 @@ programs = ["weather"]
 migrations = "migrations"
 ```
 
-A kit's `berm.toml` declares only `id`, `secrets`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. `id` is 32 lowercase hex digits, written once; a kit with `[database] migrations` declares one, and a program declares none. A kit carries no tools: an image holding a tool compiled in a kit is refused.
+A kit's `berm.toml` declares only `id`, `formerly`, `secrets`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. `id` is 32 lowercase hex digits, written once; a kit with `[database] migrations` declares one, and a program declares none. `formerly` lists the keys its applied migrations were kept under before `id`, and needs an `id`. A kit carries no tools: an image holding a tool compiled in a kit is refused.
 
-The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `berm.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "id", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A program that keeps no database of its own keeps one for a kit that does.
+The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `berm.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "id", "formerly", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A program that keeps no database of its own keeps one for a kit that does.
 
-A kit's migrations run in the program's database before the program's own, each kit's in name order. The host keeps the migrations it applied under the kit's `id` and the program's own under none: a kit's migration and the program's may share a name, and a kit whose package is renamed keeps its history. A kit no longer linked leaves its tables and its applied migrations in place.
+A kit's migrations run in the program's database before the program's own, each kit's in name order. The host keeps the migrations it applied under the kit's `id` and the program's own under none: a kit's migration and the program's may share a name, and a kit whose package is renamed keeps its history. Before comparing, the host moves a kit's applied migrations kept under one of its `formerly` keys under its `id`, and refuses a database keeping them under two of its keys. A kit no longer linked leaves its tables and its applied migrations in place.
 
 ## Checks at load
 

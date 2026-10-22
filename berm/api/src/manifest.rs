@@ -87,6 +87,9 @@ pub struct Kit {
     /// under. Present on a kit with a `database`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// What its applied migrations were kept under before `id`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub formerly: Vec<String>,
     /// The package's version when the program was built.
     #[serde(default)]
     pub version: String,
@@ -100,6 +103,17 @@ pub struct Kit {
 /// A program's own SQLite database: the migrations that build it, in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Database {
+    pub migrations: Vec<Migration>,
+}
+
+/// One sequence of migrations a database is built by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sequence {
+    /// What its applied migrations are kept under: a kit's id, or `""` for
+    /// the program's own.
+    pub kit: String,
+    /// What its applied migrations were kept under before `kit`.
+    pub formerly: Vec<String>,
     pub migrations: Vec<Migration>,
 }
 
@@ -224,15 +238,20 @@ impl Manifest {
     /// Each sequence of migrations its database is built by, under the name
     /// its applied migrations are kept by: each kit's under the kit's, in
     /// name order, then its own under `""`.
-    pub fn migrations(&self) -> Vec<(String, Vec<Migration>)> {
+    pub fn migrations(&self) -> Vec<Sequence> {
         let kits = self.kits.iter().filter_map(|kit| {
             let database = kit.database.as_ref()?;
-            Some((kit.id.clone()?, database.migrations.clone()))
+            Some(Sequence {
+                kit: kit.id.clone()?,
+                formerly: kit.formerly.clone(),
+                migrations: database.migrations.clone(),
+            })
         });
-        let own = self
-            .database
-            .iter()
-            .map(|database| (String::new(), database.migrations.clone()));
+        let own = self.database.iter().map(|database| Sequence {
+            kit: String::new(),
+            formerly: Vec::new(),
+            migrations: database.migrations.clone(),
+        });
         kits.chain(own).collect()
     }
 
@@ -324,8 +343,9 @@ impl Manifest {
         manifest.checked()
     }
 
-    /// Refuse a manifest of another ABI, with no tools, naming a kit or a kit's
-    /// id twice, or with a kit keeping tables and declaring no id.
+    /// Refuse a manifest of another ABI, with no tools, naming a kit twice,
+    /// with a kit keeping tables or naming former keys and declaring no id, or
+    /// with an id or former key empty or named twice.
     fn checked(self) -> Result<Self> {
         versioned(self.abi_version)?;
         if self.tools.is_empty() {
@@ -338,12 +358,28 @@ impl Manifest {
             if kit.database.is_some() && kit.id.is_none() {
                 bail!("kit {} keeps tables and declares no id", kit.name);
             }
-            if let Some(id) = &kit.id
-                && self.kits[..at]
-                    .iter()
-                    .any(|seen| seen.id.as_ref() == Some(id))
+            if kit.formerly.iter().any(|key| key.is_empty()) {
+                bail!("kit {} names an empty former key", kit.name);
+            }
+            if !kit.formerly.is_empty() && kit.id.is_none() {
+                bail!("kit {} names former keys and declares no id", kit.name);
+            }
+            let keys = |kit: &Kit| -> Vec<String> {
+                kit.id.iter().chain(&kit.formerly).cloned().collect()
+            };
+            let mine = keys(kit);
+            if let Some(key) = mine
+                .iter()
+                .enumerate()
+                .find_map(|(at, key)| mine[..at].contains(key).then_some(key))
             {
-                bail!("kits {} and another declare the id {id}", kit.name);
+                bail!("kit {} names the key {key} twice", kit.name);
+            }
+            if let Some(key) = mine
+                .iter()
+                .find(|key| self.kits[..at].iter().any(|seen| keys(seen).contains(key)))
+            {
+                bail!("kits {} and another keep migrations under {key}", kit.name);
             }
         }
         Ok(self)

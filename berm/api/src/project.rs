@@ -11,7 +11,8 @@ use std::{
 };
 
 /// `berm.toml`. A program's names its service; a kit's declares only `id`,
-/// `secrets`, `programs`, `[syscalls]` and `[database] migrations`.
+/// `formerly`, `secrets`, `programs`, `[syscalls]` and `[database]
+/// migrations`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
@@ -19,6 +20,10 @@ pub struct Project {
     /// kept under. A kit keeping tables declares one; a program declares none.
     #[serde(default)]
     pub id: Option<String>,
+    /// What the kit's applied migrations were kept under before `id`: the
+    /// package names it had.
+    #[serde(default)]
+    pub formerly: Vec<String>,
     /// The service the program deploys as.
     #[serde(default)]
     pub name: Option<String>,
@@ -86,8 +91,8 @@ impl Project {
     /// The service a program deploys as, refused when it names none or
     /// declares a kit's `id`.
     pub fn name(&self) -> Result<&str> {
-        if self.id.is_some() {
-            bail!("only a kit's {} declares an id", Self::FILE);
+        if self.id.is_some() || !self.formerly.is_empty() {
+            bail!("only a kit's {} declares an id or formerly", Self::FILE);
         }
         self.name.as_deref().with_context(|| {
             format!(
@@ -135,7 +140,7 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit's {} declares only id, secrets, programs, [syscalls] and [database] migrations, not {}",
+                "a kit's {} declares only id, formerly, secrets, programs, [syscalls] and [database] migrations, not {}",
                 Self::FILE,
                 declared.join(", ")
             );
@@ -143,6 +148,9 @@ impl Project {
         match &self.id {
             None if self.database.migrations.is_some() => {
                 bail!("a kit keeping tables declares its id in {}", Self::FILE)
+            }
+            None if !self.formerly.is_empty() => {
+                bail!("a kit declaring formerly declares its id in {}", Self::FILE)
             }
             Some(id)
                 if id.len() != 32

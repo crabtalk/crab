@@ -37,6 +37,7 @@ fn kit(name: &str) -> Kit {
     Kit {
         name: name.to_owned(),
         id: None,
+        formerly: Vec::new(),
         version: "0.1.0".to_owned(),
         deps: Deps {
             secrets: vec![format!("{name}-secret")],
