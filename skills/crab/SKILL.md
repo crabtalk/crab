@@ -27,12 +27,13 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
 - Each kit's `README.md` lists what the service still declares itself.
 
-## Signing in and paying
+## Signing in, paying and secrets
 
 The person you act for is not at your machine: never open a browser or wait on a prompt for something only they can do.
 
 - Sign in with `crab login --email <address>`: it emails a code and exits. Ask the person for the code from that email, then run `crab login --email <address> --code <code>`. A new address gets an account. Plain `crab login` opens a browser on your machine, which they cannot reach.
-- To buy a plan, start the trial or buy credit, run `crab billing plan <slug>`, `crab billing trial` or `crab billing credit` with `--context` saying what it is for; the person reads it before paying. Send them the link it prints, with what it buys and its price, then run `crab billing request <code> --wait`. The code lasts 30 minutes; if it expires or they decline, ask before making another.
+- To buy a plan, start the trial or buy credit, run `crab billing plan <slug>`, `crab billing trial` or `crab billing credit` with `--context` saying what it is for; the person reads it before paying. Send them the link it prints, with what it buys and its price, then run `crab request <code> --wait`. The code lasts 30 minutes; if it expires or they decline, ask before making another.
+- Never ask the person to paste a secret's value into the chat. Ask for every secret a service needs in one request: `crab secret request <service> <SECRET>...` with `--context` saying what they are for and `--guide SECRET="..."` for each, saying where to get it: the provider, the steps in its dashboard, and the URL of the page. Send them the link it prints, then run `crab request <code> --wait`. They set them on that page together, signed in; you see that they were set, never their values.
 
 ## Where the truth is
 

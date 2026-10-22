@@ -6,7 +6,7 @@ use berm_api::{
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts, utils};
 use crabtalk_sdk::{
-    account::billing::{PortalFlow, Purchase},
+    account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
 };
 use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
@@ -63,6 +63,17 @@ enum Command {
     },
     /// Forget the session of the context in use, or of `--context`.
     Logout,
+    /// Where a request asked of a person stands: a payment or a secret.
+    Request {
+        /// Its code, as `WDJB-MJHT`.
+        code: String,
+        /// Return once it is no longer pending.
+        #[arg(long)]
+        wait: bool,
+        /// Seconds `--wait` waits at most.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
     /// Scaffold a program crate.
@@ -241,6 +252,21 @@ enum SecretCommand {
     Ls { name: String },
     /// Revoke a secret of a program.
     Rm { name: String, secret: String },
+    /// Ask a person to set secrets of a program: a code whose page they set
+    /// them at together, signed in, so no value passes through here.
+    Request {
+        name: String,
+        /// The secrets to set, 1 to 20.
+        #[arg(required = true)]
+        secrets: Vec<String>,
+        /// How to get a secret, shown beside its field: `SECRET=TEXT`, once
+        /// per secret. URLs in it are links.
+        #[arg(long = "guide", value_parser = cmd::secret::guide)]
+        guides: Vec<(String, String)>,
+        /// What they are for, shown to the person who sets them.
+        #[arg(long, default_value = "")]
+        context: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -265,17 +291,7 @@ enum BillingCommand {
         #[arg(long, default_value = "")]
         context: String,
     },
-    /// Where a payment request stands.
-    Request {
-        /// Its code, as `WDJB-MJHT`.
-        code: String,
-        /// Return once it is no longer pending.
-        #[arg(long)]
-        wait: bool,
-        /// Seconds `--wait` waits at most.
-        #[arg(long, default_value_t = 600)]
-        timeout: u64,
-    },
+
     /// Refill credit when it runs low; a cap of 0 turns it off.
     Refill {
         /// USD one refill buys, 20 or more.
@@ -459,6 +475,11 @@ fn main() -> Result<ExitCode> {
             host, github, name, ..
         } => cmd::login::run(name, host, *github)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
+        Command::Request {
+            code,
+            wait,
+            timeout,
+        } => cmd::request::run(&client()?, code, *wait, *timeout, json)?,
         Command::Status => cmd::status::run(&client()?, args.context.as_deref(), json)?,
         Command::Context(ContextCommand::Add {
             name,
@@ -530,6 +551,12 @@ fn main() -> Result<ExitCode> {
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?
         }
+        Command::Secret(SecretCommand::Request {
+            name,
+            secrets,
+            guides,
+            context,
+        }) => cmd::secret::ask(&client()?, name, secrets, guides, context, json)?,
         Command::Budget {
             name,
             tool,
@@ -553,19 +580,15 @@ fn main() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 BillingCommand::Plan { slug, context } => {
-                    cmd::billing::request(&client, Purchase::Plan, Some(slug), context, json)?
+                    cmd::billing::ask(&client, Purchase::Plan, Some(slug), context, json)?
                 }
                 BillingCommand::Trial { context } => {
-                    cmd::billing::request(&client, Purchase::Trial, None, context, json)?
+                    cmd::billing::ask(&client, Purchase::Trial, None, context, json)?
                 }
                 BillingCommand::Credit { context } => {
-                    cmd::billing::request(&client, Purchase::Credit, None, context, json)?
+                    cmd::billing::ask(&client, Purchase::Credit, None, context, json)?
                 }
-                BillingCommand::Request {
-                    code,
-                    wait,
-                    timeout,
-                } => cmd::billing::status_of(&client, code, *wait, *timeout, json)?,
+
                 BillingCommand::Refill { amount, cap } => {
                     cmd::billing::refill(&client, *amount, *cap)?
                 }

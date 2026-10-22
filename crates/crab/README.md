@@ -53,7 +53,7 @@ crab context ls
 crab context use default
 ```
 
-On Cloud, a program's secrets are its own: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one, and `deploy` names each secret the manifest declares that is not set. A bermd reads its secrets from `secrets.toml` under its root.
+On Cloud, a program's secrets are its own: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one, and `crab secret request NAME SECRET...` asks a person to set them: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters every value at once, so none passes through the terminal. `--guide SECRET=TEXT` tells them how to get each one, beside its field. `deploy` names each secret the manifest declares that is not set. A bermd reads its secrets from `secrets.toml` under its root.
 
 A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against bermd it sends the image itself. Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
 
@@ -65,7 +65,7 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login --email` signs in without a browser, with a code emailed to the address, and creates the account when the address has none. It sends the code and exits; `--code` finishes in a second run.
 
-`crab billing plan`, `trial` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--context`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab billing request <code> --wait` returns once it is paid, declined or expired, and fails unless it was paid.
+`crab billing plan`, `trial` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--context`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done.
 
 ```sh
 crab login                     # --github for GitHub
@@ -75,7 +75,7 @@ crab status
 crab usage                     # the account's services and its plan this period
 crab billing                   # plan, credit, refill, card
 crab billing plan pro --context "Pro, to run the crawler past the free plan"
-crab billing request WDJB-MJHT --wait
+crab request WDJB-MJHT --wait
 crab billing portal            # opens Stripe's portal in the browser
 crab key create ci --days 90
 crab app ls
