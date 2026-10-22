@@ -1,24 +1,32 @@
 //! Running the SDK's async calls from `crab`'s synchronous commands, and what
 //! every command shares about talking to the person at the terminal.
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::{
+    env,
     future::Future,
     io::{BufRead, IsTerminal, Write},
+    path::PathBuf,
     process::Command,
     sync::LazyLock,
 };
 use tokio::runtime::{Builder, Runtime};
 
-/// One runtime for the process. `crab` stays synchronous because `berm-oci`
-/// uses blocking `reqwest`, which panics inside a runtime.
+/// One runtime for the process, on every core for the local host's calls.
+/// `crab` stays synchronous because `berm-oci` uses blocking `reqwest`, which
+/// panics inside a runtime.
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    Builder::new_current_thread()
+    Builder::new_multi_thread()
         .enable_all()
         .build()
-        .expect("a current-thread runtime builds")
+        .expect("a runtime builds")
 });
+
+/// `$HOME`.
+pub fn home() -> Result<PathBuf> {
+    Ok(PathBuf::from(env::var("HOME").context("HOME is not set")?))
+}
 
 /// Run `future` to completion.
 pub fn wait<F: Future>(future: F) -> F::Output {

@@ -22,7 +22,7 @@ pub const CLOUD: &str = "https://api.crabtalk.ai";
 /// session as context `name` from now on.
 pub fn run(name: &str, host: &str, github: bool) -> Result<()> {
     if name == context::DEFAULT {
-        bail!("{:?} is this machine's bermd", context::DEFAULT);
+        bail!("{:?} is this machine's local host", context::DEFAULT);
     }
     let host = host.trim_end_matches('/');
     let listener = TcpListener::bind("127.0.0.1:0").context("listening for the sign-in")?;
@@ -50,7 +50,7 @@ pub fn run(name: &str, host: &str, github: bool) -> Result<()> {
 /// exits; a second run gives it back with `--code`.
 pub fn email(name: &str, host: &str, email: &str, code: Option<&str>) -> Result<()> {
     if name == context::DEFAULT {
-        bail!("{:?} is this machine's bermd", context::DEFAULT);
+        bail!("{:?} is this machine's local host", context::DEFAULT);
     }
     let host = host.trim_end_matches('/');
     let client = Client::new(host);

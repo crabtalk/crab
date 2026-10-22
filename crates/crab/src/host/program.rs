@@ -1,6 +1,6 @@
 //! Deploying, removing, and invoking.
 
-use crate::Service;
+use crate::host::Service;
 use axum::http::StatusCode;
 use berm::Program;
 use berm_api::{Break, Output, host::Deploy};

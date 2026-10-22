@@ -1,15 +1,15 @@
 ---
 title: Running the Service
-description: "bermd deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."
+description: "crab serve deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."
 ---
 
-`bermd` is a long-running service that deploys programs and serves their tools.
+`crab serve` runs the local host, a long-running service that deploys programs and serves their tools.
 An invocation is ephemeral, but three things around it are not: the deployed
 set, the modules compiled from it, and the engine's code cache. A program is
 compiled once, at deploy, so an invocation pays only instantiation.
 
 ```sh
-bermd --addr 127.0.0.1:7777 --root ~/.berm
+crab serve --addr 127.0.0.1:7777 --root ~/.berm
 ```
 
 | Flag | |
@@ -23,26 +23,15 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 
 The service carries no authorization and binds loopback by default.
 
-## Dashboard
-
-Built from this repository with the `dashboard` feature, bermd serves a development dashboard at `/`: the deployed programs, a form to call each tool, its calls, logs, crons, wakes, usage and meters, and a deploy.
-
-```sh
-(cd dashboard && bun install && bun run build)
-cargo run -p bermd --features dashboard
-```
-
-The feature is off by default.
-
 ## Docker
 
-`docker-compose.yml` at the repository root builds the image from the checkout and runs bermd with the dashboard on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
+`docker-compose.yml` at the repository root builds the image from the checkout and runs `crab serve` on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
 
 ```sh
 docker compose up --build
 ```
 
-Inside the container bermd listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes bermd its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
+Inside the container the host listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes `crab serve` its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
 
 ## Deploying
 
@@ -98,7 +87,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
   with it answers `304`. Any other tool answers `GET` with `405`.
 - `X-Berm-Caller` is the caller, as JSON:
   `{"id", "app", "user": {"issuer", "subject"}, "client", "agent"}`, every field
-  but `id` optional. bermd checks none of it. A call without one, or an app's
+  but `id` optional. The local host checks none of it. A call without one, or an app's
   call without a `user`, has no caller and reaches only `anonymous` tools.
 - The answer carries `Berm-Meter`, what the call used across every program it
   reached: `{"calls", "cpu", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
@@ -129,7 +118,7 @@ An invocation stops at its tool's CPU budget, checked every 100ms, and a row sys
 ## Secrets
 
 A request header or body may name `{secret:NAME}` for a secret the manifest declares.
-bermd substitutes what `{root}/secrets.toml` grants that program for that host,
+The local host substitutes what `{root}/secrets.toml` grants that program for that host,
 read again whenever the file changes:
 
 ```toml
@@ -140,7 +129,7 @@ hosts = ["api.example.com"]
 
 ## What a deployed program can reach
 
-Everything in [the guest API](./guest-api.md): its keys, a database, logs, the clock, wakes, HTTP to the hosts its manifest declares, randomness, itself, and the programs deployed beside it that its manifest declares in `programs`. bermd registers no files and no commands. `Manifest::from_image` reads what an image claims without compiling or running it.
+Everything in [the guest API](./guest-api.md): its keys, a database, logs, the clock, wakes, HTTP to the hosts its manifest declares, randomness, itself, and the programs deployed beside it that its manifest declares in `programs`. The local host registers no files and no commands. `Manifest::from_image` reads what an image claims without compiling or running it.
 
 ## MCP
 

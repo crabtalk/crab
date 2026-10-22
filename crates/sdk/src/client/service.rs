@@ -1,5 +1,5 @@
 //! A host's programs: `/services/{owner}/{name}` on Cloud, `/programs/{name}`
-//! on a bermd.
+//! on a local host.
 
 use crate::{
     client::{Client, Error},
@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use tokio::fs::File;
 
 impl Client {
-    /// Every service the owner runs on Cloud, or every program on a bermd.
+    /// Every service the owner runs on Cloud, or every program on a local host.
     pub async fn list(&self) -> Result<Vec<Program>, Error> {
         let path = match &self.owner {
             Some(owner) => owner.services(),
@@ -37,7 +37,7 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Deploy `image` as `name` on a bermd, confirming the tools it may make
+    /// Deploy `image` as `name` on a local host, confirming the tools it may make
     /// public, setting each cron tool's expression when `crons` is given, and
     /// holding its database to `size` bytes.
     pub async fn deploy_image(
@@ -90,7 +90,7 @@ impl Client {
         self.ok(request).await.map(drop)
     }
 
-    /// Call `tool` of `program`, as `caller` on a bermd, which takes it
+    /// Call `tool` of `program`, as `caller` on a local host, which takes it
     /// unverified.
     pub async fn call(
         &self,
@@ -206,7 +206,7 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// `name`'s secrets, by name. Cloud only: a bermd reads its secrets from
+    /// `name`'s secrets, by name. Cloud only: a local host reads its secrets from
     /// its own file.
     pub async fn secrets(&self, name: &str) -> Result<Vec<Secret>, Error> {
         let path = self.secrets_path(name)?;
@@ -249,7 +249,7 @@ impl Client {
         match &self.owner {
             Some(_) => Ok(format!("{}/secrets", self.program(name))),
             None => Err(Error::Host(
-                "bermd reads secrets from secrets.toml under its root",
+                "the local host reads secrets from secrets.toml under its root",
             )),
         }
     }
@@ -276,7 +276,7 @@ impl Client {
         };
         if self.owner.is_some() {
             return Err(Error::Host(
-                "Cloud calls as the token; a caller is for bermd",
+                "Cloud calls as the token; a caller is for the local host",
             ));
         }
         let caller = serde_json::to_string(caller).map_err(|e| Error::Decode(e.to_string()))?;

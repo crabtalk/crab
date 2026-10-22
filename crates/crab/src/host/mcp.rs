@@ -1,6 +1,6 @@
 //! One MCP endpoint over every deployed program.
 
-use crate::Service;
+use crate::host::Service;
 use berm_api::Output;
 use rmcp::{
     ErrorData as McpError, ServerHandler,

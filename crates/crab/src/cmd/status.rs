@@ -13,7 +13,7 @@ struct Status {
     context: String,
     host: String,
     serving: bool,
-    /// The account a Cloud context acts for; absent on a bermd.
+    /// The account a Cloud context acts for; absent on the local host.
     #[serde(skip_serializing_if = "Option::is_none")]
     account: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -61,7 +61,7 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
                 format::day(i64::from(period.until) - 1)
             );
         }
-        _ => println!("a bermd: no account"),
+        _ => println!("the local host: no account"),
     }
     Ok(())
 }

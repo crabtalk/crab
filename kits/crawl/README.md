@@ -11,7 +11,7 @@ crabkit = { version = "0.1", features = ["crawl"] }
 
 The kit is also the crate `crabkit-crawl` on its own.
 
-The kit's `berm.toml` declares `"berm.http.fetch" = ["*"]` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. bermd refuses a host matched only by a pattern when it resolves to an address that is not public.
+The kit's `berm.toml` declares `"berm.http.fetch" = ["*"]` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. The local host refuses a host matched only by a pattern when it resolves to an address that is not public.
 
 ```rust,ignore
 use berm_lang::{Result, tool};

@@ -12,6 +12,7 @@ use std::{
 pub struct Metadata {
     pub packages: Vec<Package>,
     pub target_directory: PathBuf,
+    pub workspace_root: PathBuf,
 }
 
 #[derive(Deserialize)]

@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
 [![Docs](https://img.shields.io/badge/docs-berm.run-blue)](https://berm.run/docs/)
 
-The agent for the CrabTalk platform: write a service, deploy it, call it, and watch what it uses, on CrabTalk Cloud or a local bermd.
+The agent for the CrabTalk platform: write a service, deploy it, call it, and watch what it uses, on CrabTalk Cloud or the local host.
 
 ## Install
 
@@ -17,7 +17,7 @@ cargo install crab-agent
 ```sh
 crab login                 # CrabTalk Cloud, in the browser
 crab login --email you@example.com   # or with a code emailed to the address
-crab context use default   # or the bermd on http://127.0.0.1:7777
+crab context use default   # or the local host on http://127.0.0.1:7777
 ```
 
 A context names the host `crab` talks to, the way `docker context` picks a daemon. See [crab](crates/crab/README.md) for contexts, keys, orgs and billing.
@@ -72,10 +72,10 @@ crab usage example
 
 Each service runs on berm. A service is one WebAssembly module: berm pins it by hash, compiles it once, and instantiates it per invocation. It reaches the world only through the syscalls it was given, and that table can be read before it runs and is fixed once it does. Its tools are served over HTTP, and over MCP to agents such as Claude Code, Codex and OpenCode.
 
-`bermd` runs berm as a service of your own:
+`crab serve` runs berm as a service of your own:
 
 ```sh
-bermd &
+crab serve &
 curl -X PUT --data-binary @example.wasm 'http://127.0.0.1:7777/programs/example?public=echo'
 ```
 

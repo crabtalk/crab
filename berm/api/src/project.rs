@@ -69,7 +69,7 @@ pub struct Database {
     /// [`host::DATABASE_SIZE`] when absent.
     pub size: Option<ByteSize>,
     /// A SQLite database, relative to `berm.toml`, a service on Cloud with no
-    /// database yet starts from, such as one a bermd filled.
+    /// database yet starts from, such as one the local host filled.
     pub seed: Option<PathBuf>,
     /// A directory of `*.sql` migrations, relative to `berm.toml`, applied in
     /// name order.

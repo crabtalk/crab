@@ -2,7 +2,7 @@ services:
   berm:
     build:
       context: .
-      dockerfile: berm/daemon/Dockerfile
+      dockerfile: crates/crab/Dockerfile
     # Loopback only: the service carries no authorization.
     ports:
       - "127.0.0.1:7777:7777"

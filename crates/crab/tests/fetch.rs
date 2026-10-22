@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use berm::{Reach, syscall::http::Request};
-use bermd::Fetch;
+use crab_agent::host::Fetch;
 use std::{
     io::{Read, Write},
     net::TcpListener,

@@ -1,21 +1,26 @@
 use anyhow::Result;
+use berm::syscall::call;
 use berm_api::{
     Budget,
     host::{Caller, User},
 };
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{cmd, context::Contexts, utils};
+use crab_agent::{
+    cmd,
+    context::{self, Contexts},
+    utils,
+};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
 };
-use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
+use std::{io::IsTerminal, net::SocketAddr, path::PathBuf, process::ExitCode, time::Duration};
 
 #[derive(Parser)]
 #[command(
     name = "crab",
     version,
-    about = "Deploy and inspect programs on bermd or Cloud, and run a Cloud account"
+    about = "Run the local host, deploy and inspect programs on it or Cloud, and run a Cloud account"
 )]
 struct Args {
     /// The context to talk to, in place of the one in use.
@@ -76,6 +81,52 @@ enum Command {
     },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
+    /// Run the workspace's services on a local host at 127.0.0.1:7777,
+    /// rebuilding and redeploying them as their files change, until Ctrl-C.
+    #[command(args_conflicts_with_subcommands = true)]
+    Dev {
+        #[command(subcommand)]
+        command: Option<DevCommand>,
+        /// A service's directory, for that service alone, or any other
+        /// directory of a workspace, for every service in it.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Run in the background, returning once every service is deployed
+        /// or failed.
+        #[arg(long)]
+        detach: bool,
+    },
+    /// Run the local host in the foreground: deploy programs to it and serve
+    /// their tools over HTTP and MCP.
+    Serve {
+        /// Address to listen on. Loopback by default: the MCP endpoint carries
+        /// no authorization yet, so anything wider would be an open one.
+        #[arg(long, default_value = context::LOCAL)]
+        addr: SocketAddr,
+        /// Where deployed images and the code cache live; `~/.berm` by
+        /// default.
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// How deep a chain of programs calling programs may go. `0` refuses
+        /// the first one, which is composition off.
+        ///
+        /// The bound is on runaway composition, not on the stack: a level
+        /// costs ~720 bytes of it, and 64 MiB of guest address space.
+        #[arg(long, default_value_t = call::DEFAULT_CALL_DEPTH)]
+        max_call_depth: u32,
+        /// The proxy `berm.http.proxy` goes through, e.g.
+        /// `http://user:pass@gate.example.com:3120`. Without one it goes
+        /// direct.
+        #[arg(long)]
+        proxy: Option<String>,
+        /// How many milliseconds of CPU one call may spend, nested calls
+        /// excluded.
+        #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
+        max_cpu_millis: u64,
+        /// How many seconds a call may run before it is stopped.
+        #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
+        max_call_seconds: u64,
+    },
     /// Scaffold a program crate.
     New { name: String },
     /// List deployed programs.
@@ -109,13 +160,13 @@ enum Command {
         tool: String,
         /// The argument object. Read from stdin when omitted.
         arguments: Option<String>,
-        /// On bermd, the caller the program is told called it.
+        /// On the local host, the caller the program is told called it.
         #[arg(long)]
         caller: Option<String>,
-        /// On bermd, the end user's issuer the program is told it is called for.
+        /// On the local host, the end user's issuer the program is told it is called for.
         #[arg(long, requires = "user", requires = "caller")]
         issuer: Option<String>,
-        /// On bermd, the end user's subject the program is told it is called
+        /// On the local host, the end user's subject the program is told it is called
         /// for.
         #[arg(long, requires = "issuer")]
         user: Option<String>,
@@ -315,6 +366,14 @@ enum BillingCommand {
 }
 
 #[derive(Subcommand)]
+enum DevCommand {
+    /// Whether a dev host runs, and what it serves.
+    Status,
+    /// Stop the dev host.
+    Stop,
+}
+
+#[derive(Subcommand)]
 enum KeyCommand {
     /// List the account's keys, active and revoked.
     Ls,
@@ -428,7 +487,7 @@ enum InvitesCommand {
 
 #[derive(Subcommand)]
 enum ContextCommand {
-    /// Name a host: a bermd, or Cloud with a token and the account to deploy
+    /// Name a host: a local host, or Cloud with a token and the account to deploy
     /// under (`--org`, or `--user`).
     Add {
         name: String,
@@ -481,6 +540,39 @@ fn main() -> Result<ExitCode> {
             timeout,
         } => cmd::request::run(&client()?, code, *wait, *timeout, json)?,
         Command::Status => cmd::status::run(&client()?, args.context.as_deref(), json)?,
+        Command::Dev {
+            command: Some(DevCommand::Status),
+            ..
+        } => cmd::dev::status(json)?,
+        Command::Dev {
+            command: Some(DevCommand::Stop),
+            ..
+        } => cmd::dev::stop()?,
+        Command::Dev {
+            command: None,
+            dir,
+            detach: true,
+        } => cmd::dev::detach(dir, json)?,
+        Command::Dev {
+            command: None,
+            dir,
+            detach: false,
+        } => cmd::dev::run(dir, json)?,
+        Command::Serve {
+            addr,
+            root,
+            max_call_depth,
+            proxy,
+            max_cpu_millis,
+            max_call_seconds,
+        } => cmd::serve::run(
+            *addr,
+            root.clone(),
+            *max_call_depth,
+            Duration::from_millis(*max_cpu_millis),
+            Duration::from_secs(*max_call_seconds),
+            proxy.as_deref(),
+        )?,
         Command::Context(ContextCommand::Add {
             name,
             host,

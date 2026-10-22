@@ -1,7 +1,7 @@
-//! The HTTP client for a CrabTalk Cloud deployment, and for a bermd.
+//! The HTTP client for a CrabTalk Cloud deployment, and for a local host.
 //!
 //! One [`Client`] holds the transport; each submodule hangs that surface's calls
-//! off it. A bermd answers only the calls addressed by a program's name:
+//! off it. A local host answers only the calls addressed by a program's name:
 //! `list`, `inspect`, `run` and the rest.
 
 use crate::error::{ApiError, ErrorResponse};
@@ -20,13 +20,13 @@ mod service;
 mod user;
 pub use owner::Owner;
 
-/// A connection to a CrabTalk Cloud deployment or a bermd.
+/// A connection to a CrabTalk Cloud deployment or a local host.
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     pub base: String,
     pub token: Option<String>,
-    /// The account Cloud deploys under; `None` for a bermd.
+    /// The account Cloud deploys under; `None` for a local host.
     pub owner: Option<Owner>,
 }
 
@@ -79,7 +79,7 @@ impl Client {
     }
 
     /// The account the service calls act under on Cloud. Without one, they
-    /// address a bermd.
+    /// address a local host.
     pub fn owner(mut self, owner: Owner) -> Self {
         self.owner = Some(owner);
         self

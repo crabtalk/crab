@@ -4,9 +4,7 @@
 //! a UI, a CLI and `curl`, and a program is a resource. The MCP endpoint that
 //! agents reach sits on the same server at `/mcp`.
 
-#[cfg(feature = "dashboard")]
-use crate::dashboard;
-use crate::{Service, mcp::Mcp};
+use crate::host::{Service, mcp::Mcp};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -24,34 +22,35 @@ use rmcp::transport::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub fn router(service: Arc<Service>) -> Router {
-    // `route_service` rather than `nest_service`: MCP Streamable HTTP is one
-    // path taking POST, GET and DELETE, and nesting can drop the `Host` header
-    // the transport validates against.
-    let mcp = StreamableHttpService::new(
-        {
-            let service = service.clone();
-            move || Ok(Mcp::new(service.clone()))
-        },
-        Arc::new(LocalSessionManager::default()),
-        Default::default(),
-    );
-    let program = berm_host::router(service.host.clone())
-        .merge(
-            Router::new()
-                .route("/", put(deploy).delete(undeploy))
-                .with_state(service.clone()),
-        )
-        .route_layer(middleware::from_fn(named));
+impl Service {
+    /// The control API, at `/programs`, and MCP, at `/mcp`.
+    pub fn router(self: Arc<Self>) -> Router {
+        let service = self;
+        // `route_service` rather than `nest_service`: MCP Streamable HTTP is one
+        // path taking POST, GET and DELETE, and nesting can drop the `Host` header
+        // the transport validates against.
+        let mcp = StreamableHttpService::new(
+            {
+                let service = service.clone();
+                move || Ok(Mcp::new(service.clone()))
+            },
+            Arc::new(LocalSessionManager::default()),
+            Default::default(),
+        );
+        let program = berm_host::router(service.host.clone())
+            .merge(
+                Router::new()
+                    .route("/", put(deploy).delete(undeploy))
+                    .with_state(service.clone()),
+            )
+            .route_layer(middleware::from_fn(named));
 
-    let router = Router::new()
-        .route("/programs", get(list))
-        .with_state(service)
-        .nest("/programs/{name}", program)
-        .route_service("/mcp", mcp);
-    #[cfg(feature = "dashboard")]
-    let router = router.fallback(get(dashboard::serve));
-    router
+        Router::new()
+            .route("/programs", get(list))
+            .with_state(service)
+            .nest("/programs/{name}", program)
+            .route_service("/mcp", mcp)
+    }
 }
 
 /// The program a request names.

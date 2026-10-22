@@ -11,7 +11,7 @@ let registry = berm_oci::Registry::open(&reference, berm_oci::Access::Write)?;
 let digest = registry.push("v1", &wasm)?;
 ```
 
-A host that pulls from a registry deploys a reference; `bermd` takes the image
+A host that pulls from a registry deploys a reference; `crab serve` takes the image
 itself, so it never talks to a registry, holds no credentials, and restores from
 `--root` on start without a network.
 

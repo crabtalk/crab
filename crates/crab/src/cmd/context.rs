@@ -9,7 +9,7 @@ use crabtalk_sdk::client::Owner;
 use serde::Serialize;
 use std::io::Read;
 
-/// Name `host` as `name`: a bermd, or with a key and `org` or `user`, Cloud.
+/// Name `host` as `name`: a local host, or with a key and `org` or `user`, Cloud.
 /// The key is `token`, or read from stdin when `token_stdin`.
 pub fn add(
     name: &str,
@@ -36,7 +36,7 @@ pub fn add(
     };
     if name == context::DEFAULT {
         bail!(
-            "{:?} is this machine's bermd and cannot be replaced",
+            "{:?} is this machine's local host and cannot be replaced",
             context::DEFAULT
         );
     }

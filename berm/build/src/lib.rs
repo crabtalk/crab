@@ -20,8 +20,11 @@ use std::{
     process,
 };
 
+pub use workspace::Workspace;
+
 mod artifact;
 mod metadata;
+mod workspace;
 
 /// What a program is built for.
 pub const TARGET: &str = "wasm32-unknown-unknown";

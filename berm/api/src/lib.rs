@@ -1,4 +1,4 @@
-//! What a program says it is, and what bermd's control API speaks.
+//! What a program says it is, and what the local host's control API speaks.
 //!
 //! Here rather than in the service so a client can read an image and talk to
 //! the API without linking a compiler.

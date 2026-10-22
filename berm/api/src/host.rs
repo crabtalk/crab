@@ -8,8 +8,8 @@ use std::{collections::BTreeMap, fmt};
 /// program the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
-/// Header carrying the [`Caller`] a call to bermd is made as, as JSON. bermd
-/// verifies none of it.
+/// Header carrying the [`Caller`] a call to the local host is made as, as
+/// JSON. The local host verifies none of it.
 pub const CALLER: &str = "x-berm-caller";
 
 /// Bytes a service's database may hold when its deploy sets none.

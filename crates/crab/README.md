@@ -1,8 +1,9 @@
 # crab
 
-The command-line client for [bermd](https://berm.run/docs/berm/service/) and CrabTalk Cloud.
+The [local host](https://berm.run/docs/berm/service/), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
+crab serve &
 crab new example
 cd example
 crab build
@@ -40,11 +41,15 @@ size = "2GiB"
 seed = "seed.sqlite"
 ```
 
-A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and a bermd takes none.
+A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
+
+## Developing
+
+`crab dev` runs the services of the workspace it is started in on the local host at `127.0.0.1:7777`, its root `~/.crab/dev`, and rebuilds and redeploys each as its files change, printing each deploy, each call and the call's logs, until Ctrl-C. In a service's directory it runs that service alone. A deploy goes over what it breaks, and skips the seed. `--detach` runs it in the background, writing to `~/.crab/dev/dev.log`, and returns once each service is deployed or failed; `crab dev status` prints what it serves and each service's last rebuild, and `crab dev stop` stops it.
 
 ## Contexts
 
-`crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the bermd on `http://127.0.0.1:7777`; `--context` picks another for one command.
+`crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab serve`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
 
 ```sh
 crab context add cloud https://api.crabtalk.ai --token "$KEY" --org acme
@@ -53,9 +58,9 @@ crab context ls
 crab context use default
 ```
 
-On Cloud, a program's secrets are its own: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one, and `crab secret request NAME SECRET...` asks a person to set them: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters every value at once, so none passes through the terminal. `--guide SECRET=TEXT` tells them how to get each one, beside its field. `deploy` names each secret the manifest declares that is not set. A bermd reads its secrets from `secrets.toml` under its root.
+On Cloud, a program's secrets are its own: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one, and `crab secret request NAME SECRET...` asks a person to set them: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters every value at once, so none passes through the terminal. `--guide SECRET=TEXT` tells them how to get each one, beside its field. `deploy` names each secret the manifest declares that is not set. The local host reads its secrets from `secrets.toml` under its root.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against bermd it sends the image itself. Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against the local host it sends the image itself. Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
 
 Contexts are kept in `~/.crab/contexts.toml`.
 
@@ -110,7 +115,7 @@ a program crate pinning the `berm-lang` that shipped with this binary.
 `inspect` renders a tool's JSON Schema as the argument list it describes, since
 a schema printed raw is something to read past rather than read.
 
-`inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On bermd, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
+`inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 
 ## License
 

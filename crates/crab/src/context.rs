@@ -1,6 +1,7 @@
 //! Where `crab` sends its calls: a named host, and for Cloud, the token and
 //! the account it deploys under. Kept in `~/.crab/contexts.toml`.
 
+use crate::utils;
 use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::client::{Client, Owner};
 use serde::{Deserialize, Serialize};
@@ -8,11 +9,11 @@ use serde::{Deserialize, Serialize};
 use std::os::unix::fs::PermissionsExt;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
-/// The context that is always there: a bermd on this machine.
+/// The context that is always there: the local host on this machine.
 pub const DEFAULT: &str = "default";
 
-/// Where bermd listens by default.
-const LOCAL: &str = "http://127.0.0.1:7777";
+/// Where `crab serve` listens by default, and `crab dev` always.
+pub const LOCAL: &str = "127.0.0.1:7777";
 
 /// The file, under `~/.crab`.
 const FILE: &str = "contexts.toml";
@@ -24,7 +25,7 @@ pub struct Context {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     /// The account a Cloud context deploys under. A context without one is a
-    /// bermd.
+    /// local host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<Owner>,
 }
@@ -73,7 +74,7 @@ impl Contexts {
         let name = name.or(self.current.as_deref()).unwrap_or(DEFAULT);
         if name == DEFAULT {
             return Ok(Context {
-                host: LOCAL.to_owned(),
+                host: format!("http://{LOCAL}"),
                 token: None,
                 owner: None,
             });
@@ -86,8 +87,7 @@ impl Contexts {
 }
 
 fn path() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME is not set")?;
-    Ok(PathBuf::from(home).join(".crab").join(FILE))
+    Ok(utils::home()?.join(".crab").join(FILE))
 }
 
 impl From<Context> for Client {

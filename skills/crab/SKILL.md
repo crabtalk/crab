@@ -1,6 +1,6 @@
 ---
 name: crab
-description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries. Use before writing, changing or deploying a service on CrabTalk Cloud or bermd, before using a kit under `kits/`, and before changing a local crab checkout from a product's repository.
+description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, and before changing a local crab checkout from a product's repository.
 ---
 
 # Building on crab
@@ -11,6 +11,7 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 
 - A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `berm.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `berm.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
+- `crab dev --detach` in the product's workspace runs every service in it on the local host at `127.0.0.1:7777`, rebuilding and redeploying each as its files change, and returns once each is deployed or failed. `crab dev status` says what it serves and why a rebuild failed; `crab dev stop` stops it. Other commands reach it with `--context default`. Its secrets are `~/.crab/dev/secrets.toml`, and its output is `~/.crab/dev/dev.log`.
 - On Cloud each service reserves its `[database] size` of the account's plan storage, 1GiB when unset, whatever it holds. A deploy refused for storage is met by sizing each service to what it holds (`crab usage <service>` reports `stored`) before any change of plan.
 
 ## Kits are libraries
@@ -46,7 +47,7 @@ Read the source before writing code. Paths are relative to the crab repository.
 | Caller, user, database, HTTP, calls between services | `docs/berm/guest-api.md` |
 | `berm.toml` keys, syscalls, secrets, kits and their migrations | `docs/berm/manifest.md` |
 | Images and registries | `docs/berm/publishing.md` |
-| bermd, HTTP and MCP serving | `docs/berm/service.md` |
+| The local host (`crab serve`), HTTP and MCP serving | `docs/berm/service.md` |
 | A kit's API and setup | `kits/<kit>/README.md` |
 
 ## A local crab checkout

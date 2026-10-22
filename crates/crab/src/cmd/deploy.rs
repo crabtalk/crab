@@ -47,7 +47,9 @@ pub fn run(
     let name = project.name()?;
     let deployed = match &client.owner {
         None if project.database.seed.is_some() => {
-            bail!("a seed starts a service on Cloud; bermd's own database is where one is made")
+            bail!(
+                "a seed starts a service on Cloud; the local host's own database is where one is made"
+            )
         }
         None => utils::wait(client.deploy_image(
             name,
@@ -94,7 +96,7 @@ pub fn run(
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }
-    // A bermd's secrets are its own file's; Cloud's are set per service.
+    // The local host's secrets are its own file's; Cloud's are set per service.
     if client.owner.is_some() {
         let set = utils::wait(client.secrets(name))?;
         for secret in &runtime.deps.secrets {
@@ -126,7 +128,7 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
     let Some(into) = copy.to_str() else {
         bail!("the seed's copy {} is not a UTF-8 path", copy.display());
     };
-    // One consistent file, its write-ahead log folded in, while a bermd may
+    // One consistent file, its write-ahead log folded in, while the local host may
     // hold the database open.
     Connection::open_with_flags(seed, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .with_context(|| format!("opening the seed {}", seed.display()))?
