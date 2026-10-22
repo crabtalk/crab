@@ -1,14 +1,17 @@
-//! `crab login` — sign in to Cloud in the browser, and keep the session as a
-//! context.
+//! `crab login` — sign in to Cloud in the browser or with a code emailed to
+//! the address, and keep the session as a context.
 
 use crate::{
     context::{self, Context, Contexts},
     utils,
 };
 use anyhow::{Context as _, Result, bail};
-use crabtalk_sdk::client::{Client, Owner};
+use crabtalk_sdk::{
+    account::auth::Client as Surface,
+    client::{Client, Owner},
+};
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, IsTerminal, Write},
     net::{TcpListener, TcpStream},
 };
 
@@ -31,18 +34,57 @@ pub fn run(name: &str, host: &str, github: bool) -> Result<()> {
     eprintln!("waiting for the browser to sign in");
     let (token, browser) = receive(&listener)?;
 
-    let me = match utils::wait(Client::new(host).token(&token).me()) {
-        Ok(me) => me,
-        Err(e) => {
-            answer(
-                browser,
-                "400 Bad Request",
-                "Sign-in failed. Return to your terminal.",
-            )?;
-            bail!("sign-in failed: {e}");
+    if let Err(e) = keep(name, host, token) {
+        answer(
+            browser,
+            "400 Bad Request",
+            "Sign-in failed. Return to your terminal.",
+        )?;
+        bail!("sign-in failed: {e}");
+    }
+    answer(browser, "200 OK", "Signed in. Return to your terminal.")
+}
+
+/// Sign in to `host` with the code emailed to `email`, and use the session as
+/// context `name` from now on. Without `code`, one is sent: asked for at a
+/// terminal, and given back with `--code` in a second run without one.
+pub fn email(name: &str, host: &str, email: &str, code: Option<&str>) -> Result<()> {
+    if name == context::DEFAULT {
+        bail!("{:?} is this machine's bermd", context::DEFAULT);
+    }
+    let host = host.trim_end_matches('/');
+    let client = Client::new(host);
+    let code = match code {
+        Some(code) => code.to_owned(),
+        None => {
+            utils::wait(client.send_code(email))?;
+            if !std::io::stdin().is_terminal() {
+                let mut finish = String::from("crab login");
+                if host != CLOUD {
+                    finish.push_str(&format!(" {host}"));
+                }
+                if name != "cloud" {
+                    finish.push_str(&format!(" --name {name}"));
+                }
+                eprintln!(
+                    "sent a sign-in code to {email}; finish with `{finish} --email {email} --code <code>`"
+                );
+                return Ok(());
+            }
+            eprint!("the code sent to {email}: ");
+            std::io::stderr().flush()?;
+            let mut code = String::new();
+            std::io::stdin().lock().read_line(&mut code)?;
+            code
         }
     };
-    answer(browser, "200 OK", "Signed in. Return to your terminal.")?;
+    let signed = utils::wait(client.verify_code(email, code.trim(), Surface::Terminal))?;
+    keep(name, host, signed.token)
+}
+
+/// Keep `token` as context `name` on `host`, and use it from now on.
+fn keep(name: &str, host: &str, token: String) -> Result<()> {
+    let me = utils::wait(Client::new(host).token(&token).me())?;
     let who = me.user.handle.unwrap_or(me.user.id);
     let mut contexts = Contexts::load()?;
     contexts.contexts.insert(

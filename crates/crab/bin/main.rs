@@ -41,7 +41,8 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Sign in to Cloud in the browser, and use it from now on.
+    /// Sign in to Cloud in the browser, or with a code emailed to the address,
+    /// and use it from now on.
     Login {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
@@ -49,6 +50,13 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
+        /// Sign in with a code emailed to this address, without a browser.
+        #[arg(long, conflicts_with = "github")]
+        email: Option<String>,
+        /// The code emailed to `--email`. Without it, a code is sent: asked
+        /// for at a terminal, given here in a second run without one.
+        #[arg(long, requires = "email")]
+        code: Option<String>,
         /// The context to keep the session as.
         #[arg(long, default_value = "cloud")]
         name: String,
@@ -415,7 +423,16 @@ fn main() -> Result<ExitCode> {
     };
 
     match &args.command {
-        Command::Login { host, github, name } => cmd::login::run(name, host, *github)?,
+        Command::Login {
+            host,
+            github: _,
+            email: Some(email),
+            code,
+            name,
+        } => cmd::login::email(name, host, email, code.as_deref())?,
+        Command::Login {
+            host, github, name, ..
+        } => cmd::login::run(name, host, *github)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
         Command::Status => cmd::status::run(&client()?, args.context.as_deref(), json)?,
         Command::Context(ContextCommand::Add {

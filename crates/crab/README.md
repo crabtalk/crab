@@ -63,8 +63,12 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login` signs in to Cloud in the browser, keeps the session as the `cloud` context and uses it. A session reaches everything below; a deploy key is refused by all of it but `usage`.
 
+`crab login --email` signs in without a browser, with a code emailed to the address, and creates the account when the address has none. At a terminal it asks for the code; without one it sends the code and exits, and `--code` finishes in a second run.
+
 ```sh
 crab login                     # --github for GitHub
+crab login --email you@example.com
+crab login --email you@example.com --code 12345678
 crab status
 crab usage                     # the account's services and its plan this period
 crab billing                   # plan, credit, refill, card

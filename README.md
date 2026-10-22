@@ -16,6 +16,7 @@ cargo install crab-agent
 
 ```sh
 crab login                 # CrabTalk Cloud, in the browser
+crab login --email you@example.com   # or with a code emailed to the address
 crab context use default   # or the bermd on http://127.0.0.1:7777
 ```
 

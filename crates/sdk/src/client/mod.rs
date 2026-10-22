@@ -9,6 +9,7 @@ use reqwest::{Method, RequestBuilder, StatusCode};
 use serde::{Deserialize, de::DeserializeOwned};
 use std::fmt;
 mod app;
+mod auth;
 mod billing;
 mod key;
 mod meta;

@@ -27,6 +27,10 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
 - Each kit's `README.md` lists what the service still declares itself.
 
+## Signing in
+
+- On a machine without a browser, sign in with `crab login --email <address>`: it emails a code and exits. Ask the person for the code from that email, then run `crab login --email <address> --code <code>`. A new address gets an account.
+
 ## Where the truth is
 
 Read the source before writing code. Paths are relative to the crab repository.
