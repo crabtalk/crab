@@ -265,7 +265,7 @@ enum SecretCommand {
         guides: Vec<(String, String)>,
         /// What they are for, shown to the person who sets them.
         #[arg(long, default_value = "")]
-        context: String,
+        r#for: String,
     },
 }
 
@@ -277,19 +277,19 @@ enum BillingCommand {
         slug: String,
         /// What it is for, shown to the person who pays.
         #[arg(long, default_value = "")]
-        context: String,
+        r#for: String,
     },
     /// Ask the person to start the free trial: a code whose page takes a card.
     Trial {
         /// What it is for, shown to the person who starts it.
         #[arg(long, default_value = "")]
-        context: String,
+        r#for: String,
     },
     /// Ask a person to buy credit: a code whose page takes the amount.
     Credit {
         /// What it is for, shown to the person who pays.
         #[arg(long, default_value = "")]
-        context: String,
+        r#for: String,
     },
 
     /// Refill credit when it runs low; a cap of 0 turns it off.
@@ -555,8 +555,8 @@ fn main() -> Result<ExitCode> {
             name,
             secrets,
             guides,
-            context,
-        }) => cmd::secret::ask(&client()?, name, secrets, guides, context, json)?,
+            r#for,
+        }) => cmd::secret::ask(&client()?, name, secrets, guides, r#for, json)?,
         Command::Budget {
             name,
             tool,
@@ -579,14 +579,14 @@ fn main() -> Result<ExitCode> {
         } => {
             let client = client()?;
             match action {
-                BillingCommand::Plan { slug, context } => {
-                    cmd::billing::ask(&client, Purchase::Plan, Some(slug), context, json)?
+                BillingCommand::Plan { slug, r#for } => {
+                    cmd::billing::ask(&client, Purchase::Plan, Some(slug), r#for, json)?
                 }
-                BillingCommand::Trial { context } => {
-                    cmd::billing::ask(&client, Purchase::Trial, None, context, json)?
+                BillingCommand::Trial { r#for } => {
+                    cmd::billing::ask(&client, Purchase::Trial, None, r#for, json)?
                 }
-                BillingCommand::Credit { context } => {
-                    cmd::billing::ask(&client, Purchase::Credit, None, context, json)?
+                BillingCommand::Credit { r#for } => {
+                    cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }
 
                 BillingCommand::Refill { amount, cap } => {
