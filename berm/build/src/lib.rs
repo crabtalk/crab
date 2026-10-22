@@ -148,6 +148,7 @@ fn kits(artifacts: &[Artifact], program: &Path, guest: &Path) -> Result<Vec<Kit>
             Ok(Kit {
                 database: migrations(artifact.dir(), &project)?,
                 deps: project.deps(),
+                id: project.id.clone(),
                 name,
                 version,
             })

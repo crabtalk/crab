@@ -81,8 +81,12 @@ pub struct ProgramRecord {
 /// declarations, as one entry of the [`KITS_SECTION`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kit {
-    /// The kit's package, which its applied migrations are kept under.
+    /// The kit's package.
     pub name: String,
+    /// The kit's ID from its `berm.toml`, which its applied migrations are kept
+    /// under. Present on a kit with a `database`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     /// The package's version when the program was built.
     #[serde(default)]
     pub version: String,
@@ -223,7 +227,7 @@ impl Manifest {
     pub fn migrations(&self) -> Vec<(String, Vec<Migration>)> {
         let kits = self.kits.iter().filter_map(|kit| {
             let database = kit.database.as_ref()?;
-            Some((kit.name.clone(), database.migrations.clone()))
+            Some((kit.id.clone()?, database.migrations.clone()))
         });
         let own = self
             .database
@@ -320,7 +324,8 @@ impl Manifest {
         manifest.checked()
     }
 
-    /// Refuse a manifest of another ABI, with no tools, or naming a kit twice.
+    /// Refuse a manifest of another ABI, with no tools, naming a kit or a kit's
+    /// id twice, or with a kit keeping tables and declaring no id.
     fn checked(self) -> Result<Self> {
         versioned(self.abi_version)?;
         if self.tools.is_empty() {
@@ -329,6 +334,16 @@ impl Manifest {
         for (at, kit) in self.kits.iter().enumerate() {
             if self.kits[..at].iter().any(|seen| seen.name == kit.name) {
                 bail!("program manifest names kit {} twice", kit.name);
+            }
+            if kit.database.is_some() && kit.id.is_none() {
+                bail!("kit {} keeps tables and declares no id", kit.name);
+            }
+            if let Some(id) = &kit.id
+                && self.kits[..at]
+                    .iter()
+                    .any(|seen| seen.id.as_ref() == Some(id))
+            {
+                bail!("kits {} and another declare the id {id}", kit.name);
             }
         }
         Ok(self)

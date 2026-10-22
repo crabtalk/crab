@@ -1,3 +1,5 @@
+# What its applied migrations are kept under in a database; never changes.
+id = "115a99982fc0ce031c0a94fad9aa47a0"
 secrets = [
     "GITHUB_CLIENT_ID",
     "GITHUB_CLIENT_SECRET",

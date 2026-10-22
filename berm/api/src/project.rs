@@ -10,11 +10,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// `berm.toml`. A program's names its service; a kit's declares only
+/// `berm.toml`. A program's names its service; a kit's declares only `id`,
 /// `secrets`, `programs`, `[syscalls]` and `[database] migrations`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
+    /// The kit's ID, 32 lowercase hex digits, which its applied migrations are
+    /// kept under. A kit keeping tables declares one; a program declares none.
+    #[serde(default)]
+    pub id: Option<String>,
     /// The service the program deploys as.
     #[serde(default)]
     pub name: Option<String>,
@@ -79,8 +83,12 @@ impl Project {
         toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))
     }
 
-    /// The service a program deploys as, refused when it names none.
+    /// The service a program deploys as, refused when it names none or
+    /// declares a kit's `id`.
     pub fn name(&self) -> Result<&str> {
+        if self.id.is_some() {
+            bail!("only a kit's {} declares an id", Self::FILE);
+        }
         self.name.as_deref().with_context(|| {
             format!(
                 "a program's {} names its service: `name = \"…\"`",
@@ -127,12 +135,25 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit's {} declares only secrets, programs, [syscalls] and [database] migrations, not {}",
+                "a kit's {} declares only id, secrets, programs, [syscalls] and [database] migrations, not {}",
                 Self::FILE,
                 declared.join(", ")
             );
         }
-        Ok(())
+        match &self.id {
+            None if self.database.migrations.is_some() => {
+                bail!("a kit keeping tables declares its id in {}", Self::FILE)
+            }
+            Some(id)
+                if id.len() != 32
+                    || !id
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
+            {
+                bail!("a kit's id is 32 lowercase hex digits, not {id}")
+            }
+            _ => Ok(()),
+        }
     }
 }
 
