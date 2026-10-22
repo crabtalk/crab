@@ -303,17 +303,18 @@ enum SecretCommand {
     Ls { name: String },
     /// Revoke a secret of a program.
     Rm { name: String, secret: String },
-    /// Ask a person to set secrets of a program: a code whose page they set
-    /// them at together, signed in, so no value passes through here.
+    /// Ask a person to set a program's unset secrets, or one credential's: a
+    /// code whose page they set them at, signed in, so no value passes
+    /// through here.
     Request {
         name: String,
-        /// The secrets to set, 1 to 20.
-        #[arg(required = true)]
-        secrets: Vec<String>,
-        /// How to get a secret, shown beside its field: `SECRET=TEXT`, once
-        /// per secret. URLs in it are links.
-        #[arg(long = "guide", value_parser = cmd::secret::guide)]
-        guides: Vec<(String, String)>,
+        /// Ask for this credential, set or not, and no other.
+        #[arg(long)]
+        credential: Option<String>,
+        /// A value the credentials have the person enter at the provider,
+        /// such as `callback=https://example.com/auth/callback`.
+        #[arg(long = "copy", value_parser = cmd::secret::copy)]
+        copies: Vec<(String, String)>,
         /// What they are for, shown to the person who sets them.
         #[arg(long, default_value = "")]
         r#for: String,
@@ -645,10 +646,10 @@ fn main() -> Result<ExitCode> {
         }
         Command::Secret(SecretCommand::Request {
             name,
-            secrets,
-            guides,
+            credential,
+            copies,
             r#for,
-        }) => cmd::secret::ask(&client()?, name, secrets, guides, r#for, json)?,
+        }) => cmd::secret::ask(&client()?, name, credential.as_deref(), copies, r#for, json)?,
         Command::Budget {
             name,
             tool,

@@ -67,6 +67,7 @@ impl<E: Env> Host<E> {
                     .cloned()
                     .collect(),
                 syscalls: Default::default(),
+                credentials: Default::default(),
                 secrets: deps
                     .secrets
                     .iter()

@@ -1,6 +1,6 @@
 //! `berm.toml`, beside the `Cargo.toml` of a program or a kit.
 
-use crate::{DEFAULT_BUFFER, Deps, host};
+use crate::{Credential, DEFAULT_BUFFER, Deps, host};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use serde::Deserialize;
@@ -11,8 +11,8 @@ use std::{
 };
 
 /// `berm.toml`. A program's names its service; a kit's declares only `id`,
-/// `formerly`, `secrets`, `programs`, `[syscalls]` and `[database]
-/// migrations`.
+/// `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and
+/// `[database] migrations`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
@@ -37,9 +37,13 @@ pub struct Project {
     /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
-    /// Secrets it names in `{secret:NAME}`.
+    /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
+    /// Secrets it names in `{secret:NAME}`, grouped by what a person sets up
+    /// to get them, by id.
+    #[serde(default)]
+    pub credentials: BTreeMap<String, Credential>,
     /// Programs it calls by name.
     #[serde(default)]
     pub programs: Vec<String>,
@@ -85,7 +89,20 @@ impl Project {
         let path = dir.join(Self::FILE);
         let text = fs::read_to_string(&path)
             .with_context(|| format!("no {} in {}", Self::FILE, dir.display()))?;
-        toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))
+        let project: Self =
+            toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
+        let mut seen: Vec<&str> = project.secrets.iter().map(String::as_str).collect();
+        for secret in project.credentials.values().flat_map(|c| &c.secrets) {
+            if seen.contains(&secret.name.as_str()) {
+                bail!(
+                    "{} declares the secret {} twice",
+                    path.display(),
+                    secret.name
+                );
+            }
+            seen.push(&secret.name);
+        }
+        Ok(project)
     }
 
     /// The service a program deploys as, refused when it names none or
@@ -112,7 +129,18 @@ impl Project {
         Deps {
             programs: self.programs.clone(),
             syscalls,
-            secrets: self.secrets.clone(),
+            secrets: self
+                .secrets
+                .iter()
+                .chain(
+                    self.credentials
+                        .values()
+                        .flat_map(|credential| &credential.secrets)
+                        .map(|secret| &secret.name),
+                )
+                .cloned()
+                .collect(),
+            credentials: self.credentials.clone(),
         }
     }
 
@@ -140,7 +168,7 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit's {} declares only id, formerly, secrets, programs, [syscalls] and [database] migrations, not {}",
+                "a kit's {} declares only id, formerly, secrets, [credentials], programs, [syscalls] and [database] migrations, not {}",
                 Self::FILE,
                 declared.join(", ")
             );

@@ -2,8 +2,8 @@
 //! `.berm.kits` sections, and what it refuses.
 
 use berm_api::{
-    ABI_SECTION, ABI_VERSION, Deps, Image, KITS_SECTION, Kit, Manifest, PROGRAM_SECTION,
-    ProgramRecord,
+    ABI_SECTION, ABI_VERSION, Credential, CredentialSecret, Deps, Image, KITS_SECTION, Kit,
+    Manifest, PROGRAM_SECTION, ProgramRecord,
 };
 
 /// A wasm module holding one custom section, `padding`, empty.
@@ -45,6 +45,27 @@ fn kit(name: &str) -> Kit {
         },
         database: None,
     }
+}
+
+/// Kit `name`, declaring credential `id` holding the secret `secret`.
+fn credentialed(name: &str, id: &str, secret: &str) -> Kit {
+    let mut kit = kit(name);
+    kit.deps.secrets.push(secret.to_owned());
+    kit.deps.credentials.insert(
+        id.to_owned(),
+        Credential {
+            title: id.to_owned(),
+            guide: String::new(),
+            copy: Default::default(),
+            secrets: vec![CredentialSecret {
+                name: secret.to_owned(),
+                label: String::new(),
+                masked: true,
+                pattern: None,
+            }],
+        },
+    );
+    kit
 }
 
 fn image(abi: &str, program: Option<&[u8]>, kits: &[Kit]) -> Vec<u8> {
@@ -137,4 +158,58 @@ fn an_image_of_another_abi_is_refused() {
 fn an_image_with_no_tools_is_refused() {
     let error = Manifest::from_image(&image("", Some(&program()), &[])).unwrap_err();
     assert!(error.to_string().contains("no tools"), "{error}");
+}
+
+#[test]
+fn a_kits_credentials_reach_the_manifest() {
+    let manifest = Manifest::from_image(&image(
+        &tool("a", "demo"),
+        Some(&program()),
+        &[credentialed("k", "github", "GITHUB_CLIENT_ID")],
+    ))
+    .unwrap();
+    assert_eq!(
+        manifest.deps.credential_of("GITHUB_CLIENT_ID"),
+        Some("github")
+    );
+    assert!(
+        manifest
+            .deps
+            .secrets
+            .contains(&"GITHUB_CLIENT_ID".to_owned())
+    );
+}
+
+#[test]
+fn a_credential_declared_by_two_kits_is_refused() {
+    let error = Manifest::from_image(&image(
+        &tool("a", "demo"),
+        Some(&program()),
+        &[
+            credentialed("k1", "github", "A"),
+            credentialed("k2", "github", "B"),
+        ],
+    ))
+    .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("credential github is declared twice"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn a_secret_in_two_credentials_is_refused() {
+    let error = Manifest::from_image(&image(
+        &tool("a", "demo"),
+        Some(&program()),
+        &[
+            credentialed("k1", "github", "A"),
+            credentialed("k2", "google", "A"),
+        ],
+    ))
+    .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("secret A is in two credentials"),
+        "{error:#}"
+    );
 }

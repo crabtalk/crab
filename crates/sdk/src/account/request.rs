@@ -2,6 +2,7 @@
 //! short code: pay for a purchase, or set secrets of a service.
 
 use crate::{account::org::PublicAccount, utils::text_enum};
+use berm_api::Credential;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -72,12 +73,18 @@ pub enum CreateRequest {
         #[serde(default)]
         context: String,
     },
-    /// Set secrets of one of the account's services, 1 to 20, each beside a
-    /// guide to getting it.
+    /// Set secrets of one of the account's services: every credential its
+    /// runtime declares with a secret unset, and each unset secret in no
+    /// credential, or the one `credential` names, set or not.
     Secret {
         account: String,
         service: String,
-        secrets: Vec<AskedSecret>,
+        #[serde(default)]
+        credential: Option<String>,
+        /// The values its credentials' `copy` labels, by key; one fills
+        /// every credential declaring its key.
+        #[serde(default)]
+        copy: BTreeMap<String, String>,
         /// What it is for, in the asker's words, shown to the person.
         #[serde(default)]
         context: String,
@@ -113,20 +120,93 @@ pub struct Request {
     pub card_on_file: bool,
     /// The service a secret request sets secrets of.
     pub service: Option<String>,
-    /// The secrets a secret request asks for, in order; never their values.
+    /// What a secret request asks for, each set on its own. A secret in no
+    /// credential is one of its own, by the secret's name, with no title.
     #[serde(default)]
-    pub secrets: Vec<AskedSecret>,
+    pub credentials: Vec<AskedCredential>,
 }
 
-/// A secret a request asks for, and how to get it.
+/// A credential a secret request asks for, as its service declared it when
+/// the request was made.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AskedCredential {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    /// How to get its secrets, in Markdown.
+    #[serde(default)]
+    pub guide: String,
+    /// What the person enters at the provider, from the request's `copy`.
+    #[serde(default)]
+    pub copy: Vec<CopyValue>,
+    pub secrets: Vec<AskedSecret>,
+    /// Set through this request. The request completes once every one is.
+    #[serde(default)]
+    pub saved: bool,
+}
+
+impl AskedCredential {
+    /// `credential`, declared as `id`, with the values `copy` gives its copy
+    /// keys; a key `copy` gives no value is left out.
+    pub fn new(id: String, credential: Credential, copy: &BTreeMap<String, String>) -> Self {
+        Self {
+            id,
+            title: credential.title,
+            guide: credential.guide,
+            copy: credential
+                .copy
+                .into_iter()
+                .filter_map(|(key, label)| {
+                    copy.get(&key).map(|value| CopyValue {
+                        label,
+                        value: value.clone(),
+                    })
+                })
+                .collect(),
+            secrets: credential
+                .secrets
+                .into_iter()
+                .map(|secret| AskedSecret {
+                    name: secret.name,
+                    label: secret.label,
+                    masked: secret.masked,
+                    pattern: secret.pattern,
+                    set: false,
+                    value: None,
+                })
+                .collect(),
+            saved: false,
+        }
+    }
+}
+
+/// A value the person enters at the provider, beside its label there.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopyValue {
+    pub label: String,
+    pub value: String,
+}
+
+/// A secret a request asks for.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AskedSecret {
     pub name: String,
-    /// Where and how the person gets its value, in the asker's words, shown
-    /// beside its field.
+    /// What the provider calls it; the name when empty.
     #[serde(default)]
-    pub guide: String,
+    pub label: String,
+    /// Never shown once set.
+    pub masked: bool,
+    /// A regular expression a value is expected to match; a value that does
+    /// not is warned about, never refused.
+    #[serde(default)]
+    pub pattern: Option<String>,
+    pub set: bool,
+    /// Its value, when it is set and not masked.
+    #[serde(default)]
+    pub value: Option<String>,
 }
 
 /// Where paying a request goes next.
@@ -137,8 +217,8 @@ pub struct PayResponse {
     pub url: Option<String>,
 }
 
-/// A secret request's values by secret name, at `PUT /requests/{code}/secrets`:
-/// one for each secret it asks for.
+/// One credential's values by secret name, at `PUT /requests/{code}/secrets`.
+/// A secret of it already set may be left out.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretValues {

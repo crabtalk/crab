@@ -20,6 +20,9 @@ serde_urlencoded.workspace = true
 toml.workspace = true
 utoipa = { workspace = true, optional = true }
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [features]
 # `ToSchema` on the host's types a daemon documents in its OpenAPI.
 utoipa = ["dep:utoipa"]

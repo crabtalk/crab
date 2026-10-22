@@ -149,9 +149,54 @@ pub struct Deps {
     #[serde(default)]
     pub syscalls: BTreeMap<String, Vec<String>>,
     /// Secrets it names in `{secret:NAME}`, which the host substitutes and
-    /// the guest never holds.
+    /// the guest never holds. Every credential's secrets are among them.
     #[serde(default)]
     pub secrets: Vec<String>,
+    /// How a person gets its secrets, grouped by what they set up, by id. A
+    /// secret is in one credential at most.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub credentials: BTreeMap<String, Credential>,
+}
+
+/// Secrets a person gets together from one provider, such as a GitHub OAuth
+/// app's client ID and secret.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Credential {
+    /// What the person sets up, as `GitHub OAuth app`.
+    pub title: String,
+    /// How to get its secrets, in Markdown.
+    #[serde(default)]
+    pub guide: String,
+    /// Values the person enters at the provider, each label by key. A secret
+    /// request gives each value, since they differ per product.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub copy: BTreeMap<String, String>,
+    /// In the order the person sets them.
+    pub secrets: Vec<CredentialSecret>,
+}
+
+/// One secret of a [`Credential`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CredentialSecret {
+    pub name: String,
+    /// What the provider calls it, as `Client ID`; the name when empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub label: String,
+    /// Never shown once set. An unmasked one, such as a client ID, is.
+    #[serde(default = "masked")]
+    pub masked: bool,
+    /// A regular expression a value is expected to match. A value that does
+    /// not is warned about, never refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+}
+
+fn masked() -> bool {
+    true
 }
 
 impl Deps {
@@ -159,8 +204,9 @@ impl Deps {
         self.programs.is_empty() && self.syscalls.is_empty() && self.secrets.is_empty()
     }
 
-    /// Add what `other` reaches that this does not.
-    pub fn merge(&mut self, other: &Deps) {
+    /// Add what `other` reaches that this does not. Refused when both declare
+    /// a credential of one id, or one secret in two credentials.
+    pub fn merge(&mut self, other: &Deps) -> Result<()> {
         let missing = |into: &mut Vec<String>, from: &[String]| {
             for item in from {
                 if !into.contains(item) {
@@ -173,6 +219,28 @@ impl Deps {
         for (name, reached) in &other.syscalls {
             missing(self.syscalls.entry(name.clone()).or_default(), reached);
         }
+        for (id, credential) in &other.credentials {
+            if self.credentials.contains_key(id) {
+                bail!("credential {id} is declared twice");
+            }
+            if let Some(secret) = credential
+                .secrets
+                .iter()
+                .find(|secret| self.credential_of(&secret.name).is_some())
+            {
+                bail!("secret {} is in two credentials", secret.name);
+            }
+            self.credentials.insert(id.clone(), credential.clone());
+        }
+        Ok(())
+    }
+
+    /// The id of the credential `secret` is in, when it is in one.
+    pub fn credential_of(&self, secret: &str) -> Option<&str> {
+        self.credentials
+            .iter()
+            .find(|(_, credential)| credential.secrets.iter().any(|s| s.name == secret))
+            .map(|(id, _)| id.as_str())
     }
 
     /// How `host` is declared under `syscall`, or `None` when it is not.
@@ -321,7 +389,8 @@ impl Manifest {
             database,
         } = program;
         for kit in &kits {
-            deps.merge(&kit.deps);
+            deps.merge(&kit.deps)
+                .with_context(|| format!("linking kit {}", kit.name))?;
         }
         let mut manifest = Manifest {
             abi_version: ABI_VERSION,

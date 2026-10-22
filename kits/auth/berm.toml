@@ -1,11 +1,5 @@
 # What its applied migrations are kept under in a database; never changes.
 id = "115a99982fc0ce031c0a94fad9aa47a0"
-secrets = [
-    "GITHUB_CLIENT_ID",
-    "GITHUB_CLIENT_SECRET",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
-]
 
 [syscalls]
 "berm.http.fetch" = [
@@ -17,3 +11,25 @@ secrets = [
 
 [database]
 migrations = "migrations"
+
+[credentials.github]
+title = "GitHub OAuth app"
+guide = """
+Create an OAuth app at https://github.com/settings/applications/new, or for an org under its Settings, Developer settings, OAuth Apps. Give it the product's name and homepage, and the callback URL below. On the app's page, copy its Client ID, then generate a client secret and copy it at once: GitHub shows it only once.
+"""
+copy = { callback = "Authorization callback URL" }
+secrets = [
+    { name = "GITHUB_CLIENT_ID", label = "Client ID", masked = false },
+    { name = "GITHUB_CLIENT_SECRET", label = "Client secret" },
+]
+
+[credentials.google]
+title = "Google OAuth client"
+guide = """
+At https://console.cloud.google.com/apis/credentials, create credentials of type OAuth client ID, application type Web application, with the redirect URI below among its Authorized redirect URIs. A project with no OAuth consent screen is asked for one first: give it the scopes openid, email and profile. Copy the client ID and client secret it shows.
+"""
+copy = { callback = "Authorized redirect URI" }
+secrets = [
+    { name = "GOOGLE_CLIENT_ID", label = "Client ID", masked = false, pattern = '^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$' },
+    { name = "GOOGLE_CLIENT_SECRET", label = "Client secret" },
+]

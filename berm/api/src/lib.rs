@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 pub use compat::{Break, Surface};
 pub use image::Image;
 pub use manifest::{
-    Database, Deps, EventSpec, Kit, Manifest, Migration, ProgramRecord, Reach, Sequence,
+    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration,
+    ProgramRecord, Reach, Sequence,
 };
 
 mod compat;

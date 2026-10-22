@@ -57,10 +57,17 @@ pub fn asked(request: &Request, json: bool) -> Result<()> {
 /// What `request` asks, priced when it is a payment.
 fn describe(request: &Request) -> String {
     if request.kind == RequestKind::Secret {
-        let names: Vec<&str> = request.secrets.iter().map(|s| s.name.as_str()).collect();
+        let asked: Vec<&str> = request
+            .credentials
+            .iter()
+            .map(|credential| match credential.title.is_empty() {
+                true => credential.id.as_str(),
+                false => credential.title.as_str(),
+            })
+            .collect();
         return format!(
             "set {} of {}, signed in",
-            names.join(", "),
+            asked.join(", "),
             request.service.as_deref().unwrap_or_default()
         );
     }

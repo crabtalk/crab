@@ -72,6 +72,23 @@ tick = "*/5 * * * *"
 
 A declared host is a name, matched whole; `*.example.com`, which matches every subdomain of `example.com` and not `example.com` itself; or `*`, which matches every host. Matching ignores ASCII case. The embedder is handed each request with how its host was declared, by name or only through a pattern; the local host refuses a host reached only through a pattern when it is, or resolves only to, an address that is not public (loopback, private, link-local, shared, documentation, multicast).
 
+### Credentials
+
+Secrets a person gets together from one provider are declared as a credential instead of in `secrets`:
+
+```toml
+[credentials.github]
+title = "GitHub OAuth app"
+guide = "Create an OAuth app at https://github.com/settings/applications/new with the callback URL below."
+copy = { callback = "Authorization callback URL" }
+secrets = [
+    { name = "GITHUB_CLIENT_ID", label = "Client ID", masked = false },
+    { name = "GITHUB_CLIENT_SECRET", label = "Client secret" },
+]
+```
+
+`guide` is Markdown, shown once for the credential. `copy` labels, by key, values the person enters at the provider; a secret request gives each value. Each secret has a `label`, its name when absent; `masked`, true when absent, keeps a set value from being shown again; and `pattern`, an optional regular expression a value that does not match is warned about, never refused. A secret is declared once, in `secrets` or in one credential. The manifest carries them as `"deps": {"credentials": {"github": {...}}}`, and their secrets among `"secrets"`.
+
 A declared program not deployed refuses nothing: the deploy goes on, and the
 program's runtime lists it as unresolved. A syscall the host does not serve
 refuses the deploy. What a served syscall reaches through it is that syscall's
@@ -93,9 +110,9 @@ programs = ["weather"]
 migrations = "migrations"
 ```
 
-A kit's `berm.toml` declares only `id`, `formerly`, `secrets`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. `id` is 32 lowercase hex digits, written once; a kit with `[database] migrations` declares one, and a program declares none. `formerly` lists the keys its applied migrations were kept under before `id`, and needs an `id`. A kit carries no tools: an image holding a tool compiled in a kit is refused.
+A kit's `berm.toml` declares only `id`, `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. `id` is 32 lowercase hex digits, written once; a kit with `[database] migrations` declares one, and a program declares none. `formerly` lists the keys its applied migrations were kept under before `id`, and needs an `id`. A kit carries no tools: an image holding a tool compiled in a kit is refused.
 
-The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `berm.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "id", "formerly", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A program that keeps no database of its own keeps one for a kit that does.
+The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `berm.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "id", "formerly", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A credential id declared twice, or one secret in two credentials, is refused. A program that keeps no database of its own keeps one for a kit that does.
 
 A kit's migrations run in the program's database before the program's own, each kit's in name order. The host keeps the migrations it applied under the kit's `id` and the program's own under none: a kit's migration and the program's may share a name, and a kit whose package is renamed keeps its history. Before comparing, the host moves a kit's applied migrations kept under one of its `formerly` keys under its `id`, and refuses a database keeping them under two of its keys. A kit no longer linked leaves its tables and its applied migrations in place.
 

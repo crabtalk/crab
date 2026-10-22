@@ -46,6 +46,6 @@ A session lasts 30 days. Its token is 32 bytes from `berm_lang::random` as 64 he
 
 ## Setting it up
 
-1. Create a GitHub OAuth app whose callback URL is the page on the product's site that takes the code. Set its client ID and a client secret as the secrets `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, granted for `github.com`.
-2. Create a Google OAuth client of type Web application, with that page among its authorized redirect URIs, asking for the scopes `openid email profile`. Set its client ID and secret as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, granted for `oauth2.googleapis.com`.
+The kit declares its secrets as two credentials, `github` (a GitHub OAuth app) and `google` (a Google OAuth client of type Web application, with the scopes `openid email profile`), each with a guide to getting it. Both send the user back to the page on the product's site that takes the code: `crab secret request <service> --copy callback=<that page's URL>` asks a person to set them.
+
 The site checks the `state` it sent the user away with before calling.
