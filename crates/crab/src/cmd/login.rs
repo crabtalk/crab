@@ -11,7 +11,7 @@ use crabtalk_sdk::{
     client::{Client, Owner},
 };
 use std::{
-    io::{BufRead, BufReader, IsTerminal, Write},
+    io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
 };
 
@@ -46,37 +46,27 @@ pub fn run(name: &str, host: &str, github: bool) -> Result<()> {
 }
 
 /// Sign in to `host` with the code emailed to `email`, and use the session as
-/// context `name` from now on. Without `code`, one is sent: asked for at a
-/// terminal, and given back with `--code` in a second run without one.
+/// context `name` from now on. Without `code`, one is sent and the command
+/// exits; a second run gives it back with `--code`.
 pub fn email(name: &str, host: &str, email: &str, code: Option<&str>) -> Result<()> {
     if name == context::DEFAULT {
         bail!("{:?} is this machine's bermd", context::DEFAULT);
     }
     let host = host.trim_end_matches('/');
     let client = Client::new(host);
-    let code = match code {
-        Some(code) => code.to_owned(),
-        None => {
-            utils::wait(client.send_code(email))?;
-            if !std::io::stdin().is_terminal() {
-                let mut finish = String::from("crab login");
-                if host != CLOUD {
-                    finish.push_str(&format!(" {host}"));
-                }
-                if name != "cloud" {
-                    finish.push_str(&format!(" --name {name}"));
-                }
-                eprintln!(
-                    "sent a sign-in code to {email}; finish with `{finish} --email {email} --code <code>`"
-                );
-                return Ok(());
-            }
-            eprint!("the code sent to {email}: ");
-            std::io::stderr().flush()?;
-            let mut code = String::new();
-            std::io::stdin().lock().read_line(&mut code)?;
-            code
+    let Some(code) = code else {
+        utils::wait(client.send_code(email))?;
+        let mut finish = String::from("crab login");
+        if host != CLOUD {
+            finish.push_str(&format!(" {host}"));
         }
+        if name != "cloud" {
+            finish.push_str(&format!(" --name {name}"));
+        }
+        eprintln!(
+            "sent a sign-in code to {email}; finish with `{finish} --email {email} --code <code>`"
+        );
+        return Ok(());
     };
     let signed = utils::wait(client.verify_code(email, code.trim(), Surface::Terminal))?;
     keep(name, host, signed.token)

@@ -1,16 +1,25 @@
-//! `crab billing` — the account's plan, credit and payments. What takes a card
-//! opens Stripe in the browser.
+//! `crab billing` — the account's plan, credit and payments. A purchase is a
+//! payment request: a code whose page the person paying opens.
 
 use crate::{format, utils};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::{
         auth::Client as Surface,
-        billing::{PortalFlow, RefillRequest},
+        billing::{
+            CreateRequest, PaymentRequest, PortalFlow, Purchase, RefillRequest, RequestStatus,
+        },
     },
     client::Client,
 };
 use serde::Serialize;
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
+
+/// How often `--wait` asks after a request.
+const POLL: Duration = Duration::from_secs(2);
 
 /// Where the account stands: its plan and period, credit, refill and card.
 pub fn status(client: &Client, json: bool) -> Result<()> {
@@ -56,25 +65,107 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Subscribe to `plan` through Checkout, or at once from a trial.
-pub fn plan(client: &Client, plan: &str) -> Result<()> {
-    match utils::wait(client.checkout(plan, Surface::Terminal))?.url {
-        Some(url) => utils::open(&url),
-        None => println!("subscribed to {plan}"),
+/// Ask a person to pay for `purchase`, of `plan` when it is one, with
+/// `context` shown to them: print its page, and how to wait for it.
+pub fn request(
+    client: &Client,
+    purchase: Purchase,
+    plan: Option<&str>,
+    context: &str,
+    json: bool,
+) -> Result<()> {
+    let request = utils::wait(client.request_payment(&CreateRequest {
+        purchase,
+        plan: plan.map(str::to_owned),
+        context: context.to_owned(),
+    }))?;
+    let wait = format!("crab billing request {} --wait", request.code);
+    if json {
+        #[derive(Serialize)]
+        struct Next<'a> {
+            command: &'a str,
+            until: &'a str,
+        }
+        #[derive(Serialize)]
+        struct Asked<'a> {
+            #[serde(flatten)]
+            request: &'a PaymentRequest,
+            next: Next<'a>,
+        }
+        return utils::json(&Asked {
+            request: &request,
+            next: Next {
+                command: &wait,
+                until: "status is no longer pending",
+            },
+        });
     }
+    let pay = request
+        .url
+        .trim_end_matches(&request.code)
+        .trim_end_matches('/');
+    println!("{}", request.url);
+    eprintln!(
+        "{}: open the link, or enter {} at {pay}, within {} minutes",
+        describe(&request),
+        request.code,
+        (request.expires_at - request.created_at) / 60
+    );
+    eprintln!("then `{wait}`");
     Ok(())
 }
 
-/// Start the free trial through Checkout.
-pub fn trial(client: &Client) -> Result<()> {
-    utils::open(&utils::wait(client.trial(Surface::Terminal))?.url);
-    Ok(())
+/// What `request` buys, priced.
+fn describe(request: &PaymentRequest) -> String {
+    let plan = request.plan.as_deref().unwrap_or_default();
+    let monthly = request
+        .price_micros
+        .map(|micros| format!("{} a month", format::usd(micros as f64)))
+        .unwrap_or_default();
+    match request.purchase {
+        Purchase::Plan if request.card_on_file => {
+            format!("{plan} at {monthly}, ending the trial and charging its card at once")
+        }
+        Purchase::Plan => format!("{plan} at {monthly}"),
+        Purchase::Trial => format!(
+            "a {plan} trial, free for {} days, then {monthly}",
+            request.trial_days.unwrap_or_default()
+        ),
+        Purchase::Credit => "credit, the amount chosen at checkout".to_owned(),
+    }
 }
 
-/// Buy credit through Checkout, the amount chosen there.
-pub fn credit(client: &Client) -> Result<()> {
-    utils::open(&utils::wait(client.buy_credit(Surface::Terminal))?.url);
-    Ok(())
+/// Where payment request `code` stands. With `wait`, once it is no longer
+/// pending, giving up after `timeout` seconds. Fails unless it completed or,
+/// without `wait`, is still pending.
+pub fn status_of(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) -> Result<()> {
+    let started = Instant::now();
+    let request = loop {
+        let request = utils::wait(client.payment_request(code))?;
+        let waiting = request.status == RequestStatus::Pending
+            && started.elapsed() < Duration::from_secs(timeout);
+        if !wait || !waiting {
+            break request;
+        }
+        thread::sleep(POLL);
+    };
+    if json {
+        utils::json(&request)?;
+    } else {
+        println!(
+            "{}  {}  {}",
+            request.code,
+            request.status,
+            describe(&request)
+        );
+    }
+    match request.status {
+        RequestStatus::Completed => Ok(()),
+        RequestStatus::Pending if wait => bail!("still pending after {timeout}s"),
+        RequestStatus::Pending => Ok(()),
+        RequestStatus::Declined => bail!("the person declined it"),
+        RequestStatus::Expired => bail!("it expired; ask again for a new code"),
+    }
 }
 
 /// Refill `amount` USD when credit runs low, at most `cap` USD a month; a cap

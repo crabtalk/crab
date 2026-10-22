@@ -6,7 +6,7 @@ use berm_api::{
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts, utils};
 use crabtalk_sdk::{
-    account::billing::PortalFlow,
+    account::billing::{PortalFlow, Purchase},
     client::{Client, Owner},
 };
 use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
@@ -53,8 +53,8 @@ enum Command {
         /// Sign in with a code emailed to this address, without a browser.
         #[arg(long, conflicts_with = "github")]
         email: Option<String>,
-        /// The code emailed to `--email`. Without it, a code is sent: asked
-        /// for at a terminal, given here in a second run without one.
+        /// The code emailed to `--email`. Without it, a code is sent and the
+        /// command exits; a second run gives it here.
         #[arg(long, requires = "email")]
         code: Option<String>,
         /// The context to keep the session as.
@@ -245,12 +245,37 @@ enum SecretCommand {
 
 #[derive(Subcommand)]
 enum BillingCommand {
-    /// Subscribe to a plan, in Stripe Checkout; from a trial, at once.
-    Plan { slug: String },
-    /// Start the free trial, in Stripe Checkout.
-    Trial,
-    /// Buy credit, in Stripe Checkout, the amount chosen there.
-    Credit,
+    /// Ask a person to put the account on a plan: a code whose page they pay
+    /// at. From a trial, the plan starts as they confirm it.
+    Plan {
+        slug: String,
+        /// What it is for, shown to the person who pays.
+        #[arg(long, default_value = "")]
+        context: String,
+    },
+    /// Ask the person to start the free trial: a code whose page takes a card.
+    Trial {
+        /// What it is for, shown to the person who starts it.
+        #[arg(long, default_value = "")]
+        context: String,
+    },
+    /// Ask a person to buy credit: a code whose page takes the amount.
+    Credit {
+        /// What it is for, shown to the person who pays.
+        #[arg(long, default_value = "")]
+        context: String,
+    },
+    /// Where a payment request stands.
+    Request {
+        /// Its code, as `WDJB-MJHT`.
+        code: String,
+        /// Return once it is no longer pending.
+        #[arg(long)]
+        wait: bool,
+        /// Seconds `--wait` waits at most.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
     /// Refill credit when it runs low; a cap of 0 turns it off.
     Refill {
         /// USD one refill buys, 20 or more.
@@ -527,9 +552,20 @@ fn main() -> Result<ExitCode> {
         } => {
             let client = client()?;
             match action {
-                BillingCommand::Plan { slug } => cmd::billing::plan(&client, slug)?,
-                BillingCommand::Trial => cmd::billing::trial(&client)?,
-                BillingCommand::Credit => cmd::billing::credit(&client)?,
+                BillingCommand::Plan { slug, context } => {
+                    cmd::billing::request(&client, Purchase::Plan, Some(slug), context, json)?
+                }
+                BillingCommand::Trial { context } => {
+                    cmd::billing::request(&client, Purchase::Trial, None, context, json)?
+                }
+                BillingCommand::Credit { context } => {
+                    cmd::billing::request(&client, Purchase::Credit, None, context, json)?
+                }
+                BillingCommand::Request {
+                    code,
+                    wait,
+                    timeout,
+                } => cmd::billing::status_of(&client, code, *wait, *timeout, json)?,
                 BillingCommand::Refill { amount, cap } => {
                     cmd::billing::refill(&client, *amount, *cap)?
                 }

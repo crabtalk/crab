@@ -1,6 +1,9 @@
 //! Billing, plan-catalog, and invoice wire types.
 
-use crate::{account::org::Kind, utils::text_enum};
+use crate::{
+    account::org::{Kind, PublicAccount},
+    utils::text_enum,
+};
 use serde::{Deserialize, Serialize};
 
 /// One plan as a client renders it: what the plan promises, never what keeping
@@ -267,4 +270,90 @@ pub struct Invoice {
     pub invoice_pdf: Option<String>,
     /// Stripe-hosted invoice page. `None` for drafts.
     pub hosted_invoice_url: Option<String>,
+}
+
+/// What a payment request buys.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Purchase {
+    /// A paid plan's subscription.
+    Plan,
+    /// The free trial of the plan that offers one.
+    Trial,
+    /// Credit, in an amount chosen at checkout.
+    Credit,
+}
+
+text_enum!(Purchase { Plan => "plan", Trial => "trial", Credit => "credit" });
+
+/// Where a payment request stands.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RequestStatus {
+    /// Waiting on the person.
+    Pending,
+    /// Paid, or the trial started.
+    Completed,
+    /// The person declined it.
+    Declined,
+    /// Left pending past `expires_at`.
+    Expired,
+}
+
+text_enum!(RequestStatus {
+    Pending => "pending",
+    Completed => "completed",
+    Declined => "declined",
+    Expired => "expired"
+});
+
+/// A purchase to ask a person for, at `POST {account}/billing/requests`.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateRequest {
+    pub purchase: Purchase,
+    /// The plan a `plan` purchase subscribes to.
+    #[serde(default)]
+    pub plan: Option<String>,
+    /// What the purchase is for, in the asker's words, shown to the person
+    /// on the request's page.
+    #[serde(default)]
+    pub context: String,
+}
+
+/// A payment request, as the person who opens its code sees it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentRequest {
+    /// What a person types at `/pay`, as `WDJB-MJHT`.
+    pub code: String,
+    /// The page that opens it.
+    pub url: String,
+    pub purchase: Purchase,
+    /// The plan a `plan` or `trial` purchase subscribes to.
+    pub plan: Option<String>,
+    /// The plan's monthly price in microdollars; none for credit, whose
+    /// amount is chosen at checkout.
+    pub price_micros: Option<i64>,
+    /// Days a `trial` purchase is free for, before the plan's price.
+    pub trial_days: Option<u32>,
+    /// Paying ends the account's trial into the plan at once, charging the
+    /// card the trial was started with; no Checkout follows.
+    pub card_on_file: bool,
+    pub context: String,
+    pub status: RequestStatus,
+    /// The account it buys for.
+    pub account: PublicAccount,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+/// Where paying a request goes next.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PayResponse {
+    /// Stripe Checkout, or none when a trial ended into the plan at once.
+    pub url: Option<String>,
 }

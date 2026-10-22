@@ -5,8 +5,8 @@ use crate::{
     account::{
         auth::Client as Surface,
         billing::{
-            CheckoutResponse, Credit, Invoice, PaymentMethod, Period, PortalFlow, PortalResponse,
-            RefillRequest, SubscribeResponse,
+            CheckoutResponse, CreateRequest, Credit, Invoice, PaymentMethod, PaymentRequest,
+            Period, PortalFlow, PortalResponse, RefillRequest, SubscribeResponse,
         },
     },
     client::{Client, Error},
@@ -50,6 +50,18 @@ impl Client {
             .at(Method::POST, &path)
             .query(&[("client", surface.as_ref()), ("plan", plan)]);
         self.json(req).await
+    }
+
+    /// Ask a person to pay for `body`: a code they open at the answer's `url`.
+    pub async fn request_payment(&self, body: &CreateRequest) -> Result<PaymentRequest, Error> {
+        let path = format!("{}/billing/requests", self.account()?.api());
+        self.json(self.at(Method::POST, &path).json(body)).await
+    }
+
+    /// The payment request `code` names. Takes no token.
+    pub async fn payment_request(&self, code: &str) -> Result<PaymentRequest, Error> {
+        self.json(self.at(Method::GET, &format!("/requests/{code}")))
+            .await
     }
 
     /// A Checkout URL starting the caller's free trial. A person's only.
