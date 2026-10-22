@@ -6,43 +6,39 @@ The runtime of a source service: the feeds it follows, the items they show and t
 
 ```toml
 [dependencies]
-crabkit-lake = "0.1"
+crabkit = { version = "0.1", features = ["lake"] }
 ```
 
-The kit declares `berm.get`, `berm.set` and its migrations, which give the program `berm.sql`. The hosts a source fetches from differ per source, so the program declares them under `berm.http.fetch`:
+The kit is also the crate `crabkit-lake` on its own.
 
-```rust,ignore
-#[berm_lang::program(
-    uses = [crabkit_lake],
-    syscalls = { "berm.http.fetch" = ["example.com"] },
-)]
-mod tools {
-    use crate::{Post, source::Blog};
-    use alloc::vec::Vec;
-    use berm_lang::Result;
-    use crabkit_lake::store;
-
-    /// Fetches the feeds due and stores each item new to one.
-    #[cron]
-    pub fn tick() -> Result<()> {
-        crabkit_lake::tick::<Blog>()
-    }
-
-    /// Lists the posts stored after `after`, oldest first.
-    #[query]
-    #[public]
-    pub fn posts(after: u64) -> Result<Vec<Post>> {
-        let stored = store::items::<Post>(None, after, 50)?;
-        Ok(stored.into_iter().map(|post| post.item).collect())
-    }
-}
-```
-
-Set the tick's expression in `[crons]` of the service's `berm.toml`:
+The kit's `berm.toml` declares `berm.get`, `berm.set` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. The hosts a source fetches from differ per source, so the program declares them under `berm.http.fetch` in its own `berm.toml`, beside the tick's expression in `[crons]`:
 
 ```toml
+[syscalls]
+"berm.http.fetch" = ["example.com"]
+
 [crons]
 tick = "*/5 * * * *"
+```
+
+```rust,ignore
+use crate::{Post, source::Blog};
+use alloc::vec::Vec;
+use berm_lang::{Result, tool};
+use crabkit::lake::store;
+
+/// Fetches the feeds due and stores each item new to one.
+#[tool(cron)]
+pub fn tick() -> Result<()> {
+    crabkit::lake::tick::<Blog>()
+}
+
+/// Lists the posts stored after `after`, oldest first.
+#[tool(query, public)]
+pub fn posts(after: u64) -> Result<Vec<Post>> {
+    let stored = store::items::<Post>(None, after, 50)?;
+    Ok(stored.into_iter().map(|post| post.item).collect())
+}
 ```
 
 ## A source
@@ -51,7 +47,7 @@ Implement `Source` to fetch items and threads and shape what is stored, and set 
 
 ```rust,ignore
 use core::str;
-use crabkit_lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
+use crabkit::lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
 
 pub struct Blog;
 

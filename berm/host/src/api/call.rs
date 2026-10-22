@@ -382,7 +382,7 @@ impl<E: Env> Host<E> {
         })
     }
 
-    /// Call `service`'s `#[stripe]` tool with `event`, a Stripe event as its
+    /// Call `service`'s `#[tool(stripe)]` tool with `event`, a Stripe event as its
     /// daemon took it, with no caller, and commit what it did. The host reads
     /// none of the event; the daemon verifies it. A held scope's services take
     /// none, and a tool's failure is a `500` carrying its message.

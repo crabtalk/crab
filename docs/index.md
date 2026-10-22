@@ -2,7 +2,7 @@
 title: berm
 ---
 
-**[berm](./berm/overview.md)** is the OS for agent harnesses: it pins a WebAssembly module by hash, compiles it once, instantiates it per invocation, and hands it only the syscalls it was given. `bermd` deploys programs and serves their tools over HTTP, and their `#[anonymous]` tools over MCP to agents such as Claude Code, Codex and OpenCode.
+**[berm](./berm/overview.md)** is the OS for agent harnesses: it pins a WebAssembly module by hash, compiles it once, instantiates it per invocation, and hands it only the syscalls it was given. `bermd` deploys programs and serves their tools over HTTP, and their `anonymous` tools over MCP to agents such as Claude Code, Codex and OpenCode.
 
 ## How to read this
 

@@ -14,7 +14,7 @@ const SUBSCRIPTION: &str = "https://api.stripe.com/v1/subscriptions/sub_1";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("billing", &test::build("berm-billing", "billing")?)
+    host.deploy("billing", &test::build("berm-billing")?)
         .await?;
     host.grant("billing", "STRIPE_SECRET_KEY", "api.stripe.com", "rk_test");
     host.arrange(

@@ -16,8 +16,8 @@ path = "bin/main.rs"
 [dependencies]
 anyhow.workspace = true
 berm-api.workspace = true
+berm-build.workspace = true
 berm-oci.workspace = true
-bytesize.workspace = true
 chrono.workspace = true
 clap.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }

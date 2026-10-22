@@ -6,17 +6,16 @@ Neon's SQL over HTTP for berm programs: parameterized statements and transaction
 
 ```toml
 [dependencies]
-crabkit-neon = "0.1"
+crabkit = { version = "0.1", features = ["neon"] }
 ```
 
-The kit declares the secret `NEON_PASSWORD`. The kit declares no host; the program declares its project's endpoint under `berm.http.fetch`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
+The kit is also the crate `crabkit-neon` on its own.
 
-```rust,ignore
-#[berm_lang::program(
-    uses = [crabkit_neon],
-    syscalls = { "berm.http.fetch" = ["api.us-east-2.aws.neon.tech"] },
-)]
-mod tools { /* ... */ }
+The kit's `berm.toml` declares the secret `NEON_PASSWORD`, which reaches the program's manifest when the program links the kit. The kit declares no host; the program declares its project's endpoint under `berm.http.fetch` in its own `berm.toml`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
+
+```toml
+[syscalls]
+"berm.http.fetch" = ["api.us-east-2.aws.neon.tech"]
 ```
 
 Grant `NEON_PASSWORD` for that host. The connection string carries it as `{secret:NEON_PASSWORD}`, substituted unencoded, so the password must be valid in a URL as is.
@@ -24,7 +23,7 @@ Grant `NEON_PASSWORD` for that host. The connection string carries it as `{secre
 ## Queries
 
 ```rust,ignore
-use crabkit_neon::{Neon, Statement};
+use crabkit::neon::{Neon, Statement};
 
 let neon: Neon = "postgresql://app:{secret:NEON_PASSWORD}@ep-cool-river-123456.us-east-2.aws.neon.tech/app"
     .parse()?;

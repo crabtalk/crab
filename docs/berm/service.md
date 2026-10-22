@@ -99,15 +99,15 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 - `X-Berm-Caller` is the caller, as JSON:
   `{"id", "app", "user": {"issuer", "subject"}, "client", "agent"}`, every field
   but `id` optional. bermd checks none of it. A call without one, or an app's
-  call without a `user`, has no caller and reaches only `#[anonymous]` tools.
+  call without a `user`, has no caller and reaches only `anonymous` tools.
 - The answer carries `Berm-Meter`, what the call used across every program it
   reached: `{"calls", "cpu", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
   A deprecated tool's answer carries `Deprecation`, and `Sunset` once one is set.
 
 | Status | When |
 |---|---|
-| `401` | No caller, and the tool is not `#[anonymous]`. |
-| `403` | The tool is `#[callers(services)]`. |
+| `401` | No caller, and the tool is not `anonymous`. |
+| `403` | The tool is `callers(services)`. |
 | `404` | No such program, or no public tool by that name. |
 | `405` | `GET` on a tool that is not a query. |
 | `503` | No call slot is free. |
@@ -123,7 +123,7 @@ An invocation stops at its tool's CPU budget, checked every 100ms, and a row sys
 - `PATCH /programs/{name}/tools/{tool}` with `{"sunset": <epoch seconds>}` sets
   when a deprecated tool stops being served; `null` clears it.
 - `POST /programs/{name}/stripe` hands its body, a Stripe event, to the
-  program's `#[stripe]` tool, unverified, and answers `204` once the tool has
+  program's `stripe` tool, unverified, and answers `204` once the tool has
   run, `503` while the program is held and `500` when the tool failed.
 
 ## Secrets
@@ -148,7 +148,7 @@ Everything in [the guest API](./guest-api.md): its keys, a database, logs, the c
   HTTP, its tools named `{program}.{tool}`. A program name carries no dot, so
   dispatch splits on the first one.
 - A call over MCP carries no caller, so the endpoint lists and calls only
-  `#[anonymous]` tools.
+  `anonymous` tools.
 - A tool's budget is in its `_meta.terms`, and a query tool is marked
   read-only.
 - Each program with a [README](./manifest.md#package) publishes it as the

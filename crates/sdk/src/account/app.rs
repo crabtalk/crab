@@ -20,7 +20,7 @@ pub struct App {
     /// Services it may call, as `{owner}/{name}`, the owner by its handle, or its
     /// id when it has none.
     pub services: Vec<String>,
-    /// Calls with no token reach the services' `#[anonymous]` tools.
+    /// Calls with no token reach the services' `#[tool(anonymous)]` tools.
     pub anonymous: bool,
     pub created_at: i64,
 }

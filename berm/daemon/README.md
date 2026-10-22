@@ -1,7 +1,7 @@
 # bermd
 
 A long-running service that deploys programs and serves their tools over HTTP,
-and their `#[anonymous]` tools over MCP.
+and their `anonymous` tools over MCP.
 
 ```sh
 bermd --addr 127.0.0.1:7777 --root ~/.berm

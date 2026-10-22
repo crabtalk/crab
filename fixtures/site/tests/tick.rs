@@ -53,8 +53,7 @@ const COMPARE: &str = r#"<html><head><meta property="og:title" content="Example 
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("site", &test::build("berm-site", "site")?)
-        .await?;
+    host.deploy("site", &test::build("berm-site")?).await?;
     Ok(host)
 }
 
@@ -608,7 +607,7 @@ async fn the_sites_after_the_first_share_the_sitemap_bytes_of_a_round() -> Resul
 }
 
 #[tokio::test]
-async fn a_read_whose_sitemaps_all_fail_fails_and_keeps_the_urls_it_had() -> Result<()> {
+async fn a_read_whose_sitemaps_all_fail_keeps_the_urls_it_had() -> Result<()> {
     let host = deployed().await?;
     arrange(&host);
     call(&host, "watch", json!({"domains": ["example.com"]})).await?;
@@ -625,14 +624,6 @@ async fn a_read_whose_sitemaps_all_fail_fails_and_keeps_the_urls_it_had() -> Res
     );
     host.advance(7 * DAY);
     call(&host, "tick", json!({})).await?;
-    let failed = host.logs("site", Some("ReadFailed")).await?;
-    assert_eq!(failed.len(), 1);
-    let error: Value = serde_json::from_str(&failed[0].data)?;
-    assert_eq!(
-        error["error"],
-        "https://example.com/sitemap-pages.xml answered 503"
-    );
-
     // As does the index itself.
     host.arrange(
         "GET",
@@ -642,7 +633,21 @@ async fn a_read_whose_sitemaps_all_fail_fails_and_keeps_the_urls_it_had() -> Res
     );
     host.advance(7 * DAY);
     call(&host, "tick", json!({})).await?;
-    assert_eq!(host.logs("site", Some("ReadFailed")).await?.len(), 2);
+
+    assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
+    let read = host.logs("site", Some("Read")).await?;
+    assert_eq!(read.len(), 3);
+    let sitemaps: Vec<Value> = read[1..]
+        .iter()
+        .map(|log| serde_json::from_str::<Value>(&log.data).map(|data| data["sitemaps"].clone()))
+        .collect::<serde_json::Result<_>>()?;
+    assert_eq!(
+        sitemaps,
+        [
+            json!("https://example.com/sitemap-pages.xml answered 503"),
+            json!("https://example.com/sitemap-index.xml answered 503"),
+        ]
+    );
     assert_eq!(kept(&host, "example.com").await?, urls);
     Ok(())
 }
@@ -662,6 +667,31 @@ async fn a_site_whose_sitemap_xml_answers_404_is_read_with_no_urls() -> Result<(
     assert_eq!(host.logs("site", Some("Read")).await?.len(), 1);
     assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
     assert!(kept(&host, "example.com").await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_url_listed_on_a_site_whose_named_sitemap_is_gone_is_fetched() -> Result<()> {
+    let host = deployed().await?;
+    let listed = "https://example.com/compare/listed-vs-other";
+    host.arrange(
+        "GET",
+        "https://example.com/robots.txt",
+        200,
+        "User-agent: *\nAllow: /\nSitemap: https://example.com/gone.xml\n",
+    );
+    host.arrange("GET", "https://example.com/gone.xml", 404, "not found");
+    host.arrange("GET", listed, 200, COMPARE);
+    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    call(
+        &host,
+        "list",
+        json!({"domain": "example.com", "urls": [listed]}),
+    )
+    .await?;
+    call(&host, "tick", json!({})).await?;
+    assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
+    assert!(fetched(&host).contains(&listed.to_owned()));
     Ok(())
 }
 

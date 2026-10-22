@@ -6,29 +6,30 @@
 //! never see a call number or a pointer pair.
 //!
 //! ```ignore
-//! #![no_std]
-//! #![no_main]
+//! #![cfg_attr(target_arch = "wasm32", no_std)]
 //!
-//! #[berm_lang::program]
-//! mod tools {
-//!     use berm_lang::Result;
+//! extern crate alloc;
 //!
-//!     /// Greets `name`.
-//!     #[public]
-//!     pub fn greet(
-//!         /// Who to greet.
-//!         name: alloc::string::String,
-//!     ) -> Result<alloc::string::String> {
-//!         Ok(alloc::format!("hello, {name}"))
-//!     }
+//! use alloc::{format, string::String};
+//! use berm_lang::{Result, tool};
+//!
+//! /// Greets `name`.
+//! #[tool(public)]
+//! pub fn greet(
+//!     /// Who to greet.
+//!     name: String,
+//! ) -> Result<String> {
+//!     Ok(format!("hello, {name}"))
 //! }
 //! ```
 //!
-//! Every `pub fn` in the module is a tool; its doc comment is what the model
-//! reads when deciding whether to call it. Its parameters are its arguments,
-//! and the `Ok` of its [`Result`] is its reply, each typed by [`Schema`].
+//! Each `#[tool]` function is a tool; its doc comment is what the model reads
+//! when deciding whether to call it. Its parameters are its arguments, and the
+//! `Ok` of its [`Result`] is its reply, each typed by [`Schema`].
 //!
-//! Build for `wasm32-unknown-unknown`.
+//! A program is a `cdylib`, built for `wasm32-unknown-unknown` by `crab build`,
+//! which appends what its `berm.toml` and its kits declare. An image cargo
+//! alone links is refused by a host.
 //!
 //! This crate declares the standard syscalls: [`call`] and [`after`] for
 //! reaching programs, [`get`] and [`set`] for a program's own bytes, [`emit`]
@@ -55,7 +56,7 @@ extern crate alloc;
 extern crate self as berm_lang;
 
 pub use abi::{args_len, now, random, trace};
-pub use berm_codegen::{Schema, declare_program, error_code, event, kit, program, syscalls};
+pub use berm_codegen::{Schema, declare_program, error_code, event, syscalls, tool};
 pub use call::{CallError, Caller, User, after, call, caller, client, deny, user, vouch};
 #[doc(hidden)]
 pub use emit::event as __event;
@@ -103,10 +104,10 @@ pub mod __private {
 
 /// The ABI this SDK generates against. A host that does not recognise it
 /// refuses the program rather than guessing.
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 
 #[doc(hidden)]
-pub const ABI_VERSION_TEXT: &str = "4";
+pub const ABI_VERSION_TEXT: &str = "5";
 
 /// Traps instead of looping. An author's panic reaches the host as a trap it
 /// can report, rather than hanging the thread that called in.

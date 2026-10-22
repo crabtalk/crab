@@ -13,7 +13,7 @@ const GOOGLE_USER: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(1_700_000_000_000).await?;
-    host.deploy("account", &test::build("berm-account", "account")?)
+    host.deploy("account", &test::build("berm-account")?)
         .await?;
     for (secret, to) in [
         ("GITHUB_CLIENT_ID", "github.com"),

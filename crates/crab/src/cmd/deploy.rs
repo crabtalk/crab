@@ -1,12 +1,8 @@
 //! `crab deploy` — build a project and hand the context's host its image.
 
-use crate::{
-    cmd::inspect,
-    project::{self, FILE, Project},
-    utils,
-};
+use crate::{cmd::inspect, project, utils};
 use anyhow::{Context, Result, bail};
-use berm_api::Manifest;
+use berm_api::{Manifest, project::Project};
 use berm_oci::{Access, Reference, Registry};
 use crabtalk_sdk::{
     client::{Client, Error},
@@ -14,7 +10,12 @@ use crabtalk_sdk::{
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
-use std::{fs::File, io::Read, path::Path, str::FromStr};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::Path,
+    str::FromStr,
+};
 use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
@@ -32,7 +33,7 @@ pub fn run(
 ) -> Result<()> {
     let mut project = Project::read(dir)?;
     if pull {
-        let live = utils::wait(client.crons(&project.name))?;
+        let live = utils::wait(client.crons(project.name()?))?;
         let crons = live
             .crons
             .into_iter()
@@ -41,39 +42,42 @@ pub fn run(
         project::write_crons(dir, &crons)?;
         project = Project::read(dir)?;
     }
-    let bytes = project::build(dir)?;
+    let built = berm_build::build(dir, None)?;
+    let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
+    let name = project.name()?;
     let deployed = match &client.owner {
         None if project.database.seed.is_some() => {
             bail!("a seed starts a service on Cloud; bermd's own database is where one is made")
         }
         None => utils::wait(client.deploy_image(
-            &project.name,
+            name,
             bytes,
             &project.public,
             force,
             project.crons.as_ref(),
-            project.database.size.0,
+            project.database.size(),
         ))?,
         Some(_) => {
             let image = image.or(project.image.as_deref()).with_context(|| {
-                format!("Cloud deploys through a registry; name one as `image` in {FILE}")
+                format!(
+                    "Cloud deploys through a registry; name one as `image` in {}",
+                    Project::FILE
+                )
             })?;
             let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
             push(&reference, &bytes)?;
             let seed = match &project.database.seed {
-                Some(seed) if first(client, &project.name)? => {
-                    Some(upload(client, &project.name, &dir.join(seed))?)
-                }
+                Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
                 _ => None,
             };
             utils::wait(client.deploy(
-                &project.name,
+                name,
                 &DeployRequest {
                     reference,
                     public: project.public.clone(),
                     force,
                     crons: project.crons.clone(),
-                    size: project.database.size.0,
+                    size: project.database.size(),
                     seed,
                 },
             ))?
@@ -81,23 +85,23 @@ pub fn run(
     };
     // The host compiled it to answer, so what comes back is what it will
     // serve — worth showing rather than saying "ok".
-    let runtime = utils::wait(client.runtime(&project.name))?;
+    let runtime = utils::wait(client.runtime(name))?;
     inspect::show(
         &deployed.program,
         &runtime,
-        &utils::wait(client.terms(&project.name))?,
+        &utils::wait(client.terms(name))?,
     );
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }
     // A bermd's secrets are its own file's; Cloud's are set per service.
     if client.owner.is_some() {
-        let set = utils::wait(client.secrets(&project.name))?;
+        let set = utils::wait(client.secrets(name))?;
         for secret in &runtime.deps.secrets {
             if !set.iter().any(|one| one.name == *secret) {
                 println!(
                     "  unset   secret {secret}: printf %s \"$VALUE\" | crab secret put {} {secret}",
-                    project.name
+                    name
                 );
             }
         }
@@ -158,6 +162,5 @@ fn hash(path: &Path) -> Result<(String, u64)> {
 /// Upload `image` as `reference`, answering with its digest.
 fn push(reference: &str, image: &[u8]) -> Result<String> {
     let reference = Reference::from_str(reference)?;
-    let section = Manifest::section(image)?;
-    Registry::open(&reference, Access::Write)?.push(&reference.reference, image, section)
+    Registry::open(&reference, Access::Write)?.push(&reference.reference, image)
 }

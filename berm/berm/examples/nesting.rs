@@ -6,7 +6,7 @@
 //! against the set it already holds.
 //!
 //! ```sh
-//! cargo build --release -p berm-fixture --target wasm32-unknown-unknown
+//! cargo run -p crab-agent -- build fixtures/fixture
 //! cargo run --release --example nesting -p berm
 //! ```
 
@@ -14,10 +14,7 @@ use anyhow::{Context, Result};
 use berm::{Berm, Calls, Config, Engine, storage, syscall::call};
 use std::{fs, path::PathBuf, sync::Arc};
 
-const GUEST: (&str, &str) = (
-    "target/wasm32-unknown-unknown/release/fixture.wasm",
-    "wasm32-unknown-unknown",
-);
+const GUEST: &str = "target/berm/berm_fixture.wasm";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,9 +27,10 @@ async fn main() -> Result<()> {
         .and_then(|p| p.parent())
         .context("no workspace root")?
         .to_path_buf();
-    let (guest, target) = GUEST;
-    let image = fs::read(root.join(guest)).with_context(|| {
-        format!("build the guest first: cargo build --release -p berm-fixture --target {target} ({guest})")
+    let image = fs::read(root.join(GUEST)).with_context(|| {
+        format!(
+            "build the guest first: cargo run -p crab-agent -- build fixtures/fixture ({GUEST})"
+        )
     })?;
 
     let engine = Engine::new(&Config {

@@ -27,26 +27,23 @@ A context names the host `crab` talks to, the way `docker context` picks a daemo
 crab new example
 ```
 
-A service is a Rust crate built to one WebAssembly module. Every `pub fn` in its program module is a tool, and its doc comment is what a model reads when deciding to call it:
+A service is a Rust library crate built to one WebAssembly module, with a `berm.toml` beside its `Cargo.toml` that names it. A function marked `#[tool]` is a tool, and its doc comment is what a model reads when deciding to call it:
 
 ```rust
-#[berm_lang::program]
-mod tools {
-    use alloc::string::String;
-    use berm_lang::Result;
+use alloc::string::String;
+use berm_lang::{Result, tool};
 
-    /// Echo the query back.
-    #[public]
-    pub fn echo(
-        /// The text to echo back.
-        query: String,
-    ) -> Result<String> {
-        Ok(query)
-    }
+/// Echo the query back.
+#[tool(public)]
+pub fn echo(
+    /// The text to echo back.
+    query: String,
+) -> Result<String> {
+    Ok(query)
 }
 ```
 
-A tool is internal unless marked `#[public]`: only the host calls an internal tool, for the service's own wakes, crons and Stripe events. A call with no caller reaches only a tool also marked `#[anonymous]`. See [berm-lang](berm/lang/README.md) and [Writing a Program](https://berm.run/docs/berm/writing-a-program/).
+A tool is internal unless marked `#[tool(public)]`: only the host calls an internal tool, for the service's own wakes, crons and Stripe events. A call with no caller reaches only a tool also marked `anonymous`. See [berm-lang](berm/lang/README.md) and [Writing a Program](https://berm.run/docs/berm/writing-a-program/).
 
 ## Deploy and call it
 
@@ -57,13 +54,14 @@ crab logs example
 crab usage example
 ```
 
-`crab deploy` builds the crate and deploys it as its `berm.toml` says. Against Cloud it pushes the image to the registry `image` names and deploys that reference. Agents reach a service's tools over MCP.
+`crab build` builds the crate's image and prints its path; `crab deploy` builds it the same way and deploys it as its `berm.toml` says. Against Cloud it pushes the image to the registry `image` names and deploys that reference. Agents reach a service's tools over MCP.
 
 ## Use ours
 
-[crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each. A service links a kit as a library with `#[berm_lang::program(uses = [crabkit::auth])]` and calls it from its own tools.
+[crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each. A service depends on crabkit with the kit's feature, `crabkit = { version = "0.1", features = ["auth"] }`, and calls it from its own tools as `crabkit::auth`. Linking a kit is using it: what the kit's `berm.toml` declares reaches the service's manifest.
 
 - [auth](kits/auth/README.md): Sign-in for a product's users. GitHub and Google logins as sessions kept in its own database.
+- [crawl](kits/crawl/README.md): An incremental crawler. robots.txt, sitemaps, and the pages of the kinds a program names, recrawled when they change.
 - [lake](kits/lake/README.md): Feeds a source service follows. Items and threads fetched on its schedule into its database, and RSS and Atom reading.
 - [neon](kits/neon/README.md): Neon Postgres over HTTP. Parameterized statements and transactions.
 - [stripe](kits/stripe/README.md): Stripe subscriptions for a product's users. Checkout, the customer portal, and each user's plan.

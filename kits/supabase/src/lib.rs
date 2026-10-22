@@ -21,8 +21,6 @@ mod storage;
 pub use rest::Query;
 pub use storage::Bucket;
 
-berm_lang::kit!(secrets = ["SUPABASE_KEY"]);
-
 const REST: &str = "/rest/v1";
 const STORAGE: &str = "/storage/v1/object";
 

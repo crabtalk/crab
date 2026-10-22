@@ -6,19 +6,16 @@ Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and Postgres fun
 
 ```toml
 [dependencies]
-crabkit-supabase = "0.1"
+crabkit = { version = "0.1", features = ["supabase"] }
 ```
 
-The kit declares the secret `SUPABASE_KEY` and no host. The program declares its own project's host under `berm.http.fetch`:
+The kit is also the crate `crabkit-supabase` on its own.
 
-```rust,ignore
-#[berm_lang::program(
-    uses = [crabkit_supabase],
-    syscalls = { "berm.http.fetch" = ["abcd.supabase.co"] },
-)]
-mod tools {
-    // …
-}
+The kit's `berm.toml` declares the secret `SUPABASE_KEY`, which reaches the program's manifest when the program links the kit, and no host. The program declares its own project's host under `berm.http.fetch` in its own `berm.toml`:
+
+```toml
+[syscalls]
+"berm.http.fetch" = ["abcd.supabase.co"]
 ```
 
 Set the key as the program's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | crab secret put <program> SUPABASE_KEY`:
@@ -29,7 +26,7 @@ Set the key as the program's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | cra
 ## Tables
 
 ```rust,ignore
-use crabkit_supabase::Supabase;
+use crabkit::supabase::Supabase;
 
 let supabase = Supabase::new("https://abcd.supabase.co");
 

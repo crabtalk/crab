@@ -9,7 +9,7 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 
 ## Services belong to the product
 
-- A service is a crate in the product's repository, with a `berm.toml` beside its `Cargo.toml`. `crab new` writes one; `crab deploy` deploys it.
+- A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `berm.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `berm.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
 - On Cloud each service reserves its `[database] size` of the account's plan storage, 1GiB when unset, whatever it holds. A deploy refused for storage is met by sizing each service to what it holds (`crab usage <service>` reports `stored`) before any change of plan.
 
@@ -23,7 +23,7 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
   crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.1", features = ["auth"] }
   ```
 
-- A kit is linked with `#[berm_lang::program(uses = [crabkit::auth])]` and called from the service's own tools. The kit's secrets, fetched hosts and migrations reach the service's manifest through `uses`; its tables live in the service's database.
+- A kit is a crate with a `berm.toml` of its own. A service links it by turning on its `crabkit` feature, and calls it from its own tools as `crabkit::auth`. Linking a kit is using it: the build finds it among the crates compiled into the image, and the secrets, fetched hosts and migrations its `berm.toml` declares reach the service's manifest; its tables live in the service's database.
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
 - Each kit's `README.md` lists what the service still declares itself.
 
@@ -34,9 +34,9 @@ Read the source before writing code. Paths are relative to the crab repository.
 | Question | Source |
 | --- | --- |
 | The CLI, contexts, `berm.toml` | `crates/crab/README.md` |
-| Tools, `#[public]`, `#[anonymous]`, `#[query]`, `#[cron]` | `docs/berm/writing-a-program.md`, `berm/lang/README.md` |
+| Tools, `#[tool(...)]` and its `public`, `anonymous`, `query`, `cron`, `stripe`, `callers(...)`; building with `crab build` | `docs/berm/writing-a-program.md`, `berm/lang/README.md` |
 | Caller, user, database, HTTP, calls between services | `docs/berm/guest-api.md` |
-| Syscalls, secrets, kits and their migrations | `docs/berm/manifest.md` |
+| `berm.toml` keys, syscalls, secrets, kits and their migrations | `docs/berm/manifest.md` |
 | Images and registries | `docs/berm/publishing.md` |
 | bermd, HTTP and MCP serving | `docs/berm/service.md` |
 | A kit's API and setup | `kits/<kit>/README.md` |

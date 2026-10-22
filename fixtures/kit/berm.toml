@@ -1,0 +1,7 @@
+secrets = ["kit"]
+
+[syscalls]
+"berm.http.fetch" = ["kit.example.com"]
+
+[database]
+migrations = "migrations"

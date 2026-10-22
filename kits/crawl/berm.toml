@@ -1,0 +1,5 @@
+[syscalls]
+"berm.http.fetch" = ["*"]
+
+[database]
+migrations = "migrations"

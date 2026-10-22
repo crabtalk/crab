@@ -19,11 +19,6 @@ pub mod time;
 
 pub use state::{Feed, Kind, State, Watch};
 
-berm_lang::kit!(
-    syscalls = { "berm.get", "berm.set" },
-    database = "migrations",
-);
-
 /// Bytes a tick stores before it fetches no more threads.
 const BUDGET: usize = 8 << 20;
 

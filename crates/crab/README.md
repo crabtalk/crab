@@ -5,6 +5,7 @@ The command-line client for [bermd](https://berm.run/docs/berm/service/) and Cra
 ```sh
 crab new example
 cd example
+crab build
 crab deploy
 crab ls
 crab inspect example
@@ -16,7 +17,7 @@ crab rm example
 
 ## berm.toml
 
-`crab deploy` builds the package in the directory it is given, `.` by default, and deploys it as the `berm.toml` beside its `Cargo.toml` says. `crab new` writes one.
+`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `berm.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
 
 ```toml
 # The service this program deploys as.
@@ -27,7 +28,7 @@ image = "ghcr.io/org/example"
 # Tools this program may make public.
 public = ["search"]
 
-# When the host calls each `#[cron]` tool: five fields, minute to day of
+# When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC.
 [crons]
 tick = "*/5 * * * *"

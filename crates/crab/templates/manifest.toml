@@ -3,11 +3,10 @@ name = "__NAME__"
 version = "0.1.0"
 edition = "2024"
 
-# Named, because autodiscovery would call the image `main` after the file it is
-# built from.
-[[bin]]
-name = "__NAME__"
-path = "bin/main.rs"
+# A cdylib is the image `crab build` finishes; the rlib is what `cargo test`
+# links.
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v__VERSION__" }

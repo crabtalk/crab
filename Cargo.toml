@@ -17,6 +17,7 @@ crabtalk-sdk = { path = "crates/sdk", version = "0.1.1" }
 # berm
 berm = { path = "berm/berm", version = "0.1.1" }
 berm-api = { path = "berm/api", version = "0.1.1" }
+berm-build = { path = "berm/build", version = "0.1.1" }
 berm-codegen = { path = "berm/codegen", version = "0.1.1" }
 berm-host = { path = "berm/host", version = "0.1.1" }
 berm-lang = { path = "berm/lang", version = "0.1.1" }

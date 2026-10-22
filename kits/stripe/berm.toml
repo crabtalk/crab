@@ -1,0 +1,7 @@
+secrets = ["STRIPE_SECRET_KEY"]
+
+[syscalls]
+"berm.http.fetch" = ["api.stripe.com"]
+
+[database]
+migrations = "migrations"

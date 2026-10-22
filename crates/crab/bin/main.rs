@@ -61,6 +61,11 @@ enum Command {
     New { name: String },
     /// List deployed programs.
     Ls,
+    /// Build the program in a directory and print the path of its image.
+    Build {
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
     /// Build the project in a directory and deploy it as its `berm.toml`
     /// names it, replacing whatever holds the name.
     Deploy {
@@ -287,7 +292,7 @@ struct AppFields {
     /// An identity provider whose tokens name its users, `ISSUER=AUDIENCE`.
     #[arg(long = "issuer")]
     issuers: Vec<String>,
-    /// Calls with no token reach the services' `#[anonymous]` tools.
+    /// Calls with no token reach the services' `#[tool(anonymous)]` tools.
     #[arg(long)]
     anonymous: bool,
 }
@@ -432,6 +437,7 @@ fn main() -> Result<ExitCode> {
         Command::Context(ContextCommand::Rm { name }) => cmd::context::rm(name)?,
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
+        Command::Build { dir } => cmd::build::run(dir)?,
         Command::Deploy {
             dir,
             image,

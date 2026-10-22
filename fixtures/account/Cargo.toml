@@ -8,9 +8,8 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-[[bin]]
-name = "account"
-path = "bin/main.rs"
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 berm-lang.workspace = true

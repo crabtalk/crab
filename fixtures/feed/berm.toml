@@ -1,0 +1,4 @@
+name = "feed"
+
+[syscalls]
+"berm.http.fetch" = ["127.0.0.1"]

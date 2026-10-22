@@ -1,0 +1,6 @@
+[syscalls]
+"berm.get" = []
+"berm.set" = []
+
+[database]
+migrations = "migrations"

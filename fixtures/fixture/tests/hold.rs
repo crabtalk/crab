@@ -7,7 +7,7 @@ use berm_host::test::{self, TestHost};
 
 async fn deployed(services: &[&str]) -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture", "fixture")?;
+    let image = test::build("berm-fixture")?;
     for service in services {
         host.deploy(service, &image).await?;
     }

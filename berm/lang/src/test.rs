@@ -2,9 +2,9 @@
 //!
 //! A program is an image that a host compiles and enters, which is a slow way
 //! to find out that a handler mishandles an empty string. Off a guest target
-//! the exports are ordinary functions and the buffers are ordinary memory, so a
-//! test can call one the way the host would — the same argument transfer, the
-//! same buffer limits, the same failure channel — and check what came back.
+//! the exports are ordinary functions, so a test can call one the way the host
+//! would — the same argument transfer, the same failure channel — and check
+//! what came back. The host's bound on arguments and results is not applied.
 //!
 //! ```ignore
 //! #[test]
@@ -16,16 +16,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use crate::{CallError, abi, http, sys};
-use std::{
-    string::String,
-    sync::{Mutex, PoisonError},
-    vec::Vec,
-};
-
-/// A program writes into buffers the macro puts in `.bss`, which on the guest
-/// is safe because one invocation runs at a time. A test binary runs its tests
-/// in parallel, so they take turns here or they write over each other.
-static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+use std::{string::String, vec::Vec};
 
 /// Invoke a tool export with `args`, as the host does.
 ///
@@ -33,10 +24,6 @@ static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 /// distinction the host draws between a tool that failed and one that returned
 /// the word "error".
 pub fn call(entry: extern "C" fn(), args: &[u8]) -> Result<Vec<u8>, String> {
-    // A failing assertion is a test doing its job, so a panic while holding
-    // this must not poison it into failing every other test.
-    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
-
     sys::with(|host| {
         host.args = args.to_vec();
         host.traced.clear();

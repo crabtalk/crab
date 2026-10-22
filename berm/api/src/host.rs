@@ -338,7 +338,7 @@ pub struct Crons {
     pub held: bool,
 }
 
-/// A cron tool: one its manifest marks `#[cron]`.
+/// A cron tool: one its manifest marks `#[tool(cron)]`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CronJob {

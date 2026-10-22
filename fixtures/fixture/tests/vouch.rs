@@ -6,7 +6,7 @@ use berm_host::test::{self, TestHost, User};
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture", "fixture")?)
+    host.deploy("fixture", &test::build("berm-fixture")?)
         .await?;
     Ok(host)
 }

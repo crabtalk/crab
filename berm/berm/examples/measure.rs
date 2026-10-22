@@ -6,7 +6,7 @@
 //! transfer, guest call, result read, teardown.
 //!
 //! ```sh
-//! cargo build --release -p berm-fixture --target wasm32-unknown-unknown
+//! cargo run -p crab-agent -- build fixtures/fixture
 //! cargo run --release --example measure -p berm
 //! ```
 
@@ -19,10 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const GUEST: (&str, &str) = (
-    "target/wasm32-unknown-unknown/release/fixture.wasm",
-    "wasm32-unknown-unknown",
-);
+const GUEST: &str = "target/berm/berm_fixture.wasm";
 const ROUNDS: usize = 1000;
 
 #[tokio::main]
@@ -38,9 +35,10 @@ async fn main() -> Result<()> {
         .context("no workspace root")?
         .to_path_buf();
 
-    let (guest, target) = GUEST;
-    let image = fs::read(root.join(guest)).with_context(|| {
-        format!("build the guest first: cargo build --release -p berm-fixture --target {target} ({guest})")
+    let image = fs::read(root.join(GUEST)).with_context(|| {
+        format!(
+            "build the guest first: cargo run -p crab-agent -- build fixtures/fixture ({GUEST})"
+        )
     })?;
     println!("guest: {} bytes", image.len());
 

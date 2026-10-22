@@ -7,7 +7,7 @@
 //! ```ignore
 //! let host = TestHost::open(0).await?;
 //! host.arrange("GET", "https://example.com/feed", 200, feed);
-//! host.deploy("feeds", &berm_host::test::build("feeds", "feeds")?).await?;
+//! host.deploy("feeds", &berm_host::test::build("feeds")?).await?;
 //! host.call("feeds", "start", b"{}").await?;
 //! for (wake, ran) in host.fire().await? { /* … */ }
 //! let logs = host.logs("feeds", Some("Item")).await?;
@@ -40,7 +40,6 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    process::Command,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -402,50 +401,11 @@ impl Drop for TestHost {
     }
 }
 
-/// Build binary `bin` of `package` for the guest target, release profile, and
-/// answer the image's bytes. One build at a time across processes: cargo
-/// replaces the image it answers with on every build, fresh or not.
-pub fn build(package: &str, bin: &str) -> Result<Vec<u8>> {
-    let lock = std::fs::File::create(std::env::temp_dir().join("berm-test-build.lock"))?;
-    lock.lock()?;
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-    let output = Command::new(cargo)
-        .args([
-            "build",
-            "--release",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--message-format",
-            "json-render-diagnostics",
-            "-p",
-            package,
-            "--bin",
-            bin,
-        ])
-        .output()
-        .context("running cargo")?;
-    if !output.status.success() {
-        bail!(
-            "building {package} failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    let image = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|message| message["reason"] == "compiler-artifact")
-        .flat_map(|message| message["filenames"].as_array().cloned().unwrap_or_default())
-        .filter_map(|file| file.as_str().map(PathBuf::from))
-        .find(|file| {
-            file.extension().is_some_and(|ext| ext == "wasm")
-                && file.file_stem().is_some_and(|stem| stem == bin)
-        })
-        .with_context(|| format!("cargo built no {bin}.wasm"))?;
-    read(&image)
-}
-
-fn read(path: &Path) -> Result<Vec<u8>> {
-    std::fs::read(path).with_context(|| format!("reading {}", path.display()))
+/// Build the program `package` of the workspace the current directory is in
+/// as `crab build` does, and answer its finished image.
+pub fn build(package: &str) -> Result<Vec<u8>> {
+    let image = berm_build::build(&std::env::current_dir()?, Some(package))?;
+    std::fs::read(&image).with_context(|| format!("reading {}", image.display()))
 }
 
 /// Answers what the test arranged, by method and URL, and refuses the rest.

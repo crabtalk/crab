@@ -21,15 +21,20 @@ const ROBOTS: usize = 64 << 10;
 /// parse.
 const ROBOTS_READ: usize = 500 << 10;
 
+/// A URL a sitemap listed, of a kind that robots.txt allows: the URL, its kind
+/// and its `lastmod` as written.
+pub type Listed = (String, &'static str, Option<String>);
+
 /// What a read found.
 pub struct Site {
     /// Its robots.txt, cut at [`ROBOTS`] bytes; `None` when it answered 4xx.
     pub robots: Option<String>,
     /// What the crawler reads out of its robots.txt.
     pub rules: Robots,
-    /// Each URL of a kind that robots.txt allows: the URL, its kind and its
-    /// `lastmod` as written.
-    pub urls: Vec<(String, &'static str, Option<String>)>,
+    /// Each URL its sitemaps listed; the first sitemap's failure when one
+    /// timed out or answered 5xx and none answered that names no sitemaps or
+    /// lists URLs.
+    pub urls: Result<Vec<Listed>, String>,
 }
 
 /// A site being read.
@@ -39,7 +44,7 @@ struct Reading<'a> {
     text: Option<String>,
     queue: VecDeque<String>,
     seen: Vec<String>,
-    urls: Vec<(String, &'static str, Option<String>)>,
+    urls: Vec<Listed>,
     /// Whether a sitemap answered that names no sitemaps or lists URLs.
     answered: bool,
     /// Why the first sitemap that failed failed.
@@ -52,10 +57,8 @@ struct Reading<'a> {
 /// first is read for `budget` bytes of sitemaps of its own; the rest share
 /// another `budget`, each round's split evenly among those reading, and one
 /// whose sitemap is cut at its share answers `None`, left for a later tick. A
-/// read fails when robots.txt cannot be read or answers 5xx, or when a
-/// sitemap failed and none answered that names no sitemaps or lists URLs; the
-/// `/sitemap.xml` read when robots.txt names none answering 404 or 410 is no
-/// failure. A sitemap that fails is otherwise left out.
+/// read fails when robots.txt cannot be read or answers 5xx. A sitemap
+/// answering anything but 200, a timeout or 5xx, is absent.
 pub fn read_all<C: Crawler>(
     domains: &[String],
     budget: usize,
@@ -177,15 +180,7 @@ pub fn read_all<C: Crawler>(
             };
             let body = match answer {
                 Ok(answer) if answer.status == 200 => answer.body,
-                // The `/sitemap.xml` read for want of a sitemap robots.txt
-                // names, absent.
-                Ok(answer)
-                    if reading.robots.sitemaps.is_empty()
-                        && reading.seen.len() == 1
-                        && matches!(answer.status, 404 | 410) =>
-                {
-                    continue;
-                }
+                Ok(answer) if !(500..=599).contains(&answer.status) => continue,
                 answer => {
                     let error = match answer {
                         Ok(answer) => format!("{} answered {}", get.url, answer.status),
@@ -264,18 +259,18 @@ fn keep<C: Crawler>(reading: &mut Reading<'_>, listed: Vec<(String, Option<Strin
     }
 }
 
-/// What `reading` read; its first sitemap's failure when one failed and none
-/// answered that names no sitemaps or lists URLs.
+/// What `reading` read.
 fn finish(reading: &mut Reading<'_>) -> Result<Site, String> {
-    if let Some(error) = reading.failed.take().filter(|_| !reading.answered) {
-        return Err(error);
-    }
+    let urls = match reading.failed.take().filter(|_| !reading.answered) {
+        Some(error) => Err(error),
+        None => Ok(mem::take(&mut reading.urls)),
+    };
     Ok(Site {
         robots: reading.text.take().map(|mut text| {
             text.truncate(text.floor_char_boundary(ROBOTS));
             text
         }),
         rules: mem::take(&mut reading.robots),
-        urls: mem::take(&mut reading.urls),
+        urls,
     })
 }

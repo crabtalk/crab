@@ -37,8 +37,7 @@ const C: (&str, &str) = ("c", "Sun, 11 Oct 2026 18:00:00 GMT");
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed", "feed")?)
-        .await?;
+    host.deploy("feed", &test::build("berm-feed")?).await?;
     Ok(host)
 }
 
@@ -71,9 +70,7 @@ async fn logged(host: &TestHost, topic: &str) -> Result<Vec<Value>> {
 #[tokio::test]
 async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    let program = host
-        .deploy("feed", &test::build("berm-feed", "feed")?)
-        .await?;
+    let program = host.deploy("feed", &test::build("berm-feed")?).await?;
     let manifest = program.manifest();
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "crabkit-lake");

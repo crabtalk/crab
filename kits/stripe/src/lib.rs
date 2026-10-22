@@ -15,14 +15,6 @@ mod webhook;
 
 pub use api::{Customer, Item, List, Price, Subscription};
 
-berm_lang::kit!(
-    database = "migrations",
-    secrets = ["STRIPE_SECRET_KEY"],
-    syscalls = {
-        "berm.http.fetch" = ["api.stripe.com"],
-    },
-);
-
 /// An end user, as the Stripe customer they check out as.
 pub struct Subscriber {
     pub user: User,

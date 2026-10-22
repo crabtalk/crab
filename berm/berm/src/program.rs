@@ -210,6 +210,8 @@ impl Program {
     pub fn idl(&self, name: &str) -> berm_api::Program {
         let Manifest {
             abi_version: _,
+            name: _,
+            buffer: _,
             database: _,
             kits: _,
             deps: _,
@@ -424,12 +426,19 @@ impl Program {
             outcome: None,
             denied: false,
         };
-        let ended = self
-            .image
-            .call(symbol, invocation, budget.cpu)
-            .await
-            .with_context(|| format!("program trapped in {tool}"))
-            .and_then(ended);
+        let buffer = self.manifest.buffer;
+        let ended = match invocation.args.len() > buffer {
+            true => Ok(Ended {
+                result: Output::Failed("arguments exceeded the input buffer".to_owned()),
+                denied: false,
+            }),
+            false => self
+                .image
+                .call(symbol, invocation, budget.cpu)
+                .await
+                .with_context(|| format!("program trapped in {tool}"))
+                .and_then(|finished| ended(finished, buffer)),
+        };
         self.ran(&site, tool, &ended);
         settle(&ended, scope, held, &journal, mark).await?;
         ended
@@ -483,10 +492,14 @@ async fn settle(
 }
 
 /// How a finished invocation ended. A tool that returned without answering
-/// wrote nothing, which is an empty result.
-fn ended(finished: Invocation) -> Result<Ended> {
+/// wrote nothing, which is an empty result; one that answered more than
+/// `buffer` bytes failed.
+fn ended(finished: Invocation, buffer: usize) -> Result<Ended> {
     let result = match finished.outcome {
         Some(Err(failure)) => Output::Failed(failure),
+        Some(Ok(result)) if result.len() > buffer => {
+            Output::Failed("result exceeded the output buffer".to_owned())
+        }
         Some(Ok(result)) => {
             Output::Done(String::from_utf8(result).context("program returned invalid UTF-8")?)
         }

@@ -5,68 +5,60 @@
 //! and `read` what the crawler read of a page. The crawler lists the links of
 //! each page it reads.
 
-#![cfg_attr(target_arch = "wasm32", no_std, no_main)]
+#![cfg_attr(target_arch = "wasm32", no_std)]
 
 extern crate alloc;
 
 use alloc::{format, string::String, vec::Vec};
-use berm_lang::{CallError, Schema};
-use crawl::{Crawler, Schedule};
+use berm_lang::{CallError, Result, Schema, tool};
+use crawl::{
+    Crawler, Schedule,
+    store::{self, Listed, Page},
+};
 use url::Url;
 
-#[berm_lang::program(uses = [crawl])]
-mod tools {
-    use crate::{Pages, Read};
-    use alloc::{string::String, vec::Vec};
-    use berm_lang::Result;
-    use crawl::store::{self, Listed, Page};
+/// Watches `domains`, and answers how many were new.
+#[tool(public)]
+pub fn watch(domains: Vec<String>) -> Result<u64> {
+    Ok(crawl::watch(&domains)? as u64)
+}
 
-    /// Watches `domains`, and answers how many were new.
-    #[public]
-    pub fn watch(domains: Vec<String>) -> Result<u64> {
-        Ok(crawl::watch(&domains)? as u64)
-    }
+/// Watches `domains` to be read before the other sites due, and answers
+/// how many were new.
+#[tool(public)]
+pub fn watch_first(domains: Vec<String>) -> Result<u64> {
+    Ok(crawl::watch_first(&domains)? as u64)
+}
 
-    /// Watches `domains` to be read before the other sites due, and answers
-    /// how many were new.
-    #[public]
-    pub fn watch_first(domains: Vec<String>) -> Result<u64> {
-        Ok(crawl::watch_first(&domains)? as u64)
-    }
+/// Lists `urls` on `domain`'s site, each read for `bytes` of HTML when
+/// given, and answers how many were new.
+#[tool(public)]
+pub fn list(domain: String, urls: Vec<String>, bytes: Option<u64>) -> Result<u64> {
+    Ok(crawl::list::<Pages>(&domain, &urls, bytes.map(|bytes| bytes as usize))? as u64)
+}
 
-    /// Lists `urls` on `domain`'s site, each read for `bytes` of HTML when
-    /// given, and answers how many were new.
-    #[public]
-    pub fn list(domain: String, urls: Vec<String>, bytes: Option<u64>) -> Result<u64> {
-        Ok(crawl::list::<Pages>(&domain, &urls, bytes.map(|bytes| bytes as usize))? as u64)
-    }
+/// Reads the sites due and fetches the pages due.
+#[tool(cron)]
+pub fn tick() -> Result<()> {
+    crawl::tick::<Pages>()
+}
 
-    /// Reads the sites due and fetches the pages due.
-    #[cron]
-    pub fn tick() -> Result<()> {
-        crawl::tick::<Pages>()
-    }
+/// The URLs `domain`'s sitemaps list of a kind kept.
+#[tool(query, public)]
+pub fn urls(domain: String) -> Result<Vec<Listed>> {
+    Ok(store::urls(&domain, None)?)
+}
 
-    /// The URLs `domain`'s sitemaps list of a kind kept.
-    #[query]
-    #[public]
-    pub fn urls(domain: String) -> Result<Vec<Listed>> {
-        Ok(store::urls(&domain, None)?)
-    }
+/// The page at `url` as last fetched.
+#[tool(query, public)]
+pub fn page(url: String) -> Result<Option<Page>> {
+    Ok(store::page(&url)?)
+}
 
-    /// The page at `url` as last fetched.
-    #[query]
-    #[public]
-    pub fn page(url: String) -> Result<Option<Page>> {
-        Ok(store::page(&url)?)
-    }
-
-    /// What the crawler last read at `url`.
-    #[query]
-    #[public]
-    pub fn read(url: String) -> Result<Option<Read>> {
-        Ok(berm_lang::get_json(&crate::read_key(&url))?)
-    }
+/// What the crawler last read at `url`.
+#[tool(query, public)]
+pub fn read(url: String) -> Result<Option<Read>> {
+    Ok(berm_lang::get_json(&crate::read_key(&url))?)
 }
 
 /// Pricing and comparison pages, a site read again after a week and a page

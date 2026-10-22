@@ -206,7 +206,7 @@ async fn query<E: Env>(
     Ok((called.headers, Json(called.output)).into_response())
 }
 
-/// Hand a Stripe event to the service's `#[stripe]` tool, the body byte for
+/// Hand a Stripe event to the service's `#[tool(stripe)]` tool, the body byte for
 /// byte as Stripe sent it.
 async fn stripe<E: Env>(
     State(host): State<Host<E>>,

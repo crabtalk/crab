@@ -1,4 +1,4 @@
-//! `berm-kit`, linked with `#[program(uses)]`: its declarations in the
+//! `berm-kit`, a dependency of the keeper: its declarations in the
 //! manifest, and its migrations applied and kept under its name.
 
 use anyhow::Result;
@@ -7,17 +7,14 @@ use berm_host::test::{self, TestHost};
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("keeper", &test::build("berm-keeper", "keeper")?)
-        .await?;
+    host.deploy("keeper", &test::build("berm-keeper")?).await?;
     Ok(host)
 }
 
 #[tokio::test]
 async fn the_manifest_carries_the_kit_and_its_declarations() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let program = host
-        .deploy("keeper", &test::build("berm-keeper", "keeper")?)
-        .await?;
+    let program = host.deploy("keeper", &test::build("berm-keeper")?).await?;
     let manifest = program.manifest();
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "berm-kit");
@@ -51,8 +48,7 @@ async fn the_kit_keeps_its_table_beside_the_program() -> Result<()> {
 async fn a_redeploy_finds_each_kits_migrations_applied() -> Result<()> {
     let host = deployed().await?;
     host.call("keeper", "note", br#"{"text":"kept"}"#).await?;
-    host.deploy("keeper", &test::build("berm-keeper", "keeper")?)
-        .await?;
+    host.deploy("keeper", &test::build("berm-keeper")?).await?;
     let ran = host.call("keeper", "note", br#"{"text":"again"}"#).await?;
     let Output::Done(count) = ran.result else {
         panic!("note runs after a redeploy: {:?}", ran.result);

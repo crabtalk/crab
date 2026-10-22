@@ -87,9 +87,8 @@ impl Registry {
 
     /// The image's digest and what it says it is, without downloading it.
     ///
-    /// The config blob is the `.berm.abi` section, so this costs one small GET
-    /// and never touches the image — which is the whole reason it is carried
-    /// there rather than left in the module alone.
+    /// The config blob is the image's [`Manifest`] as JSON, so this costs one
+    /// small GET and never touches the image.
     pub fn describe(&self, reference: &str) -> Result<(String, Manifest)> {
         let artifact = self.artifact(reference)?;
         let image = layer(&artifact)?
@@ -116,14 +115,15 @@ impl Registry {
 
         let bytes = self.blob(digest)?;
         let json = str::from_utf8(&bytes).context("program manifest is not UTF-8")?;
-        Ok((image, Manifest::parse(json)?))
+        Ok((image, json.parse()?))
     }
 
-    /// Upload the manifest blob, the image, and the artifact manifest naming
-    /// both. Returns the image's digest, which is the layer's.
-    pub fn push(&self, reference: &str, program: &[u8], manifest: &[u8]) -> Result<String> {
+    /// Upload the image, its manifest as the config blob, and the artifact
+    /// manifest naming both. Returns the image's digest, which is the layer's.
+    pub fn push(&self, reference: &str, program: &[u8]) -> Result<String> {
+        let manifest = serde_json::to_vec(&Manifest::from_image(program)?)?;
         let image = self.upload(program)?;
-        let config = self.upload(manifest)?;
+        let config = self.upload(&manifest)?;
 
         let artifact = json!({
             "schemaVersion": 2,

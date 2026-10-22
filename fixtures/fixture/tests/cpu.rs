@@ -8,7 +8,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn a_call_is_metered_the_cpu_it_spent() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture", "fixture")?)
+    host.deploy("fixture", &test::build("berm-fixture")?)
         .await?;
 
     let short = host.call("fixture", "spin", br#"{"rounds":1}"#).await?;
@@ -24,7 +24,7 @@ async fn a_call_is_metered_the_cpu_it_spent() -> Result<()> {
 #[tokio::test]
 async fn a_call_past_its_cpu_budget_is_stopped() -> Result<()> {
     let host = TestHost::open_with(0, Duration::from_millis(1)).await?;
-    host.deploy("fixture", &test::build("berm-fixture", "fixture")?)
+    host.deploy("fixture", &test::build("berm-fixture")?)
         .await?;
 
     let ran = host

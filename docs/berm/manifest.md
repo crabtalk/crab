@@ -3,16 +3,9 @@ title: The Manifest
 description: "What a program says it is: its ABI version, its tools, its README, and what it reaches for itself."
 ---
 
-The manifest is JSON, carried in a `.berm.abi` section of the image rather than
-behind an export. That placement is the point — reading what an image claims
-must not mean running it. `Manifest::from_image` parses the section with nothing
-compiled and nothing executed, which is what an embedder assembling a prompt, or
-a service listing a registry, actually needs.
+The manifest is JSON, read from three wasm custom sections of the image rather than from an export. `Manifest::from_image` parses them with nothing compiled and nothing executed.
 
-The section is a wasm custom section, which is what `#[link_section]` emits on
-`wasm32`. It holds JSON records back to back, in the order the linker joined
-them: the program's, and one `{"event": …}` per `#[event]`.
-`Manifest::from_image` merges them into one manifest.
+`.berm.abi` holds what the compiler wrote, as `#[link_section]` emits on `wasm32`: JSON records back to back, in the order the linker joined them, one `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one `{"event": …}` per `#[event]`. `.berm.program` holds the program's own record, from its package and its `berm.toml`, and `.berm.kits` the kits it links; `crab build` appends both. `Manifest::from_image` merges them into one manifest, and refuses an image without `.berm.program`, which a bare `cargo build` writes, and an image holding a tool compiled in a crate other than the program's.
 
 ```rust,ignore
 let manifest = Manifest::from_image(&bytes)?;
@@ -23,15 +16,7 @@ for tool in &manifest.tools {
 
 A `ToolSpec` carries the tool's name, the description a model reads, a JSON
 Schema for its arguments, and optionally `returns`, a JSON Schema for its
-result. Its flags are the tool's attributes: `public`, `anonymous`, `query`,
-`cron`, `stripe` and `deprecated`, and `callers`, `services` or `accounts` when
-a public tool takes only one kind. `events` lists the typed logs the program
-emits, each with a name, a description and a JSON Schema of its `fields`, and
-`database` the migrations of the database it keeps. The schemas are rendered at
-compile time from the `Schema` impls of the types the tools and events name. A
-tool's arguments are an object without a title; every other object schema
-carries the struct's name as `title`, and a string enum its enum's name.
-`version` is the crate's version when it was built.
+result. Its flags are the options of its `#[tool(...)]`: `public`, `anonymous`, `query`, `cron` and `stripe`, `deprecated` from `#[deprecated]`, and `callers`, `services` or `accounts` when a public tool takes only one kind. `events` lists the typed logs the program emits, each with a name, a description and a JSON Schema of its `fields`, and `database` the migrations of the database it keeps. The schemas are rendered at compile time from the `Schema` impls of the types the tools and events name. A tool's arguments are an object without a title; every other object schema carries the struct's name as `title`, and a string enum its enum's name. `version` is the crate's version when it was built. `buffer` is the most bytes a call's arguments, and a tool's result, may hold: the host refuses arguments past it and fails a result past it.
 
 ## Compatibility
 
@@ -49,75 +34,83 @@ reports the rest.
 
 ## Package
 
-`description`, `homepage` and `repository` are the crate's, from its
-`Cargo.toml`, as `version` is. `readme` is the Markdown file
-`#[program(readme = "README.md")]` names, read at compile time. Each is empty
-when the crate sets none.
+`name`, `description`, `homepage` and `repository` are the package's, from its `Cargo.toml`, as `version` is. `readme` is the Markdown file `readme` in `berm.toml` names, read when the image is built. Each is empty when the crate sets none.
+
+## berm.toml
+
+`berm.toml`, beside the program's `Cargo.toml`, declares the program:
+
+```toml
+name = "weather-desk"              # the service it deploys as; required
+image = "ghcr.io/you/weather-desk" # the registry repository Cloud pulls from
+public = ["forecast"]              # the tools the deploy may make public
+readme = "README.md"
+secrets = ["example"]
+programs = ["weather"]
+buffer = 16384                     # 16 KiB when absent
+
+[syscalls]
+"berm.get" = []
+"berm.http.fetch" = ["api.example.com"]
+
+[database]
+size = "1GiB"
+seed = "seed.db"
+migrations = "migrations"
+
+[crons]
+tick = "*/5 * * * *"
+```
+
+`[crons]` holds each cron tool's expression, five fields in UTC; a tool left out is not called until its owners set one on the host. `[database] size` is what the service's database may hold, and `seed` a SQLite database a service on Cloud with no database yet starts from. Paths are relative to `berm.toml`. An unknown key is refused.
 
 ## Dependencies
 
-```rust,ignore
-#[berm_lang::program(
-    programs = ["weather"],
-    syscalls = { "berm.get", "berm.http.fetch" = ["api.example.com"] },
-    secrets = ["example"],
-    database = "migrations",
-)]
-```
-
-is what an image says it will reach for once it runs: programs it calls by
-name, syscalls it makes beyond the ABI's own, each beside what it reaches
-through that call, and secrets it names as `{secret:NAME}` in a header or a body. The
-manifest carries them as
-`"deps": {"programs": [...], "syscalls": {"name": [...]}, "secrets": [...]}`.
-`database` names a directory of migrations, read at compile time, and adds
-`berm.sql` to the syscalls.
+`programs`, `secrets`, `[syscalls]` and `[database] migrations` in `berm.toml` are what an image says it will reach for once it runs: programs it calls by name, syscalls it makes beyond the ABI's own, each beside what it reaches through that call, and secrets it names as `{secret:NAME}` in a header or a body. The manifest carries them as `"deps": {"programs": [...], "syscalls": {"name": [...]}, "secrets": [...]}`. `[database] migrations` names a directory of `*.sql` migrations, read when the image is built and applied in name order, and adds `berm.sql` to the syscalls.
 
 `berm.http.fetch` holds a program to them: a host it does not declare, or a secret it does not declare, is refused before anything is sent. `berm.http.proxy` does the same for the hosts declared under it, and sends through the host's proxy. `berm.call` reaches the program itself and the programs it declares, and refuses any other name. A declared secret is substituted by the host with the value it granted the program, and the guest never holds it. These are runtime and resolved wherever the image lands: nothing here is fetched, installed, or compiled in, which is what separates them from the crate's own `[dependencies]`.
 
 A declared host is a name, matched whole; `*.example.com`, which matches every subdomain of `example.com` and not `example.com` itself; or `*`, which matches every host. Matching ignores ASCII case. The embedder is handed each request with how its host was declared, by name or only through a pattern; bermd refuses a host reached only through a pattern when it is, or resolves only to, an address that is not public (loopback, private, link-local, shared, documentation, multicast).
 
-Declared by the author rather than found by reading the image, because a target
-the program computes at the call is invisible to any scan — a list built that
-way would be quietly short, and the runtime `Refused` would still be needed
-underneath it.
-
 A declared program not deployed refuses nothing: the deploy goes on, and the
 program's runtime lists it as unresolved. A syscall the host does not serve
 refuses the deploy. What a served syscall reaches through it is that syscall's
 to grant.
-Refusing would make deploy order significant, and a restart brings programs
-back in whatever order the filesystem lists them — two that name each other
-could then never come up at all.
 
 ## Kits
 
-A kit is a library crate a program links, declaring at its root what it reaches for and the tables it keeps:
+A kit is a library crate with a `berm.toml` beside its `Cargo.toml`, declaring what it reaches for and the tables it keeps:
 
-```rust,ignore
-berm_lang::kit!(
-    syscalls = { "berm.http.fetch" = ["api.example.com"] },
-    secrets = ["example"],
-    database = "migrations",
-);
+```toml
+secrets = ["example"]
+programs = ["weather"]
+
+[syscalls]
+"berm.http.fetch" = ["api.example.com"]
+
+[database]
+migrations = "migrations"
 ```
 
-`kit!` takes `programs`, `syscalls`, `secrets` and `database`, and names the kit for its crate. A program links it with `#[berm_lang::program(uses = [example_kit])]`. Its manifest carries each kit as `"kits": [{"name", "version", "deps", "database"}]`, in `uses` order, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A program that keeps no database of its own keeps one for a kit that does.
+A kit's `berm.toml` declares only `secrets`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. A kit carries no tools: an image holding a tool compiled in a kit is refused.
 
-A kit's migrations run in the program's database before the program's own, each kit's in `uses` order. The host keeps the migrations it applied under the kit's name and the program's own under none, so a kit's migration and the program's may share a name. A kit no longer used leaves its tables and its applied migrations in place.
+The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `berm.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A program that keeps no database of its own keeps one for a kit that does.
+
+A kit's migrations run in the program's database before the program's own, each kit's in name order. The host keeps the migrations it applied under the kit's name and the program's own under none, so a kit's migration and the program's may share a name. A kit no longer linked leaves its tables and its applied migrations in place.
 
 ## Checks at load
 
 `Berm::deploy` refuses an image before it can ever be offered to a model when:
 
+- it has no `.berm.program` section;
 - its manifest was built against a different `abi_version`;
 - it exports no tools;
-- its manifest declares a tool the image does not export, matched by the
-  `berm_tool_` prefix;
-- it declares more than one `#[stripe]` tool;
-- it uses one kit twice;
-- a `#[cron]` or `#[stripe]` tool is `#[public]`;
-- an `#[anonymous]` tool is not `#[public]`, or is `#[callers(services)]`.
+- a tool record was compiled in a crate other than the program's;
+- its manifest declares a tool the image does not export, matched by the `berm_tool_` prefix;
+- it declares more than one `stripe` tool;
+- it names one kit twice;
+- a `cron` or `stripe` tool is `public`;
+- an `anonymous` tool is not `public`, or is `callers(services)`.
 
 A broken image fails for whoever deployed it, not for whoever happens to use it
 next.

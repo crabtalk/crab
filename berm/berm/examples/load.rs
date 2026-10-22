@@ -6,7 +6,7 @@
 //! runtime's timer, standing in for an HTTP round trip.
 //!
 //! ```sh
-//! cargo build --release -p berm-fixture --target wasm32-unknown-unknown
+//! cargo run -p crab-agent -- build fixtures/fixture
 //! cargo run --release --example load -p berm
 //! ```
 
@@ -22,10 +22,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const GUEST: (&str, &str) = (
-    "target/wasm32-unknown-unknown/release/fixture.wasm",
-    "wasm32-unknown-unknown",
-);
+const GUEST: &str = "target/berm/berm_fixture.wasm";
 
 /// How long `wait`'s one host call takes.
 const WAIT: Duration = Duration::from_millis(20);
@@ -44,9 +41,10 @@ async fn main() -> Result<()> {
         .and_then(|p| p.parent())
         .context("no workspace root")?
         .to_path_buf();
-    let (guest, target) = GUEST;
-    let image = fs::read(root.join(guest)).with_context(|| {
-        format!("build the guest first: cargo build --release -p berm-fixture --target {target} ({guest})")
+    let image = fs::read(root.join(GUEST)).with_context(|| {
+        format!(
+            "build the guest first: cargo run -p crab-agent -- build fixtures/fixture ({GUEST})"
+        )
     })?;
 
     // `berm.get`, answering every key as never written after [`WAIT`].

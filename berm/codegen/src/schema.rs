@@ -1,7 +1,7 @@
 //! `#[derive(Schema)]`: a type's JSON Schema, and the serde impls that read
 //! and write it as that schema says.
 
-use crate::utils;
+use crate::{ABI_SECTION, utils};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, ext::IdentExt};
@@ -161,7 +161,7 @@ pub fn event(mut item: syn::ItemStruct) -> syn::Result<TokenStream> {
                 ::berm_lang::schema::Piece::Text(#tail),
             ];
             #[used]
-            #[cfg_attr(target_arch = "wasm32", unsafe(link_section = ".berm.abi"))]
+            #[cfg_attr(target_arch = "wasm32", unsafe(link_section = #ABI_SECTION))]
             static RECORD: [u8; ::berm_lang::schema::len(PIECES)] =
                 ::berm_lang::schema::render(PIECES);
         };
