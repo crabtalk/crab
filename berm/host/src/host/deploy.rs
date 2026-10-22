@@ -4,7 +4,7 @@ use crate::{
     Denied, deny,
     env::{Env, Images},
     host::{self, Host},
-    record::usage,
+    record::{meter, usage},
     state::service,
     wake::{cron, table},
 };
@@ -172,8 +172,22 @@ impl<E: Env> Host<E> {
         {
             tracing::error!(service, error = %e, "the refused seed stays");
         }
-        if installed.is_ok() {
+        if let Ok(program) = &installed {
             self.waking.notify_one();
+            // Stored bytes are otherwise sampled once a day, so a service
+            // deployed or seeded after the day's sample would read as before.
+            let today = self.today();
+            if let Err(e) = meter::sample(
+                &self.store,
+                service,
+                &self.databases,
+                program.bytes(),
+                today,
+            )
+            .await
+            {
+                tracing::warn!(service, "sampling stored bytes failed: {e:#}");
+            }
         }
         installed
     }
