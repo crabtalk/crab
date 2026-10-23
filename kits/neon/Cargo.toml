@@ -1,5 +1,5 @@
 [package]
-name = "crab-neon"
+name = "crabkit-neon"
 version.workspace = true
 description = "Neon's SQL over HTTP for berm programs: parameterized statements and transactions through berm.http.fetch."
 edition.workspace = true

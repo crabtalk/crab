@@ -1,6 +1,6 @@
 [package]
 name = "berm-kit"
-description = "The reference kit, a library berm-keeper links with `uses`, what berm's kits are tested against"
+description = "The reference kit, a library berm-keeper depends on, what berm's kits are tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

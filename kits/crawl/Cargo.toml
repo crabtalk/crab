@@ -1,5 +1,5 @@
 [package]
-name = "crab-crawl"
+name = "crabkit-crawl"
 version.workspace = true
 description = "An incremental crawler for berm programs: robots.txt, sitemaps, and the pages of the kinds a program names, recrawled when they change."
 edition.workspace = true

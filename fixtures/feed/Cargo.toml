@@ -1,6 +1,6 @@
 [package]
 name = "berm-feed"
-description = "The reference source service, an RSS feed through crab-lake, what lake's ticks are tested against"
+description = "The reference source service, an RSS feed through crabkit-lake, what lake's ticks are tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,9 +8,8 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-[[bin]]
-name = "feed"
-path = "bin/main.rs"
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 berm-lang.workspace = true

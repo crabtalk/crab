@@ -1,12 +1,13 @@
-//! `crab billing` — the account's plan, credit and payments. What takes a card
-//! opens Stripe in the browser.
+//! `crab billing` — the account's plan, credit and payments. A purchase is a
+//! payment request: a code whose page the person paying opens.
 
-use crate::{format, utils};
+use crate::{cmd::request, format, utils};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::{
         auth::Client as Surface,
         billing::{PortalFlow, RefillRequest},
+        request::Purchase,
     },
     client::Client,
 };
@@ -56,25 +57,17 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Subscribe to `plan` through Checkout, or at once from a trial.
-pub fn plan(client: &Client, plan: &str) -> Result<()> {
-    match utils::wait(client.checkout(plan, Surface::Terminal))?.url {
-        Some(url) => utils::open(&url),
-        None => println!("subscribed to {plan}"),
-    }
-    Ok(())
-}
-
-/// Start the free trial through Checkout.
-pub fn trial(client: &Client) -> Result<()> {
-    utils::open(&utils::wait(client.trial(Surface::Terminal))?.url);
-    Ok(())
-}
-
-/// Buy credit through Checkout, the amount chosen there.
-pub fn credit(client: &Client) -> Result<()> {
-    utils::open(&utils::wait(client.buy_credit(Surface::Terminal))?.url);
-    Ok(())
+/// Ask a person to pay for `purchase`, of `plan` when it is one, with
+/// `context` shown to them: print its page, and how to wait for it.
+pub fn ask(
+    client: &Client,
+    purchase: Purchase,
+    plan: Option<&str>,
+    context: &str,
+    json: bool,
+) -> Result<()> {
+    let asked = utils::wait(client.ask_payment(purchase, plan, context))?;
+    request::asked(&asked, json)
 }
 
 /// Refill `amount` USD when credit runs low, at most `cap` USD a month; a cap

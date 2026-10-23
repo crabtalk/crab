@@ -263,6 +263,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                         at.journal.clone(),
                         at.meters.clone(),
                         stack,
+                        None,
                     )
                     .await;
                 called(&at, &deployed, tool, ended(&invoked));

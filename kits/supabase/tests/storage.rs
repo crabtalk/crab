@@ -1,7 +1,7 @@
 //! Storage requests and answers, against arranged responses.
 
 use berm_lang::test::{self, Fetched};
-use crab_supabase::Supabase;
+use crabkit_supabase::Supabase;
 
 const OBJECT: &str = "https://abcd.supabase.co/storage/v1/object/avatars/users/ada%20l.png";
 

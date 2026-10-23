@@ -1,4 +1,4 @@
-//! `crab-lake`'s tick in berm-feed, against an arranged RSS feed: items stored
+//! `crabkit-lake`'s tick in berm-feed, against an arranged RSS feed: items stored
 //! once, undated or at the watermark included, a failed fetch logged and
 //! retried, and the items read back in order.
 
@@ -37,8 +37,7 @@ const C: (&str, &str) = ("c", "Sun, 11 Oct 2026 18:00:00 GMT");
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed", "feed")?)
-        .await?;
+    host.deploy("feed", &test::build("berm-feed")?).await?;
     Ok(host)
 }
 
@@ -71,12 +70,10 @@ async fn logged(host: &TestHost, topic: &str) -> Result<Vec<Value>> {
 #[tokio::test]
 async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    let program = host
-        .deploy("feed", &test::build("berm-feed", "feed")?)
-        .await?;
+    let program = host.deploy("feed", &test::build("berm-feed")?).await?;
     let manifest = program.manifest();
     assert_eq!(manifest.kits.len(), 1);
-    assert_eq!(manifest.kits[0].name, "crab-lake");
+    assert_eq!(manifest.kits[0].name, "crabkit-lake");
     for syscall in ["berm.get", "berm.set", "berm.sql"] {
         assert!(manifest.deps.syscalls.contains_key(syscall), "{syscall}");
     }
@@ -94,7 +91,7 @@ async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
 async fn a_tick_stores_new_items_once() -> Result<()> {
     let host = deployed().await?;
     host.arrange("GET", FEED, 200, feed(&[B, A]));
-    // As `[crons]` in a berm.toml would set it.
+    // As `[crons]` in a crab.toml would set it.
     host.host()
         .set_cron("feed", "tick", Some("* * * * *".to_owned()))
         .await?;

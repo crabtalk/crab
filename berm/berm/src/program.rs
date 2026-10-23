@@ -9,6 +9,7 @@ use crate::{
         self,
         call::{Budgeted, Calls, Enter, Invoked, Now, Scope},
     },
+    tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
 use berm_api::{Callers, Manifest, Output, Runtime};
@@ -210,6 +211,8 @@ impl Program {
     pub fn idl(&self, name: &str) -> berm_api::Program {
         let Manifest {
             abi_version: _,
+            name: _,
+            buffer: _,
             database: _,
             kits: _,
             deps: _,
@@ -264,8 +267,17 @@ impl Program {
         tool: &str,
         args: impl Into<Vec<u8>>,
     ) -> Result<Outcome> {
-        self.call_as(caller, None, None, tool, args, Arc::default(), chain())
-            .await
+        self.call_as(
+            caller,
+            None,
+            None,
+            tool,
+            args,
+            Arc::default(),
+            chain(),
+            Taping::Off,
+        )
+        .await
     }
 
     /// [`Program::call`] on behalf of `user` and `client`, which every call in
@@ -281,6 +293,7 @@ impl Program {
         args: impl Into<Vec<u8>>,
         meters: Arc<Meters>,
         chain: u64,
+        taping: Taping,
     ) -> Result<Outcome> {
         let journal = Arc::new(Journal::default());
         let Ended { result, denied } = self
@@ -297,6 +310,7 @@ impl Program {
                 journal.clone(),
                 meters,
                 Arc::from([self.name.clone()]),
+                taping.deck(),
             )
             .await?;
         let changes = match result {
@@ -344,6 +358,7 @@ impl Program {
                 journal.clone(),
                 meters,
                 stack,
+                None,
             )
             .await?;
         let changes = match result {
@@ -377,6 +392,7 @@ impl Program {
         journal: Arc<Journal>,
         meters: Arc<Meters>,
         stack: Arc<[Arc<str>]>,
+        tape: Option<Deck>,
     ) -> Result<Ended> {
         let Some(Tool {
             symbol,
@@ -423,13 +439,21 @@ impl Program {
             staged: Vec::new(),
             outcome: None,
             denied: false,
+            tape,
         };
-        let ended = self
-            .image
-            .call(symbol, invocation, budget.cpu)
-            .await
-            .with_context(|| format!("program trapped in {tool}"))
-            .and_then(ended);
+        let buffer = self.manifest.buffer;
+        let ended = match invocation.args.len() > buffer {
+            true => Ok(Ended {
+                result: Output::Failed("arguments exceeded the input buffer".to_owned()),
+                denied: false,
+            }),
+            false => self
+                .image
+                .call(symbol, invocation, budget.cpu)
+                .await
+                .with_context(|| format!("program trapped in {tool}"))
+                .and_then(|finished| ended(finished, buffer)),
+        };
         self.ran(&site, tool, &ended);
         settle(&ended, scope, held, &journal, mark).await?;
         ended
@@ -483,10 +507,14 @@ async fn settle(
 }
 
 /// How a finished invocation ended. A tool that returned without answering
-/// wrote nothing, which is an empty result.
-fn ended(finished: Invocation) -> Result<Ended> {
+/// wrote nothing, which is an empty result; one that answered more than
+/// `buffer` bytes failed.
+fn ended(finished: Invocation, buffer: usize) -> Result<Ended> {
     let result = match finished.outcome {
         Some(Err(failure)) => Output::Failed(failure),
+        Some(Ok(result)) if result.len() > buffer => {
+            Output::Failed("result exceeded the output buffer".to_owned())
+        }
         Some(Ok(result)) => {
             Output::Done(String::from_utf8(result).context("program returned invalid UTF-8")?)
         }
@@ -561,6 +589,8 @@ pub struct Invocation {
     pub(crate) denied: bool,
     /// Its part of its program's [`Running`].
     pub(crate) held: Held,
+    /// The tape it records or answers from; only a chain's first link has one.
+    pub(crate) tape: Option<Deck>,
 }
 
 /// A syscall's answer when it refused the call and nothing ran.

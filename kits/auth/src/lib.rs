@@ -12,24 +12,6 @@ use berm_lang::Schema;
 mod account;
 mod provider;
 
-berm_lang::kit!(
-    database = "migrations",
-    secrets = [
-        "GITHUB_CLIENT_ID",
-        "GITHUB_CLIENT_SECRET",
-        "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET",
-    ],
-    syscalls = {
-        "berm.http.fetch" = [
-            "github.com",
-            "api.github.com",
-            "oauth2.googleapis.com",
-            "openidconnect.googleapis.com",
-        ],
-    },
-);
-
 /// A signed-in session.
 #[derive(Schema)]
 pub struct Session {

@@ -1,6 +1,6 @@
 # berm-api
 
-What a program says it is, and what bermd's control API speaks.
+What a program says it is, and what the local host's control API speaks.
 
 Here rather than in the service, so a client can read an image and talk to the
 API without linking a compiler.
@@ -12,10 +12,7 @@ for tool in &manifest.tools {
 }
 ```
 
-`Manifest::from_image` reads the `.berm.abi` section — a section rather than an
-export, so learning what an image claims to be never means running it. An image
-built against a different `ABI_VERSION` is refused here, before a host can
-dispatch into a syscall its author did not mean.
+`Manifest::from_image` reads the `.berm.abi`, `.berm.program` and `.berm.kits` sections without compiling or running the image. An image built against a different `ABI_VERSION`, or without the `.berm.program` section `crab build` appends, is refused here. `project::Project` reads a program's or a kit's `crab.toml`.
 
 `Program`, `ToolSpec` and `Output` are the control API's own shapes.
 `Output::Failed` is the program's own report and arrives with the same `200` a

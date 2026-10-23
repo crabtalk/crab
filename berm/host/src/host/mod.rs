@@ -339,10 +339,8 @@ impl<E: Env> Host<E> {
             .collect()
     }
 
-    /// Stop running `service` and drop what it committed, its wake and its
-    /// usage. `false` when it was not deployed.
-    // TODO: drop the database of a service that kept one; its file stays
-    // under `Config::databases` and a deploy under the same name opens it.
+    /// Stop running `service` and drop what it committed, its database, its
+    /// wake and its usage. `false` when it was not deployed.
     pub async fn remove(&self, service: &str) -> Result<bool> {
         let lock = self
             .deploying
@@ -352,8 +350,9 @@ impl<E: Env> Host<E> {
             .clone();
         let _deploying = lock.lock().await;
         let (scope, name) = split(service);
-        let removed = service::remove(&self.store, scope, name).await?;
         self.berm.remove(service)?;
+        self.databases.remove(service)?;
+        let removed = service::remove(&self.store, scope, name).await?;
         self.terms.forget(service);
         Ok(removed)
     }

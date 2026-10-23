@@ -1,4 +1,4 @@
-//! `crab-lake`'s records in berm-feed, against an arranged feed of records: a
+//! `crabkit-lake`'s records in berm-feed, against an arranged feed of records: a
 //! version stored for each record new to the feed or whose values changed,
 //! and the versions read back.
 
@@ -53,8 +53,7 @@ async fn count(host: &TestHost) -> Result<u64> {
 #[tokio::test]
 async fn a_version_is_stored_when_a_record_is_new_or_changed() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed", "feed")?)
-        .await?;
+    host.deploy("feed", &test::build("berm-feed")?).await?;
     host.arrange("GET", FEED, 200, list(&[]));
     host.arrange("GET", LIST, 200, list(&[("a", "Acme"), ("b", "Beta")]));
     assert_eq!(call(&host, "list", json!({"url": LIST})).await?, true);

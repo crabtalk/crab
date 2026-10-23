@@ -9,8 +9,6 @@
 
 extern crate alloc;
 
-berm_lang::kit!(secrets = ["NEON_PASSWORD"]);
-
 mod answer;
 mod neon;
 mod statement;

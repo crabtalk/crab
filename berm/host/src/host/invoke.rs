@@ -2,7 +2,7 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::Result;
-use berm::{Meter, Meters, Program, User};
+use berm::{Meter, Meters, Program, User, tape::Taping};
 use berm_api::Output;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -21,6 +21,7 @@ impl<E: Env> Host<E> {
         client: Option<Arc<str>>,
         tool: &str,
         args: Vec<u8>,
+        taping: Taping,
     ) -> Result<Invoked> {
         let meters = Arc::new(Meters::default());
         let chain = berm::chain();
@@ -34,6 +35,7 @@ impl<E: Env> Host<E> {
                 args,
                 meters.clone(),
                 chain,
+                taping,
             )
             .await;
         self.logs.ended(chain);

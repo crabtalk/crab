@@ -168,8 +168,8 @@ pub(crate) async fn sample(
 }
 
 /// The bytes `service` keeps now: its database file and its write-ahead log,
-/// if any, in `databases`, its state, the logs kept, and `code`, its image and
-/// compiled code.
+/// if any, in `databases`, its state, the logs and tapes kept, and `code`, its
+/// image and compiled code.
 pub(crate) async fn stored(
     store: &Store,
     service: &str,
@@ -189,7 +189,9 @@ pub(crate) async fn stored(
                 "SELECT (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) FROM service_state
                           WHERE scope = ?1 AND name = ?2)
                       + COALESCE((SELECT log_bytes FROM services
-                                   WHERE scope = ?1 AND name = ?2), 0)",
+                                   WHERE scope = ?1 AND name = ?2), 0)
+                      + (SELECT COALESCE(SUM(LENGTH(tape)), 0) FROM service_calls
+                          WHERE scope = ?1 AND name = ?2)",
                 params![scope, name],
                 |row| row.get(0),
             )

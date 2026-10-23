@@ -2,7 +2,7 @@
 //! Stripe answers.
 
 use berm_lang::{User, test};
-use crab_stripe::{Customer, Price, Subscription};
+use crabkit_stripe::{Customer, Price, Subscription};
 
 const PRICES: &str = "https://api.stripe.com/v1/prices?lookup_keys%5B%5D=pro&active=true";
 const CUSTOMERS: &str = "https://api.stripe.com/v1/customers";

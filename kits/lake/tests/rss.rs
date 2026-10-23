@@ -1,6 +1,6 @@
 //! The entries of RSS 2.0, RSS 1.0 and Atom feeds.
 
-use crab_lake::rss;
+use crabkit_lake::rss;
 
 /// 2026-10-09T23:27:00Z.
 const NIGHT: u64 = 1_791_588_420_000;

@@ -10,8 +10,7 @@ module — the same hash a host reports for the deployed program, carrying the r
 let reference: berm_oci::Reference = "ghcr.io/org/example:v1".parse()?;
 ```
 
-What the program *is* rides in the config blob: the `.berm.abi` section
-verbatim, so a registry can be listed without pulling any image.
+What the program *is* rides in the config blob: the image's manifest as JSON, so a registry can be listed without pulling any image.
 
 ## License
 

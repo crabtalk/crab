@@ -7,7 +7,7 @@
 //! everything it tries to leave behind is refused, nested calls included.
 //!
 //! ```sh
-//! cargo build --release -p berm-fixture --target wasm32-unknown-unknown
+//! cargo run -p crab-agent -- build fixtures/fixture
 //! cargo run --release --example commit -p berm
 //! ```
 
@@ -19,7 +19,7 @@ use berm::{
 use parking_lot::Mutex;
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
-const GUEST: &str = "target/wasm32-unknown-unknown/release/fixture.wasm";
+const GUEST: &str = "target/berm/berm_fixture.wasm";
 
 type Committed = Arc<Mutex<HashMap<(String, String), Vec<u8>>>>;
 
@@ -31,7 +31,9 @@ async fn main() -> Result<()> {
         .context("no workspace root")?
         .to_path_buf();
     let image = fs::read(root.join(GUEST)).with_context(|| {
-        format!("build the guest first: cargo build --release -p berm-fixture --target wasm32-unknown-unknown ({GUEST})")
+        format!(
+            "build the guest first: cargo run -p crab-agent -- build fixtures/fixture ({GUEST})"
+        )
     })?;
 
     let engine = Engine::new(&Config {

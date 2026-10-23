@@ -16,7 +16,7 @@ use berm_lang::{
 
 const FORM: &str = "application/x-www-form-urlencoded";
 /// GitHub refuses an API request without one.
-const USER_AGENT: &str = "crab-auth";
+const USER_AGENT: &str = "crabkit-auth";
 
 /// What a token endpoint answers, a grant or an error.
 #[derive(Deserialize)]

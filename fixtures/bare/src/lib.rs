@@ -3,23 +3,20 @@
 //!
 //! `fetch` requests a host it does not declare, and `vouch` vouches for a user.
 
-#![cfg_attr(target_arch = "wasm32", no_std, no_main)]
+#![cfg_attr(target_arch = "wasm32", no_std)]
 
 extern crate alloc;
 
-#[berm_lang::program]
-mod tools {
-    use berm_lang::Result;
+use berm_lang::{Result, tool};
 
-    /// Requests `https://example.com/`, answering its status.
-    #[public]
-    pub fn fetch() -> Result<u16> {
-        Ok(berm_lang::http::fetch("GET", "https://example.com/", &[], b"")?.status)
-    }
+/// Requests `https://example.com/`, answering its status.
+#[tool(public)]
+pub fn fetch() -> Result<u16> {
+    Ok(berm_lang::http::fetch("GET", "https://example.com/", &[], b"")?.status)
+}
 
-    /// Vouches for the user `someone`.
-    #[public]
-    pub fn vouch() -> Result<()> {
-        Ok(berm_lang::vouch("someone")?)
-    }
+/// Vouches for the user `someone`.
+#[tool(public)]
+pub fn vouch() -> Result<()> {
+    Ok(berm_lang::vouch("someone")?)
 }

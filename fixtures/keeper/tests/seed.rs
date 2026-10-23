@@ -26,7 +26,7 @@ async fn count(host: &TestHost, service: &str) -> Result<String> {
 
 #[tokio::test]
 async fn a_service_starts_from_its_seed() -> Result<()> {
-    let image = test::build("berm-keeper", "keeper")?;
+    let image = test::build("berm-keeper")?;
     let built = TestHost::open(0).await?;
     built.deploy("keeper", &image).await?;
     built.call("keeper", "put", br#"{"word":"hi"}"#).await?;
@@ -45,7 +45,7 @@ async fn a_service_starts_from_its_seed() -> Result<()> {
 
 #[tokio::test]
 async fn a_service_with_a_database_is_refused_a_seed() -> Result<()> {
-    let image = test::build("berm-keeper", "keeper")?;
+    let image = test::build("berm-keeper")?;
     let host = TestHost::open(0).await?;
     host.deploy("keeper", &image).await?;
     host.call("keeper", "put", br#"{"word":"kept"}"#).await?;
@@ -67,7 +67,7 @@ async fn a_service_with_a_database_is_refused_a_seed() -> Result<()> {
 
 #[tokio::test]
 async fn a_seed_the_image_does_not_migrate_is_deleted() -> Result<()> {
-    let image = test::build("berm-keeper", "keeper")?;
+    let image = test::build("berm-keeper")?;
     let seed = std::env::temp_dir().join("berm-seed-changed.sqlite");
     let _ = std::fs::remove_file(&seed);
     Connection::open(&seed)?.execute_batch(
@@ -89,5 +89,29 @@ async fn a_seed_the_image_does_not_migrate_is_deleted() -> Result<()> {
     assert!(!host.host().databases.path("keeper").exists());
     host.deploy("keeper", &image).await?;
     assert_eq!(count(&host, "keeper").await?, "0");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_seeded_service_is_measured_at_its_seed() -> Result<()> {
+    let image = test::build("berm-keeper")?;
+    let built = TestHost::open(0).await?;
+    built.deploy("keeper", &image).await?;
+    for word in 0..2000 {
+        let put = format!(r#"{{"word":"{word:0>64}"}}"#);
+        built.call("keeper", "put", put.as_bytes()).await?;
+    }
+    let seed = snapshot(
+        &built,
+        "keeper",
+        &std::env::temp_dir().join("berm-seed-measured.sqlite"),
+    )?;
+    let size = std::fs::metadata(&seed)?.len();
+
+    let host = TestHost::open(0).await?;
+    host.seeded("keeper", &image, Some(&seed)).await?;
+    let meters = host.host().meters("keeper").await?;
+    let stored = meters.last().map_or(0, |day| day.stored);
+    assert!(stored >= size, "{stored} stored of a {size}-byte seed");
     Ok(())
 }

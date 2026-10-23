@@ -1,0 +1,10 @@
+# What its applied migrations are kept under in a database; never changes.
+id = "35cc643d5df5f36bec9eedf651728c21"
+# The package names its applied migrations were kept under before `id`.
+formerly = ["crab-lake", "crabkit-lake"]
+[syscalls]
+"berm.get" = []
+"berm.set" = []
+
+[database]
+migrations = "migrations"

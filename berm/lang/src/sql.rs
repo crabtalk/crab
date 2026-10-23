@@ -1,5 +1,5 @@
-//! This program's own SQLite database, which its manifest declares with
-//! `#[program(database = "migrations")]`.
+//! This program's own SQLite database, which its `crab.toml` declares with
+//! `[database] migrations = "migrations"`.
 //!
 //! One statement per call. The host runs every statement of an invocation in
 //! one transaction, committed when the invocation returns ok; transaction

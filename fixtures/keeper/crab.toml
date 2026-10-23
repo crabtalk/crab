@@ -1,0 +1,11 @@
+name = "keeper"
+deploy = false
+programs = ["inner"]
+
+[syscalls]
+"berm.get" = []
+"berm.set" = []
+"berm.sql" = []
+
+[database]
+migrations = "migrations"

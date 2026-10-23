@@ -8,10 +8,10 @@ description: "A program is one file, so it travels as one OCI layer with no tarb
 ```rust,ignore
 let reference: berm_oci::Reference = "ghcr.io/org/example:v1".parse()?;
 let registry = berm_oci::Registry::open(&reference, berm_oci::Access::Write)?;
-let digest = registry.push("v1", &wasm, &manifest)?;
+let digest = registry.push("v1", &wasm)?;
 ```
 
-A host that pulls from a registry deploys a reference; `bermd` takes the image
+A host that pulls from a registry deploys a reference; `crab serve` takes the image
 itself, so it never talks to a registry, holds no credentials, and restores from
 `--root` on start without a network.
 
@@ -27,10 +27,7 @@ itself, so it never talks to a registry, holds no credentials, and restores from
 }
 ```
 
-The config blob is the [`.berm.abi`](./manifest.md) section carried out of the
-image byte for byte, so what a registry serves cannot disagree with what the image
-holds. The tools, their schemas and the README are one blob, and reading them
-never means pulling the program.
+The config blob is the image's [manifest](./manifest.md) as JSON, as `Manifest::from_image` reads it when the image is pushed. The tools, their schemas and the README are one blob, and reading them never means pulling the program.
 
 Nothing about the program is repeated in annotations. Only
 `org.opencontainers.image.source` and `.revision` are set, from
@@ -44,7 +41,7 @@ the image — the same hash a host reports for the deployed program, carrying th
 registry's `sha256:` prefix:
 
 ```console
-$ shasum -a256 target/wasm32-unknown-unknown/release/fixture.wasm
+$ shasum -a256 target/berm/berm_fixture.wasm
 222890c498ed28f4bf60670a223141489d9879020bd1890111b8c11ac79fa31d
 ```
 

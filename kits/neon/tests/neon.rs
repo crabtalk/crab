@@ -5,7 +5,7 @@ use berm_lang::{
     serde_json::{self, Value, json},
     test,
 };
-use crab_neon::{Neon, Statement};
+use crabkit_neon::{Neon, Statement};
 
 const CONNECTION: &str = "postgresql://app:{secret:NEON_PASSWORD}@ep-cool-river-123456.us-east-2.aws.neon.tech/app?sslmode=require";
 const ENDPOINT: &str = "https://api.us-east-2.aws.neon.tech/sql";

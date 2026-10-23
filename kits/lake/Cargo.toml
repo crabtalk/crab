@@ -1,5 +1,5 @@
 [package]
-name = "crab-lake"
+name = "crabkit-lake"
 version.workspace = true
 description = "The runtime of a source service: feeds fetched on its schedule, their items and threads stored in its database."
 edition.workspace = true

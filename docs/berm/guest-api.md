@@ -8,11 +8,13 @@ user, `vouch`, client, the clock, `trace` and `deny` — and `berm.call`. The re
 served by the host the program is deployed to, and a call its host does not
 serve traps.
 
-A program lists the syscalls it makes past berm's own in its manifest, and a
-deploy to a host that does not serve one is refused:
+A program lists the syscalls it makes past berm's own under `[syscalls]` in its `crab.toml`, and a deploy to a host that does not serve one is refused:
 
-```rust,ignore
-#[berm_lang::program(syscalls = { "berm.get", "berm.set", "berm.http.fetch" = ["api.example.com"] })]
+```toml
+[syscalls]
+"berm.get" = []
+"berm.set" = []
+"berm.http.fetch" = ["api.example.com"]
 ```
 
 ## Who called
@@ -46,25 +48,25 @@ let config: Config = berm_lang::get_json("config")?.unwrap_or_default();
   keys. Another program's keys cannot be named.
 - `get` answers `None` for a key never written.
 - Writes are committed when the call returns `Ok`.
-- `set` is refused in a `#[query]` tool.
+- `set` is refused in a `query` tool.
 
 ## A database
 
-```rust,ignore
-#[berm_lang::program(database = "migrations")]
+```toml
+# crab.toml
+[database]
+migrations = "migrations"
 ```
 
-- `database` names a directory of `*.sql` migrations, applied in name order at
-  deploy. A deploy whose migrations do not begin with the ones already applied
-  is refused.
-- A kit the program `uses` keeps its tables in the same database, its migrations applied first and checked the same way under the kit's name. See [Kits](./manifest.md#kits).
+- `[database] migrations` names a directory of `*.sql` migrations, applied in name order at deploy. A deploy whose migrations do not begin with the ones already applied is refused.
+- A kit the program links keeps its tables in the same database, its migrations applied first and checked the same way under the kit's name. See [Kits](./manifest.md#kits).
 - `berm_lang::rows::<T>(statement, params)` runs one statement, `params` a tuple bound to its `?`s, and answers its rows, each a tuple of its columns.
 - `berm_lang::sql(statement, params)` runs one statement, `params` a JSON array
   bound to its `?` placeholders, and answers
   `{"columns": [..], "rows": [[..]], "read": n, "written": n}`.
 - Every statement of one invocation runs in one transaction, committed when it
   returns `Ok`. Transaction statements are refused, and so is a write under a
-  `#[query]`.
+  `query`.
 - Tables named `_berm_*` are the runtime's.
 
 ```rust,ignore
@@ -77,7 +79,7 @@ let found = berm_lang::sql("SELECT title FROM items WHERE id = ?", "[42]")?;
   `emit!` emits an [`#[event]`](./writing-a-program.md#events) struct under its
   name.
 - A log is kept beside the call it was emitted in, whatever that call ended as.
-- `emit` is refused in a `#[query]` tool.
+- `emit` is refused in a `query` tool.
 - `trace(message)` writes a line to the host's own trace, not to the program's
   logs.
 
@@ -109,7 +111,7 @@ let page = berm_lang::http::fetch(
 let top = berm_lang::call("hn", "top", r#"{"limit": 10}"#)?;
 ```
 
-- `call(program, tool, args)` calls a `#[public]` tool of the program itself or
+- `call(program, tool, args)` calls a `public` tool of the program itself or
   of one the manifest lists in `programs`, and answers its result as JSON text.
 - `CallError::Refused` means nothing ran: a name nothing answers to, or one the
   manifest does not list. `CallError::Failed` means the target ran and failed.
@@ -127,7 +129,7 @@ berm_lang::after(300_000, "weather", "poll", "{}")?;
 - A program holds one wake. Arming another drops the one pending.
 - The woken call runs with no caller and carries nothing from the call that
   armed it; what it needs goes in state.
-- A `#[query]` tool cannot arm one.
+- A `query` tool cannot arm one.
 
 ## The clock and randomness
 

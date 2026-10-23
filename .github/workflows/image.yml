@@ -1,7 +1,7 @@
 name: Image
 
-# Pushes bermd with its dashboard to ghcr.io/crabtalk/crab/berm, tagged with the
-# release's version and `latest`.
+# Pushes `crab serve` to ghcr.io/crabtalk/crab/berm, tagged with the release's
+# version and `latest`.
 on:
   push:
     tags:
@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: berm/daemon/Dockerfile
+          file: crates/crab/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true

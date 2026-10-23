@@ -1,23 +1,19 @@
-//! `#[program]` — turns a module of plain functions into a loadable program.
+//! `#[tool]` — turns a function into a tool of a loadable program.
 //!
-//! The exports an image needs are ceremony: a description the host reads at
-//! registration, and dispatch from a tool index back to a function. None of it
-//! is the author's problem, so none of it is in their source.
-//!
-//! `#[derive(Schema)]`, `#[event]` and `#[error_code]` go on types anywhere in
-//! the program's crate.
+//! `#[tool]`, `#[derive(Schema)]`, `#[event]` and `#[error_code]` go on items
+//! anywhere in the program's crate.
 
-use crate::config::Config;
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemMod, parse_macro_input};
+use syn::{DeriveInput, ItemFn, parse_macro_input};
 
-mod config;
 mod declare;
-mod kit;
-mod program;
 mod schema;
 mod syscalls;
+mod tool;
 mod utils;
+
+/// The custom section `#[tool]` and `#[event]` write their records to.
+const ABI_SECTION: &str = ".berm.abi";
 
 /// Declare the syscalls a program may call, emitting a stub for each.
 ///
@@ -69,73 +65,56 @@ pub fn hosts(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Declare a program from a module of tool functions.
+/// Make a function a tool of the program its crate builds.
 ///
 /// ```ignore
-/// #[program]
-/// mod tools {
-///     use berm_lang::Result;
+/// use berm_lang::{Result, tool};
 ///
-///     /// Greets `name`.
-///     #[public]
-///     pub fn greet(
-///         /// Who to greet.
-///         name: String,
-///     ) -> Result<String> {
-///         Ok(format!("hello, {name}"))
-///     }
+/// /// Greets `name`.
+/// #[tool(public)]
+/// pub fn greet(
+///     /// Who to greet.
+///     name: String,
+/// ) -> Result<String> {
+///     Ok(format!("hello, {name}"))
 /// }
 /// ```
 ///
-/// Every `pub fn` in the module becomes a tool. Its doc comment is the
-/// description the model reads. Its parameters are the properties of its
-/// arguments, each a `Schema` type, and a parameter's doc comment is its
-/// description. It returns `berm_lang::Result<T>`: `T` is its reply, written as
-/// JSON, and `()` replies nothing.
+/// Its doc comment is the description the model reads. Its parameters are the
+/// properties of its arguments, each a `Schema` type, and a parameter's doc
+/// comment is its description. It returns `berm_lang::Result<T>`: `T` is its
+/// reply, written as JSON, and `()` replies nothing. It is exported as
+/// `berm_tool_<name>`.
 ///
-/// **A tool is internal unless marked `#[public]`.** An internal tool is only
+/// **A tool is internal unless marked `public`.** An internal tool is only
 /// called by the host, for the program's own wakes, crons and Stripe events. A
-/// `#[public]` tool can be called by any account the host authenticates and
-/// any program allowed to reach this one, with arguments the caller chooses.
-/// `berm_lang::caller()` says who called. `#[callers(services)]` limits a
-/// public tool to programs, `#[callers(accounts)]` to callers from outside.
-/// `#[query]` marks it read-only: the host refuses its writes, logs and wakes.
-/// `#[deprecated]` on a tool marks it so in the manifest.
+/// `public` tool can be called by any account the host authenticates and any
+/// program allowed to reach this one, with arguments the caller chooses.
+/// `berm_lang::caller()` says who called. `callers(services)` limits a public
+/// tool to programs, `callers(accounts)` to callers from outside. `anonymous`
+/// lets a call from outside with no caller reach a public tool. `query` marks
+/// it read-only: the host refuses its writes, logs and wakes. `#[deprecated]`
+/// on a tool marks it so in the manifest.
 ///
-/// `#[cron]` marks a tool its host calls when the cron expression its deploy
-/// or its owner sets fires. A cron tool takes no parameters and is not
-/// `#[public]`.
+/// `cron` marks a tool its host calls when the cron expression its deploy or
+/// its owner sets fires. A cron tool takes no parameters and is not `public`.
 ///
-/// `#[stripe]` marks the tool its host calls with each Stripe event its
-/// daemon takes for the program: the event object is the argument object, so
-/// the tool's parameters are the event's fields it reads. A program has at
-/// most one, and it is not `#[public]`.
+/// `stripe` marks the tool its host calls with each Stripe event its daemon
+/// takes for the program: the event object is the argument object, so the
+/// tool's parameters are the event's fields it reads. A program has at most
+/// one, and it is not `public`.
 ///
-/// `uses = [crab_auth]` names crates that expanded [`kit!`]: the manifest
-/// carries each kit's declarations and migrations as the kit's own.
+/// Its record names the package it is compiled in. An image holding a tool of
+/// a package other than the program's is refused.
 #[proc_macro_attribute]
-pub fn program(args: TokenStream, item: TokenStream) -> TokenStream {
-    let config = parse_macro_input!(args as Config);
-    let module = parse_macro_input!(item as ItemMod);
-    program::expand(&config, module).into()
-}
-
-/// Declare a library crate a kit: what it reaches for and the migrations of
-/// the tables it keeps, for each program naming it in `#[program(uses)]`.
-///
-/// ```ignore
-/// berm_lang::kit!(
-///     syscalls = { "berm.http.fetch" = ["api.example.com"] },
-///     secrets = ["example"],
-///     database = "migrations",
-/// );
-/// ```
-///
-/// Takes `#[program]`'s `programs`, `syscalls`, `secrets` and `database`, once
-/// at the crate's root. The kit is named for its crate.
-#[proc_macro]
-pub fn kit(input: TokenStream) -> TokenStream {
-    kit::expand(&parse_macro_input!(input as config::Declarations)).into()
+pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {
+    let mut options = tool::Options::default();
+    let parser = syn::meta::parser(|meta| options.parse(meta));
+    parse_macro_input!(args with parser);
+    let function = parse_macro_input!(item as ItemFn);
+    tool::expand(options, function)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 /// A type's JSON Schema, and the serde impls that read and write it.

@@ -1,6 +1,6 @@
 [package]
 name = "berm-site"
-description = "The reference crawler, sites read through crab-crawl, what crawl's ticks are tested against"
+description = "The reference crawler, sites read through crabkit-crawl, what crawl's ticks are tested against"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,9 +8,8 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-[[bin]]
-name = "site"
-path = "bin/main.rs"
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 berm-lang.workspace = true

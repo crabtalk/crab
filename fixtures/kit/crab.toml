@@ -1,0 +1,9 @@
+# What its applied migrations are kept under in a database; never changes.
+id = "78455e1073149fe4b90279505a5f3a0c"
+secrets = ["kit"]
+
+[syscalls]
+"berm.http.fetch" = ["kit.example.com"]
+
+[database]
+migrations = "migrations"

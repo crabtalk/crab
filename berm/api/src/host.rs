@@ -8,8 +8,8 @@ use std::{collections::BTreeMap, fmt};
 /// program the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
-/// Header carrying the [`Caller`] a call to bermd is made as, as JSON. bermd
-/// verifies none of it.
+/// Header carrying the [`Caller`] a call to the local host is made as, as
+/// JSON. The local host verifies none of it.
 pub const CALLER: &str = "x-berm-caller";
 
 /// Bytes a service's database may hold when its deploy sets none.
@@ -338,7 +338,7 @@ pub struct Crons {
     pub held: bool,
 }
 
-/// A cron tool: one its manifest marks `#[cron]`.
+/// A cron tool: one its manifest marks `#[tool(cron)]`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CronJob {
@@ -403,6 +403,24 @@ pub struct Call {
     pub meter: Option<Meter>,
     /// How many logs it emitted.
     pub logs: u64,
+}
+
+/// What a call that failed ran with, kept so it can be run again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallInput {
+    pub tool: String,
+    /// Its arguments as sent: JSON, or a Stripe event's body.
+    pub args: String,
+    /// Who it was made as; none for a wake, a Stripe event or an anonymous
+    /// call.
+    pub caller: Option<Caller>,
+    /// The image it ran, as `sha256:` and hex.
+    pub digest: String,
+    /// Where that image is pulled from: the repository the service is
+    /// deployed from when this is read, at `digest`. None for a service
+    /// deployed from no registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 /// What a service is using now.

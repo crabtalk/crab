@@ -106,35 +106,41 @@ pub(crate) fn sites_due(
 }
 
 /// Store `site` as `domain`'s read at `now`: its sitemaps' URLs in place of
-/// the last, and the URLs its program listed that its robots.txt still
-/// allows. Answers the bytes written.
+/// the last, or the last kept with the sitemaps' failure as its error, and
+/// only the URLs its robots.txt still allows. Answers the bytes written.
 pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallError> {
     berm_lang::rows::<()>(
-        "UPDATE crawl_sites SET robots = ?, signal = ?, read = ?, failures = 0, error = NULL
+        "UPDATE crawl_sites SET robots = ?, signal = ?, read = ?, failures = 0, error = ?
           WHERE domain = ?",
-        &(&site.robots, &site.rules.signal, now, domain),
+        &(
+            &site.robots,
+            &site.rules.signal,
+            now,
+            site.urls.as_ref().err(),
+            domain,
+        ),
     )?;
-    berm_lang::rows::<()>(
-        "DELETE FROM crawl_urls WHERE domain = ? AND listed = 0",
-        &(domain,),
-    )?;
-    berm_lang::rows::<()>(
-        "INSERT INTO crawl_urls (url, domain, kind, lastmod)
-         SELECT value ->> 0, ?1, value ->> 1, value ->> 2 FROM json_each(?2) WHERE true
-         ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod",
-        &(domain, &site.urls),
-    )?;
-    let disallowed: Vec<String> = berm_lang::rows::<(String,)>(
-        "SELECT url FROM crawl_urls WHERE domain = ? AND listed = 1",
-        &(domain,),
-    )?
-    .into_iter()
-    .filter_map(|(url,)| {
-        Url::parse(&url)
-            .is_ok_and(|parsed| !site.rules.allows(&parsed))
-            .then_some(url)
-    })
-    .collect();
+    if let Ok(urls) = &site.urls {
+        berm_lang::rows::<()>(
+            "DELETE FROM crawl_urls WHERE domain = ? AND listed = 0",
+            &(domain,),
+        )?;
+        berm_lang::rows::<()>(
+            "INSERT INTO crawl_urls (url, domain, kind, lastmod)
+             SELECT value ->> 0, ?1, value ->> 1, value ->> 2 FROM json_each(?2) WHERE true
+             ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod",
+            &(domain, urls),
+        )?;
+    }
+    let disallowed: Vec<String> =
+        berm_lang::rows::<(String,)>("SELECT url FROM crawl_urls WHERE domain = ?", &(domain,))?
+            .into_iter()
+            .filter_map(|(url,)| {
+                Url::parse(&url)
+                    .is_ok_and(|parsed| !site.rules.allows(&parsed))
+                    .then_some(url)
+            })
+            .collect();
     berm_lang::rows::<()>(
         "DELETE FROM crawl_urls WHERE url IN (SELECT value FROM json_each(?))",
         &(&disallowed,),
@@ -142,6 +148,7 @@ pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallErr
     let urls: usize = site
         .urls
         .iter()
+        .flatten()
         .map(|(url, kind, lastmod)| {
             url.len() + kind.len() + lastmod.as_ref().map_or(0, String::len)
         })

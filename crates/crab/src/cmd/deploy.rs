@@ -1,10 +1,6 @@
 //! `crab deploy` — build a project and hand the context's host its image.
 
-use crate::{
-    cmd::inspect,
-    project::{self, FILE, Project},
-    utils,
-};
+use crate::{cmd::inspect, project, utils};
 use anyhow::{Context, Result, bail};
 use berm_api::Manifest;
 use berm_oci::{Access, Reference, Registry};
@@ -14,15 +10,20 @@ use crabtalk_sdk::{
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
-use std::{fs::File, io::Read, path::Path, str::FromStr};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::Path,
+    str::FromStr,
+};
 use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
-/// Deploy the project in `dir` as its `berm.toml` names it. On Cloud, the image
-/// is pushed to `image`, or `berm.toml`'s, tagged with the crate's version, and
+/// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
+/// is pushed to `image`, or `crab.toml`'s, tagged with the crate's version, and
 /// deployed from there, and a service deployed for the first time starts from
 /// `[database] seed`. With `pull`, the crons the service's owners set on the
-/// host are written into `berm.toml`'s `[crons]` first.
+/// host are written into `crab.toml`'s `[crons]` first.
 pub fn run(
     client: &Client,
     dir: &Path,
@@ -30,50 +31,62 @@ pub fn run(
     force: bool,
     pull: bool,
 ) -> Result<()> {
-    let mut project = Project::read(dir)?;
+    let mut project = project::read(dir)?;
+    if !project.deploy {
+        bail!(
+            "{}'s {} says deploy = false",
+            project.name.as_deref().unwrap_or("this program"),
+            project::FILE
+        );
+    }
     if pull {
-        let live = utils::wait(client.crons(&project.name))?;
+        let live = utils::wait(client.crons(project.name()?))?;
         let crons = live
             .crons
             .into_iter()
             .filter_map(|job| Some((job.tool, job.cron?)))
             .collect();
         project::write_crons(dir, &crons)?;
-        project = Project::read(dir)?;
+        project = project::read(dir)?;
     }
-    let bytes = project::build(dir)?;
+    let built = berm_build::build(dir, None, project::FILE)?;
+    let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
+    let name = project.name()?;
     let deployed = match &client.owner {
         None if project.database.seed.is_some() => {
-            bail!("a seed starts a service on Cloud; bermd's own database is where one is made")
+            bail!(
+                "a seed starts a service on Cloud; the local host's own database is where one is made"
+            )
         }
         None => utils::wait(client.deploy_image(
-            &project.name,
+            name,
             bytes,
             &project.public,
             force,
             project.crons.as_ref(),
-            project.database.size.0,
+            project.database.size(),
         ))?,
         Some(_) => {
             let image = image.or(project.image.as_deref()).with_context(|| {
-                format!("Cloud deploys through a registry; name one as `image` in {FILE}")
+                format!(
+                    "Cloud deploys through a registry; name one as `image` in {}",
+                    project::FILE
+                )
             })?;
             let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
             push(&reference, &bytes)?;
             let seed = match &project.database.seed {
-                Some(seed) if first(client, &project.name)? => {
-                    Some(upload(client, &project.name, &dir.join(seed))?)
-                }
+                Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
                 _ => None,
             };
             utils::wait(client.deploy(
-                &project.name,
+                name,
                 &DeployRequest {
                     reference,
                     public: project.public.clone(),
                     force,
                     crons: project.crons.clone(),
-                    size: project.database.size.0,
+                    size: project.database.size(),
                     seed,
                 },
             ))?
@@ -81,25 +94,29 @@ pub fn run(
     };
     // The host compiled it to answer, so what comes back is what it will
     // serve — worth showing rather than saying "ok".
-    let runtime = utils::wait(client.runtime(&project.name))?;
+    let runtime = utils::wait(client.runtime(name))?;
     inspect::show(
         &deployed.program,
         &runtime,
-        &utils::wait(client.terms(&project.name))?,
+        &utils::wait(client.terms(name))?,
     );
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }
-    // A bermd's secrets are its own file's; Cloud's are set per service.
-    if client.owner.is_some() {
-        let set = utils::wait(client.secrets(&project.name))?;
-        for secret in &runtime.deps.secrets {
-            if !set.iter().any(|one| one.name == *secret) {
-                println!(
-                    "  unset   secret {secret}: printf %s \"$VALUE\" | crab secret put {} {secret}",
-                    project.name
-                );
-            }
+    let set = utils::wait(client.secrets(name))?;
+    let unset: Vec<&String> = runtime
+        .deps
+        .secrets
+        .iter()
+        .filter(|secret| !set.iter().any(|one| one.name == **secret))
+        .collect();
+    for secret in &unset {
+        println!("  unset   secret {secret}");
+    }
+    if !unset.is_empty() {
+        match client.owner {
+            None => println!("  have a person set them at their terminal: crab secret fill {name}"),
+            Some(_) => println!("  ask a person to set them: crab secret request {name}"),
         }
     }
     Ok(())
@@ -122,7 +139,7 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
     let Some(into) = copy.to_str() else {
         bail!("the seed's copy {} is not a UTF-8 path", copy.display());
     };
-    // One consistent file, its write-ahead log folded in, while a bermd may
+    // One consistent file, its write-ahead log folded in, while the local host may
     // hold the database open.
     Connection::open_with_flags(seed, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .with_context(|| format!("opening the seed {}", seed.display()))?
@@ -158,6 +175,5 @@ fn hash(path: &Path) -> Result<(String, u64)> {
 /// Upload `image` as `reference`, answering with its digest.
 fn push(reference: &str, image: &[u8]) -> Result<String> {
     let reference = Reference::from_str(reference)?;
-    let section = Manifest::section(image)?;
-    Registry::open(&reference, Access::Write)?.push(&reference.reference, image, section)
+    Registry::open(&reference, Access::Write)?.push(&reference.reference, image)
 }

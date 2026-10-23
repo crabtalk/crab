@@ -8,40 +8,39 @@ Add the kit to your program's crate:
 
 ```toml
 [dependencies]
-crab-stripe = "0.1"
+crabkit = { version = "0.1", features = ["stripe"] }
 ```
 
-Name it in `uses`, and call it from your own tools:
+The kit is also the crate `crabkit-stripe` on its own.
+
+Call it from your own tools:
 
 ```rust,ignore
-#[berm_lang::program(uses = [crab_stripe])]
-mod tools {
-    use alloc::string::String;
-    use berm_lang::Result;
-    use crab_stripe::{Data, Session, Subscriber};
+use alloc::string::String;
+use berm_lang::{Result, tool};
+use crabkit::stripe::{Data, Session, Subscriber};
 
-    /// Opens a Checkout session subscribing the calling user to `plan`.
-    #[public]
-    pub fn upgrade(plan: String, success: String, cancel: String) -> Result<Session> {
-        Subscriber::calling()?.checkout(&plan, &success, &cancel)
-    }
+/// Opens a Checkout session subscribing the calling user to `plan`.
+#[tool(public)]
+pub fn upgrade(plan: String, success: String, cancel: String) -> Result<Session> {
+    Subscriber::calling()?.checkout(&plan, &success, &cancel)
+}
 
-    /// Keeps the subscription a Stripe event names.
-    #[stripe]
-    pub fn webhook(data: Data) -> Result<()> {
-        data.keep()
-    }
+/// Keeps the subscription a Stripe event names.
+#[tool(stripe)]
+pub fn webhook(data: Data) -> Result<()> {
+    data.keep()
 }
 ```
 
-The program declares nothing the kit already declares: `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations reach the program's manifest through `uses`. Its tables are `stripe_customers` and `stripe_subscriptions`, in the program's database.
+The program declares nothing the kit already declares: the kit's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the program's database.
 
 - `Subscriber::calling()`: the end user the call carries; a call with none is refused. `Subscriber { user }` names another.
 - `subscriber.checkout(plan, success, cancel)`: a Checkout session subscribing the user to the price whose `lookup_key` is `plan`, sending them to `success` once they subscribe and to `cancel` if they leave. Their first checkout makes their Stripe customer. Answers `Session {url}`.
 - `subscriber.portal(back)`: a customer portal session for the user, sending them back to `back`. Refused before their first checkout.
 - `subscriber.plan()`: the `lookup_key` of the price the user's active or trialing subscription is on.
 - `subscriber.customer()`: the user's Stripe `Customer`, once they have checked out.
-- `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A program has one `#[stripe]` tool, which calls it.
+- `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A program has one `#[tool(stripe)]` tool, which calls it.
 - `Price::find`, `Customer::create`, `customer.checkout`, `customer.portal` and `Subscription::retrieve` are the Stripe API calls these make.
 
 ## Setting it up

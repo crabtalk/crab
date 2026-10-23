@@ -1,6 +1,6 @@
 //! Times as feeds spell them, in Unix milliseconds.
 
-use crab_lake::time;
+use crabkit_lake::time;
 
 /// 2026-10-11T06:55:00Z.
 const MORNING: u64 = 1_791_701_700_000;

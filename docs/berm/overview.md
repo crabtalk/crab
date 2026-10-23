@@ -52,4 +52,4 @@ the embedder supplies what they act on.
 
 wasmtime loads an image, generates native code for it, and calls it. It has no idea what a program is — no tools, no manifest, no arguments, no JSON.
 
-berm is the layer that decides those things: that a tool is an export named `berm_tool_*`, that an image describes itself in a `.berm.abi` section, and that arguments arrive as a blob the guest pulls in. Every syscall is the same number, request and staged reply, carried by one import, `berm.syscall`.
+berm is the layer that decides those things: that a tool is an export named `berm_tool_*`, that an image describes itself in its `.berm.abi`, `.berm.program` and `.berm.kits` sections, and that arguments arrive as a blob the guest pulls in. Every syscall is the same number, request and staged reply, carried by one import, `berm.syscall`.

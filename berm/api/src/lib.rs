@@ -1,4 +1,4 @@
-//! What a program says it is, and what bermd's control API speaks.
+//! What a program says it is, and what the local host's control API speaks.
 //!
 //! Here rather than in the service so a client can read an image and talk to
 //! the API without linking a compiler.
@@ -7,26 +7,42 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use compat::{Break, Surface};
-pub use manifest::{Database, Deps, EventSpec, Kit, Manifest, Migration, Reach};
+pub use image::Image;
+pub use manifest::{
+    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration,
+    ProgramRecord, Reach, Sequence,
+};
 
 mod compat;
 pub mod host;
+mod image;
 mod manifest;
+pub mod project;
 #[cfg(feature = "rusqlite")]
 mod sql;
 
 /// The ABI this host speaks. A program built against a different one is
 /// refused rather than dispatched into a syscall its author did not
 /// mean.
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 
-/// The section carrying the manifest. A section rather than an export, so
-/// reading what a program claims to be never means running it.
-///
-/// A wasm custom section, which is what `#[link_section]` emits on
-/// `wasm32`. It holds JSON records back to back, in the order the linker
-/// joined them: the program's, and one `{"event": …}` per `#[event]`.
+/// The section of what the compiler wrote of a program. A wasm custom
+/// section, which is what `#[link_section]` emits on `wasm32`. It holds JSON
+/// records back to back, in the order the linker joined them: one
+/// `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one
+/// `{"event": …}` per `#[event]`.
 pub const ABI_SECTION: &str = ".berm.abi";
+
+/// The section the build appends for the program: one [`ProgramRecord`].
+pub const PROGRAM_SECTION: &str = ".berm.program";
+
+/// The section the build appends for the program's kits: a JSON array of
+/// [`Kit`], by name.
+pub const KITS_SECTION: &str = ".berm.kits";
+
+/// The most bytes a call's arguments, and a tool's result, may hold, when a
+/// program's `crab.toml` sets no `buffer`.
+pub const DEFAULT_BUFFER: usize = 16 * 1024;
 
 /// One log a program emitted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,7 +73,7 @@ pub struct Program {
     pub homepage: String,
     #[serde(default)]
     pub repository: String,
-    /// The Markdown file `readme` names on `#[program]`.
+    /// The Markdown file `readme` names in its `crab.toml`.
     #[serde(default)]
     pub readme: String,
     /// sha256 of the image.

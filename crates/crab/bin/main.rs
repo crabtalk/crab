@@ -1,21 +1,26 @@
 use anyhow::Result;
+use berm::syscall::call;
 use berm_api::{
     Budget,
     host::{Caller, User},
 };
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{cmd, context::Contexts, utils};
+use crab_agent::{
+    cmd,
+    context::{self, Contexts},
+    utils,
+};
 use crabtalk_sdk::{
-    account::billing::PortalFlow,
+    account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
 };
-use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
+use std::{io::IsTerminal, net::SocketAddr, path::PathBuf, process::ExitCode, time::Duration};
 
 #[derive(Parser)]
 #[command(
     name = "crab",
     version,
-    about = "Deploy and inspect programs on bermd or Cloud, and run a Cloud account"
+    about = "Run the local host, deploy and inspect programs on it or Cloud, and run a Cloud account"
 )]
 struct Args {
     /// The context to talk to, in place of the one in use.
@@ -41,7 +46,8 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Sign in to Cloud in the browser, and use it from now on.
+    /// Sign in to Cloud in the browser, or with a code emailed to the address,
+    /// and use it from now on.
     Login {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
@@ -49,32 +55,104 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
+        /// Sign in with a code emailed to this address, without a browser.
+        #[arg(long, conflicts_with = "github")]
+        email: Option<String>,
+        /// The code emailed to `--email`. Without it, a code is sent and the
+        /// command exits; a second run gives it here.
+        #[arg(long, requires = "email")]
+        code: Option<String>,
         /// The context to keep the session as.
         #[arg(long, default_value = "cloud")]
         name: String,
     },
     /// Forget the session of the context in use, or of `--context`.
     Logout,
+    /// Where a request asked of a person stands: a payment or a secret.
+    Request {
+        /// Its code, as `WDJB-MJHT`.
+        code: String,
+        /// Return once it is no longer pending.
+        #[arg(long)]
+        wait: bool,
+        /// End it now, as if its time had run out: its code stops working.
+        #[arg(long, conflicts_with = "wait")]
+        expire: bool,
+        /// Seconds `--wait` waits at most.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
+    /// Run the workspace's services on a local host at 127.0.0.1:7777,
+    /// rebuilding and redeploying them as their files change, until Ctrl-C.
+    #[command(args_conflicts_with_subcommands = true)]
+    Dev {
+        #[command(subcommand)]
+        command: Option<DevCommand>,
+        /// A service's directory, for that service alone, or any other
+        /// directory of a workspace, for every service in it.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Return once every service is deployed or failed, leaving the host
+        /// watching the workspace.
+        #[arg(short, long)]
+        detach: bool,
+    },
+    /// Run the local host in the foreground: deploy programs to it and serve
+    /// their tools over HTTP and MCP.
+    Serve {
+        /// Address to listen on. Loopback by default: the MCP endpoint carries
+        /// no authorization yet, so anything wider would be an open one.
+        #[arg(long, default_value = context::LOCAL)]
+        addr: SocketAddr,
+        /// Where deployed images and the code cache live; `~/.berm` by
+        /// default.
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// How deep a chain of programs calling programs may go. `0` refuses
+        /// the first one, which is composition off.
+        ///
+        /// The bound is on runaway composition, not on the stack: a level
+        /// costs ~720 bytes of it, and 64 MiB of guest address space.
+        #[arg(long, default_value_t = call::DEFAULT_CALL_DEPTH)]
+        max_call_depth: u32,
+        /// The proxy `berm.http.proxy` goes through, e.g.
+        /// `http://user:pass@gate.example.com:3120`. Without one it goes
+        /// direct.
+        #[arg(long)]
+        proxy: Option<String>,
+        /// How many milliseconds of CPU one call may spend, nested calls
+        /// excluded.
+        #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
+        max_cpu_millis: u64,
+        /// How many seconds a call may run before it is stopped.
+        #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
+        max_call_seconds: u64,
+    },
     /// Scaffold a program crate.
     New { name: String },
     /// List deployed programs.
     Ls,
-    /// Build the project in a directory and deploy it as its `berm.toml`
+    /// Build the program in a directory and print the path of its image.
+    Build {
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+    /// Build the project in a directory and deploy it as its `crab.toml`
     /// names it, replacing whatever holds the name.
     Deploy {
         #[arg(default_value = ".")]
         dir: PathBuf,
         /// The registry repository to push to, in place of `image` in
-        /// `berm.toml`.
+        /// `crab.toml`.
         #[arg(long)]
         image: Option<String>,
         /// Deploy even when it breaks what callers used, or undoes a cron its
         /// owners set.
         #[arg(long)]
         force: bool,
-        /// Write the crons its owners set into `[crons]` in `berm.toml` before
+        /// Write the crons its owners set into `[crons]` in `crab.toml` before
         /// deploying.
         #[arg(long, conflicts_with = "force")]
         pull: bool,
@@ -85,16 +163,27 @@ enum Command {
         tool: String,
         /// The argument object. Read from stdin when omitted.
         arguments: Option<String>,
-        /// On bermd, the caller the program is told called it.
+        /// On the local host, the caller the program is told called it.
         #[arg(long)]
         caller: Option<String>,
-        /// On bermd, the end user's issuer the program is told it is called for.
+        /// On the local host, the end user's issuer the program is told it is called for.
         #[arg(long, requires = "user", requires = "caller")]
         issuer: Option<String>,
-        /// On bermd, the end user's subject the program is told it is called
+        /// On the local host, the end user's subject the program is told it is called
         /// for.
         #[arg(long, requires = "issuer")]
         user: Option<String>,
+    },
+    /// Run a call that failed again, read from the context in use: here, the
+    /// image it ran answered from its tape, or with `--on` on that context's
+    /// host, against its state.
+    Replay {
+        program: String,
+        /// The call's id, as `crab calls` lists it.
+        id: u64,
+        /// The context to run it on, against that host's state.
+        #[arg(long)]
+        on: Option<String>,
     },
     /// Show a program's tools and their arguments.
     Inspect { name: String },
@@ -228,16 +317,57 @@ enum SecretCommand {
     Ls { name: String },
     /// Revoke a secret of a program.
     Rm { name: String, secret: String },
+    /// Set a program's credentials at this terminal, typed by the person
+    /// here: in the workspace's secrets.toml against the local host, on the
+    /// account against Cloud. Refused when not run at a terminal.
+    Fill {
+        name: String,
+        /// A value the credentials have the person enter at the provider,
+        /// such as `callback=https://example.com/auth/callback`.
+        #[arg(long = "copy", value_parser = cmd::secret::copy)]
+        copies: Vec<(String, String)>,
+    },
+    /// Ask a person to set a program's unset secrets, or one credential's: a
+    /// code whose page they set them at, signed in, so no value passes
+    /// through here.
+    Request {
+        name: String,
+        /// Ask for this credential, set or not, and no other.
+        #[arg(long)]
+        credential: Option<String>,
+        /// A value the credentials have the person enter at the provider,
+        /// such as `callback=https://example.com/auth/callback`.
+        #[arg(long = "copy", value_parser = cmd::secret::copy)]
+        copies: Vec<(String, String)>,
+        /// What they are for, shown to the person who sets them.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
 }
 
 #[derive(Subcommand)]
 enum BillingCommand {
-    /// Subscribe to a plan, in Stripe Checkout; from a trial, at once.
-    Plan { slug: String },
-    /// Start the free trial, in Stripe Checkout.
-    Trial,
-    /// Buy credit, in Stripe Checkout, the amount chosen there.
-    Credit,
+    /// Ask a person to put the account on a plan: a code whose page they pay
+    /// at. From a trial, the plan starts as they confirm it.
+    Plan {
+        slug: String,
+        /// What it is for, shown to the person who pays.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
+    /// Ask the person to start the free trial: a code whose page takes a card.
+    Trial {
+        /// What it is for, shown to the person who starts it.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
+    /// Ask a person to buy credit: a code whose page takes the amount.
+    Credit {
+        /// What it is for, shown to the person who pays.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
+
     /// Refill credit when it runs low; a cap of 0 turns it off.
     Refill {
         /// USD one refill buys, 20 or more.
@@ -258,6 +388,14 @@ enum BillingCommand {
         #[arg(long)]
         cancel: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum DevCommand {
+    /// Whether a dev host runs, and what it serves.
+    Status,
+    /// Stop the dev host.
+    Stop,
 }
 
 #[derive(Subcommand)]
@@ -287,7 +425,7 @@ struct AppFields {
     /// An identity provider whose tokens name its users, `ISSUER=AUDIENCE`.
     #[arg(long = "issuer")]
     issuers: Vec<String>,
-    /// Calls with no token reach the services' `#[anonymous]` tools.
+    /// Calls with no token reach the services' `#[tool(anonymous)]` tools.
     #[arg(long)]
     anonymous: bool,
 }
@@ -374,7 +512,7 @@ enum InvitesCommand {
 
 #[derive(Subcommand)]
 enum ContextCommand {
-    /// Name a host: a bermd, or Cloud with a token and the account to deploy
+    /// Name a host: a local host, or Cloud with a token and the account to deploy
     /// under (`--org`, or `--user`).
     Add {
         name: String,
@@ -410,9 +548,60 @@ fn main() -> Result<ExitCode> {
     };
 
     match &args.command {
-        Command::Login { host, github, name } => cmd::login::run(name, host, *github)?,
+        Command::Login {
+            host,
+            github: _,
+            email: Some(email),
+            code,
+            name,
+        } => cmd::login::email(name, host, email, code.as_deref())?,
+        Command::Login {
+            host, github, name, ..
+        } => cmd::login::run(name, host, *github)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
+        Command::Request {
+            code, expire: true, ..
+        } => cmd::request::expire(&client()?, code, json)?,
+        Command::Request {
+            code,
+            wait,
+            timeout,
+            ..
+        } => cmd::request::run(&client()?, code, *wait, *timeout, json)?,
         Command::Status => cmd::status::run(&client()?, args.context.as_deref(), json)?,
+        Command::Dev {
+            command: Some(DevCommand::Status),
+            ..
+        } => cmd::dev::status(json)?,
+        Command::Dev {
+            command: Some(DevCommand::Stop),
+            ..
+        } => cmd::dev::stop()?,
+        Command::Dev {
+            command: None,
+            dir,
+            detach: true,
+        } => cmd::dev::detach(dir, json)?,
+        Command::Dev {
+            command: None,
+            dir,
+            detach: false,
+        } => cmd::dev::run(dir, json)?,
+        Command::Serve {
+            addr,
+            root,
+            max_call_depth,
+            proxy,
+            max_cpu_millis,
+            max_call_seconds,
+        } => cmd::serve::run(
+            *addr,
+            root.clone(),
+            *max_call_depth,
+            Duration::from_millis(*max_cpu_millis),
+            Duration::from_secs(*max_call_seconds),
+            proxy.as_deref(),
+        )?,
         Command::Context(ContextCommand::Add {
             name,
             host,
@@ -432,6 +621,7 @@ fn main() -> Result<ExitCode> {
         Command::Context(ContextCommand::Rm { name }) => cmd::context::rm(name)?,
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
+        Command::Build { dir } => cmd::build::run(dir)?,
         Command::Deploy {
             dir,
             image,
@@ -482,6 +672,15 @@ fn main() -> Result<ExitCode> {
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?
         }
+        Command::Secret(SecretCommand::Fill { name, copies }) => {
+            cmd::secret::fill(&client()?, name, copies)?
+        }
+        Command::Secret(SecretCommand::Request {
+            name,
+            credential,
+            copies,
+            r#for,
+        }) => cmd::secret::ask(&client()?, name, credential.as_deref(), copies, r#for, json)?,
         Command::Budget {
             name,
             tool,
@@ -504,9 +703,16 @@ fn main() -> Result<ExitCode> {
         } => {
             let client = client()?;
             match action {
-                BillingCommand::Plan { slug } => cmd::billing::plan(&client, slug)?,
-                BillingCommand::Trial => cmd::billing::trial(&client)?,
-                BillingCommand::Credit => cmd::billing::credit(&client)?,
+                BillingCommand::Plan { slug, r#for } => {
+                    cmd::billing::ask(&client, Purchase::Plan, Some(slug), r#for, json)?
+                }
+                BillingCommand::Trial { r#for } => {
+                    cmd::billing::ask(&client, Purchase::Trial, None, r#for, json)?
+                }
+                BillingCommand::Credit { r#for } => {
+                    cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
+                }
+
                 BillingCommand::Refill { amount, cap } => {
                     cmd::billing::refill(&client, *amount, *cap)?
                 }
@@ -622,6 +828,15 @@ fn main() -> Result<ExitCode> {
                 arguments.as_deref(),
                 caller.as_ref(),
             );
+        }
+        Command::Replay { program, id, on } => {
+            return match on {
+                Some(on) => {
+                    let on = Client::from(Contexts::load()?.get(Some(on))?);
+                    cmd::replay::on(&client()?, &on, program, *id)
+                }
+                None => cmd::replay::tape(&client()?, program, *id),
+            };
         }
     }
     Ok(ExitCode::SUCCESS)

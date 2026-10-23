@@ -5,7 +5,7 @@ use berm_lang::{
     serde_json::{self, json},
     test::{self, Fetched},
 };
-use crab_supabase::Supabase;
+use crabkit_supabase::Supabase;
 
 const TODOS: &str = "https://abcd.supabase.co/rest/v1/todos";
 

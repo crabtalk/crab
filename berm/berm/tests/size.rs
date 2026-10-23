@@ -3,13 +3,18 @@
 
 use anyhow::Result;
 use berm::database::Databases;
-use berm_api::Migration;
+use berm_api::{Migration, Sequence};
 use std::path::PathBuf;
 
-fn migration(name: &str, sql: &str) -> Migration {
-    Migration {
-        name: name.to_owned(),
-        sql: sql.to_owned(),
+/// The program's own sequence of one migration.
+fn own(name: &str, sql: &str) -> Sequence {
+    Sequence {
+        kit: String::new(),
+        formerly: Vec::new(),
+        migrations: vec![Migration {
+            name: name.to_owned(),
+            sql: sql.to_owned(),
+        }],
     }
 }
 
@@ -27,12 +32,9 @@ async fn a_write_past_the_size_fails() -> Result<()> {
     let database = databases.get("p")?;
     database.limit(256 << 10).await?;
     let full = database
-        .migrate(vec![(
-            String::new(),
-            vec![migration(
-                "0001.sql",
-                "CREATE TABLE t (x); INSERT INTO t VALUES (randomblob(1 << 20));",
-            )],
+        .migrate(vec![own(
+            "0001.sql",
+            "CREATE TABLE t (x); INSERT INTO t VALUES (randomblob(1 << 20));",
         )])
         .await
         .expect_err("a megabyte does not fit in 256 KiB");
@@ -45,12 +47,9 @@ async fn a_size_below_what_it_holds_is_refused() -> Result<()> {
     let databases = Databases::new(dir("below")?);
     let database = databases.get("p")?;
     database
-        .migrate(vec![(
-            String::new(),
-            vec![migration(
-                "0001.sql",
-                "CREATE TABLE t (x); INSERT INTO t VALUES (randomblob(1 << 20));",
-            )],
+        .migrate(vec![own(
+            "0001.sql",
+            "CREATE TABLE t (x); INSERT INTO t VALUES (randomblob(1 << 20));",
         )])
         .await?;
     let refused = database

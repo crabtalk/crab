@@ -14,7 +14,8 @@
 //! below.
 
 use crate::{
-    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine, wire,
+    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine,
+    tape::Answer, wire,
 };
 use anyhow::{Result, anyhow, bail};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -229,15 +230,51 @@ fn builtins() -> Table {
 
     table.insert(
         abi::HOST_NOW,
-        handler(|guest, _, _| Ok((guest.data().now)())),
+        handler(|guest, _, _| {
+            let Some(deck) = guest.data().tape.clone() else {
+                return Ok((guest.data().now)());
+            };
+            let replayed = deck.lock().replay(&guest.data().at, abi::HOST_NOW, [0; 32]);
+            match replayed {
+                Some(Ok(Answer::Number(now))) => Ok(now),
+                Some(Ok(_)) => bail!("the tape answered berm.now with no reading"),
+                Some(Err(diverged)) => Err(diverged),
+                None => {
+                    let now = (guest.data().now)();
+                    deck.lock()
+                        .record(abi::HOST_NOW, [0; 32], Answer::Number(now));
+                    Ok(now)
+                }
+            }
+        }),
     );
 
     table.insert(
         abi::HOST_RANDOM,
         handler(|guest, ptr, len| {
-            SystemRandom::new()
-                .fill(engine::slice_mut(guest, ptr, len)?)
-                .map_err(|_| anyhow!("the system's random source failed"))?;
+            let deck = guest.data().tape.clone();
+            let replayed = deck.as_ref().and_then(|deck| {
+                deck.lock()
+                    .replay(&guest.data().at, abi::HOST_RANDOM, [0; 32])
+            });
+            let filled = engine::slice_mut(guest, ptr, len)?;
+            match replayed {
+                Some(Ok(Answer::Done(bytes))) if bytes.len() == filled.len() => {
+                    filled.copy_from_slice(&bytes)
+                }
+                Some(Ok(_)) => bail!("the tape answered berm.random with another length"),
+                Some(Err(diverged)) => return Err(diverged),
+                None => {
+                    SystemRandom::new()
+                        .fill(filled)
+                        .map_err(|_| anyhow!("the system's random source failed"))?;
+                    if let Some(deck) = deck {
+                        let bytes = filled.to_vec();
+                        deck.lock()
+                            .record(abi::HOST_RANDOM, [0; 32], Answer::Done(bytes));
+                    }
+                }
+            }
             Ok(0)
         }),
     );

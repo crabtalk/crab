@@ -1,21 +1,22 @@
 ---
 title: Running the Service
-description: "bermd deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."
+description: "crab serve deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."
 ---
 
-`bermd` is a long-running service that deploys programs and serves their tools.
+`crab serve` runs the local host, a long-running service that deploys programs and serves their tools.
+It is the one host on a machine: `crab dev` starts it in the background when nothing answers on `127.0.0.1:7777`, writing to `host.log` under its root, and hands it workspaces to watch at `/dev`.
 An invocation is ephemeral, but three things around it are not: the deployed
 set, the modules compiled from it, and the engine's code cache. A program is
 compiled once, at deploy, so an invocation pays only instantiation.
 
 ```sh
-bermd --addr 127.0.0.1:7777 --root ~/.berm
+crab serve --addr 127.0.0.1:7777 --root ~/.crab/host
 ```
 
 | Flag | |
 |---|---|
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
-| `--root` | Where deployed images, the code cache and `secrets.toml` live. |
+| `--root` | Where deployed images, the code cache and `secrets.toml` live, `~/.crab/host` by default. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
 | `--max-cpu-millis` | How many milliseconds of CPU one call spends, nested calls excluded, 100 by default. |
 | `--max-call-seconds` | How long one call runs before it is stopped, 60 by default. |
@@ -23,26 +24,15 @@ bermd --addr 127.0.0.1:7777 --root ~/.berm
 
 The service carries no authorization and binds loopback by default.
 
-## Dashboard
-
-Built from this repository with the `dashboard` feature, bermd serves a development dashboard at `/`: the deployed programs, a form to call each tool, its calls, logs, crons, wakes, usage and meters, and a deploy.
-
-```sh
-(cd dashboard && bun install && bun run build)
-cargo run -p bermd --features dashboard
-```
-
-The feature is off by default.
-
 ## Docker
 
-`docker-compose.yml` at the repository root builds the image from the checkout and runs bermd with the dashboard on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
+`docker-compose.yml` at the repository root builds the image from the checkout and runs `crab serve` on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
 
 ```sh
 docker compose up --build
 ```
 
-Inside the container bermd listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes bermd its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
+Inside the container the host listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes `crab serve` its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
 
 ## Deploying
 
@@ -79,6 +69,8 @@ curl -X DELETE http://127.0.0.1:7777/programs/example
 | `GET /programs/{name}/live` | What it is using now: invocations running, memory, bytes stored, and each resource's total and rate. |
 | `GET /programs/{name}/meters` | Its meters over the last 30 days, a day each, with the bytes it stored. |
 | `GET /programs/{name}/calls` | Each run, a call from outside or a wake, newest first, with its outcome, duration and meter. `?tool=&event=&outcome=&since=&until=&before=&limit=`: the calls below the id `before`, and `next` in `Link`. |
+| `GET /programs/{name}/calls/{id}/input` | What a call that failed ran with: its tool, arguments as sent, caller, and the image's `digest`. `404` for a call that kept none; no other call does. |
+| `GET /programs/{name}/calls/{id}/tape` | A call that failed, as its answers from outside the program were recorded, encoded as `berm::tape::Tape`. `404` for a call that kept none. |
 | `GET /programs/{name}/logs` | What it emitted, oldest first, each beside the call it was emitted in and kept 30 days. `?topic=&call=&after=&limit=`: the logs after the sequence number `after`, and `next` in `Link`. |
 | `GET /programs/{name}/crons` | Each cron tool with its expression and next run. |
 | `GET /programs/{name}/wakes` | The wakes armed to call its tools that have not run. |
@@ -98,16 +90,16 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
   with it answers `304`. Any other tool answers `GET` with `405`.
 - `X-Berm-Caller` is the caller, as JSON:
   `{"id", "app", "user": {"issuer", "subject"}, "client", "agent"}`, every field
-  but `id` optional. bermd checks none of it. A call without one, or an app's
-  call without a `user`, has no caller and reaches only `#[anonymous]` tools.
+  but `id` optional. The local host checks none of it. A call without one, or an app's
+  call without a `user`, has no caller and reaches only `anonymous` tools.
 - The answer carries `Berm-Meter`, what the call used across every program it
   reached: `{"calls", "cpu", "memory", "read", "written", "proxied", "logged", "failed", "sent"}`.
   A deprecated tool's answer carries `Deprecation`, and `Sunset` once one is set.
 
 | Status | When |
 |---|---|
-| `401` | No caller, and the tool is not `#[anonymous]`. |
-| `403` | The tool is `#[callers(services)]`. |
+| `401` | No caller, and the tool is not `anonymous`. |
+| `403` | The tool is `callers(services)`. |
 | `404` | No such program, or no public tool by that name. |
 | `405` | `GET` on a tool that is not a query. |
 | `503` | No call slot is free. |
@@ -123,24 +115,25 @@ An invocation stops at its tool's CPU budget, checked every 100ms, and a row sys
 - `PATCH /programs/{name}/tools/{tool}` with `{"sunset": <epoch seconds>}` sets
   when a deprecated tool stops being served; `null` clears it.
 - `POST /programs/{name}/stripe` hands its body, a Stripe event, to the
-  program's `#[stripe]` tool, unverified, and answers `204` once the tool has
+  program's `stripe` tool, unverified, and answers `204` once the tool has
   run, `503` while the program is held and `500` when the tool failed.
 
 ## Secrets
 
 A request header or body may name `{secret:NAME}` for a secret the manifest declares.
-bermd substitutes what `{root}/secrets.toml` grants that program for that host,
-read again whenever the file changes:
+The local host substitutes the value it keeps for that program, and a request goes only
+to a host the manifest declares, so neither does the secret. It keeps each program's
+secrets in `secrets.toml` under its root, readable by its owner alone, and only it
+writes the file: they are set through its routes, as on Cloud.
 
-```toml
-[example.token]
-value = "..."
-hosts = ["api.example.com"]
-```
+- `GET /programs/{name}/secrets` lists them by name; a value is never read back.
+- `PUT /programs/{name}/secrets/{secret}` with `{"value": "…"}` sets one, and answers
+  `409` while it is set: a set secret is changed by revoking it and setting it again.
+- `DELETE /programs/{name}/secrets/{secret}` revokes one.
 
 ## What a deployed program can reach
 
-Everything in [the guest API](./guest-api.md): its keys, a database, logs, the clock, wakes, HTTP to the hosts its manifest declares, randomness, itself, and the programs deployed beside it that its manifest declares in `programs`. bermd registers no files and no commands. `Manifest::from_image` reads what an image claims without compiling or running it.
+Everything in [the guest API](./guest-api.md): its keys, a database, logs, the clock, wakes, HTTP to the hosts its manifest declares, randomness, itself, and the programs deployed beside it that its manifest declares in `programs`. The local host registers no files and no commands. `Manifest::from_image` reads what an image claims without compiling or running it.
 
 ## MCP
 
@@ -148,7 +141,7 @@ Everything in [the guest API](./guest-api.md): its keys, a database, logs, the c
   HTTP, its tools named `{program}.{tool}`. A program name carries no dot, so
   dispatch splits on the first one.
 - A call over MCP carries no caller, so the endpoint lists and calls only
-  `#[anonymous]` tools.
+  `anonymous` tools.
 - A tool's budget is in its `_meta.terms`, and a query tool is marked
   read-only.
 - Each program with a [README](./manifest.md#package) publishes it as the

@@ -1,0 +1,20 @@
+[package]
+name = "berm-build"
+description = "Builds a berm program's image: its cdylib for the guest target, with the sections its crab.toml and its kits declare"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+keywords = ["berm", "wasm", "build", "program"]
+categories = ["wasm", "development-tools::build-utils"]
+
+[dependencies]
+anyhow.workspace = true
+berm-api.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+berm-api.workspace = true
+tempfile.workspace = true

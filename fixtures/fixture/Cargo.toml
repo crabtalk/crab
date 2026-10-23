@@ -8,9 +8,8 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-[[bin]]
-name = "fixture"
-path = "bin/main.rs"
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 berm-lang.workspace = true
@@ -18,6 +17,7 @@ hex = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 anyhow.workspace = true
+berm.workspace = true
 berm-api.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 serde_json = { workspace = true, features = ["std"] }

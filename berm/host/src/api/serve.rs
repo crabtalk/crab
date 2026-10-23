@@ -34,6 +34,8 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/live", get(live::<E>))
         .route("/logs", get(logs::<E>))
         .route("/calls", get(calls::<E>))
+        .route("/calls/{id}/input", get(call_input::<E>))
+        .route("/calls/{id}/tape", get(call_tape::<E>))
         .route("/crons", get(crons::<E>))
         .route("/wakes", get(wakes::<E>))
         .route(
@@ -129,6 +131,28 @@ async fn calls<E: Env>(
     ))
 }
 
+/// What one of the service's calls that failed ran with.
+async fn call_input<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(CallId { id }): Path<CallId>,
+) -> Result<impl IntoResponse, Denied> {
+    Ok(Json(host.call_input(&service, id).await?))
+}
+
+/// One of the service's calls that failed, as berm recorded its answers from
+/// outside the guest.
+async fn call_tape<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(CallId { id }): Path<CallId>,
+) -> Result<impl IntoResponse, Denied> {
+    Ok((
+        [(header::CONTENT_TYPE, "application/octet-stream")],
+        host.call_tape(&service, id).await?,
+    ))
+}
+
 /// The service's cron tools.
 async fn crons<E: Env>(
     State(host): State<Host<E>>,
@@ -166,6 +190,12 @@ async fn call<E: Env>(
 #[derive(Deserialize)]
 struct Tool {
     tool: String,
+}
+
+/// The call a path names, beside whatever names its service.
+#[derive(Deserialize)]
+struct CallId {
+    id: u64,
 }
 
 /// `?args=` on a `GET`: the argument object, URL-encoded JSON.
@@ -206,7 +236,7 @@ async fn query<E: Env>(
     Ok((called.headers, Json(called.output)).into_response())
 }
 
-/// Hand a Stripe event to the service's `#[stripe]` tool, the body byte for
+/// Hand a Stripe event to the service's `#[tool(stripe)]` tool, the body byte for
 /// byte as Stripe sent it.
 async fn stripe<E: Env>(
     State(host): State<Host<E>>,

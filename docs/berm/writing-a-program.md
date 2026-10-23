@@ -6,29 +6,22 @@ title: Writing a Program
 number or a pointer pair.
 
 ```rust,ignore
-#![cfg_attr(target_arch = "wasm32", no_std, no_main)]
+#![cfg_attr(target_arch = "wasm32", no_std)]
 
 extern crate alloc;
 
 use alloc::string::String;
-use berm_lang::Schema;
+use berm_lang::{Result, Schema, tool};
 
-#[berm_lang::program]
-mod tools {
-    use crate::Echo;
-    use alloc::string::String;
-    use berm_lang::Result;
-
-    /// Answers its arguments back.
-    #[public]
-    pub fn echo(
-        /// The text to echo back.
-        query: String,
-        /// Page number, zero-indexed.
-        page: Option<u32>,
-    ) -> Result<Echo> {
-        Ok(Echo { query, page })
-    }
+/// Answers its arguments back.
+#[tool(public)]
+pub fn echo(
+    /// The text to echo back.
+    query: String,
+    /// Page number, zero-indexed.
+    page: Option<u32>,
+) -> Result<Echo> {
+    Ok(Echo { query, page })
 }
 
 /// What `echo` answers.
@@ -39,19 +32,14 @@ pub struct Echo {
 }
 ```
 
-Every `pub fn` in the module is a tool. Its doc comment is the description the
-model reads when deciding whether to call it, so write it for that reader.
+A function marked `#[tool(...)]`, in any module of the program's crate, is a tool; a function without it is not. Its doc comment is the description the model reads when deciding whether to call it, so write it for that reader. `#[tool]` takes `public`, `anonymous`, `query`, `cron`, `stripe` and `callers(services)` or `callers(accounts)`.
 
 What a program reaches past its arguments — who called, state, a database,
 HTTP, other programs, wakes — is [the guest API](./guest-api.md).
 
 ## Public tools
 
-A tool is internal unless marked `#[public]`: only its host calls it, for the
-program's own wakes, crons and Stripe events. A `#[public]` tool is called by
-callers from outside, as the host authenticates them, and by other programs
-through `berm_lang::call`. `#[callers(services)]` limits it to other programs,
-and `#[callers(accounts)]` to callers from outside.
+A tool is internal unless marked `#[tool(public)]`: only its host calls it, for the program's own wakes, crons and Stripe events. A `public` tool is called by callers from outside, as the host authenticates them, and by other programs through `berm_lang::call`. `callers(services)` limits it to other programs, and `callers(accounts)` to callers from outside. `public` in `crab.toml` lists the tools the deploy may make public.
 
 ## Arguments
 
@@ -80,38 +68,25 @@ with that message. `berm_lang::deny(message)` fails the call as denied.
 
 ## Building
 
-A program is a crate with one bin target and `berm-lang` as a dependency:
+A program is a library crate with `berm-lang` as a dependency, built as a `cdylib`, with a `crab.toml` beside its `Cargo.toml`. It has no bin target and no `fn main`. `crab new <name>` scaffolds one.
 
-```sh
-rustup target add wasm32-unknown-unknown
-cargo new --lib my-program
-cd my-program
-cargo add berm-lang --git https://github.com/crabtalk/crab
+```toml
+# Cargo.toml
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+berm-lang = { git = "https://github.com/crabtalk/crab" }
 ```
 
 ```toml
-[[bin]]
+# crab.toml
 name = "my-program"
-path = "bin/main.rs"
 ```
 
-```rust,ignore
-// bin/main.rs
-#![cfg_attr(target_arch = "wasm32", no_std, no_main)]
+`crab.toml` declares the program: the service it deploys as, and what it reaches past its arguments. Its keys are in [the manifest](manifest.md#bermtoml).
 
-extern crate my_program as _;
-
-#[cfg(not(target_arch = "wasm32"))]
-fn main() {}
-```
-
-`cargo build --release --target wasm32-unknown-unknown` writes the image to
-`target/wasm32-unknown-unknown/release/my-program.wasm`.
-
-The tools live in `src/lib.rs` under a three-line
-`bin/main.rs` that does nothing but `extern crate` them, because cargo emits
-an image for a bin target and an archive for a lib — the library alone never
-gets linked, and the binary alone cannot be reached from `tests/`.
+`crab build [dir]` builds the image for `wasm32-unknown-unknown`, which `rustup target add wasm32-unknown-unknown` installs, and prints its path, `berm/<crate>.wasm` under cargo's target directory, the crate's name with `-` as `_`. `crab deploy` builds it the same way. The build appends the `.berm.program` section, from the package and `crab.toml`, and the `.berm.kits` section, from the kits the program links. A bare `cargo build` writes an image without them, which a host refuses.
 
 Off a guest target the crate is an ordinary library, so tools can be unit tested
 natively instead of cross-compiling to run anything at all. `berm_lang::test`
@@ -130,31 +105,19 @@ program, and what berm's own tests run against.
 
 ## Anonymous calls
 
-A call from outside with no caller — no account, or an app's call with no
-user — reaches only a tool marked `#[anonymous]`, and the host refuses it any
-other. An `#[anonymous]` tool is `#[public]`, and not `#[callers(services)]`.
-`berm_lang::caller()` answers `None` in it for such a call.
+A call from outside with no caller — no account, or an app's call with no user — reaches only a tool marked `anonymous`, and the host refuses it any other. An `anonymous` tool is `public`, and not `callers(services)`. `berm_lang::caller()` answers `None` in it for such a call.
 
 ## Queries
 
-`#[query]` marks a tool read-only. While it runs, and in every call it makes,
-`berm.set`, `berm.emit` and `berm.call.after` are refused, so it leaves nothing
-for the host to commit. A host may serve it over `GET`.
+`#[tool(query)]` marks a tool read-only. While it runs, and in every call it makes, `berm.set`, `berm.emit` and `berm.call.after` are refused, so it leaves nothing for the host to commit. A host may serve it over `GET`.
 
 ## Crons
 
-`#[cron]` marks a tool its host calls each time its cron expression fires,
-whatever the last call ended as, and not while its owner is held. A cron tool
-takes no parameters and is not `#[public]`. Its expression is five fields,
-minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it, or its
-owner does while it runs; until one is set it is not called.
+`#[tool(cron)]` marks a tool its host calls each time its cron expression fires, whatever the last call ended as, and not while its owner is held. A cron tool takes no parameters and is not `public`. Its expression is five fields, minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it from `[crons]` in `crab.toml`, or its owner does while it runs; until one is set it is not called.
 
 ## Stripe events
 
-`#[stripe]` marks the tool its host calls with each Stripe event its daemon
-takes for the program, and not while its owner is held. The event object is the
-argument object, so the tool's parameters are the event's fields it reads. A
-program has at most one, and it is not `#[public]`.
+`#[tool(stripe)]` marks the tool its host calls with each Stripe event its daemon takes for the program, and not while its owner is held. The event object is the argument object, so the tool's parameters are the event's fields it reads. A program has at most one, and it is not `public`. A tool is `cron` or `stripe`, not both.
 
 ## Events
 

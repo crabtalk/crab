@@ -4,7 +4,7 @@ use crate::{
     Denied, deny,
     env::{Env, Images},
     host::{self, Host},
-    record::usage,
+    record::{meter, usage},
     state::service,
     wake::{cron, table},
 };
@@ -25,7 +25,8 @@ impl<E: Env> Host<E> {
     /// [`usage::WINDOW`] days. Refused too when its `size` is outside
     /// [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`] or below what its
     /// database holds. A refused deploy leaves the database held to the size
-    /// it was.
+    /// it was. A program whose image this host cannot read, such as one built
+    /// against another ABI, is replaced as on a first deploy.
     ///
     /// `seed`, a SQLite file on the databases' filesystem, starts the
     /// service's database, held to the image's migrations like any other:
@@ -75,11 +76,24 @@ impl<E: Env> Host<E> {
             .clone();
         let _deploying = lock.lock().await;
         let current = match service::row(&self.store, scope, name).await? {
-            Some(row) => Some(
-                self.load(row)
-                    .await
-                    .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?,
-            ),
+            Some(row) => {
+                let (reference, digest) = (row.reference.clone(), row.digest.clone());
+                match self.load(row).await {
+                    Ok(program) => Some(program),
+                    Err(e) => {
+                        let image = self
+                            .images
+                            .pull(&reference, &digest)
+                            .await
+                            .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
+                        if Manifest::from_image(&image).is_ok() {
+                            return Err(deny(StatusCode::BAD_GATEWAY, format!("{e:#}")));
+                        }
+                        tracing::warn!(service, "replacing a program this host cannot read: {e:#}");
+                        None
+                    }
+                }
+            }
             None => None,
         };
         confirmed(current.as_deref(), &manifest, &public)?;
@@ -158,8 +172,22 @@ impl<E: Env> Host<E> {
         {
             tracing::error!(service, error = %e, "the refused seed stays");
         }
-        if installed.is_ok() {
+        if let Ok(program) = &installed {
             self.waking.notify_one();
+            // Stored bytes are otherwise sampled once a day, so a service
+            // deployed or seeded after the day's sample would read as before.
+            let today = self.today();
+            if let Err(e) = meter::sample(
+                &self.store,
+                service,
+                &self.databases,
+                program.bytes(),
+                today,
+            )
+            .await
+            {
+                tracing::warn!(service, "sampling stored bytes failed: {e:#}");
+            }
         }
         installed
     }

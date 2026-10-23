@@ -1,0 +1,31 @@
+# The service this program deploys as.
+name = "__NAME__"
+# The registry repository Cloud pulls the image from, tagged with the crate's
+# version on each deploy.
+# image = "ghcr.io/<you>/__NAME__"
+# Tools this program may make public.
+public = []
+# Secrets it names in `{secret:NAME}`.
+# secrets = ["API_KEY"]
+# Programs it calls by name.
+# programs = ["inner"]
+# The most bytes a call's arguments, and a tool's result, may hold.
+# buffer = 16384
+# A Markdown file the manifest carries as its README.
+# readme = "README.md"
+
+# Syscalls it makes beyond the ABI's own, each beside what it reaches.
+# [syscalls]
+# "berm.http.fetch" = ["example.com"]
+
+# [database]
+# What its database may hold.
+# size = "1GiB"
+# A directory of `*.sql` migrations, applied in name order.
+# migrations = "migrations"
+
+# When its host calls each `#[tool(cron)]` tool: five fields, minute to day of
+# week, in UTC. A tool left out is not called until its owners set one on the
+# host.
+# [crons]
+# tick = "*/5 * * * *"

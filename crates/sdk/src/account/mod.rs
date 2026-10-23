@@ -6,4 +6,5 @@ pub mod auth;
 pub mod billing;
 pub mod key;
 pub mod org;
+pub mod request;
 pub mod user;

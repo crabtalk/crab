@@ -22,11 +22,6 @@ mod site;
 mod sitemap;
 pub mod store;
 
-berm_lang::kit!(
-    syscalls = { "berm.http.fetch" = ["*"] },
-    database = "migrations",
-);
-
 /// Bytes a tick stores before it reads and fetches no more.
 const BUDGET: usize = 8 << 20;
 
@@ -83,6 +78,8 @@ pub struct Read {
     pub domain: String,
     /// How many URLs of a kind its sitemaps listed.
     pub urls: u64,
+    /// Why its sitemaps failed, its last URLs kept.
+    pub sitemaps: Option<String>,
 }
 
 /// A site whose read failed in a tick; it is read again on a later tick.
@@ -170,7 +167,8 @@ pub fn tick<C: Crawler>() -> Result<()> {
                 stored += store::read(&domain, now, &site)?;
                 berm_lang::emit!(Read {
                     domain,
-                    urls: site.urls.len() as u64,
+                    urls: site.urls.as_ref().map_or(0, Vec::len) as u64,
+                    sitemaps: site.urls.err(),
                 })?;
             }
             Err(error) => {

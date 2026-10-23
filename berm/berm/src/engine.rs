@@ -10,6 +10,7 @@ use crate::{
     Budget, Invocation, Meter,
     bound::{cpu::Clock, watchdog},
     syscall::{self, Door, Table},
+    tape::{self, Answer},
 };
 use anyhow::{Context, Result, anyhow, bail};
 use std::{
@@ -183,14 +184,35 @@ impl Image {
                     let (ptr, len) = (ptr as u64, len as u64);
                     let answer = match door {
                         Some(Door::Builtin(call)) => call(&mut caller, ptr, len),
-                        Some(Door::Hosted(call)) => match syscall::request(&mut caller, ptr, len) {
+                        door => match syscall::request(&mut caller, ptr, len) {
                             Ok((at, request)) => {
-                                let reply = call(at, request).await;
-                                Ok(syscall::stage(&mut caller, reply))
+                                let deck = caller.data().tape.clone();
+                                let asked = tape::asked(&request);
+                                let replayed = deck
+                                    .as_ref()
+                                    .and_then(|deck| deck.lock().replay(&at, number, asked));
+                                match (replayed, door) {
+                                    (Some(Err(diverged)), _) => Err(diverged),
+                                    (Some(Ok(answer)), door) => {
+                                        let through =
+                                            deck.is_some_and(|deck| deck.lock().through(number));
+                                        if let (true, Some(Door::Hosted(call))) = (through, door) {
+                                            let _ = call(at, request).await;
+                                        }
+                                        Ok(syscall::stage(&mut caller, answer.reply()))
+                                    }
+                                    (None, Some(Door::Hosted(call))) => {
+                                        let reply = call(at, request).await;
+                                        if let Some(deck) = deck {
+                                            deck.lock().record(number, asked, Answer::of(&reply));
+                                        }
+                                        Ok(syscall::stage(&mut caller, reply))
+                                    }
+                                    (None, _) => Err(anyhow!("no syscall for {number}")),
+                                }
                             }
                             Err(error) => Err(error),
                         },
-                        None => Err(anyhow!("no syscall for {number}")),
                     };
                     answer.to_wasmtime_result()
                 })

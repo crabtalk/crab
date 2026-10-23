@@ -1,0 +1,9 @@
+# What its applied migrations are kept under in a database; never changes.
+id = "ff083de5ca8e6a544c7393002e0447d7"
+# The package names its applied migrations were kept under before `id`.
+formerly = ["crab-crawl", "crabkit-crawl"]
+[syscalls]
+"berm.http.fetch" = ["*"]
+
+[database]
+migrations = "migrations"

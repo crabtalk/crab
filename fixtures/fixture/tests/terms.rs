@@ -7,7 +7,7 @@ use berm_host::test::{self, TestHost};
 #[tokio::test]
 async fn a_budget_is_published_in_the_terms() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture", "fixture")?)
+    host.deploy("fixture", &test::build("berm-fixture")?)
         .await?;
     let host = host.host();
 

@@ -1,17 +1,11 @@
 //! The reference kit: a secret, a host under `berm.http.fetch`, and a table,
-//! for each program that names it in `#[program(uses)]`.
+//! for each program that depends on it.
 
 #![no_std]
 
 extern crate alloc;
 
 use berm_lang::Result;
-
-berm_lang::kit!(
-    syscalls = { "berm.http.fetch" = ["kit.example.com"] },
-    secrets = ["kit"],
-    database = "migrations",
-);
 
 /// Adds `note` to `kit_notes`, and answers how many notes it holds.
 pub fn note(note: &str) -> Result<u64> {
