@@ -95,7 +95,7 @@ impl Client {
     }
 
     /// Call `tool` of `program`, as `caller` on a local host, which takes it
-    /// unverified.
+    /// unverified. On Cloud, `owner/name` names another account's service.
     pub async fn call(
         &self,
         program: &str,
@@ -103,7 +103,16 @@ impl Client {
         arguments: Vec<u8>,
         caller: Option<&Caller>,
     ) -> Result<(Output, Option<Meter>), Error> {
-        let path = format!("{}/tools/{tool}", self.program(program));
+        let service = match (&self.owner, program.contains('/')) {
+            (None, true) => {
+                return Err(Error::Host(
+                    "the local host has no accounts: call its services by name alone",
+                ));
+            }
+            (Some(_), true) => format!("/services/{program}"),
+            (_, false) => self.program(program),
+        };
+        let path = format!("{service}/tools/{tool}");
         let request = self.as_caller(self.at(Method::POST, &path).body(arguments), caller)?;
         self.answered(request).await
     }

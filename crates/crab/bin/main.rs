@@ -114,6 +114,8 @@ enum Command {
     Stop { names: Vec<String> },
     /// Call one of a program's tools.
     Call {
+        /// The service: a name on the context's account, or `owner/name` on
+        /// Cloud for another account's public service.
         program: String,
         tool: String,
         /// The argument object. Read from stdin when omitted.
