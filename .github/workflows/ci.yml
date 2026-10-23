@@ -65,7 +65,7 @@ jobs:
       # the linker, and that the manifest section is where the host looks for
       # it.
       - name: build the reference guest
-        run: cargo build --release -p berm-fixture --target wasm32-unknown-unknown
+        run: cargo run --release -p crab-agent -- build fixtures/fixture
 
       # Neither can run without a guest that a cross-compile produced.
       - name: run it
