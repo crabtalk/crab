@@ -25,7 +25,7 @@ pub struct Manifest {
     pub homepage: String,
     #[serde(default)]
     pub repository: String,
-    /// The Markdown file `readme` names in its `berm.toml`.
+    /// The Markdown file `readme` names in its `crab.toml`.
     #[serde(default)]
     pub readme: String,
     /// By name.
@@ -55,7 +55,7 @@ pub struct Manifest {
 }
 
 /// The [`PROGRAM_SECTION`] the build appends: the program's own declarations,
-/// from its package and its `berm.toml`.
+/// from its package and its `crab.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramRecord {
     /// The package it was built from. Each tool record names it.
@@ -77,13 +77,13 @@ pub struct ProgramRecord {
     pub database: Option<Database>,
 }
 
-/// A library crate a program links that has a `berm.toml` of its own: its
+/// A library crate a program links that has a `crab.toml` of its own: its
 /// declarations, as one entry of the [`KITS_SECTION`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kit {
     /// The kit's package.
     pub name: String,
-    /// The kit's ID from its `berm.toml`, which its applied migrations are kept
+    /// The kit's ID from its `crab.toml`, which its applied migrations are kept
     /// under. Present on a kit with a `database`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,

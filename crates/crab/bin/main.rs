@@ -139,20 +139,20 @@ enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Build the project in a directory and deploy it as its `berm.toml`
+    /// Build the project in a directory and deploy it as its `crab.toml`
     /// names it, replacing whatever holds the name.
     Deploy {
         #[arg(default_value = ".")]
         dir: PathBuf,
         /// The registry repository to push to, in place of `image` in
-        /// `berm.toml`.
+        /// `crab.toml`.
         #[arg(long)]
         image: Option<String>,
         /// Deploy even when it breaks what callers used, or undoes a cron its
         /// owners set.
         #[arg(long)]
         force: bool,
-        /// Write the crons its owners set into `[crons]` in `berm.toml` before
+        /// Write the crons its owners set into `[crons]` in `crab.toml` before
         /// deploying.
         #[arg(long, conflicts_with = "force")]
         pull: bool,

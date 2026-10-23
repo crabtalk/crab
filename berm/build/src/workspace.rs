@@ -21,10 +21,10 @@ pub struct Workspace {
 
 impl Workspace {
     /// The workspace `dir` is in, with the services `dir` names as cargo names
-    /// packages: the package whose `Cargo.toml` is in `dir` when its
-    /// `berm.toml` names a service, and otherwise every member whose
-    /// `berm.toml` does and does not say `deploy = false`.
-    pub fn read(dir: &Path) -> Result<Self> {
+    /// packages: the package whose `Cargo.toml` is in `dir` when its project
+    /// file, `file`, names a service, and otherwise every member whose does
+    /// and does not say `deploy = false`.
+    pub fn read(dir: &Path, file: &str) -> Result<Self> {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
         let metadata = Metadata::read(&cargo, dir)?;
         let mut services = Vec::new();
@@ -32,10 +32,11 @@ impl Workspace {
         let here = dir.canonicalize().ok();
         for package in &metadata.packages {
             let dir = package.dir();
-            if !dir.join(Project::FILE).is_file() {
+            let path = dir.join(file);
+            if !path.is_file() {
                 continue;
             }
-            let project = Project::read(dir)?;
+            let project = Project::read(&path)?;
             let Some(name) = project.name else {
                 continue;
             };

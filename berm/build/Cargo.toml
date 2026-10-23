@@ -1,6 +1,6 @@
 [package]
 name = "berm-build"
-description = "Builds a berm program's image: its cdylib for the guest target, with the sections its berm.toml and its kits declare"
+description = "Builds a berm program's image: its cdylib for the guest target, with the sections its crab.toml and its kits declare"
 edition.workspace = true
 version.workspace = true
 repository.workspace = true

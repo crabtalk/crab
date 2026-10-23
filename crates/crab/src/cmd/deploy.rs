@@ -2,7 +2,7 @@
 
 use crate::{cmd::inspect, project, utils};
 use anyhow::{Context, Result, bail};
-use berm_api::{Manifest, project::Project};
+use berm_api::Manifest;
 use berm_oci::{Access, Reference, Registry};
 use crabtalk_sdk::{
     client::{Client, Error},
@@ -19,11 +19,11 @@ use std::{
 use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
-/// Deploy the project in `dir` as its `berm.toml` names it. On Cloud, the image
-/// is pushed to `image`, or `berm.toml`'s, tagged with the crate's version, and
+/// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
+/// is pushed to `image`, or `crab.toml`'s, tagged with the crate's version, and
 /// deployed from there, and a service deployed for the first time starts from
 /// `[database] seed`. With `pull`, the crons the service's owners set on the
-/// host are written into `berm.toml`'s `[crons]` first.
+/// host are written into `crab.toml`'s `[crons]` first.
 pub fn run(
     client: &Client,
     dir: &Path,
@@ -31,12 +31,12 @@ pub fn run(
     force: bool,
     pull: bool,
 ) -> Result<()> {
-    let mut project = Project::read(dir)?;
+    let mut project = project::read(dir)?;
     if !project.deploy {
         bail!(
             "{}'s {} says deploy = false",
             project.name.as_deref().unwrap_or("this program"),
-            Project::FILE
+            project::FILE
         );
     }
     if pull {
@@ -47,9 +47,9 @@ pub fn run(
             .filter_map(|job| Some((job.tool, job.cron?)))
             .collect();
         project::write_crons(dir, &crons)?;
-        project = Project::read(dir)?;
+        project = project::read(dir)?;
     }
-    let built = berm_build::build(dir, None)?;
+    let built = berm_build::build(dir, None, project::FILE)?;
     let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
     let name = project.name()?;
     let deployed = match &client.owner {
@@ -70,7 +70,7 @@ pub fn run(
             let image = image.or(project.image.as_deref()).with_context(|| {
                 format!(
                     "Cloud deploys through a registry; name one as `image` in {}",
-                    Project::FILE
+                    project::FILE
                 )
             })?;
             let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);

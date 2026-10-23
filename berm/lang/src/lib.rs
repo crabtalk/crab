@@ -28,7 +28,7 @@
 //! `Ok` of its [`Result`] is its reply, each typed by [`Schema`].
 //!
 //! A program is a `cdylib`, built for `wasm32-unknown-unknown` by `crab build`,
-//! which appends what its `berm.toml` and its kits declare. An image cargo
+//! which appends what its `crab.toml` and its kits declare. An image cargo
 //! alone links is refused by a host.
 //!
 //! This crate declares the standard syscalls: [`call`] and [`after`] for

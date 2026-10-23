@@ -11,7 +11,7 @@ crabkit = { version = "0.1", features = ["lake"] }
 
 The kit is also the crate `crabkit-lake` on its own.
 
-The kit's `berm.toml` declares `berm.get`, `berm.set` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. The hosts a source fetches from differ per source, so the program declares them under `berm.http.fetch` in its own `berm.toml`, beside the tick's expression in `[crons]`:
+The kit's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. The hosts a source fetches from differ per source, so the program declares them under `berm.http.fetch` in its own `crab.toml`, beside the tick's expression in `[crons]`:
 
 ```toml
 [syscalls]

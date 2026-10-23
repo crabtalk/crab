@@ -33,7 +33,7 @@ pub fn account(session: String) -> Result<Account> {
 }
 ```
 
-The program declares nothing the kit already declares: the kit's `berm.toml` declares its secrets, the hosts it fetches, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the program's database.
+The program declares nothing the kit already declares: the kit's `crab.toml` declares its secrets, the hosts it fetches, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the program's database.
 
 - `Identity::github(code, redirect)` and `Identity::google(code, redirect, verifier)`: the identity an authorization code was granted for, `redirect` the `redirect_uri` it was asked for with and `verifier` the PKCE `code_verifier` when it was asked for with a challenge.
 - `identity.sign_in()`: a session of the account the identity signs in to, made on its first sign-in. Answers `Session {token, expires}`.

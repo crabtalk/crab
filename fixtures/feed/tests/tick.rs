@@ -91,7 +91,7 @@ async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
 async fn a_tick_stores_new_items_once() -> Result<()> {
     let host = deployed().await?;
     host.arrange("GET", FEED, 200, feed(&[B, A]));
-    // As `[crons]` in a berm.toml would set it.
+    // As `[crons]` in a crab.toml would set it.
     host.host()
         .set_cron("feed", "tick", Some("* * * * *".to_owned()))
         .await?;

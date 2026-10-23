@@ -1,6 +1,6 @@
 # berm-lang
 
-Build a program for [berm](https://berm.run).
+Build a program for [berm](https://crab.talk/docs).
 
 A program is one WebAssembly module, confined to its own memory, reaching the world only through the host calls it was given. This crate owns the ABI, so you never see a call number or a pointer pair.
 
@@ -41,7 +41,7 @@ wasm toolchain and no daemon. See `berm_lang::test`.
 
 ## Building
 
-A program is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `berm.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Program](https://berm.run/docs/berm/writing-a-program/#building) has the layout.
+A program is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `crab.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Program](https://crab.talk/docs/build/writing#the-crate) has the layout.
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -58,7 +58,7 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 Past its arguments, a program reaches who called, its own state, a database,
 logs, HTTP, other programs, wakes and the clock, each through a syscall its host
-serves. [The Guest API](https://berm.run/docs/berm/guest-api/) covers each.
+serves. [The Guest API](https://crab.talk/docs/build/guest-api) covers each.
 
 ## License
 

@@ -1,6 +1,6 @@
 # crab
 
-The [local host](https://berm.run/docs/berm/service/), and the command-line client for it and CrabTalk Cloud.
+The [local host](https://crab.talk/docs/build/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
 crab serve &
@@ -16,9 +16,9 @@ crab usage example
 crab rm example
 ```
 
-## berm.toml
+## crab.toml
 
-`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `berm.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
+`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `crab.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
 
 ```toml
 # The service this program deploys as.
@@ -45,7 +45,7 @@ A deploy that makes a tool public is refused until `public` lists it. Without `[
 
 ## Developing
 
-`crab dev` has the local host on `127.0.0.1:7777` watch the workspace it is started in: build and deploy each service, and again as its files change. The host is the one on this machine, `crab serve`, its root `~/.crab/host`; `crab dev` starts it in the background, writing to `~/.crab/host/host.log`, when nothing answers, and it watches several workspaces at once, refusing a service name two of them share. In a service's directory it watches that service alone; otherwise it leaves out each service whose `berm.toml` says `deploy = false`, which `crab deploy` also refuses. A deploy goes over what it breaks, and skips the seed. In the foreground `crab dev` prints each deploy, each call and the call's logs until Ctrl-C, which stops the watch and leaves the services deployed; `-d`/`--detach` returns once each service is deployed or failed. `crab dev status` prints the host and each workspace it watches with each service's last rebuild, and `crab dev stop` stops the host.
+`crab dev` has the local host on `127.0.0.1:7777` watch the workspace it is started in: build and deploy each service, and again as its files change. The host is the one on this machine, `crab serve`, its root `~/.crab/host`; `crab dev` starts it in the background, writing to `~/.crab/host/host.log`, when nothing answers, and it watches several workspaces at once, refusing a service name two of them share. In a service's directory it watches that service alone; otherwise it leaves out each service whose `crab.toml` says `deploy = false`, which `crab deploy` also refuses. A deploy goes over what it breaks, and skips the seed. In the foreground `crab dev` prints each deploy, each call and the call's logs until Ctrl-C, which stops the watch and leaves the services deployed; `-d`/`--detach` returns once each service is deployed or failed. `crab dev status` prints the host and each workspace it watches with each service's last rebuild, and `crab dev stop` stops the host.
 
 ## Contexts
 
@@ -58,7 +58,7 @@ crab context ls
 crab context use default
 ```
 
-A program's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the program declares, with its guide, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters the values, one credential at a time, beside the guide its `berm.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
+A program's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the program declares, with its guide, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
 
 A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against the local host it sends the image itself. Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
 

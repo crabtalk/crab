@@ -408,10 +408,13 @@ impl Drop for TestHost {
     }
 }
 
+/// What the test programs this builds call their project file.
+const FIXTURE_FILE: &str = "crab.toml";
+
 /// Build the program `package` of the workspace the current directory is in
 /// as `crab build` does, and answer its finished image.
 pub fn build(package: &str) -> Result<Vec<u8>> {
-    let image = berm_build::build(&std::env::current_dir()?, Some(package))?;
+    let image = berm_build::build(&std::env::current_dir()?, Some(package), FIXTURE_FILE)?;
     std::fs::read(&image).with_context(|| format!("reading {}", image.display()))
 }
 

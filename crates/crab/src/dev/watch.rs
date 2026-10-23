@@ -2,11 +2,10 @@
 
 use crate::{
     dev::{Dev, Event},
-    utils,
+    project, utils,
 };
 use anyhow::{Context, Result, bail};
 use berm::syscall::call;
-use berm_api::project::Project;
 use berm_build::Workspace;
 use notify::{Event as Changed, RecursiveMode, Watcher};
 use std::{
@@ -89,8 +88,8 @@ impl Dev {
             return;
         };
         let result = (|| -> Result<_> {
-            let project = Project::read(dir)?;
-            let image = berm_build::build(dir, None)?;
+            let project = project::read(dir)?;
+            let image = berm_build::build(dir, None, project::FILE)?;
             let bytes =
                 fs::read(&image).with_context(|| format!("cannot read {}", image.display()))?;
             let digest = berm::digest(&bytes);

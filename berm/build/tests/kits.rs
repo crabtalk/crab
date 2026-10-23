@@ -1,9 +1,12 @@
 //! Which crates the build takes for a program's kits: each it compiled for the
-//! guest in the program's own build, with a `berm.toml`.
+//! guest in the program's own build, with a `crab.toml`.
 
 use berm_api::{ABI_VERSION, Manifest};
 use std::{fs, path::Path};
 use tempfile::TempDir;
+
+/// What the programs and kits here call their project file.
+const FILE: &str = "crab.toml";
 
 /// Write `text` to `path` under `root`, creating its directories.
 fn write(root: &Path, path: &str, text: &str) {
@@ -35,10 +38,10 @@ fn program(root: &Path, dependencies: &str, dev: &str) {
         ),
     );
     write(root, "program/src/lib.rs", "");
-    write(root, "program/berm.toml", "name = \"program\"\n");
+    write(root, "program/crab.toml", "name = \"program\"\n");
 }
 
-/// A `berm.toml` a kit may not have, so taking the crate for a kit fails the
+/// A `crab.toml` a kit may not have, so taking the crate for a kit fails the
 /// build naming it.
 const NOT_A_KIT: &str = "name = \"kit\"\n";
 
@@ -52,9 +55,9 @@ fn a_kit_at_two_versions_is_refused() {
         "",
     );
     package(root, "kit1", "kit", "0.1.0", "");
-    write(root, "kit1/berm.toml", "secrets = [\"one\"]\n");
+    write(root, "kit1/crab.toml", "secrets = [\"one\"]\n");
     package(root, "kit2", "kit", "0.2.0", "");
-    write(root, "kit2/berm.toml", "secrets = [\"two\"]\n");
+    write(root, "kit2/crab.toml", "secrets = [\"two\"]\n");
     package(
         root,
         "other",
@@ -63,7 +66,7 @@ fn a_kit_at_two_versions_is_refused() {
         "kit = { path = \"../kit2\" }",
     );
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("program"), None, FILE).unwrap_err();
     assert!(
         error.to_string().contains("kit kit at two versions"),
         "{error:#}"
@@ -83,9 +86,9 @@ fn a_kit_behind_another_crate_is_found() {
         "kit = { path = \"../kit\" }",
     );
     package(root, "kit", "kit", "0.1.0", "");
-    write(root, "kit/berm.toml", NOT_A_KIT);
+    write(root, "kit/crab.toml", NOT_A_KIT);
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("program"), None, FILE).unwrap_err();
     assert!(format!("{error:#}").contains("the kit kit"), "{error:#}");
 }
 
@@ -95,10 +98,10 @@ fn a_dev_dependency_is_no_kit() {
     let root = root.path();
     program(root, "", "kit = { path = \"../kit\" }");
     package(root, "kit", "kit", "0.1.0", "");
-    write(root, "kit/berm.toml", NOT_A_KIT);
+    write(root, "kit/crab.toml", NOT_A_KIT);
 
     // Built past its kits, it is refused only for what it lacks itself.
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("program"), None, FILE).unwrap_err();
     assert!(format!("{error:#}").contains("no tools"), "{error:#}");
 }
 
@@ -107,13 +110,13 @@ fn a_program_without_a_cdylib_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
     package(root, "program", "program", "0.1.0", "");
-    write(root, "program/berm.toml", "name = \"program\"\n");
+    write(root, "program/crab.toml", "name = \"program\"\n");
     // Its own workspace, apart from the one the test runs in.
     let manifest = root.join("program/Cargo.toml");
     let text = fs::read_to_string(&manifest).unwrap();
     fs::write(&manifest, text + "\n[workspace]\n").unwrap();
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("program"), None, FILE).unwrap_err();
     assert!(error.to_string().contains("builds no cdylib"), "{error:#}");
 }
 
@@ -122,9 +125,9 @@ fn a_program_naming_no_service_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
     program(root, "", "");
-    write(root, "program/berm.toml", "public = []\n");
+    write(root, "program/crab.toml", "public = []\n");
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("program"), None, FILE).unwrap_err();
     assert!(error.to_string().contains("names its service"), "{error:#}");
 }
 
@@ -151,14 +154,14 @@ fn tooled(root: &Path, name: &str, dependencies: &str) {
     );
     write(
         root,
-        &format!("{name}/berm.toml"),
+        &format!("{name}/crab.toml"),
         &format!("name = \"{name}\"\n"),
     );
 }
 
 /// The kits the finished image of the program in `dir` names.
 fn kits(dir: &Path) -> Vec<String> {
-    let image = berm_build::build(dir, None).unwrap();
+    let image = berm_build::build(dir, None, FILE).unwrap();
     let manifest = Manifest::from_image(&fs::read(image).unwrap()).unwrap();
     manifest.kits.into_iter().map(|kit| kit.name).collect()
 }
@@ -190,9 +193,9 @@ fn each_program_is_credited_only_the_kits_its_own_features_link() {
         "kita = { path = \"../kita\", optional = true }\nkitb = { path = \"../kitb\", optional = true }\n\n[features]\na = [\"dep:kita\"]\nb = [\"dep:kitb\"]",
     );
     package(root, "kita", "kita", "0.1.0", "");
-    write(root, "kita/berm.toml", "secrets = [\"a\"]\n");
+    write(root, "kita/crab.toml", "secrets = [\"a\"]\n");
     package(root, "kitb", "kitb", "0.1.0", "");
-    write(root, "kitb/berm.toml", "secrets = [\"b\"]\n");
+    write(root, "kitb/crab.toml", "secrets = [\"b\"]\n");
 
     assert_eq!(kits(&root.join("a")), ["kita"]);
     assert_eq!(kits(&root.join("b")), ["kitb"]);

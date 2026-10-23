@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/crabtalk/crab/actions/workflows/ci.yml/badge.svg)](https://github.com/crabtalk/crab/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
-[![Docs](https://img.shields.io/badge/docs-berm.run-blue)](https://berm.run/docs/)
+[![Docs](https://img.shields.io/badge/docs-crab.talk-blue)](https://crab.talk/docs)
 
 The agent for the CrabTalk platform: write a service, deploy it, call it, and watch what it uses, on CrabTalk Cloud or the local host.
 
@@ -28,7 +28,7 @@ A context names the host `crab` talks to, the way `docker context` picks a daemo
 crab new example
 ```
 
-A service is a Rust library crate built to one WebAssembly module, with a `berm.toml` beside its `Cargo.toml` that names it. A function marked `#[tool]` is a tool, and its doc comment is what a model reads when deciding to call it:
+A service is a Rust library crate built to one WebAssembly module, with a `crab.toml` beside its `Cargo.toml` that names it. A function marked `#[tool]` is a tool, and its doc comment is what a model reads when deciding to call it:
 
 ```rust
 use alloc::string::String;
@@ -44,7 +44,7 @@ pub fn echo(
 }
 ```
 
-A tool is internal unless marked `#[tool(public)]`: only the host calls an internal tool, for the service's own wakes, crons and Stripe events. A call with no caller reaches only a tool also marked `anonymous`. See [berm-lang](berm/lang/README.md) and [Writing a Program](https://berm.run/docs/berm/writing-a-program/).
+A tool is internal unless marked `#[tool(public)]`: only the host calls an internal tool, for the service's own wakes, crons and Stripe events. A call with no caller reaches only a tool also marked `anonymous`. See [berm-lang](berm/lang/README.md) and [Writing a Program](https://crab.talk/docs/build/writing).
 
 ## Deploy and call it
 
@@ -55,11 +55,11 @@ crab logs example
 crab usage example
 ```
 
-`crab build` builds the crate's image and prints its path; `crab deploy` builds it the same way and deploys it as its `berm.toml` says. Against Cloud it pushes the image to the registry `image` names and deploys that reference. Agents reach a service's tools over MCP.
+`crab build` builds the crate's image and prints its path; `crab deploy` builds it the same way and deploys it as its `crab.toml` says. Against Cloud it pushes the image to the registry `image` names and deploys that reference. Agents reach a service's tools over MCP.
 
 ## Use ours
 
-[crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each. A service depends on crabkit with the kit's feature, `crabkit = { version = "0.1", features = ["auth"] }`, and calls it from its own tools as `crabkit::auth`. Linking a kit is using it: what the kit's `berm.toml` declares reaches the service's manifest.
+[crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each. A service depends on crabkit with the kit's feature, `crabkit = { version = "0.1", features = ["auth"] }`, and calls it from its own tools as `crabkit::auth`. Linking a kit is using it: what the kit's `crab.toml` declares reaches the service's manifest.
 
 - [auth](kits/auth/README.md): Sign-in for a product's users. GitHub and Google logins as sessions kept in its own database.
 - [crawl](kits/crawl/README.md): An incremental crawler. robots.txt, sitemaps, and the pages of the kinds a program names, recrawled when they change.
@@ -94,7 +94,7 @@ match berm.call(None, "example", "echo", br#"{"query":"hello"}"#.to_vec()).await
 }
 ```
 
-See [berm](berm/berm/README.md), [Running the Service](https://berm.run/docs/berm/service/) and [Publishing a Program](https://berm.run/docs/berm/publishing/).
+See [berm](berm/berm/README.md), [Running the Service](https://crab.talk/docs/build/local) and [Publishing a Program](https://crab.talk/docs/services/deploy).
 
 ## Building
 

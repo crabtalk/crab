@@ -11,7 +11,7 @@ crabkit = { version = "0.1", features = ["supabase"] }
 
 The kit is also the crate `crabkit-supabase` on its own.
 
-The kit's `berm.toml` declares the secret `SUPABASE_KEY`, which reaches the program's manifest when the program links the kit, and no host. The program declares its own project's host under `berm.http.fetch` in its own `berm.toml`:
+The kit's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the program's manifest when the program links the kit, and no host. The program declares its own project's host under `berm.http.fetch` in its own `crab.toml`:
 
 ```toml
 [syscalls]

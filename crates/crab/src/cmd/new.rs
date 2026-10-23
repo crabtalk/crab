@@ -1,7 +1,7 @@
 //! `crab new` — scaffold a program.
 
+use crate::project;
 use anyhow::{Context, Result, bail};
-use berm_api::project::Project;
 use berm_build::TARGET;
 use std::{fs, path::Path};
 
@@ -14,7 +14,7 @@ const SDK: &str = env!("CARGO_PKG_VERSION");
 /// files parsing as the languages they are.
 const FILES: [(&str, &str); 4] = [
     ("Cargo.toml", include_str!("../../templates/manifest.toml")),
-    (Project::FILE, include_str!("../../templates/berm.toml")),
+    (project::FILE, include_str!("../../templates/crab.toml")),
     ("src/lib.rs", include_str!("../../templates/lib.rs")),
     ("tests/tools.rs", include_str!("../../templates/tools.rs")),
 ];

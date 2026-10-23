@@ -8,7 +8,7 @@ user, `vouch`, client, the clock, `trace` and `deny` — and `berm.call`. The re
 served by the host the program is deployed to, and a call its host does not
 serve traps.
 
-A program lists the syscalls it makes past berm's own under `[syscalls]` in its `berm.toml`, and a deploy to a host that does not serve one is refused:
+A program lists the syscalls it makes past berm's own under `[syscalls]` in its `crab.toml`, and a deploy to a host that does not serve one is refused:
 
 ```toml
 [syscalls]
@@ -53,7 +53,7 @@ let config: Config = berm_lang::get_json("config")?.unwrap_or_default();
 ## A database
 
 ```toml
-# berm.toml
+# crab.toml
 [database]
 migrations = "migrations"
 ```

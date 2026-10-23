@@ -39,7 +39,7 @@ HTTP, other programs, wakes — is [the guest API](./guest-api.md).
 
 ## Public tools
 
-A tool is internal unless marked `#[tool(public)]`: only its host calls it, for the program's own wakes, crons and Stripe events. A `public` tool is called by callers from outside, as the host authenticates them, and by other programs through `berm_lang::call`. `callers(services)` limits it to other programs, and `callers(accounts)` to callers from outside. `public` in `berm.toml` lists the tools the deploy may make public.
+A tool is internal unless marked `#[tool(public)]`: only its host calls it, for the program's own wakes, crons and Stripe events. A `public` tool is called by callers from outside, as the host authenticates them, and by other programs through `berm_lang::call`. `callers(services)` limits it to other programs, and `callers(accounts)` to callers from outside. `public` in `crab.toml` lists the tools the deploy may make public.
 
 ## Arguments
 
@@ -68,7 +68,7 @@ with that message. `berm_lang::deny(message)` fails the call as denied.
 
 ## Building
 
-A program is a library crate with `berm-lang` as a dependency, built as a `cdylib`, with a `berm.toml` beside its `Cargo.toml`. It has no bin target and no `fn main`. `crab new <name>` scaffolds one.
+A program is a library crate with `berm-lang` as a dependency, built as a `cdylib`, with a `crab.toml` beside its `Cargo.toml`. It has no bin target and no `fn main`. `crab new <name>` scaffolds one.
 
 ```toml
 # Cargo.toml
@@ -80,13 +80,13 @@ berm-lang = { git = "https://github.com/crabtalk/crab" }
 ```
 
 ```toml
-# berm.toml
+# crab.toml
 name = "my-program"
 ```
 
-`berm.toml` declares the program: the service it deploys as, and what it reaches past its arguments. Its keys are in [the manifest](manifest.md#bermtoml).
+`crab.toml` declares the program: the service it deploys as, and what it reaches past its arguments. Its keys are in [the manifest](manifest.md#bermtoml).
 
-`crab build [dir]` builds the image for `wasm32-unknown-unknown`, which `rustup target add wasm32-unknown-unknown` installs, and prints its path, `berm/<crate>.wasm` under cargo's target directory, the crate's name with `-` as `_`. `crab deploy` builds it the same way. The build appends the `.berm.program` section, from the package and `berm.toml`, and the `.berm.kits` section, from the kits the program links. A bare `cargo build` writes an image without them, which a host refuses.
+`crab build [dir]` builds the image for `wasm32-unknown-unknown`, which `rustup target add wasm32-unknown-unknown` installs, and prints its path, `berm/<crate>.wasm` under cargo's target directory, the crate's name with `-` as `_`. `crab deploy` builds it the same way. The build appends the `.berm.program` section, from the package and `crab.toml`, and the `.berm.kits` section, from the kits the program links. A bare `cargo build` writes an image without them, which a host refuses.
 
 Off a guest target the crate is an ordinary library, so tools can be unit tested
 natively instead of cross-compiling to run anything at all. `berm_lang::test`
@@ -113,7 +113,7 @@ A call from outside with no caller — no account, or an app's call with no user
 
 ## Crons
 
-`#[tool(cron)]` marks a tool its host calls each time its cron expression fires, whatever the last call ended as, and not while its owner is held. A cron tool takes no parameters and is not `public`. Its expression is five fields, minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it from `[crons]` in `berm.toml`, or its owner does while it runs; until one is set it is not called.
+`#[tool(cron)]` marks a tool its host calls each time its cron expression fires, whatever the last call ended as, and not while its owner is held. A cron tool takes no parameters and is not `public`. Its expression is five fields, minute to day of week, read in UTC: `*/5 * * * *`. The deploy sets it from `[crons]` in `crab.toml`, or its owner does while it runs; until one is set it is not called.
 
 ## Stripe events
 

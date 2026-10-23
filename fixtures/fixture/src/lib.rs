@@ -3,7 +3,7 @@
 //!
 //! This file is what an author actually writes. The exports, the manifest
 //! records, the dispatch, and the panic handler come from the SDK, and its
-//! `berm.toml` declares what it reaches for.
+//! `crab.toml` declares what it reaches for.
 //!
 //! Each tool prices or proves one thing, which is why they are not useful on
 //! their own: `echo` reads its arguments and answers them back, `carry` takes

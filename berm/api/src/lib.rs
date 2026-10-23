@@ -41,7 +41,7 @@ pub const PROGRAM_SECTION: &str = ".berm.program";
 pub const KITS_SECTION: &str = ".berm.kits";
 
 /// The most bytes a call's arguments, and a tool's result, may hold, when a
-/// program's `berm.toml` sets no `buffer`.
+/// program's `crab.toml` sets no `buffer`.
 pub const DEFAULT_BUFFER: usize = 16 * 1024;
 
 /// One log a program emitted.
@@ -73,7 +73,7 @@ pub struct Program {
     pub homepage: String,
     #[serde(default)]
     pub repository: String,
-    /// The Markdown file `readme` names in its `berm.toml`.
+    /// The Markdown file `readme` names in its `crab.toml`.
     #[serde(default)]
     pub readme: String,
     /// sha256 of the image.

@@ -3,9 +3,9 @@
 //! cargo builds the program's `cdylib` for [`TARGET`]. Its `.berm.abi` section
 //! holds what the compiler wrote: a record per `#[tool]` and per `#[event]`.
 //! The build appends a `.berm.program` section, from the program's package and
-//! its `berm.toml`, and a `.berm.kits` section, from each kit it links: each
+//! its `crab.toml`, and a `.berm.kits` section, from each kit it links: each
 //! crate cargo compiled for [`TARGET`] in that build, other than the program,
-//! with a `berm.toml` beside its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
+//! with a `crab.toml` beside its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
 //! cargo's own `.wasm` is left as cargo wrote it.
 
 use crate::{artifact::Artifact, metadata::Metadata};
@@ -35,14 +35,15 @@ const OUT: &str = "berm";
 
 /// Build the program `package` of the workspace `dir` is in, or, without
 /// one, the program whose `Cargo.toml` is in `dir`, and answer the path of
-/// its finished image.
+/// its finished image. `file` names the project file beside the program's
+/// `Cargo.toml` and each kit's.
 ///
 /// One build at a time across processes, on a lock in the target directory.
-pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
+pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let metadata = Metadata::read(&cargo, dir)?;
     let program = metadata.package(dir, package)?;
-    let project = Project::read(program.dir())?;
+    let project = Project::read(&program.dir().join(file))?;
     project.name()?;
     if !program
         .targets
@@ -96,7 +97,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         })
         .with_context(|| format!("cargo built no image of {}", program.name))?;
     let bytes = fs::read(built).with_context(|| format!("cannot read {}", built.display()))?;
-    let kits = kits(&artifacts, &program.manifest_path, &guest)?;
+    let kits = kits(&artifacts, &program.manifest_path, &guest, file)?;
 
     let bytes = Image(&bytes).with_section(PROGRAM_SECTION, &serde_json::to_vec(&record)?)?;
     let bytes = Image(&bytes).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;
@@ -115,7 +116,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
 /// The record of each kit among `artifacts` compiled into `guest`, the
 /// target directory of [`TARGET`], other than the program at `program`, by
 /// name. Refused when a kit is there at two versions.
-fn kits(artifacts: &[Artifact], program: &Path, guest: &Path) -> Result<Vec<Kit>> {
+fn kits(artifacts: &[Artifact], program: &Path, guest: &Path, file: &str) -> Result<Vec<Kit>> {
     let mut kits: Vec<(&Artifact, String, String)> = Vec::new();
     for artifact in artifacts {
         if artifact.manifest_path == program
@@ -123,7 +124,7 @@ fn kits(artifacts: &[Artifact], program: &Path, guest: &Path) -> Result<Vec<Kit>
                 .filenames
                 .iter()
                 .any(|file| file.starts_with(guest))
-            || !artifact.dir().join(Project::FILE).is_file()
+            || !artifact.dir().join(file).is_file()
             || kits
                 .iter()
                 .any(|(seen, ..)| seen.package_id == artifact.package_id)
@@ -144,7 +145,7 @@ fn kits(artifacts: &[Artifact], program: &Path, guest: &Path) -> Result<Vec<Kit>
     }
     kits.into_iter()
         .map(|(artifact, name, version)| {
-            let project = Project::read(artifact.dir())?;
+            let project = Project::read(&artifact.dir().join(file))?;
             project
                 .check_kit()
                 .with_context(|| format!("the kit {name}"))?;

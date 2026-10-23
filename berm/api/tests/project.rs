@@ -1,4 +1,4 @@
-//! `berm.toml` credentials: parsed, folded into `deps`, and a secret declared
+//! `crab.toml` credentials: parsed, folded into `deps`, and a secret declared
 //! twice refused.
 
 use berm_api::project::Project;
@@ -6,8 +6,9 @@ use std::fs;
 
 fn read(toml: &str) -> anyhow::Result<Project> {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join(Project::FILE), toml).unwrap();
-    Project::read(dir.path())
+    let path = dir.path().join("crab.toml");
+    fs::write(&path, toml).unwrap();
+    Project::read(&path)
 }
 
 const GITHUB: &str = r#"
@@ -57,7 +58,7 @@ fn an_unknown_key_in_a_credential_is_refused() {
 #[test]
 fn the_auth_kits_credentials_parse() {
     let kit = concat!(env!("CARGO_MANIFEST_DIR"), "/../../kits/auth");
-    let project = Project::read(std::path::Path::new(kit)).unwrap();
+    let project = Project::read(&std::path::Path::new(kit).join("crab.toml")).unwrap();
     project.check_kit().unwrap();
     let deps = project.deps();
     assert_eq!(deps.credential_of("GOOGLE_CLIENT_SECRET"), Some("google"));

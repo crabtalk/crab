@@ -33,7 +33,7 @@ pub fn webhook(data: Data) -> Result<()> {
 }
 ```
 
-The program declares nothing the kit already declares: the kit's `berm.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the program's database.
+The program declares nothing the kit already declares: the kit's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the program's database.
 
 - `Subscriber::calling()`: the end user the call carries; a call with none is refused. `Subscriber { user }` names another.
 - `subscriber.checkout(plan, success, cancel)`: a Checkout session subscribing the user to the price whose `lookup_key` is `plan`, sending them to `success` once they subscribe and to `cancel` if they leave. Their first checkout makes their Stripe customer. Answers `Session {url}`.

@@ -2,7 +2,7 @@
 //! built, deployed and rebuilt as its files change, and what they do as
 //! events, all at `/dev`.
 
-use crate::host::Service;
+use crate::{host::Service, project};
 use anyhow::{Result, bail};
 use axum::{
     Json, Router,
@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post, put},
 };
-use berm_api::{Logged, host::Call, project::Project};
+use berm_api::{Logged, host::Call};
 use berm_build::Workspace;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -206,18 +206,18 @@ impl Dev {
     /// named as a service of another watched workspace. Watching it again
     /// changes nothing.
     pub fn watch_dir(self: &Arc<Self>, dir: &Path) -> Result<Watching> {
-        let workspace = Workspace::read(dir)?;
+        let workspace = Workspace::read(dir, project::FILE)?;
         if workspace.services.is_empty() {
             bail!(
                 "no {} in the workspace at {} names a service to deploy",
-                Project::FILE,
+                project::FILE,
                 workspace.root.display()
             );
         }
         let mut services = Vec::new();
         for dir in &workspace.services {
             services.push(Watched {
-                name: Project::read(dir)?.name()?.to_owned(),
+                name: project::read(dir)?.name()?.to_owned(),
                 dir: dir.clone(),
                 version: None,
                 deployed: None,

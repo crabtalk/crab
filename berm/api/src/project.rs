@@ -1,4 +1,5 @@
-//! `berm.toml`, beside the `Cargo.toml` of a program or a kit.
+//! A program's or a kit's project file, beside its `Cargo.toml`. Its name is
+//! its build tool's to choose.
 
 use crate::{Credential, DEFAULT_BUFFER, Deps, host};
 use anyhow::{Context, Result, bail};
@@ -10,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// `berm.toml`. A program's names its service; a kit's declares only `id`,
+/// The project file. A program's names its service; a kit's declares only `id`,
 /// `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
@@ -55,7 +56,7 @@ pub struct Project {
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
     pub buffer: Option<usize>,
-    /// A Markdown file, relative to `berm.toml`, the manifest carries as the
+    /// A Markdown file, relative to `crab.toml`, the manifest carries as the
     /// program's README; none when absent.
     #[serde(default)]
     pub readme: Option<PathBuf>,
@@ -68,7 +69,7 @@ pub struct Project {
     pub database: Database,
 }
 
-/// `[database]` of `berm.toml`.
+/// `[database]` of `crab.toml`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Database {
@@ -76,10 +77,10 @@ pub struct Database {
     /// [`host::MIN_DATABASE_SIZE`] to [`host::MAX_DATABASE_SIZE`] bytes;
     /// [`host::DATABASE_SIZE`] when absent.
     pub size: Option<ByteSize>,
-    /// A SQLite database, relative to `berm.toml`, a service on Cloud with no
+    /// A SQLite database, relative to `crab.toml`, a service on Cloud with no
     /// database yet starts from, such as one the local host filled.
     pub seed: Option<PathBuf>,
-    /// A directory of `*.sql` migrations, relative to `berm.toml`, applied in
+    /// A directory of `*.sql` migrations, relative to `crab.toml`, applied in
     /// name order.
     pub migrations: Option<PathBuf>,
 }
@@ -89,14 +90,9 @@ fn deployed() -> bool {
 }
 
 impl Project {
-    /// The file's name.
-    pub const FILE: &str = "berm.toml";
-
-    /// `berm.toml` in `dir`.
-    pub fn read(dir: &Path) -> Result<Self> {
-        let path = dir.join(Self::FILE);
-        let text = fs::read_to_string(&path)
-            .with_context(|| format!("no {} in {}", Self::FILE, dir.display()))?;
+    /// The project file at `path`.
+    pub fn read(path: &Path) -> Result<Self> {
+        let text = fs::read_to_string(path).with_context(|| format!("no {}", path.display()))?;
         let project: Self =
             toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
         let mut seen: Vec<&str> = project.secrets.iter().map(String::as_str).collect();
@@ -117,14 +113,11 @@ impl Project {
     /// declares a kit's `id`.
     pub fn name(&self) -> Result<&str> {
         if self.id.is_some() || !self.formerly.is_empty() {
-            bail!("only a kit's {} declares an id or formerly", Self::FILE);
+            bail!("only a kit declares an id or formerly");
         }
-        self.name.as_deref().with_context(|| {
-            format!(
-                "a program's {} names its service: `name = \"…\"`",
-                Self::FILE
-            )
-        })
+        self.name
+            .as_deref()
+            .context("a program names its service: `name = \"…\"`")
     }
 
     /// What it reaches for once it runs. One keeping a database calls
@@ -157,7 +150,7 @@ impl Project {
         self.buffer.unwrap_or(DEFAULT_BUFFER)
     }
 
-    /// Refuse what only a program declares, for a kit's `berm.toml`.
+    /// Refuse what only a program declares, for a kit's `crab.toml`.
     pub fn check_kit(&self) -> Result<()> {
         let program_only = [
             ("name", self.name.is_some()),
@@ -177,17 +170,16 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit's {} declares only id, formerly, secrets, [credentials], programs, [syscalls] and [database] migrations, not {}",
-                Self::FILE,
+                "a kit declares only id, formerly, secrets, [credentials], programs, [syscalls] and [database] migrations, not {}",
                 declared.join(", ")
             );
         }
         match &self.id {
             None if self.database.migrations.is_some() => {
-                bail!("a kit keeping tables declares its id in {}", Self::FILE)
+                bail!("a kit keeping tables declares its id")
             }
             None if !self.formerly.is_empty() => {
-                bail!("a kit declaring formerly declares its id in {}", Self::FILE)
+                bail!("a kit declaring formerly declares its id")
             }
             Some(id)
                 if id.len() != 32

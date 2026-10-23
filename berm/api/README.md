@@ -12,7 +12,7 @@ for tool in &manifest.tools {
 }
 ```
 
-`Manifest::from_image` reads the `.berm.abi`, `.berm.program` and `.berm.kits` sections without compiling or running the image. An image built against a different `ABI_VERSION`, or without the `.berm.program` section `crab build` appends, is refused here. `project::Project` reads a program's or a kit's `berm.toml`.
+`Manifest::from_image` reads the `.berm.abi`, `.berm.program` and `.berm.kits` sections without compiling or running the image. An image built against a different `ABI_VERSION`, or without the `.berm.program` section `crab build` appends, is refused here. `project::Project` reads a program's or a kit's `crab.toml`.
 
 `Program`, `ToolSpec` and `Output` are the control API's own shapes.
 `Output::Failed` is the program's own report and arrives with the same `200` a

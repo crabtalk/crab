@@ -5,7 +5,7 @@ description: "What a program says it is: its ABI version, its tools, its README,
 
 The manifest is JSON, read from three wasm custom sections of the image rather than from an export. `Manifest::from_image` parses them with nothing compiled and nothing executed.
 
-`.berm.abi` holds what the compiler wrote, as `#[link_section]` emits on `wasm32`: JSON records back to back, in the order the linker joined them, one `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one `{"event": …}` per `#[event]`. `.berm.program` holds the program's own record, from its package and its `berm.toml`, and `.berm.kits` the kits it links; `crab build` appends both. `Manifest::from_image` merges them into one manifest, and refuses an image without `.berm.program`, which a bare `cargo build` writes, and an image holding a tool compiled in a crate other than the program's.
+`.berm.abi` holds what the compiler wrote, as `#[link_section]` emits on `wasm32`: JSON records back to back, in the order the linker joined them, one `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one `{"event": …}` per `#[event]`. `.berm.program` holds the program's own record, from its package and its `crab.toml`, and `.berm.kits` the kits it links; `crab build` appends both. `Manifest::from_image` merges them into one manifest, and refuses an image without `.berm.program`, which a bare `cargo build` writes, and an image holding a tool compiled in a crate other than the program's.
 
 ```rust,ignore
 let manifest = Manifest::from_image(&bytes)?;
@@ -34,11 +34,11 @@ reports the rest.
 
 ## Package
 
-`name`, `description`, `homepage` and `repository` are the package's, from its `Cargo.toml`, as `version` is. `readme` is the Markdown file `readme` in `berm.toml` names, read when the image is built. Each is empty when the crate sets none.
+`name`, `description`, `homepage` and `repository` are the package's, from its `Cargo.toml`, as `version` is. `readme` is the Markdown file `readme` in `crab.toml` names, read when the image is built. Each is empty when the crate sets none.
 
-## berm.toml
+## crab.toml
 
-`berm.toml`, beside the program's `Cargo.toml`, declares the program:
+`crab.toml`, beside the program's `Cargo.toml`, declares the program:
 
 ```toml
 name = "weather-desk"              # the service it deploys as; required
@@ -62,11 +62,11 @@ migrations = "migrations"
 tick = "*/5 * * * *"
 ```
 
-`deploy = false` keeps the program out of a workspace's deploys: `crab dev` on the workspace leaves it out and says so, and `crab deploy` refuses it. Run in the program's own directory, `crab dev` still runs it. `[crons]` holds each cron tool's expression, five fields in UTC; a tool left out is not called until its owners set one on the host. `[database] size` is what the service's database may hold, and `seed` a SQLite database a service on Cloud with no database yet starts from. Paths are relative to `berm.toml`. An unknown key is refused.
+`deploy = false` keeps the program out of a workspace's deploys: `crab dev` on the workspace leaves it out and says so, and `crab deploy` refuses it. Run in the program's own directory, `crab dev` still runs it. `[crons]` holds each cron tool's expression, five fields in UTC; a tool left out is not called until its owners set one on the host. `[database] size` is what the service's database may hold, and `seed` a SQLite database a service on Cloud with no database yet starts from. Paths are relative to `crab.toml`. An unknown key is refused.
 
 ## Dependencies
 
-`programs`, `secrets`, `[syscalls]` and `[database] migrations` in `berm.toml` are what an image says it will reach for once it runs: programs it calls by name, syscalls it makes beyond the ABI's own, each beside what it reaches through that call, and secrets it names as `{secret:NAME}` in a header or a body. The manifest carries them as `"deps": {"programs": [...], "syscalls": {"name": [...]}, "secrets": [...]}`. `[database] migrations` names a directory of `*.sql` migrations, read when the image is built and applied in name order, and adds `berm.sql` to the syscalls.
+`programs`, `secrets`, `[syscalls]` and `[database] migrations` in `crab.toml` are what an image says it will reach for once it runs: programs it calls by name, syscalls it makes beyond the ABI's own, each beside what it reaches through that call, and secrets it names as `{secret:NAME}` in a header or a body. The manifest carries them as `"deps": {"programs": [...], "syscalls": {"name": [...]}, "secrets": [...]}`. `[database] migrations` names a directory of `*.sql` migrations, read when the image is built and applied in name order, and adds `berm.sql` to the syscalls.
 
 `berm.http.fetch` holds a program to them: a host it does not declare, or a secret it does not declare, is refused before anything is sent. `berm.http.proxy` does the same for the hosts declared under it, and sends through the host's proxy. `berm.call` reaches the program itself and the programs it declares, and refuses any other name. A declared secret is substituted by the host with the value it granted the program, and the guest never holds it. These are runtime and resolved wherever the image lands: nothing here is fetched, installed, or compiled in, which is what separates them from the crate's own `[dependencies]`.
 
@@ -96,7 +96,7 @@ to grant.
 
 ## Kits
 
-A kit is a library crate with a `berm.toml` beside its `Cargo.toml`, declaring what it reaches for and the tables it keeps:
+A kit is a library crate with a `crab.toml` beside its `Cargo.toml`, declaring what it reaches for and the tables it keeps:
 
 ```toml
 id = "0123456789abcdef0123456789abcdef"
@@ -110,9 +110,9 @@ programs = ["weather"]
 migrations = "migrations"
 ```
 
-A kit's `berm.toml` declares only `id`, `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. `id` is 32 lowercase hex digits, written once; a kit with `[database] migrations` declares one, and a program declares none. `formerly` lists the keys its applied migrations were kept under before `id`, and needs an `id`. A kit carries no tools: an image holding a tool compiled in a kit is refused.
+A kit's `crab.toml` declares only `id`, `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and `[database] migrations`; any other key is refused. `id` is 32 lowercase hex digits, written once; a kit with `[database] migrations` declares one, and a program declares none. `formerly` lists the keys its applied migrations were kept under before `id`, and needs an `id`. A kit carries no tools: an image holding a tool compiled in a kit is refused.
 
-The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `berm.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "id", "formerly", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A credential id declared twice, or one secret in two credentials, is refused. A program that keeps no database of its own keeps one for a kit that does.
+The build finds a program's kits among the crates compiled into its image: each of its normal dependencies, direct or not, with a `crab.toml`. Linking a kit is using it. A program linking one kit at two versions is refused. Its manifest carries each kit as `"kits": [{"name", "id", "formerly", "version", "deps", "database"}]`, by name, and `Manifest::from_image` adds each kit's `deps` to the program's, so the runtime holds the program to both. A credential id declared twice, or one secret in two credentials, is refused. A program that keeps no database of its own keeps one for a kit that does.
 
 A kit's migrations run in the program's database before the program's own, each kit's in name order. The host keeps the migrations it applied under the kit's `id` and the program's own under none: a kit's migration and the program's may share a name, and a kit whose package is renamed keeps its history. Before comparing, the host moves a kit's applied migrations kept under one of its `formerly` keys under its `id`, and refuses a database keeping them under two of its keys. A kit no longer linked leaves its tables and its applied migrations in place.
 

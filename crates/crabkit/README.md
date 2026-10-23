@@ -16,7 +16,7 @@ crabkit = { version = "0.1", features = ["stripe"] }
 | `stripe` | [`crabkit-stripe`](https://crates.io/crates/crabkit-stripe) | Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan |
 | `supabase` | [`crabkit-supabase`](https://crates.io/crates/crabkit-supabase) | Supabase over HTTPS: PostgREST tables and functions, and Storage objects |
 
-A program with the feature on links the kit and calls it from its own tools as `crabkit::stripe`. Linking a kit is using it: the build finds it among the crates compiled into the program's image, and what the kit's `berm.toml` declares reaches the program's manifest. The kit is the same crate as `crabkit-stripe` on its own, its manifest record and migrations named for it. Each kit's README covers what the program declares itself.
+A program with the feature on links the kit and calls it from its own tools as `crabkit::stripe`. Linking a kit is using it: the build finds it among the crates compiled into the program's image, and what the kit's `crab.toml` declares reaches the program's manifest. The kit is the same crate as `crabkit-stripe` on its own, its manifest record and migrations named for it. Each kit's README covers what the program declares itself.
 
 ## License
 
