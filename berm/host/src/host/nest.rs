@@ -30,8 +30,12 @@ pub(crate) fn calls<E: Env>(
             let host = host.clone();
             Arc::new(move |at: &Callsite, target: &str, _: &str| {
                 let key = resolve(at, target)?;
-                if host::alive(&host)?.holds.holds(host::split(&key).0) {
+                let alive = host::alive(&host)?;
+                if alive.holds.holds(host::split(&key).0) {
                     bail!("{target} is held");
+                }
+                if alive.stops.stopped(&key) {
+                    bail!("{target} is stopped");
                 }
                 Ok(key)
             })

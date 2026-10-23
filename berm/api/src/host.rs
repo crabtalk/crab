@@ -76,6 +76,9 @@ pub struct Deploy {
     /// [`MAX_DATABASE_SIZE`].
     #[serde(default = "database_size")]
     pub size: u64,
+    /// Install it stopped, to serve once started.
+    #[serde(default)]
+    pub stopped: bool,
 }
 
 /// [`DATABASE_SIZE`], for `#[serde(default = "...")]`.

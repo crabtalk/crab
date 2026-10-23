@@ -92,6 +92,10 @@ pub struct Runtime {
     /// The part of `deps` this host answers to nothing for.
     #[serde(default, skip_serializing_if = "Deps::is_empty")]
     pub unresolved: Deps,
+    /// Stopped by its owners, or deployed stopped: it takes no calls and fires
+    /// no wakes.
+    #[serde(default)]
+    pub stopped: bool,
 }
 
 /// A deploy's answer.

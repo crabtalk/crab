@@ -249,6 +249,7 @@ impl Program {
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
             unresolved: Default::default(),
+            stopped: false,
         }
     }
 

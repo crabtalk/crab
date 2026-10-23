@@ -15,6 +15,7 @@ pub(crate) mod routes;
 mod scope;
 pub(crate) mod service;
 pub(crate) mod sql;
+pub(crate) mod stop;
 pub(crate) mod store;
 pub(crate) mod terms;
 

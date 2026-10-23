@@ -199,12 +199,19 @@ impl TestHost {
         image: &[u8],
         seed: Option<&Path>,
     ) -> Result<Arc<Program>> {
-        self.installed(service, image, seed, DATABASE_SIZE).await
+        self.installed(service, image, seed, DATABASE_SIZE, false)
+            .await
     }
 
     /// [`TestHost::deploy`], its database held to `size` bytes.
     pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Program>> {
-        self.installed(service, image, None, size).await
+        self.installed(service, image, None, size, false).await
+    }
+
+    /// [`TestHost::deploy`], installed stopped.
+    pub async fn pushed(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+        self.installed(service, image, None, DATABASE_SIZE, true)
+            .await
     }
 
     async fn installed(
@@ -213,6 +220,7 @@ impl TestHost {
         image: &[u8],
         seed: Option<&Path>,
         size: u64,
+        stopped: bool,
     ) -> Result<Arc<Program>> {
         let manifest = Manifest::from_image(image)?;
         let digest = format!("sha256:{}", berm::digest(image));
@@ -237,6 +245,7 @@ impl TestHost {
                     force: true,
                     crons: None,
                     size,
+                    stopped,
                 },
                 seed,
             )

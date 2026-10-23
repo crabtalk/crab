@@ -45,6 +45,7 @@ impl<E: Env> Host<E> {
             force,
             crons,
             size,
+            stopped,
         } = deploy;
         if !(MIN_DATABASE_SIZE..=MAX_DATABASE_SIZE).contains(&size) {
             return Err(deny(
@@ -154,9 +155,11 @@ impl<E: Env> Host<E> {
                 deprecated,
                 cron_tools,
                 crons,
+                stopped,
                 (self.now)() as i64,
             )
             .await?;
+            self.stops.mark(&key, stopped);
             Ok(program)
         }
         .await;

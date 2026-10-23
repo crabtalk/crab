@@ -114,6 +114,12 @@ impl<E: Env> Host<E> {
                 format!("{tool} is not a query; POST it"),
             ));
         }
+        if self.stops.stopped(service) {
+            return Err(deny(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("{service} is stopped"),
+            ));
+        }
         let refused = |denied: Denied, caller: Option<&Caller>| {
             let (source, who) = counted(caller);
             self.usage

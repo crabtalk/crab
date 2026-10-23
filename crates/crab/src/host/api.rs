@@ -12,7 +12,7 @@ use axum::{
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
-    routing::{get, put},
+    routing::{get, post, put},
 };
 use berm_api::{Deployed, Program as Wire, host};
 use berm_host::{Denied, Named, deny};
@@ -42,6 +42,8 @@ impl Service {
             .merge(
                 Router::new()
                     .route("/", put(deploy).delete(undeploy))
+                    .route("/start", post(start))
+                    .route("/stop", post(stop))
                     .route("/secrets", get(secrets))
                     .route("/secrets/{secret}", put(set_secret).delete(revoke_secret))
                     .with_state(service.clone()),
@@ -92,10 +94,11 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}&size=1073741824` on a
-/// deploy: the tools it may make public, whether to deploy over what it would
-/// break or undo, each cron tool's expression, as a JSON object, when the
-/// deploy sets them, and the bytes its database may hold.
+/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}&size=1073741824&stopped=true`
+/// on a deploy: the tools it may make public, whether to deploy over what it
+/// would break or undo, each cron tool's expression, as a JSON object, when the
+/// deploy sets them, the bytes its database may hold, and whether it installs
+/// stopped.
 #[derive(Deserialize)]
 struct Confirmed {
     #[serde(default)]
@@ -105,6 +108,8 @@ struct Confirmed {
     crons: Option<String>,
     #[serde(default = "host::database_size")]
     size: u64,
+    #[serde(default)]
+    stopped: bool,
 }
 
 /// Deploy the image in the body under `name`. `PUT` because the name is the
@@ -140,6 +145,7 @@ async fn deploy(
             confirmed.force,
             crons,
             confirmed.size,
+            confirmed.stopped,
         )
         .await?;
     Ok(Json(Deployed {
@@ -152,7 +158,26 @@ async fn undeploy(
     State(service): State<Arc<Service>>,
     Extension(Named(name)): Extension<Named>,
 ) -> Result<StatusCode, Denied> {
-    match service.undeploy(&name).await? {
+    found(service.undeploy(&name).await?, &name)
+}
+
+async fn start(
+    State(service): State<Arc<Service>>,
+    Extension(Named(name)): Extension<Named>,
+) -> Result<StatusCode, Denied> {
+    found(service.run(&name, true).await?, &name)
+}
+
+async fn stop(
+    State(service): State<Arc<Service>>,
+    Extension(Named(name)): Extension<Named>,
+) -> Result<StatusCode, Denied> {
+    found(service.run(&name, false).await?, &name)
+}
+
+/// `204` when the program `name` was deployed, else `404`.
+fn found(deployed: bool, name: &str) -> Result<StatusCode, Denied> {
+    match deployed {
         true => Ok(StatusCode::NO_CONTENT),
         false => Err(deny(
             StatusCode::NOT_FOUND,

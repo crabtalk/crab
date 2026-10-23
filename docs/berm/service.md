@@ -53,9 +53,19 @@ curl -X DELETE http://127.0.0.1:7777/programs/example
   that would undo one set since the last deploy that set them is refused, and
   so is one that breaks a tool or event a caller used in the last 30 days
   ([the manifest](./manifest.md#compatibility)), unless `?force=true`.
+- `?stopped=true` installs it stopped; any other deploy installs it running.
 - A deploy is recorded only once its image has compiled. What is recorded is
   restored on the next start, and an image that no longer loads is reported and
   skipped.
+
+## Starting and stopping
+
+- `POST /programs/{name}/stop` stops a program: it takes no calls, from outside
+  or from programs, and fires no wakes, and calls in flight finish. What it
+  stored stays, and wakes that come due fire once it starts. Its tools leave the
+  MCP endpoint.
+- `POST /programs/{name}/start` starts it again.
+- Both answer `204`, or `404` when nothing is deployed under `name`.
 
 ## Reading a program
 
@@ -64,7 +74,7 @@ curl -X DELETE http://127.0.0.1:7777/programs/example
 | `GET /programs` | Every deployed program's IDL. |
 | `GET /programs/{name}` | Its IDL under `program`, and under `served` the calls of its tools from outside that ended done, per day over the last 30 days and in total. |
 | `GET /programs/{name}/idl` | The IDL alone: name, version, digest, package fields and public tools. |
-| `GET /programs/{name}/runtime` | Its other tools, `deps`, `events`, and the `deps` nothing here answers to. |
+| `GET /programs/{name}/runtime` | Its other tools, `deps`, `events`, the `deps` nothing here answers to, and whether it is `stopped`. |
 | `GET /programs/{name}/terms` | Each public tool's budget, as `{"tools": {"<tool>": {"budget": {"cpu", "rows"}}}}`. |
 | `GET /programs/{name}/usage` | Each caller of each tool and event over the last 30 days. |
 | `GET /programs/{name}/live` | What it is using now: invocations running, memory, bytes stored, and each resource's total and rate. |
@@ -103,7 +113,7 @@ curl -X POST -H 'X-Berm-Caller: {"id": "alice"}' -d '{"query":"hi"}' \
 | `403` | The tool is `callers(services)`. |
 | `404` | No such program, or no public tool by that name. |
 | `405` | `GET` on a tool that is not a query. |
-| `503` | No call slot is free. |
+| `503` | The program is stopped, or no call slot is free. |
 
 ## Budgets
 
@@ -117,7 +127,7 @@ An invocation stops at its tool's CPU budget, checked every 100ms, and a row sys
   when a deprecated tool stops being served; `null` clears it.
 - `POST /programs/{name}/stripe` hands its body, a Stripe event, to the
   program's `stripe` tool, unverified, and answers `204` once the tool has
-  run, `503` while the program is held and `500` when the tool failed.
+  run, `503` while the program is held or stopped, and `500` when the tool failed.
 
 ## Secrets
 

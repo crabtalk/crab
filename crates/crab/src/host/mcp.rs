@@ -78,6 +78,7 @@ impl ServerHandler for Mcp {
             .service
             .list()
             .iter()
+            .filter(|deployed| !self.service.host.stopped(&deployed.name))
             .flat_map(|deployed| {
                 let terms = self.service.host.terms(&deployed.name).unwrap_or_default();
                 deployed

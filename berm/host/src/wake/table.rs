@@ -99,7 +99,8 @@ pub(crate) async fn arm(
         .await
 }
 
-/// Take up to `limit` wakes due at `now` outside the held scopes, pushing each
+/// Take up to `limit` wakes due at `now` outside the held scopes and stopped
+/// services, pushing each
 /// one's `due` to `lease` so the timer does not take it again while it runs.
 pub(crate) async fn claim(store: &Store, now: i64, lease: i64, limit: i64) -> Result<Vec<Wake>> {
     store
@@ -109,6 +110,8 @@ pub(crate) async fn claim(store: &Store, now: i64, lease: i64, limit: i64) -> Re
                   WHERE rowid IN (SELECT rowid FROM service_wakes
                                    WHERE due <= ?1
                                      AND scope NOT IN (SELECT scope FROM held_scopes)
+                                     AND (scope, name) NOT IN
+                                         (SELECT scope, name FROM services WHERE stopped = 1)
                                    ORDER BY due LIMIT ?3)
                   RETURNING scope, name, program, tool, args, armed, slot",
             )?;
@@ -319,13 +322,16 @@ pub(crate) async fn wakes(store: &Store) -> Result<Vec<(Wake, i64)>> {
         .await
 }
 
-/// When the next wake outside the held scopes is due, if any is pending.
+/// When the next wake outside the held scopes and stopped services is due, if
+/// any is pending.
 pub(crate) async fn next(store: &Store) -> Result<Option<i64>> {
     store
         .read(|conn| {
             conn.query_row(
                 "SELECT MIN(due) FROM service_wakes
-                  WHERE scope NOT IN (SELECT scope FROM held_scopes)",
+                  WHERE scope NOT IN (SELECT scope FROM held_scopes)
+                    AND (scope, name) NOT IN
+                        (SELECT scope, name FROM services WHERE stopped = 1)",
                 [],
                 |row| row.get(0),
             )

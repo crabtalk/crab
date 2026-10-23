@@ -12,7 +12,9 @@ impl Service {
     /// breaks callers of the program it replaced. Refused as the host refuses
     /// a deploy: a tool made public that `public` does not confirm, or, unless
     /// `force`, a break of what a caller used or a cron its owner set that
-    /// `crons` undoes, or a `size` the host refuses.
+    /// `crons` undoes, or a `size` the host refuses. `stopped` installs it to
+    /// serve once started.
+    #[allow(clippy::too_many_arguments)]
     pub async fn deploy(
         &self,
         name: &str,
@@ -21,6 +23,7 @@ impl Service {
         force: bool,
         crons: Option<BTreeMap<String, String>>,
         size: u64,
+        stopped: bool,
     ) -> Result<(Arc<Program>, Vec<Break>), Denied> {
         validate(name)?;
         let replaced = self.get(name);
@@ -36,6 +39,7 @@ impl Service {
                     force,
                     crons,
                     size,
+                    stopped,
                 },
                 None,
             )
@@ -62,6 +66,18 @@ impl Service {
             let _ = self.changed.send(());
         }
         Ok(removed)
+    }
+
+    /// Start or stop a program. `false` if it wasn't deployed.
+    pub async fn run(&self, name: &str, running: bool) -> Result<bool, Denied> {
+        let set = match running {
+            true => self.host.start(name).await?,
+            false => self.host.stop(name).await?,
+        };
+        if set {
+            let _ = self.changed.send(());
+        }
+        Ok(set)
     }
 
     /// Run one public tool with no caller.

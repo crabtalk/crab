@@ -78,6 +78,7 @@ impl<E: Env> Host<E> {
                     .cloned()
                     .collect(),
             },
+            stopped: self.stops.stopped(service),
             ..program.runtime()
         })
     }
@@ -371,6 +372,9 @@ impl<E: Env> Host<E> {
         if self.holds.holds(host::split(service).0) {
             return refused(format!("{service} is held"));
         }
+        if self.stops.stopped(service) {
+            return refused(format!("{service} is stopped"));
+        }
         if !program.public(tool) {
             return refused(format!("{service} has no public tool named {tool:?}"));
         }
@@ -451,7 +455,12 @@ impl<E: Env> Host<E> {
                 "the service has no stripe tool",
             ));
         };
-        if self.holds.holds(host::split(service).0) {
+        let paused = match () {
+            _ if self.holds.holds(host::split(service).0) => Some("held"),
+            _ if self.stops.stopped(service) => Some("stopped"),
+            _ => None,
+        };
+        if let Some(paused) = paused {
             self.usage.record(
                 service,
                 Kind::Tool,
@@ -462,7 +471,7 @@ impl<E: Env> Host<E> {
             );
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("{service} is held"),
+                format!("{service} is {paused}"),
             ));
         }
         let _capped = self.caps.take(host::split(service).0).await;
