@@ -4,7 +4,7 @@ name = "__NAME__"
 # version on each deploy.
 # image = "ghcr.io/<you>/__NAME__"
 # Tools this program may make public.
-public = []
+public = ["echo"]
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
 # Programs it calls by name.
