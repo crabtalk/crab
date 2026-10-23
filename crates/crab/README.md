@@ -45,7 +45,7 @@ A deploy that makes a tool public is refused until `public` lists it. Without `[
 
 ## Developing
 
-`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: programs reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy` picks services as cargo picks packages: in a service's directory, that service; at a workspace's root, every one whose `crab.toml` does not say `deploy = false`; `-p <name>`, repeatable, names them. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
+`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: programs reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy` picks services as cargo picks packages: in a service's directory, that service; at a workspace's root, every one whose `crab.toml` does not say `deploy = false`; `-p <name>`, repeatable, names them. `crab push` deploys the same way and installs each service stopped; `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
 ## Contexts
 

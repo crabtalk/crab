@@ -38,8 +38,10 @@ impl Client {
     }
 
     /// Deploy `image` as `name` on a local host, confirming the tools it may make
-    /// public, setting each cron tool's expression when `crons` is given, and
-    /// holding its database to `size` bytes.
+    /// public, setting each cron tool's expression when `crons` is given,
+    /// holding its database to `size` bytes, and installing it stopped when
+    /// `stopped`.
+    #[allow(clippy::too_many_arguments)]
     pub async fn deploy_image(
         &self,
         name: &str,
@@ -48,6 +50,7 @@ impl Client {
         force: bool,
         crons: Option<&BTreeMap<String, String>>,
         size: u64,
+        stopped: bool,
     ) -> Result<Deployed, Error> {
         if self.owner.is_some() {
             return Err(Error::Host("Cloud deploys from a registry, not from bytes"));
@@ -56,7 +59,8 @@ impl Client {
             .at(Method::PUT, &self.program(name))
             .query(&[("public", public.join(","))])
             .query(&[("force", force)])
-            .query(&[("size", size)]);
+            .query(&[("size", size)])
+            .query(&[("stopped", stopped)]);
         if let Some(crons) = crons {
             let crons =
                 serde_json::to_string(crons).map_err(|_| Error::Host("crons do not serialize"))?;
@@ -239,6 +243,20 @@ impl Client {
     pub async fn delete_secret(&self, name: &str, secret: &str) -> Result<(), Error> {
         let path = format!("{}/{secret}", self.secrets_path(name));
         self.ok(self.at(Method::DELETE, &path)).await?;
+        Ok(())
+    }
+
+    /// Serve `name` again, stopped or deployed stopped.
+    pub async fn start(&self, name: &str) -> Result<(), Error> {
+        let path = format!("{}/start", self.program(name));
+        self.ok(self.at(Method::POST, &path)).await?;
+        Ok(())
+    }
+
+    /// Stop serving `name`, keeping what it committed.
+    pub async fn stop(&self, name: &str) -> Result<(), Error> {
+        let path = format!("{}/stop", self.program(name));
+        self.ok(self.at(Method::POST, &path)).await?;
         Ok(())
     }
 

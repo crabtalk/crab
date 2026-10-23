@@ -101,28 +101,17 @@ enum Command {
         dir: PathBuf,
     },
     /// Build services and deploy each as its `crab.toml` names it, replacing
-    /// whatever holds the name: the one whose directory this is, or at a
-    /// workspace's root every one not saying `deploy = false`.
-    Deploy {
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Deploy this service of the workspace in place of the directory's;
-        /// repeatable.
-        #[arg(short = 'p', long = "package")]
-        packages: Vec<String>,
-        /// The registry repository to push to, in place of `image` in
-        /// `crab.toml`.
-        #[arg(long)]
-        image: Option<String>,
-        /// Deploy even when it breaks what callers used, or undoes a cron its
-        /// owners set.
-        #[arg(long)]
-        force: bool,
-        /// Write the crons its owners set into `[crons]` in `crab.toml` before
-        /// deploying.
-        #[arg(long, conflicts_with = "force")]
-        pull: bool,
-    },
+    /// whatever holds the name, and serve it: the one whose directory this is,
+    /// or at a workspace's root every one not saying `deploy = false`.
+    Deploy(cmd::deploy::Deploy),
+    /// `crab deploy`, installing each stopped, to serve once started.
+    Push(cmd::deploy::Deploy),
+    /// Serve stopped programs again: those named, or the services `crab
+    /// deploy` would deploy here.
+    Start { names: Vec<String> },
+    /// Stop serving programs, keeping what they committed: those named, or the
+    /// services `crab deploy` would deploy here.
+    Stop { names: Vec<String> },
     /// Call one of a program's tools.
     Call {
         program: String,
@@ -574,13 +563,10 @@ fn main() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Deploy {
-            dir,
-            packages,
-            image,
-            force,
-            pull,
-        } => cmd::deploy::run(&client()?, dir, packages, image.as_deref(), *force, *pull)?,
+        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false)?,
+        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true)?,
+        Command::Start { names } => cmd::start::run(&client()?, names)?,
+        Command::Stop { names } => cmd::stop::run(&client()?, names)?,
         Command::Inspect { name } => cmd::inspect::run(&client()?, name, json)?,
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
         Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,

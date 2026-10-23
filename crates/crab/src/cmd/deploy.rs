@@ -1,4 +1,5 @@
-//! `crab deploy` — build a project and hand the context's host its image.
+//! `crab deploy` and `crab push` — build services and hand the context's host
+//! their images, serving or stopped.
 
 use crate::{
     cmd::{dev, inspect},
@@ -8,6 +9,7 @@ use anyhow::{Context, Result, bail};
 use berm_api::Manifest;
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
+use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
     sandbox::service::{DeployRequest, SeedRequest},
@@ -17,23 +19,47 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
-/// Deploy the services of the workspace `dir` is in that `named` and `dir`
-/// select, each as [`one`] does, stopping at the first that fails.
-pub fn run(
-    client: &Client,
-    dir: &Path,
-    named: &[String],
-    image: Option<&str>,
-    force: bool,
-    pull: bool,
-) -> Result<()> {
-    let workspace = Workspace::read(dir, project::FILE, named)?;
+/// Which services a deploy builds, and how.
+#[derive(Args)]
+pub struct Deploy {
+    #[arg(default_value = ".")]
+    pub dir: PathBuf,
+    /// This service of the workspace in place of the directory's; repeatable.
+    #[arg(short = 'p', long = "package")]
+    pub packages: Vec<String>,
+    /// The registry repository to push to, in place of `image` in
+    /// `crab.toml`.
+    #[arg(long)]
+    pub image: Option<String>,
+    /// Deploy even when it breaks what callers used, or undoes a cron its
+    /// owners set.
+    #[arg(long)]
+    pub force: bool,
+    /// Write the crons its owners set into `[crons]` in `crab.toml` before
+    /// deploying.
+    #[arg(long, conflicts_with = "force")]
+    pub pull: bool,
+}
+
+/// Deploy the services of the workspace `deploy.dir` is in that it selects,
+/// each as [`one`] does, stopping at the first that fails. `stopped` installs
+/// them to serve once started.
+pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
+    let Deploy {
+        dir,
+        packages,
+        image,
+        force,
+        pull,
+    } = deploy;
+    let (image, force, pull) = (image.as_deref(), *force, *pull);
+    let workspace = Workspace::read(dir, project::FILE, packages)?;
     if workspace.services.is_empty() {
         bail!(
             "no {} in the workspace at {} names a service to deploy",
@@ -51,7 +77,7 @@ pub fn run(
         dev::up()?;
     }
     for dir in &workspace.services {
-        one(client, dir, image, force, pull)?;
+        one(client, dir, image, force, pull, stopped)?;
     }
     Ok(())
 }
@@ -61,7 +87,14 @@ pub fn run(
 /// deployed from there, and a service deployed for the first time starts from
 /// `[database] seed`. With `pull`, the crons the service's owners set on the
 /// host are written into `crab.toml`'s `[crons]` first.
-fn one(client: &Client, dir: &Path, image: Option<&str>, force: bool, pull: bool) -> Result<()> {
+fn one(
+    client: &Client,
+    dir: &Path,
+    image: Option<&str>,
+    force: bool,
+    pull: bool,
+    stopped: bool,
+) -> Result<()> {
     let mut project = project::read(dir)?;
     if !project.deploy {
         bail!(
@@ -96,6 +129,7 @@ fn one(client: &Client, dir: &Path, image: Option<&str>, force: bool, pull: bool
             force,
             project.crons.as_ref(),
             project.database.size(),
+            stopped,
         ))?,
         Some(_) => {
             let image = image.or(project.image.as_deref()).with_context(|| {
@@ -119,7 +153,7 @@ fn one(client: &Client, dir: &Path, image: Option<&str>, force: bool, pull: bool
                     crons: project.crons.clone(),
                     size: project.database.size(),
                     seed,
-                    stopped: false,
+                    stopped,
                 },
             ))?
         }
