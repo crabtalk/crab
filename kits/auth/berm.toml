@@ -15,7 +15,10 @@ migrations = "migrations"
 [credentials.github]
 title = "GitHub OAuth app"
 guide = """
-Create an OAuth app at https://github.com/settings/applications/new, or for an org under its Settings, Developer settings, OAuth Apps. Give it the product's name and homepage, and the callback URL below. On the app's page, copy its Client ID, then generate a client secret and copy it at once: GitHub shows it only once.
+1. Open https://github.com/settings/applications/new, or for an org, its Settings, then Developer settings, then OAuth Apps.
+2. Give the app the product's name and homepage, and the callback URL below, then register it.
+3. Copy its Client ID.
+4. Generate a client secret and copy it at once: GitHub shows it only once.
 """
 copy = { callback = "Authorization callback URL" }
 secrets = [
@@ -26,7 +29,10 @@ secrets = [
 [credentials.google]
 title = "Google OAuth client"
 guide = """
-At https://console.cloud.google.com/apis/credentials, create credentials of type OAuth client ID, application type Web application, with the redirect URI below among its Authorized redirect URIs. A project with no OAuth consent screen is asked for one first: give it the scopes openid, email and profile. Copy the client ID and client secret it shows.
+1. Open https://console.cloud.google.com/apis/credentials. A project with no OAuth consent screen is asked for one first: give it the scopes openid, email and profile.
+2. Create credentials of type OAuth client ID, with application type Web application.
+3. Add the redirect URI below under Authorized redirect URIs, then create it.
+4. Copy the client ID and client secret it shows.
 """
 copy = { callback = "Authorized redirect URI" }
 secrets = [
