@@ -75,6 +75,9 @@ enum Command {
         /// Return once it is no longer pending.
         #[arg(long)]
         wait: bool,
+        /// End it now, as if its time had run out: its code stops working.
+        #[arg(long, conflicts_with = "wait")]
+        expire: bool,
         /// Seconds `--wait` waits at most.
         #[arg(long, default_value_t = 600)]
         timeout: u64,
@@ -547,9 +550,13 @@ fn main() -> Result<ExitCode> {
         } => cmd::login::run(name, host, *github)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
         Command::Request {
+            code, expire: true, ..
+        } => cmd::request::expire(&client()?, code, json)?,
+        Command::Request {
             code,
             wait,
             timeout,
+            ..
         } => cmd::request::run(&client()?, code, *wait, *timeout, json)?,
         Command::Status => cmd::status::run(&client()?, args.context.as_deref(), json)?,
         Command::Dev {

@@ -90,6 +90,21 @@ fn describe(request: &Request) -> String {
     }
 }
 
+/// End request `code` now, and print it.
+pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
+    let request = utils::wait(client.expire_request(code))?;
+    if json {
+        return utils::json(&request);
+    }
+    println!(
+        "{}  {}  {}",
+        request.code,
+        request.status,
+        describe(&request)
+    );
+    Ok(())
+}
+
 /// Where request `code` stands. With `wait`, once it is no longer pending,
 /// giving up after `timeout` seconds. Fails unless it completed or, without
 /// `wait`, is still pending.

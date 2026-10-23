@@ -50,6 +50,13 @@ impl Client {
             .await
     }
 
+    /// End request `code` now, as if its time had run out. For the account it
+    /// is for or an owner of it.
+    pub async fn expire_request(&self, code: &str) -> Result<Request, Error> {
+        self.json(self.at(Method::POST, &format!("/requests/{code}/expire")))
+            .await
+    }
+
     /// The request `code` names. Takes no token.
     pub async fn request(&self, code: &str) -> Result<Request, Error> {
         self.json(self.at(Method::GET, &format!("/requests/{code}")))
