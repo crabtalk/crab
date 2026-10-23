@@ -262,7 +262,7 @@ impl Client {
         match &self.owner {
             Some(_) => Ok(format!("{}/secrets", self.program(name))),
             None => Err(Error::Host(
-                "the local host reads secrets from secrets.toml under its root",
+                "the local host reads its secrets from a secrets.toml",
             )),
         }
     }

@@ -120,13 +120,13 @@ An invocation stops at its tool's CPU budget, checked every 100ms, and a row sys
 ## Secrets
 
 A request header or body may name `{secret:NAME}` for a secret the manifest declares.
-The local host substitutes what `{root}/secrets.toml` grants that program for that host,
-read again whenever the file changes:
+The local host substitutes it from `{root}/secrets.toml`, one table by secret name for
+every program it runs, read again whenever the file changes. A request goes only to a
+host the manifest declares, so neither does the secret. `crab dev` reads the
+`secrets.toml` at its workspace's root instead.
 
 ```toml
-[example.token]
-value = "..."
-hosts = ["api.example.com"]
+TOKEN = "..."
 ```
 
 ## What a deployed program can reach

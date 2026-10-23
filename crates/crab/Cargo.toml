@@ -27,8 +27,11 @@ crabtalk-sdk = { workspace = true, features = ["client"] }
 hex = { workspace = true, features = ["std"] }
 notify.workspace = true
 parking_lot.workspace = true
+pulldown-cmark.workspace = true
+regex.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp.workspace = true
+rpassword.workspace = true
 rusqlite.workspace = true
 self_update.workspace = true
 serde = { workspace = true, features = ["std"] }

@@ -4,6 +4,7 @@
 //! deployed program appears on one MCP endpoint, its tools namespaced
 //! `{program}.{tool}`.
 
+use crate::host::secrets::Grants;
 use anyhow::{Context, Result};
 use berm::Program;
 use berm_host::{Config, Edges, Host, Layers, System};
@@ -14,7 +15,6 @@ pub use env::Local;
 pub use fetch::Fetch;
 pub use images::Stored;
 pub use peers::Alone;
-pub use secrets::Grants;
 
 mod api;
 mod env;
@@ -23,7 +23,7 @@ mod images;
 mod mcp;
 mod peers;
 mod program;
-mod secrets;
+pub mod secrets;
 
 /// Write the host's log lines to stderr, `info` and up of `crab` and `berm` unless
 /// `RUST_LOG` says otherwise.
@@ -59,12 +59,14 @@ pub struct Service {
 }
 
 impl Service {
-    /// Open `root`, restoring whatever was deployed before this process.
-    /// Chains of programs calling programs nest at most `depth` deep, and a
-    /// call spends at most `cpu` of CPU and runs at most `deadline`.
-    /// `berm.http.proxy` goes through `proxy`, or direct without one.
+    /// Open `root`, restoring whatever was deployed before this process, its
+    /// programs' secrets read from the file at `secrets`. Chains of programs
+    /// calling programs nest at most `depth` deep, and a call spends at most
+    /// `cpu` of CPU and runs at most `deadline`. `berm.http.proxy` goes
+    /// through `proxy`, or direct without one.
     pub async fn new(
         root: PathBuf,
+        secrets: PathBuf,
         depth: u32,
         cpu: Duration,
         deadline: Duration,
@@ -87,7 +89,7 @@ impl Service {
                 proxy: Some(Fetch::new(proxy)?),
                 images: images.clone(),
                 peers: Alone,
-                secrets: Grants::open(&root),
+                secrets: Grants::open(secrets),
                 layers: Layers::new(tower::layer::util::Identity::new()),
                 observe: (),
                 clock: System,

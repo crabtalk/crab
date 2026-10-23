@@ -4,8 +4,8 @@
 use crate::{
     context::{self, Contexts},
     dev::{Dev, Status, Watched},
-    format, host,
-    host::Service,
+    format,
+    host::{self, Service, secrets},
     utils,
 };
 use anyhow::{Context, Result, bail};
@@ -70,6 +70,7 @@ pub fn run(dir: &Path, json: bool) -> Result<()> {
     utils::wait(async {
         let service = Service::new(
             root.clone(),
+            workspace.root.join(secrets::FILE),
             call::DEFAULT_CALL_DEPTH,
             config.cpu,
             config.deadline,

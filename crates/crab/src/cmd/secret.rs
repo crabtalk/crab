@@ -1,9 +1,19 @@
-//! `crab secret` — a program's secrets on Cloud.
+//! `crab secret` — a program's secrets.
 
-use crate::{cmd::request, utils};
+use crate::{
+    cmd::request,
+    fill::{self, target::Target},
+    host::secrets,
+    utils,
+};
 use anyhow::{Context, Result, bail};
+use berm_build::Workspace;
 use crabtalk_sdk::client::Client;
-use std::{collections::BTreeMap, io::Read};
+use std::{
+    collections::BTreeMap,
+    env,
+    io::{self, IsTerminal, Read},
+};
 
 /// Set `name`'s secret `secret` to the value on stdin, its trailing newline
 /// dropped.
@@ -69,4 +79,32 @@ pub fn copy(arg: &str) -> Result<(String, String), String> {
     arg.split_once('=')
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
         .ok_or_else(|| format!("{arg:?} is not KEY=VALUE"))
+}
+
+/// Ask the person at this terminal for `name`'s credentials, and set each
+/// they give: in the workspace's `secrets.toml` against the local host, on
+/// the account against Cloud. `copies` are the values its credentials have
+/// them enter at the provider.
+pub fn fill(client: &Client, name: &str, copies: &[(String, String)]) -> Result<()> {
+    if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+        bail!(
+            "crab secret fill takes values typed at a terminal: ask the person to run `crab secret fill {name}` in theirs"
+        );
+    }
+    let target = match &client.owner {
+        None => Target::Workspace(
+            Workspace::read(&env::current_dir()?)?
+                .root
+                .join(secrets::FILE),
+        ),
+        Some(owner) => Target::Cloud(owner.name().to_owned()),
+    };
+    let credentials = utils::wait(client.runtime(name))?.deps.grouped();
+    if credentials.is_empty() {
+        eprintln!("{name} declares no secrets");
+        return Ok(());
+    }
+    let stored = target.stored(client, name)?;
+    let copy = copies.iter().cloned().collect();
+    fill::run(client, name, &target, &credentials, stored, &copy)
 }

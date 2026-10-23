@@ -1,42 +1,20 @@
-//! The secrets a program may have substituted into its requests.
+//! The secrets the local host substitutes into its programs' requests: a
+//! `secrets.toml` of `NAME = "value"`, one table for every program it runs.
 //!
-//! Granted in `{root}/secrets.toml`, by program and then by secret name, each
-//! beside the hosts it may be sent to:
-//!
-//! ```toml
-//! [fixture.fixture]
-//! value = "..."
-//! hosts = ["127.0.0.1"]
-//! ```
-//!
-//! Parsed again when the file's modification time changes, so an edit applies
-//! to the next request. A grant is the program's whatever starts it.
+//! A secret reaches only a fetch whose host the program's manifest declares.
+//! The file is parsed again when its modification time changes, so an edit
+//! applies to the next request.
 
 use anyhow::{Context, Result};
 use berm_host::Secrets;
 use parking_lot::Mutex;
-use serde::Deserialize;
-use std::{
-    collections::BTreeMap,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{collections::BTreeMap, io::ErrorKind, path::PathBuf, sync::Arc, time::SystemTime};
 
-/// What the file is called under the service's root.
-const FILE: &str = "secrets.toml";
+/// What the file is called, at a workspace's root or a host's.
+pub const FILE: &str = "secrets.toml";
 
-/// One secret granted to one program.
-#[derive(Deserialize)]
-struct Grant {
-    value: String,
-    /// The hosts it may be sent to.
-    hosts: Vec<String>,
-}
-
-/// Every grant, by program and then by secret name.
-type Table = BTreeMap<String, BTreeMap<String, Grant>>;
+/// Every secret, by name.
+type Table = BTreeMap<String, String>;
 
 /// Where the grants live.
 #[derive(Clone)]
@@ -53,9 +31,10 @@ struct Parsed {
 }
 
 impl Grants {
-    pub fn open(root: &Path) -> Self {
+    /// The secrets in the file at `path`, none while it is absent.
+    pub fn open(path: PathBuf) -> Self {
         Self {
-            path: root.join(FILE),
+            path,
             parsed: Arc::default(),
         }
     }
@@ -92,27 +71,11 @@ impl Grants {
 }
 
 impl Secrets for Grants {
-    async fn grant(&self, program: &str, secret: &str, host: &str) -> Result<Option<String>> {
-        Ok(self
-            .read()
-            .await?
-            .get(program)
-            .and_then(|granted| granted.get(secret))
-            .filter(|grant| {
-                grant
-                    .hosts
-                    .iter()
-                    .any(|allowed| allowed.eq_ignore_ascii_case(host))
-            })
-            .map(|grant| grant.value.clone()))
+    async fn grant(&self, _: &str, secret: &str, _: &str) -> Result<Option<String>> {
+        Ok(self.read().await?.get(secret).cloned())
     }
 
-    async fn names(&self, program: &str) -> Result<Vec<String>> {
-        Ok(self
-            .read()
-            .await?
-            .get(program)
-            .map(|granted| granted.keys().cloned().collect())
-            .unwrap_or_default())
+    async fn names(&self, _: &str) -> Result<Vec<String>> {
+        Ok(self.read().await?.keys().cloned().collect())
     }
 }

@@ -87,6 +87,9 @@ tokio = { version = "1", features = [
     "sync",
     "time",
 ] }
+pulldown-cmark = { version = "0.13", default-features = false }
+regex = "1"
+rpassword = "7"
 toml = "1"
 toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }

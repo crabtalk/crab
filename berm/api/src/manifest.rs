@@ -235,6 +235,34 @@ impl Deps {
         Ok(())
     }
 
+    /// Every credential, then each secret in none as a credential of its
+    /// own, by the secret's name, with no title or guide.
+    pub fn grouped(&self) -> Vec<(String, Credential)> {
+        let alone = self
+            .secrets
+            .iter()
+            .filter(|name| self.credential_of(name).is_none())
+            .map(|name| {
+                let credential = Credential {
+                    title: String::new(),
+                    guide: String::new(),
+                    copy: BTreeMap::new(),
+                    secrets: vec![CredentialSecret {
+                        name: name.clone(),
+                        label: String::new(),
+                        masked: true,
+                        pattern: None,
+                    }],
+                };
+                (name.clone(), credential)
+            });
+        self.credentials
+            .iter()
+            .map(|(id, credential)| (id.clone(), credential.clone()))
+            .chain(alone)
+            .collect()
+    }
+
     /// The id of the credential `secret` is in, when it is in one.
     pub fn credential_of(&self, secret: &str) -> Option<&str> {
         self.credentials

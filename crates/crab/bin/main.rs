@@ -317,6 +317,16 @@ enum SecretCommand {
     Ls { name: String },
     /// Revoke a secret of a program.
     Rm { name: String, secret: String },
+    /// Set a program's credentials at this terminal, typed by the person
+    /// here: in the workspace's secrets.toml against the local host, on the
+    /// account against Cloud. Refused when not run at a terminal.
+    Fill {
+        name: String,
+        /// A value the credentials have the person enter at the provider,
+        /// such as `callback=https://example.com/auth/callback`.
+        #[arg(long = "copy", value_parser = cmd::secret::copy)]
+        copies: Vec<(String, String)>,
+    },
     /// Ask a person to set a program's unset secrets, or one credential's: a
     /// code whose page they set them at, signed in, so no value passes
     /// through here.
@@ -661,6 +671,9 @@ fn main() -> Result<ExitCode> {
         Command::Secret(SecretCommand::Ls { name }) => cmd::secret::ls(&client()?, name, json)?,
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?
+        }
+        Command::Secret(SecretCommand::Fill { name, copies }) => {
+            cmd::secret::fill(&client()?, name, copies)?
         }
         Command::Secret(SecretCommand::Request {
             name,

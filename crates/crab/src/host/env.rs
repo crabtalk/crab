@@ -1,4 +1,4 @@
-use crate::host::{Alone, Fetch, Grants, Stored};
+use crate::host::{Alone, Fetch, Stored, secrets::Grants};
 use berm_host::{Env, System};
 
 /// One machine, running every program itself.
