@@ -1,6 +1,6 @@
 # crabtalk-sdk
 
-Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`. The same client also talks to the local host, `crab serve`.
+Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`. The same client also talks to the local host, `crab dev`.
 
 ## Install
 

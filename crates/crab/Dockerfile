@@ -1,4 +1,4 @@
-# `crab serve`, for development. Built from the repository root by
+# `crab dev`, the local host. Built from the repository root by
 # `docker-compose.yml` there.
 
 FROM rust:1-bookworm AS crab
@@ -18,4 +18,4 @@ VOLUME /data
 EXPOSE 7777
 # Listens on every interface in the container; the service carries no
 # authorization. Publish the port on loopback only.
-ENTRYPOINT ["crab", "serve", "--addr", "0.0.0.0:7777", "--root", "/data"]
+ENTRYPOINT ["crab", "dev", "--addr", "0.0.0.0:7777", "--root", "/data"]

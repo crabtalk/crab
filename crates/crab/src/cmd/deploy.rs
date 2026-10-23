@@ -1,8 +1,12 @@
 //! `crab deploy` — build a project and hand the context's host its image.
 
-use crate::{cmd::inspect, project, utils};
+use crate::{
+    cmd::{dev, inspect},
+    project, utils,
+};
 use anyhow::{Context, Result, bail};
 use berm_api::Manifest;
+use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use crabtalk_sdk::{
     client::{Client, Error},
@@ -19,18 +23,45 @@ use std::{
 use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
+/// Deploy the services of the workspace `dir` is in that `named` and `dir`
+/// select, each as [`one`] does, stopping at the first that fails.
+pub fn run(
+    client: &Client,
+    dir: &Path,
+    named: &[String],
+    image: Option<&str>,
+    force: bool,
+    pull: bool,
+) -> Result<()> {
+    let workspace = Workspace::read(dir, project::FILE, named)?;
+    if workspace.services.is_empty() {
+        bail!(
+            "no {} in the workspace at {} names a service to deploy",
+            project::FILE,
+            workspace.root.display()
+        );
+    }
+    if workspace.services.len() > 1 && (image.is_some() || pull) {
+        bail!("--image and --pull take one service; pick it with -p");
+    }
+    for name in &workspace.skipped {
+        eprintln!("skipped   {name}: deploy = false");
+    }
+    if client.base == dev::url("") {
+        dev::up()?;
+    }
+    for dir in &workspace.services {
+        one(client, dir, image, force, pull)?;
+    }
+    Ok(())
+}
+
 /// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
 /// is pushed to `image`, or `crab.toml`'s, tagged with the crate's version, and
 /// deployed from there, and a service deployed for the first time starts from
 /// `[database] seed`. With `pull`, the crons the service's owners set on the
 /// host are written into `crab.toml`'s `[crons]` first.
-pub fn run(
-    client: &Client,
-    dir: &Path,
-    image: Option<&str>,
-    force: bool,
-    pull: bool,
-) -> Result<()> {
+fn one(client: &Client, dir: &Path, image: Option<&str>, force: bool, pull: bool) -> Result<()> {
     let mut project = project::read(dir)?;
     if !project.deploy {
         bail!(

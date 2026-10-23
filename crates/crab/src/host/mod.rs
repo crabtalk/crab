@@ -1,6 +1,6 @@
 //! The local host — deploys programs and serves their tools over MCP.
 //!
-//! A thin daemon over [`Host`], run by `crab serve`, with one flat namespace of programs. Every
+//! A thin daemon over [`Host`], run by `crab dev`, with one flat namespace of programs. Every
 //! deployed program appears on one MCP endpoint, its tools namespaced
 //! `{program}.{tool}`.
 

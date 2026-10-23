@@ -24,7 +24,6 @@ pub mod replay;
 pub mod request;
 pub mod rm;
 pub mod secret;
-pub mod serve;
 pub mod status;
 pub mod sunset;
 pub mod upgrade;

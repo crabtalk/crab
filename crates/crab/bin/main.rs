@@ -1,20 +1,15 @@
 use anyhow::Result;
-use berm::syscall::call;
 use berm_api::{
     Budget,
     host::{Caller, User},
 };
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{
-    cmd,
-    context::{self, Contexts},
-    utils,
-};
+use crab_agent::{cmd, context::Contexts, utils};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
 };
-use std::{io::IsTerminal, net::SocketAddr, path::PathBuf, process::ExitCode, time::Duration};
+use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]
 #[command(
@@ -84,51 +79,17 @@ enum Command {
     },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
-    /// Run the workspace's services on a local host at 127.0.0.1:7777,
-    /// rebuilding and redeploying them as their files change, until Ctrl-C.
+    /// Run the local host: deploy programs to it and serve their tools over
+    /// HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`.
     #[command(args_conflicts_with_subcommands = true)]
     Dev {
         #[command(subcommand)]
         command: Option<DevCommand>,
-        /// A service's directory, for that service alone, or any other
-        /// directory of a workspace, for every service in it.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Return once every service is deployed or failed, leaving the host
-        /// watching the workspace.
+        #[command(flatten)]
+        daemon: cmd::dev::Daemon,
+        /// Run it in the background and return once it answers.
         #[arg(short, long)]
         detach: bool,
-    },
-    /// Run the local host in the foreground: deploy programs to it and serve
-    /// their tools over HTTP and MCP.
-    Serve {
-        /// Address to listen on. Loopback by default: the MCP endpoint carries
-        /// no authorization yet, so anything wider would be an open one.
-        #[arg(long, default_value = context::LOCAL)]
-        addr: SocketAddr,
-        /// Where deployed images and the code cache live; `~/.berm` by
-        /// default.
-        #[arg(long)]
-        root: Option<PathBuf>,
-        /// How deep a chain of programs calling programs may go. `0` refuses
-        /// the first one, which is composition off.
-        ///
-        /// The bound is on runaway composition, not on the stack: a level
-        /// costs ~720 bytes of it, and 64 MiB of guest address space.
-        #[arg(long, default_value_t = call::DEFAULT_CALL_DEPTH)]
-        max_call_depth: u32,
-        /// The proxy `berm.http.proxy` goes through, e.g.
-        /// `http://user:pass@gate.example.com:3120`. Without one it goes
-        /// direct.
-        #[arg(long)]
-        proxy: Option<String>,
-        /// How many milliseconds of CPU one call may spend, nested calls
-        /// excluded.
-        #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
-        max_cpu_millis: u64,
-        /// How many seconds a call may run before it is stopped.
-        #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
-        max_call_seconds: u64,
     },
     /// Scaffold a program crate.
     New { name: String },
@@ -139,11 +100,16 @@ enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Build the project in a directory and deploy it as its `crab.toml`
-    /// names it, replacing whatever holds the name.
+    /// Build services and deploy each as its `crab.toml` names it, replacing
+    /// whatever holds the name: the one whose directory this is, or at a
+    /// workspace's root every one not saying `deploy = false`.
     Deploy {
         #[arg(default_value = ".")]
         dir: PathBuf,
+        /// Deploy this service of the workspace in place of the directory's;
+        /// repeatable.
+        #[arg(short = 'p', long = "package")]
+        packages: Vec<String>,
         /// The registry repository to push to, in place of `image` in
         /// `crab.toml`.
         #[arg(long)]
@@ -194,8 +160,9 @@ enum Command {
         #[arg(long, default_value = "idls")]
         out: PathBuf,
     },
-    /// Remove a program and what it committed.
-    Rm { name: String },
+    /// Remove programs and what they committed: those named, or the services
+    /// `crab deploy` would deploy here.
+    Rm { names: Vec<String> },
     /// Print what a program emitted, oldest first.
     Logs {
         name: String,
@@ -392,9 +359,9 @@ enum BillingCommand {
 
 #[derive(Subcommand)]
 enum DevCommand {
-    /// Whether a dev host runs, and what it serves.
+    /// Whether the local host runs, and where.
     Status,
-    /// Stop the dev host.
+    /// Stop the local host.
     Stop,
 }
 
@@ -579,29 +546,14 @@ fn main() -> Result<ExitCode> {
         } => cmd::dev::stop()?,
         Command::Dev {
             command: None,
-            dir,
+            daemon,
             detach: true,
-        } => cmd::dev::detach(dir, json)?,
+        } => cmd::dev::detach(daemon)?,
         Command::Dev {
             command: None,
-            dir,
+            daemon,
             detach: false,
-        } => cmd::dev::run(dir, json)?,
-        Command::Serve {
-            addr,
-            root,
-            max_call_depth,
-            proxy,
-            max_cpu_millis,
-            max_call_seconds,
-        } => cmd::serve::run(
-            *addr,
-            root.clone(),
-            *max_call_depth,
-            Duration::from_millis(*max_cpu_millis),
-            Duration::from_secs(*max_call_seconds),
-            proxy.as_deref(),
-        )?,
+        } => cmd::dev::run(daemon)?,
         Command::Context(ContextCommand::Add {
             name,
             host,
@@ -624,13 +576,14 @@ fn main() -> Result<ExitCode> {
         Command::Build { dir } => cmd::build::run(dir)?,
         Command::Deploy {
             dir,
+            packages,
             image,
             force,
             pull,
-        } => cmd::deploy::run(&client()?, dir, image.as_deref(), *force, *pull)?,
+        } => cmd::deploy::run(&client()?, dir, packages, image.as_deref(), *force, *pull)?,
         Command::Inspect { name } => cmd::inspect::run(&client()?, name, json)?,
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
-        Command::Rm { name } => cmd::rm::run(&client()?, name, yes)?,
+        Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,
         Command::Logs { name, after } => cmd::logs::run(&client()?, name, *after, json)?,
         Command::Usage { name: Some(name) } => cmd::usage::run(&client()?, name, json)?,
         Command::Usage { name: None } => cmd::usage::account(&client()?, json)?,

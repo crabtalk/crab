@@ -3,7 +3,7 @@
 The [local host](https://crab.talk/docs/build/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
-crab serve &
+crab dev -d
 crab new example
 cd example
 crab build
@@ -45,11 +45,11 @@ A deploy that makes a tool public is refused until `public` lists it. Without `[
 
 ## Developing
 
-`crab dev` has the local host on `127.0.0.1:7777` watch the workspace it is started in: build and deploy each service, and again as its files change. The host is the one on this machine, `crab serve`, its root `~/.crab/host`; `crab dev` starts it in the background, writing to `~/.crab/host/host.log`, when nothing answers, and it watches several workspaces at once, refusing a service name two of them share. In a service's directory it watches that service alone; otherwise it leaves out each service whose `crab.toml` says `deploy = false`, which `crab deploy` also refuses. A deploy goes over what it breaks, and skips the seed. In the foreground `crab dev` prints each deploy, each call and the call's logs until Ctrl-C, which stops the watch and leaves the services deployed; `-d`/`--detach` returns once each service is deployed or failed. `crab dev status` prints the host and each workspace it watches with each service's last rebuild, and `crab dev stop` stops the host.
+`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: programs reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy` picks services as cargo picks packages: in a service's directory, that service; at a workspace's root, every one whose `crab.toml` does not say `deploy = false`; `-p <name>`, repeatable, names them. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
 ## Contexts
 
-`crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab serve`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
+`crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab dev`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
 
 ```sh
 crab context add cloud https://api.crabtalk.ai --token "$KEY" --org acme

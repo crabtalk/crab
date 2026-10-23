@@ -1,20 +1,21 @@
 ---
 title: Running the Service
-description: "crab serve deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."
+description: "crab dev deploys programs and serves their tools over HTTP, and their anonymous tools over MCP."
 ---
 
-`crab serve` runs the local host, a long-running service that deploys programs and serves their tools.
-It is the one host on a machine: `crab dev` starts it in the background when nothing answers on `127.0.0.1:7777`, writing to `host.log` under its root, and hands it workspaces to watch at `/dev`.
+`crab dev` runs the local host, a long-running service that deploys programs and serves their tools.
+It is the one host on a machine: `-d` starts it in the background, writing to `host.log` under its root, as does `crab deploy` on the `default` context when nothing answers on `127.0.0.1:7777`. `crab dev status` and `crab dev stop` reach it at `/dev`.
 An invocation is ephemeral, but three things around it are not: the deployed
 set, the modules compiled from it, and the engine's code cache. A program is
 compiled once, at deploy, so an invocation pays only instantiation.
 
 ```sh
-crab serve --addr 127.0.0.1:7777 --root ~/.crab/host
+crab dev --addr 127.0.0.1:7777 --root ~/.crab/host
 ```
 
 | Flag | |
 |---|---|
+| `-d` | Run it in the background and return once it answers. |
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
 | `--root` | Where deployed images, the code cache and `secrets.toml` live, `~/.crab/host` by default. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
@@ -26,13 +27,13 @@ The service carries no authorization and binds loopback by default.
 
 ## Docker
 
-`docker-compose.yml` at the repository root builds the image from the checkout and runs `crab serve` on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
+`docker-compose.yml` at the repository root builds the image from the checkout and runs `crab dev` on `127.0.0.1:7777`, its root the volume `berm` at `/data`:
 
 ```sh
 docker compose up --build
 ```
 
-Inside the container the host listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes `crab serve` its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
+Inside the container the host listens on every interface; a port published without `127.0.0.1:` is open to the network. `command:` in the compose file passes `crab dev` its other flags: `--proxy`, `--max-call-depth`, `--max-cpu-millis`, `--max-call-seconds`.
 
 ## Deploying
 

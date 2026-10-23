@@ -50,7 +50,6 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 hex = { version = "0.4", default-features = false }
 humantime-serde = "1"
 libc = "0.2"
-notify = "8"
 object = { version = "0.40", features = ["wasm"] }
 parking_lot = "0.12"
 proc-macro2 = "1"

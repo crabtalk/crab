@@ -25,9 +25,7 @@ berm-oci.workspace = true
 chrono.workspace = true
 clap.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
-futures-util.workspace = true
 hex = { workspace = true, features = ["std"] }
-notify.workspace = true
 parking_lot.workspace = true
 pulldown-cmark.workspace = true
 ratatui.workspace = true

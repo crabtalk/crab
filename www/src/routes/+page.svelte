@@ -26,7 +26,7 @@ berm.deploy(<span class="s">"example"</span>, &amp;wasm)?;
 <span class="c">$</span> shasum -a256 ./fixture.wasm
 <span class="mark">${digest}</span>  ./fixture.wasm`;
 
-	const running = `<span class="c">$</span> crab serve &amp;
+	const running = `<span class="c">$</span> crab dev -d
 <span class="c">$</span> curl -X PUT --data-binary @example.wasm <span class="s">'localhost:7777/programs/example?public=echo'</span>
 <span class="c">$</span> curl localhost:7777/programs`;
 
@@ -141,7 +141,7 @@ registry.push(<span class="s">"v1"</span>, &amp;wasm, &amp;manifest)?;`;
 			<span class="light close" aria-hidden="true"></span>
 			<span class="light minimise" aria-hidden="true"></span>
 			<span class="light zoom" aria-hidden="true"></span>
-			<span class="title">crab serve</span>
+			<span class="title">crab dev</span>
 		</div>
 		<div class="code-block">
 			<pre><code>{@html console_}</code></pre>
@@ -171,7 +171,7 @@ registry.push(<span class="s">"v1"</span>, &amp;wasm, &amp;manifest)?;`;
 <section class="cli">
 	<div class="column">
 		<h2>Running</h2>
-		<p><code>crab serve</code> serves every deployed program's tools over HTTP, and its
+		<p><code>crab dev</code> serves every deployed program's tools over HTTP, and its
 			<code>#[anonymous]</code> tools on one MCP endpoint, named <code>{'{program}'}.{'{tool}'}</code>.</p>
 		<div class="code-block">
 			<pre><code>{@html running}</code></pre>

@@ -62,7 +62,7 @@ migrations = "migrations"
 tick = "*/5 * * * *"
 ```
 
-`deploy = false` keeps the program out of a workspace's deploys: `crab dev` on the workspace leaves it out and says so, and `crab deploy` refuses it. Run in the program's own directory, `crab dev` still runs it. `[crons]` holds each cron tool's expression, five fields in UTC; a tool left out is not called until its owners set one on the host. `[database] size` is what the service's database may hold, and `seed` a SQLite database a service on Cloud with no database yet starts from. Paths are relative to `crab.toml`. An unknown key is refused.
+`deploy = false` keeps the program out of `crab deploy` at its workspace's root; named with `-p` or deployed from its own directory, it is refused. `[crons]` holds each cron tool's expression, five fields in UTC; a tool left out is not called until its owners set one on the host. `[database] size` is what the service's database may hold, and `seed` a SQLite database a service on Cloud with no database yet starts from. Paths are relative to `crab.toml`. An unknown key is refused.
 
 ## Dependencies
 

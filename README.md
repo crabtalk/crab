@@ -8,10 +8,11 @@ The agent for the CrabTalk platform: write a service, run it locally, deploy it 
 
 ```sh
 cargo install crab-agent
-crab login                 # CrabTalk Cloud; --email for a code by email
+crab login                     # CrabTalk Cloud; --email for a code by email
 crab new example && cd example
-crab dev -d                # build and run it on the local host
-crab deploy                # or deploy it to Cloud
+crab dev -d                    # start the local host
+crab --context default deploy  # build and run it there
+crab deploy                    # or deploy it to Cloud
 crab call example echo '{"query":"hello"}'
 ```
 
