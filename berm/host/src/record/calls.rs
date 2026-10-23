@@ -11,10 +11,10 @@ use anyhow::Result;
 use berm::Now;
 use berm_api::{
     Meter,
-    host::{Call, CallPage, Outcome, Source},
+    host::{Call, CallInput, CallPage, Outcome, Source},
 };
 use parking_lot::Mutex;
-use rusqlite::{Connection, Row, named_params, params};
+use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
 use std::{
     cmp::Reverse,
     collections::HashMap,
@@ -44,6 +44,8 @@ pub(crate) struct Ran {
     outcome: Outcome,
     ms: u64,
     meter: Option<Meter>,
+    /// Kept for a run that failed.
+    input: Option<CallInput>,
 }
 
 /// A service's runs and logs not yet written.
@@ -80,7 +82,7 @@ impl Pending {
     }
 
     /// Hold a run of `tool` on the service keyed `service`, begun at
-    /// `started`.
+    /// `started`, keeping `input` when it failed.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record(
         &self,
@@ -91,6 +93,7 @@ impl Pending {
         caller: &str,
         outcome: Outcome,
         meter: Option<Meter>,
+        input: Option<CallInput>,
     ) {
         self.pending.lock().push(Ran {
             id: started.id,
@@ -102,6 +105,7 @@ impl Pending {
             outcome,
             ms: started.began.elapsed().as_millis() as u64,
             meter,
+            input: input.filter(|_| outcome == Outcome::Failed),
         });
     }
 
@@ -157,10 +161,14 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 .meter
                 .as_ref()
                 .map(|meter| serde_json::to_string(meter).expect("a meter is JSON"));
+            let input = call
+                .input
+                .as_ref()
+                .map(|input| serde_json::to_string(input).expect("an input is JSON"));
             tx.prepare_cached(
                 "INSERT INTO service_calls
-                        (id, scope, name, at, tool, source, caller, outcome, ms, meter)
-                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+                        (id, scope, name, at, tool, source, caller, outcome, ms, meter, input)
+                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
             )?
             .execute(params![
@@ -173,7 +181,8 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 call.outcome,
                 call.ms as i64,
                 meter,
-                call.id as i64
+                call.id as i64,
+                input
             ])?;
             Ok(())
         })
@@ -185,6 +194,33 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 params![since as i64],
             )?;
             Ok(())
+        })
+        .await
+}
+
+/// What `scope/name`'s run `id` ran with, as written or in `unsaved`:
+/// `Ok(None)` for a run that kept none, an error for no such run.
+pub(crate) async fn input(
+    store: &Store,
+    scope: &str,
+    name: &str,
+    id: u64,
+    unsaved: Vec<Ran>,
+) -> Result<Option<Option<CallInput>>> {
+    if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
+        return Ok(Some(ran.input));
+    }
+    let (scope, name) = (scope.to_owned(), name.to_owned());
+    store
+        .read(move |conn| {
+            let input: Option<Option<String>> = conn
+                .query_row(
+                    "SELECT input FROM service_calls WHERE scope = ?1 AND name = ?2 AND id = ?3",
+                    params![scope, name, id as i64],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            Ok(input.map(|input| input.and_then(|input| serde_json::from_str(&input).ok())))
         })
         .await
 }

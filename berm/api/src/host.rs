@@ -405,6 +405,19 @@ pub struct Call {
     pub logs: u64,
 }
 
+/// What a call that failed ran with, kept so it can be run again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallInput {
+    pub tool: String,
+    /// Its arguments as sent: JSON, or a Stripe event's body.
+    pub args: String,
+    /// Who it was made as; none for a wake, a Stripe event or an anonymous
+    /// call.
+    pub caller: Option<Caller>,
+    /// The image it ran, as `sha256:` and hex.
+    pub digest: String,
+}
+
 /// What a service is using now.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

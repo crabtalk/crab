@@ -117,6 +117,8 @@ a schema printed raw is something to read past rather than read.
 
 `inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 
+A call that failed keeps its tool, arguments, caller and the digest of the image it ran, for as long as calls are kept. `crab --context cloud replay NAME ID` reads them and makes the call again on the local host, or on the context `--on` names, against that host's state: its database, real fetches, its secrets. It says when the program there runs another image.
+
 ## License
 
 Apache-2.0

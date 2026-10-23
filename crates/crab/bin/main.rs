@@ -171,6 +171,16 @@ enum Command {
         #[arg(long, requires = "issuer")]
         user: Option<String>,
     },
+    /// Run a call that failed again, read from the context in use: its tool,
+    /// arguments and caller, against the state of the host `--on` names.
+    Replay {
+        program: String,
+        /// The call's id, as `crab calls` lists it.
+        id: u64,
+        /// The context to run it on.
+        #[arg(long, default_value = context::DEFAULT)]
+        on: String,
+    },
     /// Show a program's tools and their arguments.
     Inspect { name: String },
     /// Write a deployed program's IDL, which `declare_program!` reads.
@@ -797,6 +807,10 @@ fn main() -> Result<ExitCode> {
                 arguments.as_deref(),
                 caller.as_ref(),
             );
+        }
+        Command::Replay { program, id, on } => {
+            let on = Client::from(Contexts::load()?.get(Some(on))?);
+            return cmd::replay::run(&client()?, &on, program, *id);
         }
     }
     Ok(ExitCode::SUCCESS)

@@ -292,6 +292,21 @@ impl<E: Env> Host<E> {
         Ok((calls, link))
     }
 
+    /// What `service`'s call `id` ran with. Only a call that failed keeps it.
+    pub async fn call_input(&self, service: &str, id: u64) -> Result<wire::CallInput, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let _reading = self.flushing.read().await;
+        match calls::input(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
+            Some(Some(input)) => Ok(input),
+            Some(None) => Err(deny(
+                StatusCode::NOT_FOUND,
+                "the call kept no input; only a call that failed does",
+            )),
+            None => Err(deny(StatusCode::NOT_FOUND, "no such call")),
+        }
+    }
+
     /// A call from a service on a peer, run as `link` and committed here. A
     /// refusal is `403` with its reason.
     pub async fn link(
@@ -419,7 +434,7 @@ impl<E: Env> Host<E> {
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
         let invoked = self
-            .invoke(&program, started.id, None, None, None, &tool, event)
+            .invoke(&program, started.id, None, None, None, &tool, event.clone())
             .await?;
         let outcome = Outcome::of(&invoked.result, invoked.denied);
         self.usage
@@ -432,6 +447,12 @@ impl<E: Env> Host<E> {
             "",
             outcome,
             Some(invoked.meter),
+            Some(wire::CallInput {
+                tool: tool.clone(),
+                args: String::from_utf8_lossy(&event).into_owned(),
+                caller: None,
+                digest: format!("sha256:{}", program.digest),
+            }),
         );
         match invoked.result {
             Output::Done(_) => Ok(()),

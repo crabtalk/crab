@@ -10,7 +10,7 @@ use anyhow::{Result, bail};
 use berm::{Callsite, Meter, Syscall, syscall::after};
 use berm_api::{
     Output,
-    host::{Kind, Link, Outcome, Reply, Source},
+    host::{CallInput, Kind, Link, Outcome, Reply, Source},
 };
 use std::{sync::Weak, time::Duration};
 
@@ -189,6 +189,12 @@ impl<E: Env> Host<E> {
                 &from,
                 outcome,
                 Some(invoked.meter),
+                Some(CallInput {
+                    tool: wake.tool.clone(),
+                    args: wake.args.clone(),
+                    caller: None,
+                    digest: format!("sha256:{}", target.digest),
+                }),
             );
             let failed = match &invoked.result {
                 Output::Failed(failure) => Some(failure.clone()),

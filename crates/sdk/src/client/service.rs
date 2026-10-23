@@ -10,7 +10,7 @@ use crate::{
 };
 use berm_api::{
     Budget, Cron, Deployed, Logged, Meter, Output, Program, Runtime, Terms,
-    host::{self, Caller, Crons, Live, ToolUpdate, Wakes},
+    host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Method, RequestBuilder};
 use std::collections::BTreeMap;
@@ -187,6 +187,12 @@ impl Client {
             req = req.query(&[("outcome", outcome)]);
         }
         self.json(req).await
+    }
+
+    /// What `name`'s call `id` ran with. Only a call that failed keeps it.
+    pub async fn call_input(&self, name: &str, id: u64) -> Result<CallInput, Error> {
+        let path = format!("{}/calls/{id}/input", self.program(name));
+        self.json(self.at(Method::GET, &path)).await
     }
 
     /// What `name` used in UTC month `month`, `YYYY-MM`, or this one, and what

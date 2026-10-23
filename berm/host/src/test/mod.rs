@@ -283,6 +283,11 @@ impl TestHost {
         })
     }
 
+    /// Write the calls and logs held in memory, as the host's timer does.
+    pub async fn flush(&self) -> Result<()> {
+        self.host.flush().await
+    }
+
     /// Every pending wake beside when it is due, in milliseconds since the
     /// Unix epoch, soonest first.
     pub async fn wakes(&self) -> Result<Vec<(Wake, u64)>> {

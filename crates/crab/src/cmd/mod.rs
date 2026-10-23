@@ -20,6 +20,7 @@ pub mod new;
 pub mod org;
 pub mod plans;
 pub mod rates;
+pub mod replay;
 pub mod request;
 pub mod rm;
 pub mod secret;

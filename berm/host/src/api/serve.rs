@@ -34,6 +34,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/live", get(live::<E>))
         .route("/logs", get(logs::<E>))
         .route("/calls", get(calls::<E>))
+        .route("/calls/{id}/input", get(call_input::<E>))
         .route("/crons", get(crons::<E>))
         .route("/wakes", get(wakes::<E>))
         .route(
@@ -127,6 +128,15 @@ async fn calls<E: Env>(
         AppendHeaders(link.map(|link| (header::LINK, link))),
         Json(calls),
     ))
+}
+
+/// What one of the service's calls that failed ran with.
+async fn call_input<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(id): Path<u64>,
+) -> Result<impl IntoResponse, Denied> {
+    Ok(Json(host.call_input(&service, id).await?))
 }
 
 /// The service's cron tools.

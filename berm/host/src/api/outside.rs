@@ -11,7 +11,7 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use berm::Meter;
 use berm_api::{
     Output,
-    host::{self as wire, Caller, Kind, Outcome, Source},
+    host::{self as wire, CallInput, Caller, Kind, Outcome, Source},
 };
 use std::{
     future::Future,
@@ -123,6 +123,7 @@ impl<E: Env> Host<E> {
                 who,
                 Outcome::Refused,
                 None,
+                None,
             );
             Err(denied)
         };
@@ -223,7 +224,7 @@ impl<E: Env> Host<E> {
                     .map(host::user),
                 client.map(Into::into),
                 &tool,
-                args,
+                args.clone(),
             )
             .await
             .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
@@ -247,6 +248,12 @@ impl<E: Env> Host<E> {
             who,
             outcome,
             Some(invoked.meter),
+            Some(CallInput {
+                tool: tool.clone(),
+                args: String::from_utf8_lossy(&args).into_owned(),
+                caller: caller.clone(),
+                digest: format!("sha256:{}", program.digest),
+            }),
         );
         headers.insert(
             HeaderName::from_static(wire::METER),
