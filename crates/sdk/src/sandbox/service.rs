@@ -36,6 +36,10 @@ pub struct DeployRequest {
     /// service has a database.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
+    /// Install it stopped: it takes no calls and fires no wakes until
+    /// started.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 
 /// A seed to upload: its SHA-256 in hex, and its size in bytes.

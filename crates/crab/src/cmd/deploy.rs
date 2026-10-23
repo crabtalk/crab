@@ -119,6 +119,7 @@ fn one(client: &Client, dir: &Path, image: Option<&str>, force: bool, pull: bool
                     crons: project.crons.clone(),
                     size: project.database.size(),
                     seed,
+                    stopped: false,
                 },
             ))?
         }
