@@ -3,82 +3,89 @@
 //! URL after its text, where the terminal makes it clickable.
 
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use ratatui::{
+    style::{Modifier, Style},
+    text::{Line, Span, Text},
+};
 
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const ITALIC: &str = "\x1b[3m";
-const UNDERLINE: &str = "\x1b[4m";
-const RESET: &str = "\x1b[0m";
-
-/// `markdown` as lines for the terminal, each indented by `indent`.
-pub fn render(markdown: &str, indent: &str) -> String {
-    let mut out = String::new();
-    let mut line = String::new();
+/// `markdown` as lines of styled spans.
+pub fn render(markdown: &str) -> Text<'static> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let mut line: Vec<Span<'static>> = Vec::new();
+    let mut styles = vec![Style::default()];
     // Each open list's next number, or `None` for a bulleted one.
     let mut lists: Vec<Option<u64>> = Vec::new();
     let mut link: Option<(String, String)> = None;
-    let end = |line: &mut String, out: &mut String| {
+    let dim = Style::default().add_modifier(Modifier::DIM);
+
+    fn end(line: &mut Vec<Span<'static>>, lines: &mut Vec<Line<'static>>) {
         if !line.is_empty() {
-            out.push_str(indent);
-            out.push_str(line);
-            out.push_str(RESET);
-            out.push('\n');
-            line.clear();
+            lines.push(Line::from(std::mem::take(line)));
         }
-    };
+    }
     for event in Parser::new(markdown) {
+        let style = *styles.last().unwrap_or(&Style::default());
         match event {
-            Event::Start(Tag::Paragraph) if !out.is_empty() && lists.is_empty() => out.push('\n'),
-            Event::End(TagEnd::Paragraph | TagEnd::Item) => end(&mut line, &mut out),
+            Event::Start(Tag::Paragraph) if !lines.is_empty() && lists.is_empty() => {
+                lines.push(Line::default())
+            }
+            Event::End(TagEnd::Paragraph | TagEnd::Item) => end(&mut line, &mut lines),
             Event::Start(Tag::List(first)) => {
-                end(&mut line, &mut out);
-                if !out.is_empty() && lists.is_empty() {
-                    out.push('\n');
+                end(&mut line, &mut lines);
+                if !lines.is_empty() && lists.is_empty() {
+                    lines.push(Line::default());
                 }
                 lists.push(first);
             }
             Event::End(TagEnd::List(_)) => {
-                end(&mut line, &mut out);
+                end(&mut line, &mut lines);
                 lists.pop();
             }
             Event::Start(Tag::Item) => {
-                end(&mut line, &mut out);
-                line.push_str(&"  ".repeat(lists.len().saturating_sub(1)));
-                match lists.last_mut() {
+                end(&mut line, &mut lines);
+                let indent = "  ".repeat(lists.len().saturating_sub(1));
+                let marker = match lists.last_mut() {
                     Some(Some(number)) => {
-                        line.push_str(&format!("{DIM}{number}.{RESET} "));
+                        let marker = format!("{indent}{number}. ");
                         *number += 1;
+                        marker
                     }
-                    _ => line.push_str(&format!("{DIM}•{RESET} ")),
-                }
+                    _ => format!("{indent}• "),
+                };
+                line.push(Span::styled(marker, dim));
             }
-            Event::Start(Tag::Strong) => line.push_str(BOLD),
-            Event::Start(Tag::Emphasis) => line.push_str(ITALIC),
-            Event::End(TagEnd::Strong | TagEnd::Emphasis) => line.push_str(RESET),
+            Event::Start(Tag::Strong) => styles.push(style.add_modifier(Modifier::BOLD)),
+            Event::Start(Tag::Emphasis) => styles.push(style.add_modifier(Modifier::ITALIC)),
             Event::Start(Tag::Link { dest_url, .. }) => {
                 link = Some((dest_url.into_string(), String::new()));
-                line.push_str(UNDERLINE);
+                styles.push(style.add_modifier(Modifier::UNDERLINED));
+            }
+            Event::End(TagEnd::Strong | TagEnd::Emphasis) => {
+                styles.pop();
             }
             Event::End(TagEnd::Link) => {
-                line.push_str(RESET);
+                styles.pop();
                 if let Some((url, text)) = link.take()
                     && url != text
                 {
-                    line.push_str(&format!(" ({url})"));
+                    line.push(Span::raw(format!(" ({url})")));
                 }
             }
             Event::Text(text) => {
                 if let Some((_, said)) = &mut link {
                     said.push_str(&text);
                 }
-                line.push_str(&text);
+                line.push(Span::styled(text.into_string(), style));
             }
-            Event::Code(code) => line.push_str(&format!("{BOLD}{code}{RESET}")),
-            Event::SoftBreak => line.push(' '),
-            Event::HardBreak => end(&mut line, &mut out),
+            Event::Code(code) => line.push(Span::styled(
+                code.into_string(),
+                style.add_modifier(Modifier::BOLD),
+            )),
+            Event::SoftBreak => line.push(Span::raw(" ")),
+            Event::HardBreak => end(&mut line, &mut lines),
             _ => {}
         }
     }
-    end(&mut line, &mut out);
-    out
+    end(&mut line, &mut lines);
+    Text::from(lines)
 }

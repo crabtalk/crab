@@ -96,20 +96,20 @@ pub fn run(
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }
-    // The local host's secrets are its own file's; Cloud's are set per service.
-    if client.owner.is_some() {
-        let set = utils::wait(client.secrets(name))?;
-        let unset: Vec<&String> = runtime
-            .deps
-            .secrets
-            .iter()
-            .filter(|secret| !set.iter().any(|one| one.name == **secret))
-            .collect();
-        for secret in &unset {
-            println!("  unset   secret {secret}");
-        }
-        if !unset.is_empty() {
-            println!("  ask a person to set them: crab secret request {name}");
+    let set = utils::wait(client.secrets(name))?;
+    let unset: Vec<&String> = runtime
+        .deps
+        .secrets
+        .iter()
+        .filter(|secret| !set.iter().any(|one| one.name == **secret))
+        .collect();
+    for secret in &unset {
+        println!("  unset   secret {secret}");
+    }
+    if !unset.is_empty() {
+        match client.owner {
+            None => println!("  have a person set them at their terminal: crab secret fill {name}"),
+            Some(_) => println!("  ask a person to set them: crab secret request {name}"),
         }
     }
     Ok(())

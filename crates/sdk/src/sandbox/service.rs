@@ -76,11 +76,38 @@ pub struct Secret {
     pub created_at: i64,
 }
 
+impl Secret {
+    /// The longest name a secret may have.
+    pub const NAME_MAX: usize = 128;
+
+    /// Whether `name` may name a secret: up to [`Self::NAME_MAX`] ASCII
+    /// letters, digits and `_`, not starting with a digit.
+    pub fn valid(name: &str) -> bool {
+        let mut chars = name.chars();
+        name.len() <= Self::NAME_MAX
+            && chars
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+}
+
 /// The body of `PUT …/secrets/{name}`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetSecret {
     pub value: String,
+}
+
+impl SetSecret {
+    /// The most bytes a secret's value may hold.
+    pub const VALUE_MAX: usize = 8 * 1024;
+
+    /// Whether `value` may be a secret's: 1 to [`Self::VALUE_MAX`] bytes on
+    /// one line.
+    pub fn valid(value: &str) -> bool {
+        !value.is_empty() && value.len() <= Self::VALUE_MAX && !value.chars().any(char::is_control)
+    }
 }
 
 /// One of an account's services, as its owners list them.

@@ -51,6 +51,8 @@ const CHANGE_BACKLOG: usize = 16;
 
 pub struct Service {
     pub host: Host<Local>,
+    /// Each service's secrets, which the host reads and the control API sets.
+    pub secrets: Grants,
     /// Where uploaded images are kept for the host to pull.
     images: Stored,
     /// Fires when the deployed set changes. Connected MCP sessions turn this
@@ -73,6 +75,7 @@ impl Service {
         proxy: Option<&str>,
     ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
+        let grants = Grants::open(secrets);
         let config = Config {
             depth,
             cpu,
@@ -89,7 +92,7 @@ impl Service {
                 proxy: Some(Fetch::new(proxy)?),
                 images: images.clone(),
                 peers: Alone,
-                secrets: Grants::open(secrets),
+                secrets: grants.clone(),
                 layers: Layers::new(tower::layer::util::Identity::new()),
                 observe: (),
                 clock: System,
@@ -100,6 +103,7 @@ impl Service {
         host.boot();
         Ok(Arc::new(Self {
             host,
+            secrets: grants,
             images,
             changed: broadcast::channel(CHANGE_BACKLOG).0,
         }))

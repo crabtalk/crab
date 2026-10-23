@@ -135,7 +135,7 @@ async fn calls<E: Env>(
 async fn call_input<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
-    Path(id): Path<u64>,
+    Path(CallId { id }): Path<CallId>,
 ) -> Result<impl IntoResponse, Denied> {
     Ok(Json(host.call_input(&service, id).await?))
 }
@@ -145,7 +145,7 @@ async fn call_input<E: Env>(
 async fn call_tape<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
-    Path(id): Path<u64>,
+    Path(CallId { id }): Path<CallId>,
 ) -> Result<impl IntoResponse, Denied> {
     Ok((
         [(header::CONTENT_TYPE, "application/octet-stream")],
@@ -190,6 +190,12 @@ async fn call<E: Env>(
 #[derive(Deserialize)]
 struct Tool {
     tool: String,
+}
+
+/// The call a path names, beside whatever names its service.
+#[derive(Deserialize)]
+struct CallId {
+    id: u64,
 }
 
 /// `?args=` on a `GET`: the argument object, URL-encoded JSON.

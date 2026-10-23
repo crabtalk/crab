@@ -219,16 +219,15 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// `name`'s secrets, by name. Cloud only: a local host reads its secrets from
-    /// its own file.
+    /// `name`'s secrets, by name.
     pub async fn secrets(&self, name: &str) -> Result<Vec<Secret>, Error> {
-        let path = self.secrets_path(name)?;
+        let path = self.secrets_path(name);
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Set `name`'s secret `secret` to `value`. Cloud only.
+    /// Set `name`'s secret `secret` to `value`.
     pub async fn put_secret(&self, name: &str, secret: &str, value: &str) -> Result<(), Error> {
-        let path = format!("{}/{secret}", self.secrets_path(name)?);
+        let path = format!("{}/{secret}", self.secrets_path(name));
         self.ok(self.at(Method::PUT, &path).json(&SetSecret {
             value: value.to_owned(),
         }))
@@ -236,9 +235,9 @@ impl Client {
         Ok(())
     }
 
-    /// Revoke `name`'s secret `secret`. Cloud only.
+    /// Revoke `name`'s secret `secret`.
     pub async fn delete_secret(&self, name: &str, secret: &str) -> Result<(), Error> {
-        let path = format!("{}/{secret}", self.secrets_path(name)?);
+        let path = format!("{}/{secret}", self.secrets_path(name));
         self.ok(self.at(Method::DELETE, &path)).await?;
         Ok(())
     }
@@ -258,13 +257,8 @@ impl Client {
         self.json(request).await
     }
 
-    fn secrets_path(&self, name: &str) -> Result<String, Error> {
-        match &self.owner {
-            Some(_) => Ok(format!("{}/secrets", self.program(name))),
-            None => Err(Error::Host(
-                "the local host reads its secrets from a secrets.toml",
-            )),
-        }
+    fn secrets_path(&self, name: &str) -> String {
+        format!("{}/secrets", self.program(name))
     }
 
     /// `name`'s path on Cloud, which alone serves it.

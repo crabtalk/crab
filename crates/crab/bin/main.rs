@@ -94,9 +94,9 @@ enum Command {
         /// directory of a workspace, for every service in it.
         #[arg(default_value = ".")]
         dir: PathBuf,
-        /// Run in the background, returning once every service is deployed
-        /// or failed.
-        #[arg(long)]
+        /// Return once every service is deployed or failed, leaving the host
+        /// watching the workspace.
+        #[arg(short, long)]
         detach: bool,
     },
     /// Run the local host in the foreground: deploy programs to it and serve

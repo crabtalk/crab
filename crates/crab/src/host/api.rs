@@ -16,6 +16,7 @@ use axum::{
 };
 use berm_api::{Deployed, Program as Wire, host};
 use berm_host::{Denied, Named, deny};
+use crabtalk_sdk::sandbox::service::{Secret, SetSecret};
 use rmcp::transport::{
     StreamableHttpService, streamable_http_server::session::local::LocalSessionManager,
 };
@@ -41,6 +42,8 @@ impl Service {
             .merge(
                 Router::new()
                     .route("/", put(deploy).delete(undeploy))
+                    .route("/secrets", get(secrets))
+                    .route("/secrets/{secret}", put(set_secret).delete(revoke_secret))
                     .with_state(service.clone()),
             )
             .route_layer(middleware::from_fn(named));
@@ -156,4 +159,85 @@ async fn undeploy(
             format!("no program named {name:?} is deployed"),
         )),
     }
+}
+
+/// The secret a path names, beside the program.
+#[derive(Deserialize)]
+struct SecretName {
+    secret: String,
+}
+
+/// The program's secrets, by name; a value is never read back.
+async fn secrets(
+    State(service): State<Arc<Service>>,
+    Extension(Named(name)): Extension<Named>,
+) -> Result<Json<Vec<Secret>>, Denied> {
+    service
+        .get(&name)
+        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such program"))?;
+    let listed = service.secrets.list(&name).map_err(internal)?;
+    Ok(Json(
+        listed
+            .into_iter()
+            .map(|(name, created_at)| Secret { name, created_at })
+            .collect(),
+    ))
+}
+
+/// Set one of the program's secrets. A set secret is changed only by revoking
+/// it and setting it again.
+async fn set_secret(
+    State(service): State<Arc<Service>>,
+    Extension(Named(name)): Extension<Named>,
+    Path(SecretName { secret }): Path<SecretName>,
+    Json(body): Json<SetSecret>,
+) -> Result<StatusCode, Denied> {
+    service
+        .get(&name)
+        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such program"))?;
+    if !Secret::valid(&secret) {
+        return Err(deny(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "a secret's name is up to {} ASCII letters, digits and `_`, not starting with a digit",
+                Secret::NAME_MAX
+            ),
+        ));
+    }
+    if !SetSecret::valid(&body.value) {
+        return Err(deny(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{secret}'s value is 1 to {} bytes on one line",
+                SetSecret::VALUE_MAX
+            ),
+        ));
+    }
+    match service
+        .secrets
+        .set(&name, &secret, &body.value)
+        .map_err(internal)?
+    {
+        true => Ok(StatusCode::NO_CONTENT),
+        false => Err(deny(
+            StatusCode::CONFLICT,
+            format!("{secret} is set; revoke it to set it again"),
+        )),
+    }
+}
+
+/// Revoke one of the program's secrets.
+async fn revoke_secret(
+    State(service): State<Arc<Service>>,
+    Extension(Named(name)): Extension<Named>,
+    Path(SecretName { secret }): Path<SecretName>,
+) -> Result<StatusCode, Denied> {
+    match service.secrets.remove(&name, &secret).map_err(internal)? {
+        true => Ok(StatusCode::NO_CONTENT),
+        false => Err(deny(StatusCode::NOT_FOUND, "no secret of that name")),
+    }
+}
+
+fn internal(error: anyhow::Error) -> Denied {
+    deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}"))
 }

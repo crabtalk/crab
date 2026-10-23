@@ -1,153 +1,272 @@
-//! `crab secret fill`'s form: one step per credential, as crabtalk's
-//! `/secrets` page lays them out, asked line by line at the terminal so the
-//! guide and the copy values stay in its scrollback.
+//! `crab secret fill`'s form: one step per credential, laid out as crabtalk's
+//! `/secrets` page lays them out, drawn in the terminal.
 
 pub mod guide;
-pub mod target;
+mod view;
 
-use crate::fill::target::Target;
+use crate::utils;
 use anyhow::Result;
-use berm_api::Credential;
+use base64::{Engine, engine::general_purpose::STANDARD};
+use berm_api::{Credential, CredentialSecret};
 use crabtalk_sdk::client::Client;
+use ratatui::{
+    DefaultTerminal,
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    text::Text,
+};
 use regex::Regex;
-use std::{collections::BTreeMap, io};
+use std::{
+    collections::BTreeMap,
+    io::{self, Write},
+};
 
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RESET: &str = "\x1b[0m";
-
-/// Ask for each of `service`'s `credentials` in turn and save each answered
-/// to `target`, which holds `stored` now; `copy` holds the values their copy
-/// keys take.
-pub fn run(
-    client: &Client,
-    service: &str,
-    target: &Target,
-    credentials: &[(String, Credential)],
-    mut stored: BTreeMap<String, Option<String>>,
-    copy: &BTreeMap<String, String>,
-) -> Result<()> {
-    let title = |id: &str, credential: &Credential| match credential.title.is_empty() {
-        true => id.to_owned(),
-        false => credential.title.clone(),
-    };
-    let count = credentials.len();
-    eprintln!("{DIM}SAVING TO{RESET}  {target}");
-    eprintln!("{DIM}SERVICE{RESET}    {service}");
-    eprintln!("{DIM}STEPS{RESET}");
-    for (at, (id, credential)) in credentials.iter().enumerate() {
-        let set = credential
-            .secrets
-            .iter()
-            .all(|s| stored.contains_key(&s.name));
-        let status = if set { "set" } else { "not set" };
-        eprintln!(
-            "  {DIM}{:02}{RESET} {}  {DIM}{status}{RESET}",
-            at + 1,
-            title(id, credential)
-        );
-    }
-    eprintln!("{DIM}Enter on a field keeps it; enter on every field skips the step.{RESET}");
-
-    let mut saved = Vec::new();
-    for (at, (id, credential)) in credentials.iter().enumerate() {
-        let title = title(id, credential);
-        eprintln!(
-            "\n{BOLD}{title}{RESET}  {DIM}step {} of {count}{RESET}\n",
-            at + 1
-        );
-        if !credential.guide.trim().is_empty() {
-            eprintln!("{}", guide::render(&credential.guide, "  "));
-        }
-        for (key, label) in &credential.copy {
-            if let Some(value) = copy.get(key) {
-                eprintln!("  {DIM}{}{RESET}\n  {value}\n", label.to_uppercase());
-            }
-        }
-        let mut values = Vec::new();
-        for secret in &credential.secrets {
-            let mut label = match secret.label.is_empty() {
-                true => secret.name.clone(),
-                false => secret.label.clone(),
-            };
-            if label != secret.name {
-                label = format!("{label} {DIM}{}{RESET}", secret.name);
-            }
-            let now = match stored.get(&secret.name) {
-                Some(Some(value)) if !secret.masked => format!(" {DIM}[{value}]{RESET}"),
-                Some(_) => format!(" {DIM}[set]{RESET}"),
-                None => String::new(),
-            };
-            let pattern = secret.pattern.as_deref().and_then(|p| Regex::new(p).ok());
-            loop {
-                let prompt = format!("  {label}{now}: ");
-                let value = match secret.masked {
-                    true => rpassword::prompt_password(&prompt)?,
-                    false => {
-                        eprint!("{prompt}");
-                        let mut line = String::new();
-                        io::stdin().read_line(&mut line)?;
-                        line
-                    }
-                };
-                let value = value.trim().to_owned();
-                let unchanged = matches!(stored.get(&secret.name), Some(Some(v)) if *v == value);
-                if value.is_empty() || unchanged {
-                    break;
-                }
-                if pattern.as_ref().is_some_and(|p| !p.is_match(&value))
-                    && !confirm(&format!(
-                        "  Doesn't look like {title}'s {}. Keep it?",
-                        if secret.label.is_empty() {
-                            &secret.name
-                        } else {
-                            &secret.label
-                        }
-                    ))?
-                {
-                    continue;
-                }
-                values.push((secret.name.clone(), value));
-                break;
-            }
-        }
-        if values.is_empty() {
-            eprintln!("  {DIM}kept as it is{RESET}");
-            continue;
-        }
-        if credential
-            .secrets
-            .iter()
-            .any(|s| !stored.contains_key(&s.name) && !values.iter().any(|(n, _)| *n == s.name))
-        {
-            eprintln!("  {DIM}skipped: each field that is not set needs a value{RESET}");
-            continue;
-        }
-        target.save(client, service, &values, &stored)?;
-        for (name, value) in values {
-            let masked = credential
-                .secrets
-                .iter()
-                .any(|s| s.name == name && s.masked);
-            stored.insert(name, (!masked).then_some(value));
-        }
-        eprintln!("  saved {title}");
-        saved.push(title);
-    }
-    match saved.is_empty() {
-        true => eprintln!("\nnothing saved for {service}"),
-        false => eprintln!("\nsaved {} for {service}, in {target}", saved.join(", ")),
-    }
-    Ok(())
+/// The form for one service.
+pub struct Form<'a> {
+    client: &'a Client,
+    service: String,
+    /// Where values go, as the person reads it.
+    target: String,
+    steps: Vec<Step>,
+    /// The step on screen.
+    at: usize,
+    /// The row focused on it: its copy values, then its fields.
+    focus: usize,
+    /// What the last action said, and whether it went wrong.
+    said: Option<(String, bool)>,
+    /// The titles saved, in order, for the record left on leaving.
+    saved: Vec<String>,
 }
 
-/// Ask `question` at the terminal; yes only for `y` or `yes`.
-fn confirm(question: &str) -> Result<bool> {
-    eprint!("{question} [y/N] ");
-    let mut line = String::new();
-    io::stdin().read_line(&mut line)?;
-    Ok(matches!(
-        line.trim().to_ascii_lowercase().as_str(),
-        "y" | "yes"
-    ))
+/// One credential.
+struct Step {
+    title: String,
+    guide: Text<'static>,
+    /// Each value the person enters at the provider, beside its label.
+    copy: Vec<(String, String)>,
+    fields: Vec<Field>,
+    saved: bool,
+}
+
+/// One secret of a credential.
+struct Field {
+    secret: CredentialSecret,
+    typed: String,
+    /// Whether it is set on the host.
+    set: bool,
+    pattern: Option<Regex>,
+}
+
+impl Field {
+    /// What the provider calls it.
+    fn label(&self) -> &str {
+        match self.secret.label.is_empty() {
+            true => &self.secret.name,
+            false => &self.secret.label,
+        }
+    }
+
+    /// Whether the typed value misses the declared pattern.
+    fn off(&self) -> bool {
+        !self.typed.is_empty()
+            && self
+                .pattern
+                .as_ref()
+                .is_some_and(|pattern| !pattern.is_match(&self.typed))
+    }
+}
+
+impl<'a> Form<'a> {
+    /// `credentials` of `service`, set on the host `client` talks to, which
+    /// `target` names for the person; `copy` holds the values their copy keys
+    /// take.
+    pub fn new(
+        client: &'a Client,
+        service: &str,
+        target: String,
+        credentials: Vec<(String, Credential)>,
+        copy: &BTreeMap<String, String>,
+    ) -> Result<Self> {
+        let set: Vec<String> = utils::wait(client.secrets(service))?
+            .into_iter()
+            .map(|secret| secret.name)
+            .collect();
+        let steps = credentials
+            .into_iter()
+            .map(|(id, credential)| Step {
+                title: match credential.title.is_empty() {
+                    true => id,
+                    false => credential.title.clone(),
+                },
+                guide: guide::render(&credential.guide),
+                copy: credential
+                    .copy
+                    .iter()
+                    .filter_map(|(key, label)| Some((label.clone(), copy.get(key)?.clone())))
+                    .collect(),
+                fields: credential
+                    .secrets
+                    .into_iter()
+                    .map(|secret| Field {
+                        typed: String::new(),
+                        set: set.contains(&secret.name),
+                        pattern: secret.pattern.as_deref().and_then(|p| Regex::new(p).ok()),
+                        secret,
+                    })
+                    .collect(),
+                saved: false,
+            })
+            .collect();
+        let mut form = Self {
+            client,
+            service: service.to_owned(),
+            target,
+            steps,
+            at: 0,
+            focus: 0,
+            said: None,
+            saved: Vec::new(),
+        };
+        form.go(0);
+        Ok(form)
+    }
+
+    /// Run the form until the person leaves it, then say what was saved.
+    pub fn run(mut self) -> Result<()> {
+        let mut terminal = ratatui::init();
+        let ran = self.ask(&mut terminal);
+        ratatui::restore();
+        match self.saved.is_empty() {
+            true => eprintln!("nothing saved for {}", self.service),
+            false => eprintln!(
+                "saved {} for {}, on {}",
+                self.saved.join(", "),
+                self.service,
+                self.target
+            ),
+        }
+        ran
+    }
+
+    fn ask(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+        loop {
+            terminal.draw(|frame| view::draw(self, frame))?;
+            let Event::Key(key) = event::read()? else {
+                continue;
+            };
+            if key.kind == KeyEventKind::Press && !self.key(key)? {
+                return Ok(());
+            }
+        }
+    }
+
+    /// Act on `key`; `false` to leave.
+    fn key(&mut self, key: KeyEvent) -> Result<bool> {
+        let copies = self.steps[self.at].copy.len();
+        let rows = (copies + self.steps[self.at].fields.len()).max(1);
+        match key.code {
+            KeyCode::Esc => return Ok(false),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Ok(false);
+            }
+            KeyCode::Tab | KeyCode::Down => self.focus = (self.focus + 1) % rows,
+            KeyCode::BackTab | KeyCode::Up => self.focus = (self.focus + rows - 1) % rows,
+            KeyCode::Left => self.go(self.at.saturating_sub(1)),
+            KeyCode::Right => self.go((self.at + 1).min(self.steps.len() - 1)),
+            KeyCode::Enter | KeyCode::Char('c') if self.focus < copies => self.copy(self.focus)?,
+            KeyCode::Enter => self.save()?,
+            KeyCode::Char(c) if self.focus >= copies => {
+                if let Some(field) = self.steps[self.at].fields.get_mut(self.focus - copies) {
+                    field.typed.push(c);
+                }
+            }
+            KeyCode::Backspace if self.focus >= copies => {
+                if let Some(field) = self.steps[self.at].fields.get_mut(self.focus - copies) {
+                    field.typed.pop();
+                }
+            }
+            _ => {}
+        }
+        Ok(true)
+    }
+
+    /// Show step `at`, focused on its first field.
+    fn go(&mut self, at: usize) {
+        self.at = at;
+        self.focus = self.steps[at].copy.len();
+        self.said = None;
+    }
+
+    /// Put copy value `row` of the step on the clipboard, through the
+    /// terminal.
+    fn copy(&mut self, row: usize) -> Result<()> {
+        let (label, value) = &self.steps[self.at].copy[row];
+        let mut out = io::stdout();
+        write!(out, "\x1b]52;c;{}\x07", STANDARD.encode(value))?;
+        out.flush()?;
+        self.said = Some((format!("copied the {label}"), false));
+        Ok(())
+    }
+
+    /// Save the step on screen, then show the next one not saved.
+    fn save(&mut self) -> Result<()> {
+        let step = &self.steps[self.at];
+        if step
+            .fields
+            .iter()
+            .any(|field| !field.set && field.typed.is_empty())
+        {
+            self.said = Some((
+                "type a value for each field that is not set".to_owned(),
+                true,
+            ));
+            return Ok(());
+        }
+        let typed: Vec<(String, String, bool)> = step
+            .fields
+            .iter()
+            .filter(|field| !field.typed.is_empty())
+            .map(|field| (field.secret.name.clone(), field.typed.clone(), field.set))
+            .collect();
+        if typed.is_empty() {
+            self.next();
+            return Ok(());
+        }
+        for (name, value, set) in &typed {
+            let written = (|| -> Result<()> {
+                if *set {
+                    utils::wait(self.client.delete_secret(&self.service, name))?;
+                }
+                utils::wait(self.client.put_secret(&self.service, name, value))?;
+                Ok(())
+            })();
+            if let Err(error) = written {
+                self.said = Some((format!("{error:#}"), true));
+                return Ok(());
+            }
+        }
+        let step = &mut self.steps[self.at];
+        for field in &mut step.fields {
+            if !field.typed.is_empty() {
+                field.set = true;
+                field.typed.clear();
+            }
+        }
+        step.saved = true;
+        let title = step.title.clone();
+        self.saved.push(title.clone());
+        self.next();
+        self.said = Some((format!("saved {title}"), false));
+        Ok(())
+    }
+
+    /// Show the first step after this one that is not saved, wrapping round.
+    fn next(&mut self) {
+        let count = self.steps.len();
+        if let Some(at) = (1..count)
+            .map(|offset| (self.at + offset) % count)
+            .find(|at| !self.steps[*at].saved)
+        {
+            self.go(at);
+        }
+    }
 }

@@ -4,18 +4,19 @@ description: "crab serve deploys programs and serves their tools over HTTP, and 
 ---
 
 `crab serve` runs the local host, a long-running service that deploys programs and serves their tools.
+It is the one host on a machine: `crab dev` starts it in the background when nothing answers on `127.0.0.1:7777`, writing to `host.log` under its root, and hands it workspaces to watch at `/dev`.
 An invocation is ephemeral, but three things around it are not: the deployed
 set, the modules compiled from it, and the engine's code cache. A program is
 compiled once, at deploy, so an invocation pays only instantiation.
 
 ```sh
-crab serve --addr 127.0.0.1:7777 --root ~/.berm
+crab serve --addr 127.0.0.1:7777 --root ~/.crab/host
 ```
 
 | Flag | |
 |---|---|
 | `--addr` | Where it listens, `127.0.0.1:7777` by default. |
-| `--root` | Where deployed images, the code cache and `secrets.toml` live. |
+| `--root` | Where deployed images, the code cache and `secrets.toml` live, `~/.crab/host` by default. |
 | `--max-call-depth` | How deep a chain of programs calling programs nests, 4 by default; `0` refuses the first nested call. |
 | `--max-cpu-millis` | How many milliseconds of CPU one call spends, nested calls excluded, 100 by default. |
 | `--max-call-seconds` | How long one call runs before it is stopped, 60 by default. |
@@ -120,14 +121,15 @@ An invocation stops at its tool's CPU budget, checked every 100ms, and a row sys
 ## Secrets
 
 A request header or body may name `{secret:NAME}` for a secret the manifest declares.
-The local host substitutes it from `{root}/secrets.toml`, one table by secret name for
-every program it runs, read again whenever the file changes. A request goes only to a
-host the manifest declares, so neither does the secret. `crab dev` reads the
-`secrets.toml` at its workspace's root instead.
+The local host substitutes the value it keeps for that program, and a request goes only
+to a host the manifest declares, so neither does the secret. It keeps each program's
+secrets in `secrets.toml` under its root, readable by its owner alone, and only it
+writes the file: they are set through its routes, as on Cloud.
 
-```toml
-TOKEN = "..."
-```
+- `GET /programs/{name}/secrets` lists them by name; a value is never read back.
+- `PUT /programs/{name}/secrets/{secret}` with `{"value": "…"}` sets one, and answers
+  `409` while it is set: a set secret is changed by revoking it and setting it again.
+- `DELETE /programs/{name}/secrets/{secret}` revokes one.
 
 ## What a deployed program can reach
 

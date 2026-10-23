@@ -4,7 +4,7 @@ use crate::{
     dev::{Dev, Event},
     utils,
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use berm::syscall::call;
 use berm_api::project::Project;
 use berm_build::Workspace;
@@ -13,7 +13,11 @@ use std::{
     collections::BTreeMap,
     fs,
     path::Path,
-    sync::{Arc, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
@@ -22,10 +26,14 @@ use std::{
 const QUIET: Duration = Duration::from_millis(300);
 
 impl Dev {
-    /// Build and deploy every service, then again on each change under the
-    /// workspace's root outside its target directory and `.git`. Returns only when the
-    /// watch cannot go on.
-    pub fn watch(self: Arc<Self>, workspace: Workspace) -> Result<()> {
+    /// Build and deploy every service of `workspace`, then again on each
+    /// change under its root outside its target directory and `.git`, until
+    /// `stopped` is set. Returns early only when the watch cannot go on.
+    pub(crate) fn watch(
+        self: Arc<Self>,
+        workspace: Workspace,
+        stopped: Arc<AtomicBool>,
+    ) -> Result<()> {
         let (send, changes) = mpsc::channel::<notify::Result<Changed>>();
         let mut watcher = notify::recommended_watcher(send).context("cannot watch files")?;
         watcher
@@ -37,10 +45,20 @@ impl Dev {
         let mut deployed = BTreeMap::new();
         loop {
             for (index, dir) in workspace.services.iter().enumerate() {
-                self.rebuild(index, dir, &mut deployed);
+                if stopped.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                self.rebuild(&workspace.root, index, dir, &mut deployed);
             }
             loop {
-                let changed = changes.recv().context("the file watcher stopped")??;
+                if stopped.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                let changed = match changes.recv_timeout(QUIET) {
+                    Ok(changed) => changed?,
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => bail!("the file watcher stopped"),
+                };
                 if changed.paths.iter().any(|path| {
                     !path.starts_with(&workspace.target)
                         && !path.components().any(|part| part.as_os_str() == ".git")
@@ -52,10 +70,24 @@ impl Dev {
         }
     }
 
-    /// Build the service in `dir`, the `index`th, and deploy it unless
-    /// `deployed` holds its digest already, recording either outcome.
-    fn rebuild(&self, index: usize, dir: &Path, deployed: &mut BTreeMap<usize, String>) {
-        let name = self.status.lock().services[index].name.clone();
+    /// Build the service in `dir`, the `index`th of the workspace at `root`,
+    /// and deploy it unless `deployed` holds its digest already, recording
+    /// either outcome.
+    fn rebuild(
+        &self,
+        root: &Path,
+        index: usize,
+        dir: &Path,
+        deployed: &mut BTreeMap<usize, String>,
+    ) {
+        let Some(name) = self
+            .status
+            .lock()
+            .watched(root, index)
+            .map(|one| one.name.clone())
+        else {
+            return;
+        };
         let result = (|| -> Result<_> {
             let project = Project::read(dir)?;
             let image = berm_build::build(dir, None)?;
@@ -79,30 +111,37 @@ impl Dev {
 
         let now = call::system_now();
         let mut status = self.status.lock();
-        let watched = &mut status.services[index];
-        watched.rebuilt = Some(now);
-        match result {
-            Ok(None) => watched.error = None,
+        let Some(one) = status.watched(root, index) else {
+            return;
+        };
+        one.rebuilt = Some(now);
+        let event = match result {
+            Ok(None) => {
+                one.error = None;
+                return;
+            }
             Ok(Some((version, breaks))) => {
-                watched.error = None;
-                watched.version = Some(version.clone());
-                watched.deployed = Some(now);
-                drop(status);
-                self.emit(&Event::Deployed {
-                    service: &name,
-                    version: &version,
+                one.error = None;
+                one.version = Some(version.clone());
+                one.deployed = Some(now);
+                Event::Deployed {
+                    workspace: root.to_owned(),
+                    service: name,
+                    version,
                     breaks: breaks.iter().map(ToString::to_string).collect(),
-                });
+                }
             }
             Err(error) => {
                 let error = format!("{error:#}");
-                watched.error = Some(error.clone());
-                drop(status);
-                self.emit(&Event::Failed {
-                    service: &name,
-                    error: &error,
-                });
+                one.error = Some(error.clone());
+                Event::Failed {
+                    workspace: root.to_owned(),
+                    service: name,
+                    error,
+                }
             }
-        }
+        };
+        drop(status);
+        self.emit(&event);
     }
 }
