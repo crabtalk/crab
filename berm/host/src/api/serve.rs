@@ -35,6 +35,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/logs", get(logs::<E>))
         .route("/calls", get(calls::<E>))
         .route("/calls/{id}/input", get(call_input::<E>))
+        .route("/calls/{id}/tape", get(call_tape::<E>))
         .route("/crons", get(crons::<E>))
         .route("/wakes", get(wakes::<E>))
         .route(
@@ -137,6 +138,19 @@ async fn call_input<E: Env>(
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, Denied> {
     Ok(Json(host.call_input(&service, id).await?))
+}
+
+/// One of the service's calls that failed, as berm recorded its answers from
+/// outside the guest.
+async fn call_tape<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(id): Path<u64>,
+) -> Result<impl IntoResponse, Denied> {
+    Ok((
+        [(header::CONTENT_TYPE, "application/octet-stream")],
+        host.call_tape(&service, id).await?,
+    ))
 }
 
 /// The service's cron tools.

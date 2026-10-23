@@ -9,6 +9,7 @@ use crate::{
         self,
         call::{Budgeted, Calls, Enter, Invoked, Now, Scope},
     },
+    tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
 use berm_api::{Callers, Manifest, Output, Runtime};
@@ -266,8 +267,17 @@ impl Program {
         tool: &str,
         args: impl Into<Vec<u8>>,
     ) -> Result<Outcome> {
-        self.call_as(caller, None, None, tool, args, Arc::default(), chain())
-            .await
+        self.call_as(
+            caller,
+            None,
+            None,
+            tool,
+            args,
+            Arc::default(),
+            chain(),
+            Taping::Off,
+        )
+        .await
     }
 
     /// [`Program::call`] on behalf of `user` and `client`, which every call in
@@ -283,6 +293,7 @@ impl Program {
         args: impl Into<Vec<u8>>,
         meters: Arc<Meters>,
         chain: u64,
+        taping: Taping,
     ) -> Result<Outcome> {
         let journal = Arc::new(Journal::default());
         let Ended { result, denied } = self
@@ -299,6 +310,7 @@ impl Program {
                 journal.clone(),
                 meters,
                 Arc::from([self.name.clone()]),
+                taping.deck(),
             )
             .await?;
         let changes = match result {
@@ -346,6 +358,7 @@ impl Program {
                 journal.clone(),
                 meters,
                 stack,
+                None,
             )
             .await?;
         let changes = match result {
@@ -379,6 +392,7 @@ impl Program {
         journal: Arc<Journal>,
         meters: Arc<Meters>,
         stack: Arc<[Arc<str>]>,
+        tape: Option<Deck>,
     ) -> Result<Ended> {
         let Some(Tool {
             symbol,
@@ -425,6 +439,7 @@ impl Program {
             staged: Vec::new(),
             outcome: None,
             denied: false,
+            tape,
         };
         let buffer = self.manifest.buffer;
         let ended = match invocation.args.len() > buffer {
@@ -574,6 +589,8 @@ pub struct Invocation {
     pub(crate) denied: bool,
     /// Its part of its program's [`Running`].
     pub(crate) held: Held,
+    /// The tape it records or answers from; only a chain's first link has one.
+    pub(crate) tape: Option<Deck>,
 }
 
 /// A syscall's answer when it refused the call and nothing ran.

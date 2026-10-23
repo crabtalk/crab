@@ -117,7 +117,7 @@ a schema printed raw is something to read past rather than read.
 
 `inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 
-A call that failed keeps its tool, arguments, caller and the digest of the image it ran, for as long as calls are kept. `crab --context cloud replay NAME ID` reads them and makes the call again on the local host, or on the context `--on` names, against that host's state: its database, real fetches, its secrets. It says when the program there runs another image.
+A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the program, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
 
 ## License
 

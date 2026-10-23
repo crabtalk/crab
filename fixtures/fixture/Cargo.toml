@@ -17,6 +17,7 @@ hex = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 anyhow.workspace = true
+berm.workspace = true
 berm-api.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 serde_json = { workspace = true, features = ["std"] }

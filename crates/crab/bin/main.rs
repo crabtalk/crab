@@ -171,15 +171,16 @@ enum Command {
         #[arg(long, requires = "issuer")]
         user: Option<String>,
     },
-    /// Run a call that failed again, read from the context in use: its tool,
-    /// arguments and caller, against the state of the host `--on` names.
+    /// Run a call that failed again, read from the context in use: here, the
+    /// image it ran answered from its tape, or with `--on` on that context's
+    /// host, against its state.
     Replay {
         program: String,
         /// The call's id, as `crab calls` lists it.
         id: u64,
-        /// The context to run it on.
-        #[arg(long, default_value = context::DEFAULT)]
-        on: String,
+        /// The context to run it on, against that host's state.
+        #[arg(long)]
+        on: Option<String>,
     },
     /// Show a program's tools and their arguments.
     Inspect { name: String },
@@ -809,8 +810,13 @@ fn main() -> Result<ExitCode> {
             );
         }
         Command::Replay { program, id, on } => {
-            let on = Client::from(Contexts::load()?.get(Some(on))?);
-            return cmd::replay::run(&client()?, &on, program, *id);
+            return match on {
+                Some(on) => {
+                    let on = Client::from(Contexts::load()?.get(Some(on))?);
+                    cmd::replay::on(&client()?, &on, program, *id)
+                }
+                None => cmd::replay::tape(&client()?, program, *id),
+            };
         }
     }
     Ok(ExitCode::SUCCESS)

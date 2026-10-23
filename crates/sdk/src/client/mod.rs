@@ -126,6 +126,16 @@ impl Client {
         Err(Error::refusal(status, body))
     }
 
+    /// Send, and read the raw body a success carries.
+    pub async fn bytes(&self, req: RequestBuilder) -> Result<Vec<u8>, Error> {
+        let res = req.send().await?;
+        let status = res.status();
+        if status.is_success() {
+            return Ok(res.bytes().await?.to_vec());
+        }
+        Err(Error::refusal(status, res.text().await?))
+    }
+
     /// Send, and report only whether the deployment answered in the 2xx range.
     /// The health routes carry no body and say everything in the status.
     pub(crate) async fn probe(&self, req: RequestBuilder) -> Result<bool, Error> {

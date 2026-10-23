@@ -7,7 +7,11 @@ use crate::{
     host::{self, Host, Inner, Invoked},
 };
 use anyhow::{Result, bail};
-use berm::{Callsite, Meter, Syscall, syscall::after};
+use berm::{
+    Callsite, Meter, Syscall,
+    syscall::after,
+    tape::{Recorder, Taping},
+};
 use berm_api::{
     Output,
     host::{CallInput, Kind, Link, Outcome, Reply, Source},
@@ -161,6 +165,14 @@ impl<E: Env> Host<E> {
             };
             let _slot = self.gate.acquire().await?;
             let started = self.calls.start();
+            let recorder = Recorder::default();
+            let input = CallInput {
+                tool: wake.tool.clone(),
+                args: wake.args.clone(),
+                caller: None,
+                digest: format!("sha256:{}", target.digest),
+                image: None,
+            };
             let invoked = self
                 .invoke(
                     &target,
@@ -170,9 +182,13 @@ impl<E: Env> Host<E> {
                     None,
                     &wake.tool,
                     wake.args.clone().into_bytes(),
+                    Taping::Record(recorder.clone()),
                 )
-                .await?;
-            let outcome = Outcome::of(&invoked.result, invoked.denied);
+                .await;
+            let outcome = match &invoked {
+                Ok(invoked) => Outcome::of(&invoked.result, invoked.denied),
+                Err(_) => Outcome::Failed,
+            };
             self.usage.record(
                 &target.name,
                 Kind::Tool,
@@ -188,14 +204,13 @@ impl<E: Env> Host<E> {
                 Source::Service,
                 &from,
                 outcome,
-                Some(invoked.meter),
-                Some(CallInput {
-                    tool: wake.tool.clone(),
-                    args: wake.args.clone(),
-                    caller: None,
-                    digest: format!("sha256:{}", target.digest),
-                }),
+                invoked.as_ref().ok().map(|invoked| invoked.meter),
+                Some(input),
+                (outcome == Outcome::Failed)
+                    .then(|| recorder.tape())
+                    .as_ref(),
             );
+            let invoked = invoked?;
             let failed = match &invoked.result {
                 Output::Failed(failure) => Some(failure.clone()),
                 Output::Done(_) => None,

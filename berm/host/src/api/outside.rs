@@ -8,7 +8,10 @@ use crate::{
     record::usage,
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use berm::Meter;
+use berm::{
+    Meter,
+    tape::{Recorder, Taping},
+};
 use berm_api::{
     Output,
     host::{self as wire, CallInput, Caller, Kind, Outcome, Source},
@@ -124,6 +127,7 @@ impl<E: Env> Host<E> {
                 Outcome::Refused,
                 None,
                 None,
+                None,
             );
             Err(denied)
         };
@@ -210,7 +214,16 @@ impl<E: Env> Host<E> {
             ));
         };
         let started = self.calls.start();
-        let mut invoked = self
+        let recorder = Recorder::default();
+        let input = CallInput {
+            tool: tool.clone(),
+            args: String::from_utf8_lossy(&args).into_owned(),
+            caller: caller.clone(),
+            digest: format!("sha256:{}", program.digest),
+            image: None,
+        };
+        let (source, who) = counted(caller.as_ref());
+        let invoked = self
             .invoke(
                 &program,
                 started.id,
@@ -224,10 +237,29 @@ impl<E: Env> Host<E> {
                     .map(host::user),
                 client.map(Into::into),
                 &tool,
-                args.clone(),
+                args,
+                Taping::Record(recorder.clone()),
             )
-            .await
-            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+            .await;
+        let mut invoked = match invoked {
+            Ok(invoked) => invoked,
+            Err(e) => {
+                self.usage
+                    .record(&service, Kind::Tool, &tool, source, who, Outcome::Failed);
+                self.calls.record(
+                    &service,
+                    started,
+                    &tool,
+                    source,
+                    who,
+                    Outcome::Failed,
+                    None,
+                    Some(input),
+                    Some(&recorder.tape()),
+                );
+                return Err(deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")));
+            }
+        };
         let (Output::Done(body) | Output::Failed(body)) = &invoked.result;
         let answer = Meter {
             sent: body.len() as u64,
@@ -237,9 +269,9 @@ impl<E: Env> Host<E> {
         invoked.meter += answer;
         let id = started.id;
         let outcome = Outcome::of(&invoked.result, invoked.denied);
-        let (source, who) = counted(caller.as_ref());
         self.usage
             .record(&service, Kind::Tool, &tool, source, who, outcome);
+        let failed = outcome == Outcome::Failed;
         self.calls.record(
             &service,
             started,
@@ -248,12 +280,8 @@ impl<E: Env> Host<E> {
             who,
             outcome,
             Some(invoked.meter),
-            Some(CallInput {
-                tool: tool.clone(),
-                args: String::from_utf8_lossy(&args).into_owned(),
-                caller: caller.clone(),
-                digest: format!("sha256:{}", program.digest),
-            }),
+            Some(input),
+            failed.then(|| recorder.tape()).as_ref(),
         );
         headers.insert(
             HeaderName::from_static(wire::METER),

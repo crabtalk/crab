@@ -195,6 +195,13 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
+    /// `name`'s call `id`'s tape, as berm encodes one. Only a call that failed
+    /// keeps it.
+    pub async fn call_tape(&self, name: &str, id: u64) -> Result<Vec<u8>, Error> {
+        let path = format!("{}/calls/{id}/tape", self.program(name));
+        self.bytes(self.at(Method::GET, &path)).await
+    }
+
     /// What `name` used in UTC month `month`, `YYYY-MM`, or this one, and what
     /// it cost. Cloud only.
     pub async fn billing(&self, name: &str, month: Option<&str>) -> Result<Billing, Error> {

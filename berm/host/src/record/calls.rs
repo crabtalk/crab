@@ -8,7 +8,7 @@ use crate::{
     state::store::Store,
 };
 use anyhow::Result;
-use berm::Now;
+use berm::{Now, tape::Tape};
 use berm_api::{
     Meter,
     host::{Call, CallInput, CallPage, Outcome, Source},
@@ -22,6 +22,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
+
+/// The most bytes of tapes a service keeps; past it, the oldest are dropped.
+const TAPES_MAX: usize = 64 << 20;
 
 /// Runs not yet written, each with the key of the service it ran.
 pub(crate) struct Pending {
@@ -46,6 +49,8 @@ pub(crate) struct Ran {
     meter: Option<Meter>,
     /// Kept for a run that failed.
     input: Option<CallInput>,
+    /// Kept for a run that failed, encoded.
+    tape: Option<Vec<u8>>,
 }
 
 /// A service's runs and logs not yet written.
@@ -82,7 +87,7 @@ impl Pending {
     }
 
     /// Hold a run of `tool` on the service keyed `service`, begun at
-    /// `started`, keeping `input` when it failed.
+    /// `started`, keeping `input` and `tape` when it failed.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record(
         &self,
@@ -94,7 +99,9 @@ impl Pending {
         outcome: Outcome,
         meter: Option<Meter>,
         input: Option<CallInput>,
+        tape: Option<&Tape>,
     ) {
+        let failed = outcome == Outcome::Failed;
         self.pending.lock().push(Ran {
             id: started.id,
             service: service.to_owned(),
@@ -105,7 +112,8 @@ impl Pending {
             outcome,
             ms: started.began.elapsed().as_millis() as u64,
             meter,
-            input: input.filter(|_| outcome == Outcome::Failed),
+            input: input.filter(|_| failed),
+            tape: tape.filter(|_| failed).map(Vec::from),
         });
     }
 
@@ -167,8 +175,8 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 .map(|input| serde_json::to_string(input).expect("an input is JSON"));
             tx.prepare_cached(
                 "INSERT INTO service_calls
-                        (id, scope, name, at, tool, source, caller, outcome, ms, meter, input)
-                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11
+                        (id, scope, name, at, tool, source, caller, outcome, ms, meter, input, tape)
+                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11, ?12
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
             )?
             .execute(params![
@@ -182,7 +190,8 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 call.ms as i64,
                 meter,
                 call.id as i64,
-                input
+                input,
+                call.tape
             ])?;
             Ok(())
         })
@@ -193,7 +202,42 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 "DELETE FROM service_calls WHERE at < ?1",
                 params![since as i64],
             )?;
+            conn.execute(
+                "UPDATE service_calls SET tape = NULL
+                  WHERE rowid IN (
+                        SELECT rowid FROM (
+                               SELECT rowid, SUM(LENGTH(tape)) OVER (
+                                      PARTITION BY scope, name ORDER BY id DESC) AS kept
+                                 FROM service_calls WHERE tape IS NOT NULL)
+                         WHERE kept > ?1)",
+                params![TAPES_MAX as i64],
+            )?;
             Ok(())
+        })
+        .await
+}
+
+/// `scope/name`'s run `id`'s tape, encoded, as written or in `unsaved`:
+/// `Ok(None)` for a run that kept none, an error for no such run.
+pub(crate) async fn tape(
+    store: &Store,
+    scope: &str,
+    name: &str,
+    id: u64,
+    unsaved: Vec<Ran>,
+) -> Result<Option<Option<Vec<u8>>>> {
+    if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
+        return Ok(Some(ran.tape));
+    }
+    let (scope, name) = (scope.to_owned(), name.to_owned());
+    store
+        .read(move |conn| {
+            conn.query_row(
+                "SELECT tape FROM service_calls WHERE scope = ?1 AND name = ?2 AND id = ?3",
+                params![scope, name, id as i64],
+                |row| row.get(0),
+            )
+            .optional()
         })
         .await
 }

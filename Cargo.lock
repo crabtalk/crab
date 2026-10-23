@@ -334,6 +334,7 @@ name = "berm-fixture"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "berm",
  "berm-api",
  "berm-host",
  "berm-lang",

@@ -69,6 +69,7 @@ mod program;
 pub mod readers;
 pub mod storage;
 pub mod syscall;
+pub mod tape;
 pub mod wire;
 
 /// What a syscall answers with, once it has. An `Err` reaches the guest as a

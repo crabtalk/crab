@@ -29,6 +29,7 @@ use berm::{
         http::{Request, Response},
         sql::Statement,
     },
+    tape::Taping,
 };
 use berm_api::{
     Logged, Output,
@@ -274,6 +275,7 @@ impl TestHost {
                 None,
                 tool,
                 args.to_vec(),
+                Taping::Off,
             )
             .await?;
         Ok(Ran {

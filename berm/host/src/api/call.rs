@@ -10,7 +10,10 @@ use crate::{
     wake::{cron, table},
 };
 use axum::http::StatusCode;
-use berm::{Budget, Meters, Program, Refused};
+use berm::{
+    Budget, Meters, Program, Refused,
+    tape::{Recorder, Taping},
+};
 use berm_api::{
     Deps, Listing, Logged, Output, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
@@ -298,10 +301,42 @@ impl<E: Env> Host<E> {
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
         match calls::input(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
-            Some(Some(input)) => Ok(input),
+            Some(Some(mut input)) => {
+                let deployed = service::row(&self.store, scope, name).await?;
+                input.image = deployed
+                    .map(|row| row.reference)
+                    .filter(|reference| reference.contains('/'))
+                    .map(|reference| {
+                        let reference = reference.split('@').next().unwrap_or_default();
+                        let repository = match reference.rsplit_once('/') {
+                            Some((head, last)) => {
+                                format!("{head}/{}", last.split(':').next().unwrap_or(last))
+                            }
+                            None => reference.to_owned(),
+                        };
+                        format!("{repository}@{}", input.digest)
+                    });
+                Ok(input)
+            }
             Some(None) => Err(deny(
                 StatusCode::NOT_FOUND,
                 "the call kept no input; only a call that failed does",
+            )),
+            None => Err(deny(StatusCode::NOT_FOUND, "no such call")),
+        }
+    }
+
+    /// `service`'s call `id`'s tape, encoded. Only a call that failed keeps
+    /// one.
+    pub async fn call_tape(&self, service: &str, id: u64) -> Result<Vec<u8>, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let _reading = self.flushing.read().await;
+        match calls::tape(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
+            Some(Some(tape)) => Ok(tape),
+            Some(None) => Err(deny(
+                StatusCode::NOT_FOUND,
+                "the call kept no tape; only a call that failed does",
             )),
             None => Err(deny(StatusCode::NOT_FOUND, "no such call")),
         }
@@ -433,10 +468,30 @@ impl<E: Env> Host<E> {
         let _capped = self.caps.take(host::split(service).0).await;
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
+        let recorder = Recorder::default();
+        let input = wire::CallInput {
+            tool: tool.clone(),
+            args: String::from_utf8_lossy(&event).into_owned(),
+            caller: None,
+            digest: format!("sha256:{}", program.digest),
+            image: None,
+        };
         let invoked = self
-            .invoke(&program, started.id, None, None, None, &tool, event.clone())
-            .await?;
-        let outcome = Outcome::of(&invoked.result, invoked.denied);
+            .invoke(
+                &program,
+                started.id,
+                None,
+                None,
+                None,
+                &tool,
+                event,
+                Taping::Record(recorder.clone()),
+            )
+            .await;
+        let outcome = match &invoked {
+            Ok(invoked) => Outcome::of(&invoked.result, invoked.denied),
+            Err(_) => Outcome::Failed,
+        };
         self.usage
             .record(service, Kind::Tool, &tool, Source::Stripe, "", outcome);
         self.calls.record(
@@ -446,14 +501,13 @@ impl<E: Env> Host<E> {
             Source::Stripe,
             "",
             outcome,
-            Some(invoked.meter),
-            Some(wire::CallInput {
-                tool: tool.clone(),
-                args: String::from_utf8_lossy(&event).into_owned(),
-                caller: None,
-                digest: format!("sha256:{}", program.digest),
-            }),
+            invoked.as_ref().ok().map(|invoked| invoked.meter),
+            Some(input),
+            (outcome == Outcome::Failed)
+                .then(|| recorder.tape())
+                .as_ref(),
         );
+        let invoked = invoked?;
         match invoked.result {
             Output::Done(_) => Ok(()),
             Output::Failed(failure) => Err(deny(StatusCode::INTERNAL_SERVER_ERROR, failure)),

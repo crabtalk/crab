@@ -191,6 +191,21 @@ pub fn boom() -> Result<()> {
     Err("boom, as requested".into())
 }
 
+/// Fetches `url`, draws 4 random bytes, then fails with the body it got and
+/// the bytes, to exercise a tape.
+#[tool(public)]
+pub fn flaky(url: String) -> Result<()> {
+    let response = berm_lang::http::fetch("GET", &url, &[], b"")?;
+    let mut bytes = [0; 4];
+    berm_lang::random(&mut bytes);
+    Err(format!(
+        "upstream said {} ({})",
+        String::from_utf8_lossy(&response.body),
+        hex::encode(bytes)
+    )
+    .into())
+}
+
 /// Calls `echo` on whatever is deployed as `inner`, to prove a program can
 /// reach a program. Says which kind of failure came back, because telling
 /// "it ran and said no" from "it was never there" is the point of the

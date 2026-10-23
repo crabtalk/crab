@@ -416,6 +416,11 @@ pub struct CallInput {
     pub caller: Option<Caller>,
     /// The image it ran, as `sha256:` and hex.
     pub digest: String,
+    /// Where that image is pulled from: the repository the service is
+    /// deployed from when this is read, at `digest`. None for a service
+    /// deployed from no registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 /// What a service is using now.
