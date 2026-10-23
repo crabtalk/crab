@@ -1,6 +1,6 @@
 # crab
 
-The [local host](https://crab.talk/docs/terminal/local), and the command-line client for it and CrabTalk Cloud.
+The [local host](https://crab.talk/docs/development/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
 crab dev -d
@@ -52,7 +52,7 @@ A deploy that makes a tool public is refused until `public` lists it. Without `[
 `crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab dev`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
 
 ```sh
-crab context add cloud https://api.crabtalk.ai --token "$KEY" --org acme
+crab context add cloud https://api.crab.talk --token "$KEY" --org acme
 crab context use cloud
 crab context ls
 crab context use default
@@ -99,7 +99,7 @@ permissions:
   packages: write
 
 steps:
-  - run: crab context add cloud https://api.crabtalk.ai --token "$KEY" --org acme
+  - run: crab context add cloud https://api.crab.talk --token "$KEY" --org acme
     env:
       KEY: ${{ secrets.CRABTALK_KEY }}
   - run: crab deploy --context cloud

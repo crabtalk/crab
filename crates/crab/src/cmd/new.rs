@@ -2,7 +2,6 @@
 
 use crate::project;
 use anyhow::{Context, Result, bail};
-use berm_build::TARGET;
 use std::{fs, path::Path};
 
 /// The release a scaffold's `berm-lang` comes from: crab's tag `v<SDK>`, the
@@ -44,7 +43,6 @@ pub fn run(name: &str) -> Result<()> {
     println!("created {name}/");
     println!();
     println!("  cd {name}");
-    println!("  rustup target add {TARGET}");
     println!("  cargo test");
     println!("  crab build");
     println!("  crab deploy");

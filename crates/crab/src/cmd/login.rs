@@ -16,7 +16,7 @@ use std::{
 };
 
 /// The Cloud `crab login` signs in to unless told another.
-pub const CLOUD: &str = "https://api.crabtalk.ai";
+pub const CLOUD: &str = "https://api.crab.talk";
 
 /// Sign in to `host` through Google, or GitHub with `github`, and use the
 /// session as context `name` from now on.

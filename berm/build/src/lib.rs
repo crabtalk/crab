@@ -24,6 +24,7 @@ pub use workspace::Workspace;
 
 mod artifact;
 mod metadata;
+mod toolchain;
 mod workspace;
 
 /// What a program is built for.
@@ -79,6 +80,7 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
     let lock = fs::File::create(out.join("build.lock"))?;
     lock.lock()?;
 
+    toolchain::ensure(dir)?;
     let spec = format!("{}@{}", program.name, program.version);
     let artifacts = Artifact::build(
         &cargo,

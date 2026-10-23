@@ -46,9 +46,9 @@ Read these before writing code. Paths are relative to the crab repository.
 | Tools, `#[tool(...)]` and its `public`, `anonymous`, `query`, `cron`, `stripe`, `callers(...)`; building with `crab build` | https://crab.talk/docs/development/writing, `berm/lang/README.md` |
 | Caller, user, database, HTTP, calls between services | https://crab.talk/docs/development/guest-api |
 | `crab.toml` keys, syscalls, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |
-| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/terminal/local |
-| Deploying to Cloud, images and registries | https://crab.talk/docs/terminal/deploy |
-| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/dashboard/secrets |
+| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/development/local |
+| Deploying to Cloud, images and registries | https://crab.talk/docs/development/deploy |
+| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/development/secrets |
 | A kit's API and setup | `kits/<kit>/README.md` |
 
 ## A local crab checkout
