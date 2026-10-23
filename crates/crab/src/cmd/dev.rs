@@ -53,6 +53,9 @@ pub fn run(dir: &Path, json: bool) -> Result<()> {
             watching.root.display(),
             context::LOCAL
         );
+        for name in &watching.skipped {
+            eprintln!("skipped   {name}: deploy = false");
+        }
         let mut pending = Vec::new();
         loop {
             tokio::select! {
@@ -236,6 +239,9 @@ fn show(status: &Status, only: Option<&PathBuf>, json: bool) -> Result<()> {
         .filter(|w| only.is_none_or(|root| w.root == *root));
     for watching in watched {
         println!("workspace {}", watching.root.display());
+        for name in &watching.skipped {
+            println!("  {name}  skipped: deploy = false");
+        }
         for one in &watching.services {
             let deployed = match (&one.version, one.deployed) {
                 (Some(version), Some(at)) => format!("{version}, deployed {}", format::instant(at)),

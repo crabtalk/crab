@@ -59,6 +59,9 @@ impl Status {
 pub struct Watching {
     pub root: PathBuf,
     pub services: Vec<Watched>,
+    /// Its services left out for `deploy = false`, by name.
+    #[serde(default)]
+    pub skipped: Vec<String>,
 }
 
 /// One service of a watched workspace.
@@ -206,7 +209,7 @@ impl Dev {
         let workspace = Workspace::read(dir)?;
         if workspace.services.is_empty() {
             bail!(
-                "no {} in the workspace at {} names a service",
+                "no {} in the workspace at {} names a service to deploy",
                 Project::FILE,
                 workspace.root.display()
             );
@@ -225,6 +228,7 @@ impl Dev {
         let watching = Watching {
             root: workspace.root.clone(),
             services,
+            skipped: workspace.skipped.clone(),
         };
         {
             let mut status = self.status.lock();

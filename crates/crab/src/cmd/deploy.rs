@@ -32,6 +32,13 @@ pub fn run(
     pull: bool,
 ) -> Result<()> {
     let mut project = Project::read(dir)?;
+    if !project.deploy {
+        bail!(
+            "{}'s {} says deploy = false",
+            project.name.as_deref().unwrap_or("this program"),
+            Project::FILE
+        );
+    }
     if pull {
         let live = utils::wait(client.crons(project.name()?))?;
         let crons = live

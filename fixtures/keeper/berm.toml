@@ -1,4 +1,5 @@
 name = "keeper"
+deploy = false
 programs = ["inner"]
 
 [syscalls]

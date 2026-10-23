@@ -13,7 +13,7 @@ use std::{
 /// `berm.toml`. A program's names its service; a kit's declares only `id`,
 /// `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and
 /// `[database] migrations`.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
     /// The kit's ID, 32 lowercase hex digits, which its applied migrations are
@@ -33,6 +33,10 @@ pub struct Project {
     /// The tools the program may make public.
     #[serde(default)]
     pub public: Vec<String>,
+    /// Whether the program is deployed: `false` keeps it out of a
+    /// workspace's deploys, and refuses deploying it.
+    #[serde(default = "deployed")]
+    pub deploy: bool,
     /// Each cron tool's expression, five fields in UTC, such as
     /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
     #[serde(default)]
@@ -78,6 +82,10 @@ pub struct Database {
     /// A directory of `*.sql` migrations, relative to `berm.toml`, applied in
     /// name order.
     pub migrations: Option<PathBuf>,
+}
+
+fn deployed() -> bool {
+    true
 }
 
 impl Project {
@@ -155,6 +163,7 @@ impl Project {
             ("name", self.name.is_some()),
             ("image", self.image.is_some()),
             ("public", !self.public.is_empty()),
+            ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("buffer", self.buffer.is_some()),
             ("readme", self.readme.is_some()),

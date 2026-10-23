@@ -1,4 +1,5 @@
 name = "fixture"
+deploy = false
 # `inner` is what `nest`, `relay` and `recurse` reach for. It is not resolved
 # here, only declared.
 programs = ["inner"]

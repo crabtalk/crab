@@ -1,4 +1,5 @@
 name = "feed"
+deploy = false
 
 [syscalls]
 "berm.http.fetch" = ["127.0.0.1"]
