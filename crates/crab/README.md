@@ -1,6 +1,6 @@
 # crab
 
-The [local host](https://crab.talk/docs/build/local), and the command-line client for it and CrabTalk Cloud.
+The [local host](https://crab.talk/docs/terminal/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
 crab dev -d

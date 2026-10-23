@@ -28,7 +28,7 @@ pub fn echo(query: String) -> Result<String> {
 }
 ```
 
-The docs are at [crab.talk/docs](https://crab.talk/docs/build/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).
+The docs are at [crab.talk/docs](https://crab.talk/docs/development/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).
 
 ## Kits
 
