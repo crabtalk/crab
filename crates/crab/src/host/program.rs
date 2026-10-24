@@ -10,16 +10,13 @@ use std::{collections::BTreeMap, sync::Arc};
 impl Service {
     /// Make the tools of `image` reachable under `name`, answering with how it
     /// breaks callers of the program it replaced. Refused as the host refuses
-    /// a deploy: a tool made public that `public` does not confirm, or, unless
-    /// `force`, a break of what a caller used or a cron its owner set that
-    /// `crons` undoes, or a `size` the host refuses. `stopped` installs it to
-    /// serve once started.
-    #[allow(clippy::too_many_arguments)]
+    /// a deploy: unless `force`, a break of what a caller used or a cron its
+    /// owner set that `crons` undoes, or a `size` the host refuses. `stopped`
+    /// installs it to serve once started.
     pub async fn deploy(
         &self,
         name: &str,
         image: Vec<u8>,
-        public: &[String],
         force: bool,
         crons: Option<BTreeMap<String, String>>,
         size: u64,
@@ -35,7 +32,6 @@ impl Service {
                 Deploy {
                     reference: digest.clone(),
                     digest,
-                    public: public.to_vec(),
                     force,
                     crons,
                     size,

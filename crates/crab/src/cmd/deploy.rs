@@ -125,7 +125,6 @@ fn one(
         None => utils::wait(client.deploy_image(
             name,
             bytes,
-            &project.public,
             force,
             project.crons.as_ref(),
             project.database.size(),
@@ -148,7 +147,6 @@ fn one(
                 name,
                 &DeployRequest {
                     reference,
-                    public: project.public.clone(),
                     force,
                     crons: project.crons.clone(),
                     size: project.database.size(),

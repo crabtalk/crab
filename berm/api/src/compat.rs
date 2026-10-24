@@ -31,21 +31,6 @@ impl std::fmt::Display for Break {
 }
 
 impl Manifest {
-    /// The tools `next` makes public that this manifest does not.
-    pub fn publishes<'a>(&self, next: &'a Manifest) -> Vec<&'a str> {
-        next.tools
-            .iter()
-            .filter(|tool| tool.public)
-            .filter(|tool| {
-                !self
-                    .tools
-                    .iter()
-                    .any(|old| old.public && old.name == tool.name)
-            })
-            .map(|tool| tool.name.as_str())
-            .collect()
-    }
-
     /// Every way `next` breaks a caller of this manifest: its public tools,
     /// its stripe tool, and its events. Empty when it is compatible.
     pub fn breaks(&self, next: &Manifest) -> Vec<Break> {

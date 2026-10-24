@@ -24,7 +24,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use berm::{
-    Manifest, Meter, Program,
+    Meter, Program,
     syscall::{
         http::{Request, Response},
         sql::Statement,
@@ -222,7 +222,6 @@ impl TestHost {
         size: u64,
         stopped: bool,
     ) -> Result<Arc<Program>> {
-        let manifest = Manifest::from_image(image)?;
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
         self.images
@@ -236,12 +235,6 @@ impl TestHost {
                 Deploy {
                     reference,
                     digest,
-                    public: manifest
-                        .tools
-                        .iter()
-                        .filter(|tool| tool.public)
-                        .map(|tool| tool.name.clone())
-                        .collect(),
                     force: true,
                     crons: None,
                     size,

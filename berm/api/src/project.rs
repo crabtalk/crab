@@ -31,9 +31,6 @@ pub struct Project {
     /// The registry repository Cloud pulls the image from, without a tag.
     #[serde(default)]
     pub image: Option<String>,
-    /// The tools the program may make public.
-    #[serde(default)]
-    pub public: Vec<String>,
     /// Whether the program is deployed: `false` keeps it out of a
     /// workspace's deploys, and refuses deploying it.
     #[serde(default = "deployed")]
@@ -155,7 +152,6 @@ impl Project {
         let program_only = [
             ("name", self.name.is_some()),
             ("image", self.image.is_some()),
-            ("public", !self.public.is_empty()),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("buffer", self.buffer.is_some()),

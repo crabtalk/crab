@@ -3,8 +3,6 @@ name = "__NAME__"
 # The registry repository Cloud pulls the image from, tagged with the crate's
 # version on each deploy.
 # image = "ghcr.io/<you>/__NAME__"
-# Tools this program may make public.
-public = ["echo"]
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
 # Programs it calls by name.

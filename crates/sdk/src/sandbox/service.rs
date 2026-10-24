@@ -12,10 +12,6 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployRequest {
     pub reference: String,
-    /// The tools this deploy may make public that the deployed version does
-    /// not. Every public tool, on a service's first deploy.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub public: Vec<String>,
     /// Deploy even when it breaks a tool or event a caller used in the last
     /// 30 days, or undoes a cron its owners set since the last deploy that set
     /// them.

@@ -37,16 +37,13 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Deploy `image` as `name` on a local host, confirming the tools it may make
-    /// public, setting each cron tool's expression when `crons` is given,
-    /// holding its database to `size` bytes, and installing it stopped when
-    /// `stopped`.
-    #[allow(clippy::too_many_arguments)]
+    /// Deploy `image` as `name` on a local host, setting each cron tool's
+    /// expression when `crons` is given, holding its database to `size` bytes,
+    /// and installing it stopped when `stopped`.
     pub async fn deploy_image(
         &self,
         name: &str,
         image: Vec<u8>,
-        public: &[String],
         force: bool,
         crons: Option<&BTreeMap<String, String>>,
         size: u64,
@@ -57,7 +54,6 @@ impl Client {
         }
         let mut request = self
             .at(Method::PUT, &self.program(name))
-            .query(&[("public", public.join(","))])
             .query(&[("force", force)])
             .query(&[("size", size)])
             .query(&[("stopped", stopped)]);

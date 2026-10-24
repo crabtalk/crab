@@ -26,8 +26,6 @@ name = "example"
 # The registry repository Cloud pulls the image from, tagged with the crate's
 # version on each deploy.
 image = "ghcr.io/org/example"
-# Tools this program may make public.
-public = ["search"]
 
 # When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC.
@@ -41,7 +39,7 @@ size = "2GiB"
 seed = "seed.sqlite"
 ```
 
-A deploy that makes a tool public is refused until `public` lists it. Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
+Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
 
 ## Developing
 

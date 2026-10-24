@@ -94,15 +94,12 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// `?public=a,b&force=true&crons={"tick":"*/5 * * * *"}&size=1073741824&stopped=true`
-/// on a deploy: the tools it may make public, whether to deploy over what it
-/// would break or undo, each cron tool's expression, as a JSON object, when the
+/// `?force=true&crons={"tick":"*/5 * * * *"}&size=1073741824&stopped=true` on
+/// a deploy: whether to deploy over what it would break or undo, each cron tool's expression, as a JSON object, when the
 /// deploy sets them, the bytes its database may hold, and whether it installs
 /// stopped.
 #[derive(Deserialize)]
 struct Confirmed {
-    #[serde(default)]
-    public: String,
     #[serde(default)]
     force: bool,
     crons: Option<String>,
@@ -120,12 +117,6 @@ async fn deploy(
     Query(confirmed): Query<Confirmed>,
     image: Bytes,
 ) -> Result<Json<Deployed>, Denied> {
-    let public: Vec<String> = confirmed
-        .public
-        .split(',')
-        .filter(|tool| !tool.is_empty())
-        .map(str::to_owned)
-        .collect();
     let crons = confirmed
         .crons
         .as_deref()
@@ -141,7 +132,6 @@ async fn deploy(
         .deploy(
             &name,
             image.to_vec(),
-            &public,
             confirmed.force,
             crons,
             confirmed.size,

@@ -59,10 +59,6 @@ pub struct User {
 pub struct Deploy {
     pub reference: String,
     pub digest: String,
-    /// The tools this deploy may make public that the deployed version does
-    /// not.
-    #[serde(default)]
-    pub public: Vec<String>,
     /// Deploy even when it breaks what callers used, or undoes a cron its
     /// owner set.
     #[serde(default)]
