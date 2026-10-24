@@ -171,7 +171,6 @@ impl<E: Env> Host<E> {
                 args: wake.args.clone(),
                 caller: None,
                 digest: format!("sha256:{}", target.digest),
-                image: None,
             };
             let invoked = self
                 .invoke(

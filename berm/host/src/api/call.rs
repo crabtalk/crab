@@ -2,8 +2,8 @@
 //! setting what each service is.
 
 use crate::{
-    Denied, deny,
-    env::{Env, Secrets},
+    Denied, Stored, deny,
+    env::{Env, Images, Secrets},
     host::{self, Host},
     record::{calls, logs, meter, usage},
     state::service,
@@ -302,29 +302,32 @@ impl<E: Env> Host<E> {
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
         match calls::input(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
-            Some(Some(mut input)) => {
-                let deployed = service::row(&self.store, scope, name).await?;
-                input.image = deployed
-                    .map(|row| row.reference)
-                    .filter(|reference| reference.contains('/'))
-                    .map(|reference| {
-                        let reference = reference.split('@').next().unwrap_or_default();
-                        let repository = match reference.rsplit_once('/') {
-                            Some((head, last)) => {
-                                format!("{head}/{}", last.split(':').next().unwrap_or(last))
-                            }
-                            None => reference.to_owned(),
-                        };
-                        format!("{repository}@{}", input.digest)
-                    });
-                Ok(input)
-            }
+            Some(Some(input)) => Ok(input),
             Some(None) => Err(deny(
                 StatusCode::NOT_FOUND,
                 "the call kept no input; only a call that failed does",
             )),
             None => Err(deny(StatusCode::NOT_FOUND, "no such call")),
         }
+    }
+
+    /// The image `service`'s call `id` ran, pulled as the service's images
+    /// are: from the registry it is deployed from when this is read, or kept
+    /// here for an uploaded one. Only a call that failed names one.
+    pub async fn call_image(&self, service: &str, id: u64) -> Result<Vec<u8>, Denied> {
+        let input = self.call_input(service, id).await?;
+        let (scope, name) = host::split(service);
+        let row = service::row(&self.store, scope, name)
+            .await?
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
+        let reference = match Stored::uploaded(&row.reference, &row.digest) {
+            true => &input.digest,
+            false => &row.reference,
+        };
+        self.images
+            .pull(reference, &input.digest)
+            .await
+            .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))
     }
 
     /// `service`'s call `id`'s tape, encoded. Only a call that failed keeps
@@ -483,7 +486,6 @@ impl<E: Env> Host<E> {
             args: String::from_utf8_lossy(&event).into_owned(),
             caller: None,
             digest: format!("sha256:{}", program.digest),
-            image: None,
         };
         let invoked = self
             .invoke(

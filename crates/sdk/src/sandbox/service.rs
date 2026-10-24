@@ -7,7 +7,9 @@ use berm_api::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// What a service runs next: the image a registry reference names.
+/// What a service runs next: the image a registry reference names, or one
+/// uploaded through `POST /services/{owner}/{name}/image`, named by its digest,
+/// `sha256:` and its SHA-256 in hex.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployRequest {
@@ -38,20 +40,21 @@ pub struct DeployRequest {
     pub stopped: bool,
 }
 
-/// A seed to upload: its SHA-256 in hex, and its size in bytes.
+/// A file to upload, a seed or an image: its SHA-256 in hex, and its size in
+/// bytes.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SeedRequest {
+pub struct UploadRequest {
     pub sha256: String,
     pub size: u64,
 }
 
-/// Where a seed's bytes go.
+/// Where a file's bytes go.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SeedUpload {
+pub struct Upload {
     /// A URL to `PUT` the bytes to, with their `Content-Length`, within an
-    /// hour; none when Cloud holds that seed already.
+    /// hour; none when Cloud holds that file already.
     pub upload: Option<String>,
 }
 

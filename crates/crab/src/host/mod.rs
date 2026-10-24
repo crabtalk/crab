@@ -7,19 +7,17 @@
 use crate::host::secrets::Grants;
 use anyhow::{Context, Result};
 use berm::Program;
-use berm_host::{Config, Edges, Host, Layers, System};
+use berm_host::{Config, Edges, Host, Layers, Stored, System};
 use std::{io::IsTerminal, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 
 pub use env::Local;
 pub use fetch::Fetch;
-pub use images::Stored;
 pub use peers::Alone;
 
 mod api;
 mod env;
 mod fetch;
-mod images;
 mod mcp;
 mod peers;
 mod program;

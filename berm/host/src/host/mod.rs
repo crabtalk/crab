@@ -103,7 +103,7 @@ pub struct Inner<E: Env> {
     /// The services stopped.
     pub(crate) stops: Stops,
     pub(crate) peers: E::Peers,
-    images: E::Images,
+    pub(crate) images: E::Images,
     pub(crate) secrets: E::Secrets,
     /// [`Edges::layers`].
     pub(crate) layers: Layers,

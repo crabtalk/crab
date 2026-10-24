@@ -1,5 +1,5 @@
-use crate::host::{Alone, Fetch, Stored, secrets::Grants};
-use berm_host::{Env, System};
+use crate::host::{Alone, Fetch, secrets::Grants};
+use berm_host::{Env, Stored, System};
 
 /// One machine, running every program itself.
 #[derive(Clone)]

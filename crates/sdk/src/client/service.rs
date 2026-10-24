@@ -4,7 +4,7 @@
 use crate::{
     client::{Client, Error},
     sandbox::service::{
-        Billing, Costed, DeployRequest, MeteredDay, Secret, SeedRequest, SeedUpload, SetSecret,
+        Billing, Costed, DeployRequest, MeteredDay, Secret, SetSecret, Upload, UploadRequest,
         Visibility,
     },
 };
@@ -12,9 +12,8 @@ use berm_api::{
     Budget, Cron, Deployed, Logged, Meter, Output, Program, Runtime, Terms,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
-use reqwest::{Method, RequestBuilder};
+use reqwest::{Body, Method, RequestBuilder};
 use std::collections::BTreeMap;
-use tokio::fs::File;
 
 impl Client {
     /// Every service the owner runs on Cloud, or every program on a local host.
@@ -73,20 +72,27 @@ impl Client {
     }
 
     /// Where to upload `seed` for a deploy of `name` on Cloud to name.
-    pub async fn seed(&self, name: &str, seed: &SeedRequest) -> Result<SeedUpload, Error> {
+    pub async fn seed(&self, name: &str, seed: &UploadRequest) -> Result<Upload, Error> {
         self.account()?;
         let path = format!("{}/seed", self.program(name));
         self.json(self.at(Method::POST, &path).json(seed)).await
     }
 
-    /// Upload the `size` bytes of `file` to `url`, an upload [`Client::seed`]
-    /// answered.
-    pub async fn upload_seed(&self, url: &str, file: File, size: u64) -> Result<(), Error> {
+    /// Where to upload `image` for a deploy of `name` on Cloud to name.
+    pub async fn image(&self, name: &str, image: &UploadRequest) -> Result<Upload, Error> {
+        self.account()?;
+        let path = format!("{}/image", self.program(name));
+        self.json(self.at(Method::POST, &path).json(image)).await
+    }
+
+    /// Upload the `size` bytes of `body` to `url`, an upload [`Client::seed`]
+    /// or [`Client::image`] answered.
+    pub async fn upload(&self, url: &str, body: impl Into<Body>, size: u64) -> Result<(), Error> {
         let request = self
             .http
             .put(url)
             .header(reqwest::header::CONTENT_LENGTH, size)
-            .body(file);
+            .body(body);
         self.ok(request).await.map(drop)
     }
 
@@ -204,6 +210,12 @@ impl Client {
     /// keeps it.
     pub async fn call_tape(&self, name: &str, id: u64) -> Result<Vec<u8>, Error> {
         let path = format!("{}/calls/{id}/tape", self.program(name));
+        self.bytes(self.at(Method::GET, &path)).await
+    }
+
+    /// The image `name`'s call `id` ran. Only a call that failed names one.
+    pub async fn call_image(&self, name: &str, id: u64) -> Result<Vec<u8>, Error> {
+        let path = format!("{}/calls/{id}/image", self.program(name));
         self.bytes(self.at(Method::GET, &path)).await
     }
 

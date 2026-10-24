@@ -1,6 +1,6 @@
 ---
 name: crab
-description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, and before changing a local crab checkout from a product's repository.
+description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
 ---
 
 # Building on crab
@@ -27,6 +27,11 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 - A kit is a crate with a `crab.toml` of its own. A service links it by turning on its `crabkit` feature, and calls it from its own tools as `crabkit::auth`. Linking a kit is using it: the build finds it among the crates compiled into the image, and the secrets, fetched hosts and migrations its `crab.toml` declares reach the service's manifest; its tables live in the service's database.
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
 - Each kit's `README.md` lists what the service still declares itself.
+
+## Calling another account's service
+
+- On Cloud, a service is addressed as `owner/name`, its page at `https://crab.talk/{owner}/{name}`. `crab inspect owner/name` prints another account's public service: its README and its public tools with their arguments. Read it before the first call.
+- `crab call owner/name <tool> '<arguments as JSON>'` calls one of its public tools, reading the arguments from stdin when they are left out. It prints the result, and what the call used on stderr; a tool that ran and refused exits 2.
 
 ## Signing in, paying and secrets
 

@@ -28,7 +28,8 @@ pub struct Project {
     /// The service the program deploys as.
     #[serde(default)]
     pub name: Option<String>,
-    /// The registry repository Cloud pulls the image from, without a tag.
+    /// The public registry repository the image is published to and Cloud
+    /// pulls it from, without a tag. Absent, a deploy uploads the image.
     #[serde(default)]
     pub image: Option<String>,
     /// Whether the program is deployed: `false` keeps it out of a

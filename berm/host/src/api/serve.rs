@@ -36,6 +36,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/calls", get(calls::<E>))
         .route("/calls/{id}/input", get(call_input::<E>))
         .route("/calls/{id}/tape", get(call_tape::<E>))
+        .route("/calls/{id}/image", get(call_image::<E>))
         .route("/crons", get(crons::<E>))
         .route("/wakes", get(wakes::<E>))
         .route(
@@ -150,6 +151,18 @@ async fn call_tape<E: Env>(
     Ok((
         [(header::CONTENT_TYPE, "application/octet-stream")],
         host.call_tape(&service, id).await?,
+    ))
+}
+
+/// The image one of the service's calls that failed ran.
+async fn call_image<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(CallId { id }): Path<CallId>,
+) -> Result<impl IntoResponse, Denied> {
+    Ok((
+        [(header::CONTENT_TYPE, "application/wasm")],
+        host.call_image(&service, id).await?,
     ))
 }
 

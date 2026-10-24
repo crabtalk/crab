@@ -23,8 +23,9 @@ crab rm example
 ```toml
 # The service this program deploys as.
 name = "example"
-# The registry repository Cloud pulls the image from, tagged with the crate's
-# version on each deploy.
+# The public registry repository the image is published to, tagged with the
+# crate's version on each deploy. Without it, a deploy uploads the image to
+# the host.
 image = "ghcr.io/org/example"
 
 # When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
@@ -58,7 +59,7 @@ crab context use default
 
 A program's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the program declares, with its guide, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Against Cloud, `deploy` pushes the image to `image` and deploys that reference; against the local host it sends the image itself. Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud keeps it for that service alone. With `image`, or `--image`, it pushes the image there instead and Cloud deploys that reference: Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
 
 Contexts are kept in `~/.crab/contexts.toml`.
 
@@ -90,22 +91,17 @@ A service's calls, cost, crons, wakes, visibility and sunset have their own comm
 
 ## From a workflow
 
-`GITHUB_TOKEN` is the registry credential `deploy` pushes with, and the deploy is two lines:
+The deploy is two lines:
 
 ```yaml
-permissions:
-  packages: write
-
 steps:
   - run: crab context add cloud https://api.crab.talk --token "$KEY" --org acme
     env:
       KEY: ${{ secrets.CRABTALK_KEY }}
   - run: crab deploy --context cloud
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Locally, `GITHUB_TOKEN=$(gh auth token)` does the same.
+A service with an `image` pushes it with `GITHUB_TOKEN` as the registry credential: give the job `packages: write` and the step `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. Locally, `GITHUB_TOKEN=$(gh auth token)` does the same.
 
 `new` is the one subcommand that does not talk to the context's host. It writes
 a program crate pinning the `berm-lang` that shipped with this binary.

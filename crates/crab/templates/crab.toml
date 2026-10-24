@@ -1,7 +1,8 @@
 # The service this program deploys as.
 name = "__NAME__"
-# The registry repository Cloud pulls the image from, tagged with the crate's
-# version on each deploy.
+# The public registry repository the image is published to, tagged with the
+# crate's version on each deploy. Without it, a deploy uploads the image to
+# the host.
 # image = "ghcr.io/<you>/__NAME__"
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]

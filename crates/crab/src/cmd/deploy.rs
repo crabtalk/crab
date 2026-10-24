@@ -12,7 +12,7 @@ use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{DeployRequest, SeedRequest},
+    sandbox::service::{DeployRequest, UploadRequest},
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
@@ -84,7 +84,8 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
 
 /// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
 /// is pushed to `image`, or `crab.toml`'s, tagged with the crate's version, and
-/// deployed from there, and a service deployed for the first time starts from
+/// deployed from there, or uploaded to Cloud when neither names a registry; a
+/// service deployed for the first time starts from
 /// `[database] seed`. With `pull`, the crons the service's owners set on the
 /// host are written into `crab.toml`'s `[crons]` first.
 fn one(
@@ -131,14 +132,14 @@ fn one(
             stopped,
         ))?,
         Some(_) => {
-            let image = image.or(project.image.as_deref()).with_context(|| {
-                format!(
-                    "Cloud deploys through a registry; name one as `image` in {}",
-                    project::FILE
-                )
-            })?;
-            let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
-            push(&reference, &bytes)?;
+            let reference = match image.or(project.image.as_deref()) {
+                Some(image) => {
+                    let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
+                    push(&reference, &bytes)?;
+                    reference
+                }
+                None => send(client, name, bytes)?,
+            };
             let seed = match &project.database.seed {
                 Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
                 _ => None,
@@ -210,16 +211,32 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
         .execute("VACUUM INTO ?1", [into])
         .with_context(|| format!("copying the seed {}", seed.display()))?;
     let (sha256, size) = hash(&copy)?;
-    let request = SeedRequest {
+    let request = UploadRequest {
         sha256: sha256.clone(),
         size,
     };
     if let Some(url) = utils::wait(client.seed(name, &request))?.upload {
         eprintln!("uploading the seed, {size} bytes");
         let file = utils::wait(AsyncFile::open(&copy))?;
-        utils::wait(client.upload_seed(&url, file, size))?;
+        utils::wait(client.upload(&url, file, size))?;
     }
     Ok(sha256)
+}
+
+/// Upload `image` for `name`'s deploy unless Cloud holds it already, answering
+/// the digest the deploy names it by.
+fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
+    let sha256 = berm::digest(&image);
+    let size = image.len() as u64;
+    let request = UploadRequest {
+        sha256: sha256.clone(),
+        size,
+    };
+    if let Some(url) = utils::wait(client.image(name, &request))?.upload {
+        eprintln!("uploading the image, {size} bytes");
+        utils::wait(client.upload(&url, image, size))?;
+    }
+    Ok(format!("sha256:{sha256}"))
 }
 
 /// The SHA-256 of the file at `path`, in hex, and its size.

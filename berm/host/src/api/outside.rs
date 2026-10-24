@@ -226,7 +226,6 @@ impl<E: Env> Host<E> {
             args: String::from_utf8_lossy(&args).into_owned(),
             caller: caller.clone(),
             digest: format!("sha256:{}", program.digest),
-            image: None,
         };
         let (source, who) = counted(caller.as_ref());
         let invoked = self
