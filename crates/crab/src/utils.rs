@@ -58,9 +58,8 @@ pub fn confirm(yes: bool, what: &str) -> Result<()> {
     }
 }
 
-/// Print `url` and open it in the browser. A browser that does not open
-/// leaves the printed URL.
-pub fn open(url: &str) {
+/// Print `url` and open it in the browser, answering whether one opened.
+pub fn open(url: &str) -> bool {
     eprintln!("{url}");
     #[cfg(target_os = "macos")]
     let opened = Command::new("open").arg(url).status();
@@ -68,7 +67,5 @@ pub fn open(url: &str) {
     let opened = Command::new("cmd").args(["/C", "start", "", url]).status();
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let opened = Command::new("xdg-open").arg(url).status();
-    if !opened.is_ok_and(|status| status.success()) {
-        eprintln!("open the URL above in a browser");
-    }
+    opened.is_ok_and(|status| status.success())
 }

@@ -8,13 +8,10 @@ use crabtalk_sdk::{
     client::Client,
 };
 use serde::Serialize;
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
-/// How often `--wait` asks after a request.
-const POLL: Duration = Duration::from_secs(2);
+/// Seconds Cloud holds each ask of `--wait` while the request is pending.
+const HOLD: u64 = 60;
 
 /// Print a request just made: its page, what it asks, and how to wait for it.
 pub fn asked(request: &Request, json: bool) -> Result<()> {
@@ -56,6 +53,9 @@ pub fn asked(request: &Request, json: bool) -> Result<()> {
 
 /// What `request` asks, priced when it is a payment.
 fn describe(request: &Request) -> String {
+    if request.kind == RequestKind::Login {
+        return "sign crab in".to_owned();
+    }
     if request.kind == RequestKind::Secret {
         let asked: Vec<&str> = request
             .credentials
@@ -109,15 +109,14 @@ pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
 /// giving up after `timeout` seconds. Fails unless it completed or, without
 /// `wait`, is still pending.
 pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) -> Result<()> {
-    let started = Instant::now();
+    let until = Instant::now() + Duration::from_secs(timeout);
     let request = loop {
-        let request = utils::wait(client.request(code))?;
-        let waiting = request.status == RequestStatus::Pending
-            && started.elapsed() < Duration::from_secs(timeout);
-        if !wait || !waiting {
+        let left = until.saturating_duration_since(Instant::now()).as_secs();
+        let hold = if wait { left.min(HOLD) } else { 0 };
+        let request = utils::wait(client.request(code, hold))?;
+        if request.status != RequestStatus::Pending || hold == 0 {
             break request;
         }
-        thread::sleep(POLL);
     };
     if json {
         utils::json(&request)?;

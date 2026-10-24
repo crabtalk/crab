@@ -13,7 +13,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 berm-api.workspace = true
 reqwest = { workspace = true, optional = true, features = ["json", "query", "rustls", "stream"] }
 serde = { workspace = true, features = ["std"] }
-tokio = { workspace = true, optional = true, features = ["fs"] }
+tokio = { workspace = true, optional = true, features = ["fs", "time"] }
 serde_json = { workspace = true, features = ["std"] }
 utoipa = { workspace = true, optional = true }
 

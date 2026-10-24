@@ -5,9 +5,9 @@
 //! `list`, `inspect`, `run` and the rest.
 
 use crate::error::{ApiError, ErrorResponse};
-use reqwest::{Method, RequestBuilder, StatusCode};
+use reqwest::{Method, RequestBuilder, Response, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, de::DeserializeOwned};
-use std::fmt;
+use std::{fmt, time::Duration};
 mod app;
 mod auth;
 mod billing;
@@ -19,6 +19,9 @@ mod request;
 mod service;
 mod user;
 pub use owner::Owner;
+
+/// Times a call is sent again after a `429`.
+const RETRIES: usize = 3;
 
 /// A connection to a CrabTalk Cloud deployment or a local host.
 #[derive(Clone)]
@@ -114,10 +117,35 @@ impl Client {
         serde_json::from_str(&body).map_err(|e| Error::Decode(e.to_string()))
     }
 
+    /// Send `req`, sending it again each time a `429` names when to, after
+    /// that wait, up to [`RETRIES`] times. A request whose body streams is
+    /// sent once.
+    async fn send(&self, req: RequestBuilder) -> Result<Response, Error> {
+        let mut req = req;
+        for _ in 0..RETRIES {
+            let Some(again) = req.try_clone() else {
+                break;
+            };
+            let res = req.send().await?;
+            let wait = res
+                .headers()
+                .get(RETRY_AFTER)
+                .and_then(|v| v.to_str().ok()?.parse::<u64>().ok());
+            match (res.status(), wait) {
+                (StatusCode::TOO_MANY_REQUESTS, Some(wait)) => {
+                    tokio::time::sleep(Duration::from_secs(wait)).await;
+                    req = again;
+                }
+                _ => return Ok(res),
+            }
+        }
+        Ok(req.send().await?)
+    }
+
     /// Send, and read the body a success carries, turning anything outside 2xx
     /// into an [`Error::Api`].
     pub async fn ok(&self, req: RequestBuilder) -> Result<String, Error> {
-        let res = req.send().await?;
+        let res = self.send(req).await?;
         let status = res.status();
         let body = res.text().await?;
         if status.is_success() {
@@ -128,7 +156,7 @@ impl Client {
 
     /// Send, and read the raw body a success carries.
     pub async fn bytes(&self, req: RequestBuilder) -> Result<Vec<u8>, Error> {
-        let res = req.send().await?;
+        let res = self.send(req).await?;
         let status = res.status();
         if status.is_success() {
             return Ok(res.bytes().await?.to_vec());
@@ -139,7 +167,7 @@ impl Client {
     /// Send, and report only whether the deployment answered in the 2xx range.
     /// The health routes carry no body and say everything in the status.
     pub(crate) async fn probe(&self, req: RequestBuilder) -> Result<bool, Error> {
-        Ok(req.send().await?.status().is_success())
+        Ok(self.send(req).await?.status().is_success())
     }
 }
 

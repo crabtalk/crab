@@ -67,12 +67,15 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login` signs in to Cloud in the browser, keeps the session as the `cloud` context and uses it. A session reaches everything below; a deploy key is refused by all of it but `usage`.
 
+`crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
+
 `crab login --email` signs in without a browser, with a code emailed to the address, and creates the account when the address has none. It sends the code and exits; `--code` finishes in a second run.
 
 `crab billing plan`, `trial` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login                     # --github for GitHub
+crab login --device
 crab login --email you@example.com
 crab login --email you@example.com --code 12345678
 crab status

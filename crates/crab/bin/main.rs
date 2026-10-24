@@ -50,6 +50,10 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
+        /// Print a code for a person to approve at `/device` in place of
+        /// opening a browser here, as when none opens.
+        #[arg(long, conflicts_with_all = ["github", "email"])]
+        device: bool,
         /// Sign in with a code emailed to this address, without a browser.
         #[arg(long, conflicts_with = "github")]
         email: Option<String>,
@@ -512,14 +516,18 @@ fn main() -> Result<ExitCode> {
     match &args.command {
         Command::Login {
             host,
-            github: _,
             email: Some(email),
             code,
             name,
+            ..
         } => cmd::login::email(name, host, email, code.as_deref())?,
         Command::Login {
-            host, github, name, ..
-        } => cmd::login::run(name, host, *github)?,
+            host,
+            github,
+            device,
+            name,
+            ..
+        } => cmd::login::run(name, host, *github, *device)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
         Command::Request {
             code, expire: true, ..
