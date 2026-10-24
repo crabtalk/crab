@@ -91,7 +91,7 @@ impl Client {
     }
 
     /// Call `tool` of `program`, as `caller` on a local host, which takes it
-    /// unverified. On Cloud, `owner/name` names another account's service.
+    /// unverified.
     pub async fn call(
         &self,
         program: &str,
@@ -99,16 +99,12 @@ impl Client {
         arguments: Vec<u8>,
         caller: Option<&Caller>,
     ) -> Result<(Output, Option<Meter>), Error> {
-        let service = match (&self.owner, program.contains('/')) {
-            (None, true) => {
-                return Err(Error::Host(
-                    "the local host has no accounts: call its services by name alone",
-                ));
-            }
-            (Some(_), true) => format!("/services/{program}"),
-            (_, false) => self.program(program),
-        };
-        let path = format!("{service}/tools/{tool}");
+        if self.owner.is_none() && program.contains('/') {
+            return Err(Error::Host(
+                "the local host has no accounts: call its services by name alone",
+            ));
+        }
+        let path = format!("{}/tools/{tool}", self.program(program));
         let request = self.as_caller(self.at(Method::POST, &path).body(arguments), caller)?;
         self.answered(request).await
     }
@@ -289,8 +285,11 @@ impl Client {
         Ok(format!("/services/{}/{name}", self.account()?.name()))
     }
 
+    /// The path of `name`. On Cloud, `owner/name` names another account's
+    /// service, and a bare name the context's own.
     fn program(&self, name: &str) -> String {
         match &self.owner {
+            Some(_) if name.contains('/') => format!("/services/{name}"),
             Some(owner) => format!("/services/{}/{name}", owner.name()),
             None => format!("/programs/{name}"),
         }

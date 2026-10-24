@@ -2,13 +2,19 @@
 
 use crate::utils;
 use anyhow::Result;
-use berm_api::{Program, Runtime, Terms};
-use crabtalk_sdk::client::Client;
+use berm_api::{Program, Runtime, Terms, ToolSpec};
+use crabtalk_sdk::client::{Client, Error};
 use serde_json::Value;
 
+/// Print `name` as its caller sees it: the runtime too when the host answers
+/// it, which Cloud does for the service's owners alone.
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
     let program = utils::wait(client.inspect(name))?;
-    let runtime = utils::wait(client.runtime(name))?;
+    let runtime = match utils::wait(client.runtime(name)) {
+        Ok(runtime) => Some(runtime),
+        Err(Error::Api { status: 403, .. }) => None,
+        Err(e) => return Err(e.into()),
+    };
     let terms = utils::wait(client.terms(name))?;
     if json {
         return utils::json(&serde_json::json!({
@@ -17,11 +23,11 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             "terms": terms,
         }));
     }
-    show(&program, &runtime, &terms);
+    show(&program, runtime.as_ref(), &terms);
     Ok(())
 }
 
-pub fn show(program: &Program, runtime: &Runtime, terms: &Terms) {
+pub fn show(program: &Program, runtime: Option<&Runtime>, terms: &Terms) {
     println!("{}", program.name);
     if !program.description.is_empty() {
         println!("  {}", program.description);
@@ -38,6 +44,16 @@ pub fn show(program: &Program, runtime: &Runtime, terms: &Terms) {
             println!("  {label} {value}");
         }
     }
+    if !program.readme.is_empty() {
+        println!();
+        for line in program.readme.lines() {
+            println!("  {line}");
+        }
+    }
+    let Some(runtime) = runtime else {
+        tools(program.tools.iter(), terms);
+        return;
+    };
     let answered = |missing: bool| match missing {
         true => "  (nothing answers to it here)",
         false => "",
@@ -59,7 +75,24 @@ pub fn show(program: &Program, runtime: &Runtime, terms: &Terms) {
         println!("  secret  {name}{}", answered(missing));
     }
 
-    for tool in program.tools.iter().chain(&runtime.tools) {
+    tools(program.tools.iter().chain(&runtime.tools), terms);
+    for event in &runtime.events {
+        println!();
+        match event.deprecated {
+            true => println!("  event {} (deprecated)", event.name),
+            false => println!("  event {}", event.name),
+        }
+        println!("    {}", event.description);
+        for field in properties(&event.fields) {
+            println!("    {field}");
+        }
+    }
+}
+
+/// Each of `tools`, with its marks, arguments, reply and what one call of it
+/// is held to.
+fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
+    for tool in tools {
         println!();
         let marks = [
             (tool.public, " (public)"),
@@ -88,18 +121,6 @@ pub fn show(program: &Program, runtime: &Runtime, terms: &Terms) {
             for field in properties(returns) {
                 println!("      {field}");
             }
-        }
-    }
-
-    for event in &runtime.events {
-        println!();
-        match event.deprecated {
-            true => println!("  event {} (deprecated)", event.name),
-            false => println!("  event {}", event.name),
-        }
-        println!("    {}", event.description);
-        for field in properties(&event.fields) {
-            println!("    {field}");
         }
     }
 }

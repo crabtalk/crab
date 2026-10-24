@@ -161,7 +161,7 @@ fn one(
     let runtime = utils::wait(client.runtime(name))?;
     inspect::show(
         &deployed.program,
-        &runtime,
+        Some(&runtime),
         &utils::wait(client.terms(name))?,
     );
     for broken in &deployed.breaks {

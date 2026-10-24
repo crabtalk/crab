@@ -142,8 +142,12 @@ enum Command {
         #[arg(long)]
         on: Option<String>,
     },
-    /// Show a program's tools and their arguments.
-    Inspect { name: String },
+    /// Show a program's README, tools and their arguments.
+    Inspect {
+        /// The service: a name on the context's account, or `owner/name` on
+        /// Cloud for another account's public service.
+        name: String,
+    },
     /// Write a deployed program's IDL, which `declare_program!` reads.
     Idl {
         name: String,
