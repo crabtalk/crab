@@ -47,6 +47,16 @@ pub(crate) struct Emitted {
 }
 
 impl Emitted {
+    /// Whether its data or a topic holds `text`, lowercase, its ASCII letters
+    /// in either case.
+    pub(crate) fn holds(&self, text: &str) -> bool {
+        self.data.to_ascii_lowercase().contains(text)
+            || self
+                .topics
+                .iter()
+                .any(|topic| topic.to_ascii_lowercase().contains(text))
+    }
+
     /// The log as it reads once written as number `seq`.
     pub(crate) fn logged(self, seq: u64) -> Logged {
         Logged {

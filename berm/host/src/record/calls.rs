@@ -305,10 +305,15 @@ pub(crate) async fn read(
                     AND (:event IS NULL OR EXISTS (
                         SELECT 1 FROM service_logs l, json_each(l.topics) t
                          WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
-                           AND t.value = :event))";
+                           AND t.value = :event))
+                    AND (:q IS NULL OR EXISTS (
+                        SELECT 1 FROM service_logs l
+                         WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
+                           AND (instr(lower(l.data), :q) > 0 OR instr(lower(l.topics), :q) > 0)))";
             let since = page.since.map(|since| since as i64);
             let until = page.until.map(|until| until as i64);
             let before = page.before.map(|before| before as i64);
+            let q = page.q.as_deref().map(str::to_ascii_lowercase);
             // The written calls a page can hold: runs not yet written only
             // push them further down.
             let written = conn
@@ -318,7 +323,7 @@ pub(crate) async fn read(
                 .query_map(
                     named_params! {
                         ":scope": scope, ":name": name, ":tool": page.tool,
-                        ":event": page.event, ":outcome": page.outcome,
+                        ":event": page.event, ":q": q, ":outcome": page.outcome,
                         ":since": since, ":until": until, ":before": before,
                         ":limit": page.limit,
                     },
@@ -334,7 +339,14 @@ pub(crate) async fn read(
                         && ran.on(&page)
                 })
                 .collect();
-            let unsaved = unwritten(conn, &scope, ran, &emitted, page.event.as_deref())?;
+            let unsaved = unwritten(
+                conn,
+                &scope,
+                ran,
+                &emitted,
+                page.event.as_deref(),
+                q.as_deref(),
+            )?;
             let mut ids: Vec<(i64, bool)> = written
                 .into_iter()
                 .map(|id| (id, true))
@@ -375,23 +387,27 @@ pub(crate) async fn read(
 
 /// `ran`, runs of `scope`'s services not yet written, as calls, each with the
 /// logs it emitted, written and in `emitted`; only those that emitted one
-/// carrying `event` when given. A call's id is its host's alone.
+/// carrying `event`, and one holding `q` as [`Emitted::holds`] reads it, when
+/// given. A call's id is its host's alone.
 fn unwritten(
     conn: &Connection,
     scope: &str,
     ran: Vec<Ran>,
     emitted: &[Emitted],
     event: Option<&str>,
+    q: Option<&str>,
 ) -> rusqlite::Result<Vec<ServiceCall>> {
     if ran.is_empty() {
         return Ok(Vec::new());
     }
     let ids: Vec<u64> = ran.iter().map(|ran| ran.id).collect();
-    let written: HashMap<u64, (u64, bool)> = conn
+    let written: HashMap<u64, (u64, bool, bool)> = conn
         .prepare_cached(
             "SELECT l.call, COUNT(*),
                     MAX(:event IS NOT NULL AND EXISTS (
-                        SELECT 1 FROM json_each(l.topics) t WHERE t.value = :event))
+                        SELECT 1 FROM json_each(l.topics) t WHERE t.value = :event)),
+                    MAX(:q IS NOT NULL
+                        AND (instr(lower(l.data), :q) > 0 OR instr(lower(l.topics), :q) > 0))
                FROM service_logs l
               WHERE l.scope = :scope
                 AND l.call IN (SELECT value FROM json_each(:ids))
@@ -399,13 +415,13 @@ fn unwritten(
         )?
         .query_map(
             named_params! {
-                ":scope": scope, ":event": event,
+                ":scope": scope, ":event": event, ":q": q,
                 ":ids": serde_json::to_string(&ids).expect("ids are JSON"),
             },
             |row| {
                 Ok((
                     row.get::<_, i64>(0)? as u64,
-                    (row.get::<_, i64>(1)? as u64, row.get(2)?),
+                    (row.get::<_, i64>(1)? as u64, row.get(2)?, row.get(3)?),
                 ))
             },
         )?
@@ -413,12 +429,14 @@ fn unwritten(
     Ok(ran
         .into_iter()
         .filter_map(|ran| {
-            let (mut logs, mut carries) = written.get(&ran.id).copied().unwrap_or_default();
+            let (mut logs, mut carries, mut holds) =
+                written.get(&ran.id).copied().unwrap_or_default();
             for log in emitted.iter().filter(|log| log.call == Some(ran.id)) {
                 logs += 1;
                 carries |= event.is_some_and(|event| log.topics.iter().any(|topic| topic == event));
+                holds |= q.is_some_and(|q| log.holds(q));
             }
-            (event.is_none() || carries).then(|| ran.call(logs))
+            ((event.is_none() || carries) && (q.is_none() || holds)).then(|| ran.call(logs))
         })
         .collect())
 }
@@ -445,7 +463,7 @@ pub(crate) fn last(
         .max_by_key(|ran| ran.id);
     match newer {
         Some(ran) => Ok(
-            unwritten(conn, scope, vec![ran.clone()], &unsaved.emitted, None)?
+            unwritten(conn, scope, vec![ran.clone()], &unsaved.emitted, None, None)?
                 .pop()
                 .map(|ran| ran.call),
         ),

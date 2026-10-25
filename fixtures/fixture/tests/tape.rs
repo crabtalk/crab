@@ -28,6 +28,7 @@ fn page() -> CallPage {
         service: None,
         tool: None,
         event: None,
+        q: None,
         outcome: None,
         since: None,
         until: None,

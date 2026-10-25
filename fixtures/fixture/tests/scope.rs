@@ -10,6 +10,7 @@ fn page(service: Option<&str>, before: Option<u64>) -> CallPage {
         service: service.map(str::to_owned),
         tool: None,
         event: None,
+        q: None,
         outcome: None,
         since: None,
         until: None,
@@ -67,5 +68,58 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
         .scope_calls("acct", page(None, Some(below)))
         .await?;
     assert!(calls.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    host.deploy("acct/fixture", &test::build("berm-fixture")?)
+        .await?;
+    let caller = Caller {
+        id: "acct".to_owned(),
+        app: None,
+        user: None,
+        client: None,
+        agent: None,
+    };
+    for word in ["Order-42", "other"] {
+        let args = format!(r#"{{"word":"{word}"}}"#);
+        host.host()
+            .call(
+                "acct/fixture",
+                Some(&caller),
+                "relay",
+                args.into_bytes(),
+                false,
+            )
+            .await?;
+    }
+
+    for written in [false, true] {
+        if written {
+            host.flush().await?;
+        }
+        let found = |q: &str| {
+            let host = host.host().clone();
+            let page = CallPage {
+                q: Some(q.to_owned()),
+                ..page(None, None)
+            };
+            async move {
+                host.scope_calls("acct", page)
+                    .await
+                    .map(|(calls, _)| calls.len())
+            }
+        };
+        assert_eq!(found("order-42").await?, 1, "written: {written}");
+        assert_eq!(found("ORDER").await?, 1, "written: {written}");
+        assert_eq!(
+            found("relay").await?,
+            2,
+            "a topic holds it; written: {written}"
+        );
+        assert_eq!(found("missing").await?, 0, "written: {written}");
+    }
     Ok(())
 }

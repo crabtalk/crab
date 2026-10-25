@@ -39,6 +39,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
                     service: None,
                     tool: None,
                     event: None,
+                    q: None,
                     outcome: None,
                     since: None,
                     until: None,

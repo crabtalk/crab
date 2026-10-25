@@ -285,7 +285,7 @@ impl Page {
     }
 }
 
-/// `?service=&tool=&event=&outcome=&since=&until=&before=&limit=` on a
+/// `?service=&tool=&event=&q=&outcome=&since=&until=&before=&limit=` on a
 /// service's calls, or a scope's.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
@@ -298,6 +298,10 @@ pub struct CallPage {
     /// Only calls that emitted a log carrying this topic.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<String>,
+    /// Only calls that emitted a log whose data or a topic holds this text,
+    /// its ASCII letters in either case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
     /// Only calls that ended so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,

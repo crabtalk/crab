@@ -152,6 +152,22 @@ pub struct Costed {
     pub cost_micros_decimal: Option<String>,
 }
 
+/// One deploy of a service that went live.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Deployed {
+    pub version: String,
+    /// `sha256:` and the hex SHA-256 of the image.
+    pub digest: String,
+    /// What it was deployed from: a registry reference, or `sha256:` and an
+    /// upload's SHA-256.
+    pub reference: String,
+    /// Who deployed it, by handle, or by id when they have none.
+    pub by: String,
+    /// When, in epoch seconds.
+    pub at: i64,
+}
+
 /// A call of one of an account's services, with what its meter costs.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
