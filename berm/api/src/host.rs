@@ -493,6 +493,17 @@ pub struct ToolUsage {
     pub cpu: Spread,
     /// Rows each call's own invocation read and wrote together, as `cpu`.
     pub rows: Spread,
+    /// Each UTC day with a call, oldest first.
+    pub days: Vec<ToolDay>,
+}
+
+/// One UTC day of a tool's calls.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolDay {
+    /// Days since the Unix epoch.
+    pub day: i32,
+    pub calls: u64,
 }
 
 /// How one resource's use is spread over a tool's calls.

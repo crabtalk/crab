@@ -13,7 +13,7 @@ use berm_api::{
     Meter,
     host::{
         Bucket, Call, CallInput, CallPage, CallStats, Outcome, ServiceCall, Source, Spread,
-        ToolUsage,
+        ToolDay, ToolUsage,
     },
 };
 use parking_lot::Mutex;
@@ -541,16 +541,18 @@ pub(crate) async fn tools(
                 rows: BTreeMap<usize, u64>,
                 cpu_max: u64,
                 rows_max: u64,
+                days: BTreeMap<i32, u64>,
             }
             let mut tools: BTreeMap<String, Counted> = BTreeMap::new();
             let mut statement = conn.prepare_cached(
-                "SELECT tool, meter, cpu, read + written FROM service_calls
+                "SELECT tool, meter, cpu, read + written, at / 86400000 FROM service_calls
                   WHERE scope = ?1 AND name = ?2 AND meter IS NOT NULL",
             )?;
             let mut rows = statement.query(params![scope, name])?;
             while let Some(row) = rows.next()? {
                 let counted = tools.entry(row.get(0)?).or_default();
                 counted.calls += 1;
+                *counted.days.entry(row.get(4)?).or_default() += 1;
                 if let Ok(meter) = serde_json::from_str::<Meter>(&row.get::<_, String>(1)?) {
                     counted.meter += meter;
                 }
@@ -571,6 +573,11 @@ pub(crate) async fn tools(
                         meter: counted.meter,
                         cpu: Spread::of(&counted.cpu, counted.cpu_max),
                         rows: Spread::of(&counted.rows, counted.rows_max),
+                        days: counted
+                            .days
+                            .into_iter()
+                            .map(|(day, calls)| ToolDay { day, calls })
+                            .collect(),
                     };
                     (tool, usage)
                 })
