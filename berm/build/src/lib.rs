@@ -62,7 +62,7 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
         description: program.description.clone().unwrap_or_default(),
         homepage: program.homepage.clone().unwrap_or_default(),
         repository: program.repository.clone().unwrap_or_default(),
-        readme: match &project.readme {
+        readme: match &program.readme {
             Some(readme) => {
                 let path = program.dir().join(readme);
                 fs::read_to_string(&path)

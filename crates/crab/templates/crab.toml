@@ -10,8 +10,6 @@ name = "__NAME__"
 # programs = ["inner"]
 # The most bytes a call's arguments, and a tool's result, may hold.
 # buffer = 16384
-# A Markdown file the manifest carries as its README.
-# readme = "README.md"
 
 # Syscalls it makes beyond the ABI's own, each beside what it reaches.
 # [syscalls]

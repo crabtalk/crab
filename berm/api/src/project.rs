@@ -54,10 +54,6 @@ pub struct Project {
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
     pub buffer: Option<usize>,
-    /// A Markdown file, relative to `crab.toml`, the manifest carries as the
-    /// program's README; none when absent.
-    #[serde(default)]
-    pub readme: Option<PathBuf>,
     /// Syscalls it makes beyond the ABI's own, each beside what it reaches
     /// through that call: `"berm.http.fetch" = ["example.com"]`, or `[]` for
     /// the call alone.
@@ -156,7 +152,6 @@ impl Project {
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("buffer", self.buffer.is_some()),
-            ("readme", self.readme.is_some()),
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),
         ];
