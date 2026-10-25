@@ -19,13 +19,13 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             .map_or("anyone".to_owned(), |kind| kind.to_string());
         println!("{}  {price}  for {kind}", plan.slug);
         let included = &plan.included;
-        if included.calls + included.cpu + included.read + included.written + included.stored == 0 {
+        if included.runs + included.cpu + included.read + included.written + included.stored == 0 {
             println!("  includes no amounts");
             continue;
         }
         println!(
-            "  {} calls, {} CPU µs, {} rows read, {} rows written, {}",
-            format::count(included.calls),
+            "  {} runs, {} CPU µs, {} rows read, {} rows written, {}",
+            format::count(included.runs),
             format::count(included.cpu),
             format::count(included.read),
             format::count(included.written),

@@ -74,7 +74,7 @@ pub(crate) fn calls<E: Env>(
             let host = host.clone();
             Arc::new(move |at: &Callsite, tool: &str, used: Meter| {
                 let call = host.upgrade().and_then(|host| host.logs.run(at.chain));
-                observe.invoked(&at.program, tool, call, &used);
+                observe.invoked(&at.program, tool, call, &used, at.spent());
             })
         },
         enter: commit::enter(commits),

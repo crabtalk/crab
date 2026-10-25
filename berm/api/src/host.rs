@@ -649,6 +649,10 @@ pub struct Count {
 pub struct Metered {
     /// Days since the Unix epoch.
     pub day: i32,
+    /// Chains whose first link the service was: a call from outside, a wake
+    /// or a Stripe event.
+    #[serde(default)]
+    pub runs: u64,
     /// Invocations of the service: from outside, from other services, and
     /// wakes.
     pub calls: u64,
@@ -681,6 +685,7 @@ pub struct Metered {
 impl std::ops::AddAssign<Meter> for Metered {
     /// Sums every count but `memory`, which keeps the larger.
     fn add_assign(&mut self, used: Meter) {
+        self.runs += used.runs;
         self.calls += used.calls;
         self.cpu += used.cpu;
         self.memory = self.memory.max(used.memory);

@@ -15,9 +15,9 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         return utils::json(&metering);
     }
     let rates = &metering.rates;
-    println!("calls         {}", per_million(rates.calls));
+    println!("runs          {}", per_million(rates.runs));
     println!(
-        "compute       ${} per million CPU-ms past each call's first {}µs",
+        "compute       ${} per million CPU-ms past each run's first {}µs",
         rates.overage as f64 / 1e6,
         metering.included_cpu
     );

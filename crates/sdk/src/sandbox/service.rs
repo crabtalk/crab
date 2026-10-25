@@ -58,14 +58,14 @@ pub struct Upload {
     pub upload: Option<String>,
 }
 
-/// One day of a service's meter, with what Cloud charges past each
-/// invocation's included CPU time.
+/// One day of a service's meter, with what Cloud charges past each run's
+/// included CPU time.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeteredDay {
     #[serde(flatten)]
     pub used: berm_api::host::Metered,
-    /// The CPU microseconds each invocation spent past its first
+    /// The CPU microseconds each run spent in the service past the run's first
     /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU), summed.
     #[serde(default)]
     pub overage: u64,

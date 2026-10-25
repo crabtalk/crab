@@ -44,6 +44,9 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0024.sql"),
     include_str!("migrations/0025.sql"),
     include_str!("migrations/0026.sql"),
+    // `runs` counts the chains a service was the first link of; days metered
+    // before it hold 0.
+    include_str!("migrations/0027.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.

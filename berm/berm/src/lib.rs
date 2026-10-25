@@ -135,6 +135,12 @@ impl Callsite {
         self.own.left()
     }
 
+    /// CPU microseconds the chain has spent so far, every program's metered
+    /// here included.
+    pub fn spent(&self) -> u64 {
+        self.meters.cpu()
+    }
+
     /// Count `used` against `program`, run elsewhere for this chain.
     pub fn meter_of(&self, program: &str, used: Meter) {
         self.meters.add(program, used);

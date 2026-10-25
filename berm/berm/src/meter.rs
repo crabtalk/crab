@@ -28,6 +28,11 @@ impl Meters {
         }
     }
 
+    /// CPU microseconds over every program.
+    pub(crate) fn cpu(&self) -> u64 {
+        self.0.lock().values().map(|meter| meter.cpu).sum()
+    }
+
     pub fn take(&self) -> BTreeMap<Arc<str>, Meter> {
         std::mem::take(&mut *self.0.lock())
     }

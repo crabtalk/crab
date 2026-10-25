@@ -432,6 +432,7 @@ impl Program {
             own: Arc::new(Own::new(budget.rows)),
         };
         at.meter(Meter {
+            runs: u64::from(depth == 1),
             calls: 1,
             ..Meter::default()
         });

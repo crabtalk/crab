@@ -66,7 +66,7 @@ pub struct Warning {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
-    Calls,
+    Runs,
     Cpu,
     Read,
     Written,
@@ -76,7 +76,7 @@ pub enum Unit {
 }
 
 text_enum!(Unit {
-    Calls => "calls",
+    Runs => "runs",
     Cpu => "cpu",
     Read => "read",
     Written => "written",
@@ -145,8 +145,8 @@ text_enum!(InvoiceStatus {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Included {
-    pub calls: u64,
-    /// CPU microseconds past each call's first
+    pub runs: u64,
+    /// CPU microseconds past each run's first
     /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU).
     pub cpu: u64,
     /// Rows read.
