@@ -522,7 +522,7 @@ impl<E: Env> Host<E> {
             },
         };
         if matches!(outcome.result, Output::Done(_)) {
-            self.commits.commit(&outcome.changes).await?;
+            self.commits.commit(outcome.changes, None).await?;
         }
         let ended = Outcome::of(&outcome.result, outcome.denied);
         self.usage.record(

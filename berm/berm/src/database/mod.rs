@@ -228,6 +228,7 @@ impl Database {
         let mut conn =
             Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;

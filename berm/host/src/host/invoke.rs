@@ -51,7 +51,7 @@ impl<E: Env> Host<E> {
                 own,
             });
         }
-        self.commits.commit(&outcome.changes).await?;
+        self.commits.commit(outcome.changes, None).await?;
         Ok(Invoked {
             result: outcome.result,
             denied: false,

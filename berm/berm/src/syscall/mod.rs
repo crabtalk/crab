@@ -187,10 +187,11 @@ fn builtins() -> Table {
     table.insert(
         abi::HOST_ARG_READ,
         handler(|guest, ptr, capacity| {
-            let args = &guest.data().args;
+            let args = std::mem::take(&mut guest.data_mut().args);
             let length = args.len();
-            let taken = args[..length.min(capacity as usize)].to_vec();
-            engine::write(guest, ptr, &taken)?;
+            let written = engine::write(guest, ptr, &args[..length.min(capacity as usize)]);
+            guest.data_mut().args = args;
+            written?;
             Ok(length as u64)
         }),
     );
@@ -201,10 +202,11 @@ fn builtins() -> Table {
     table.insert(
         abi::HOST_RESULT_READ,
         handler(|guest, ptr, capacity| {
-            let staged = &guest.data().staged;
+            let staged = std::mem::take(&mut guest.data_mut().staged);
             let length = staged.len();
-            let taken = staged[..length.min(capacity as usize)].to_vec();
-            engine::write(guest, ptr, &taken)?;
+            let written = engine::write(guest, ptr, &staged[..length.min(capacity as usize)]);
+            guest.data_mut().staged = staged;
+            written?;
             Ok(length as u64)
         }),
     );

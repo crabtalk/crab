@@ -235,16 +235,16 @@ impl Program {
             repository,
             readme,
             tools,
-        } = self.manifest.clone();
+        } = &self.manifest;
         berm_api::Program {
             name: name.to_owned(),
-            version,
-            description,
-            homepage,
-            repository,
-            readme,
+            version: version.clone(),
+            description: description.clone(),
+            homepage: homepage.clone(),
+            repository: repository.clone(),
+            readme: readme.clone(),
             digest: self.digest.clone(),
-            tools: tools.into_iter().filter(|tool| tool.public).collect(),
+            tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
         }
     }
 

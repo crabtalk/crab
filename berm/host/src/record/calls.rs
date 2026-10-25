@@ -22,7 +22,10 @@ use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap},
     mem,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Instant,
 };
 
@@ -53,9 +56,9 @@ pub(crate) struct Ran {
     /// What the tool's own invocation used.
     own: Option<Meter>,
     /// Kept for a run that failed.
-    input: Option<CallInput>,
+    input: Option<Arc<CallInput>>,
     /// Kept for a run that failed, encoded.
-    tape: Option<Vec<u8>>,
+    tape: Option<Arc<[u8]>>,
 }
 
 /// A service's runs and logs not yet written.
@@ -118,8 +121,8 @@ impl Pending {
             ms: started.began.elapsed().as_millis() as u64,
             meter: invoked.map(|invoked| invoked.meter),
             own: invoked.map(|invoked| invoked.own),
-            input: input.filter(|_| failed),
-            tape: tape.filter(|_| failed).map(Vec::from),
+            input: input.filter(|_| failed).map(Arc::new),
+            tape: tape.filter(|_| failed).map(|tape| Vec::from(tape).into()),
         });
     }
 
@@ -190,7 +193,7 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 .map(|meter| serde_json::to_string(meter).expect("a meter is JSON"));
             let input = call
                 .input
-                .as_ref()
+                .as_deref()
                 .map(|input| serde_json::to_string(input).expect("an input is JSON"));
             tx.prepare_cached(
                 "INSERT INTO service_calls
@@ -211,7 +214,7 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 meter,
                 call.id as i64,
                 input,
-                call.tape,
+                call.tape.as_deref(),
                 call.own.map(|own| own.cpu as i64),
                 call.own.map(|own| own.read as i64),
                 call.own.map(|own| own.written as i64)
@@ -250,7 +253,7 @@ pub(crate) async fn tape(
     unsaved: Vec<Ran>,
 ) -> Result<Option<Option<Vec<u8>>>> {
     if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
-        return Ok(Some(ran.tape));
+        return Ok(Some(ran.tape.map(|tape| tape.to_vec())));
     }
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
@@ -275,7 +278,7 @@ pub(crate) async fn input(
     unsaved: Vec<Ran>,
 ) -> Result<Option<Option<CallInput>>> {
     if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
-        return Ok(Some(ran.input));
+        return Ok(Some(ran.input.map(Arc::unwrap_or_clone)));
     }
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store

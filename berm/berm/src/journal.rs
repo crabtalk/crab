@@ -12,7 +12,10 @@
 use crate::Refused;
 use anyhow::Result;
 use parking_lot::Mutex;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 /// Bytes of keys, values, topics and data one chain may hold before the next
 /// entry is refused.
@@ -58,6 +61,8 @@ pub(crate) struct Journal(Mutex<Entries>);
 struct Entries {
     list: Vec<Entry>,
     bytes: usize,
+    /// Where in `list` each program's key was last written.
+    last: HashMap<Arc<str>, HashMap<String, usize>>,
 }
 
 #[derive(Debug)]
@@ -87,17 +92,12 @@ impl Journal {
 
     /// What `program` last wrote under `key` in this chain, if it has.
     pub(crate) fn read(&self, program: &str, key: &str) -> Option<Vec<u8>> {
-        self.0
-            .lock()
-            .list
-            .iter()
-            .rev()
-            .find_map(|entry| match entry {
-                Entry::Write(write) if &*write.program == program && write.key == key => {
-                    Some(write.value.clone())
-                }
-                _ => None,
-            })
+        let entries = self.0.lock();
+        let at = *entries.last.get(program)?.get(key)?;
+        match &entries.list[at] {
+            Entry::Write(write) => Some(write.value.clone()),
+            Entry::Log(_) => None,
+        }
     }
 
     /// Hold what a call that kept a journal of its own left behind.
@@ -124,11 +124,24 @@ impl Journal {
         let mut entries = self.0.lock();
         entries.list.truncate(mark.entries);
         entries.bytes = mark.bytes;
+        let Entries { list, last, .. } = &mut *entries;
+        last.clear();
+        for (at, entry) in list.iter().enumerate() {
+            if let Entry::Write(write) = entry {
+                last.entry(write.program.clone())
+                    .or_default()
+                    .insert(write.key.clone(), at);
+            }
+        }
     }
 
     /// Everything held, with each key's writes collapsed to its last.
     pub(crate) fn take(&self) -> Changes {
-        let list = std::mem::take(&mut self.0.lock().list);
+        let list = {
+            let mut entries = self.0.lock();
+            entries.last.clear();
+            std::mem::take(&mut entries.list)
+        };
         let mut writes = BTreeMap::new();
         let mut logs = Vec::new();
         for entry in list {
@@ -155,6 +168,14 @@ impl Journal {
             .into());
         }
         entries.bytes += size;
+        if let Entry::Write(write) = &entry {
+            let at = entries.list.len();
+            entries
+                .last
+                .entry(write.program.clone())
+                .or_default()
+                .insert(write.key.clone(), at);
+        }
         entries.list.push(entry);
         Ok(())
     }
