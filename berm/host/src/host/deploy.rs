@@ -289,7 +289,7 @@ impl<E: Env> Host<E> {
                 scope,
                 name,
                 Some(of),
-                usage::seconds(&self.now),
+                usage::window(usage::seconds(&self.now)),
                 self.usage.unsaved(service),
             )
             .await?;

@@ -20,6 +20,7 @@ use berm_api::{
 };
 use std::{
     collections::HashMap,
+    ops::Range,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -201,8 +202,13 @@ impl<E: Env> Host<E> {
         Ok(())
     }
 
-    /// Who uses `service`.
-    pub async fn usage(&self, service: &str) -> Result<Vec<Usage>, Denied> {
+    /// Who uses `service` on `days`, counted from the Unix epoch, or over the
+    /// last [`usage::WINDOW`] days without them.
+    pub async fn usage(
+        &self,
+        service: &str,
+        days: Option<Range<i32>>,
+    ) -> Result<Vec<Usage>, Denied> {
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
         let mut used = usage::read(
@@ -210,7 +216,7 @@ impl<E: Env> Host<E> {
             scope,
             name,
             None,
-            usage::seconds(&self.now),
+            days.unwrap_or_else(|| usage::window(usage::seconds(&self.now))),
             self.usage.unsaved(service),
         )
         .await?;

@@ -93,12 +93,21 @@ async fn terms<E: Env>(
     Ok(Json(host.terms(&service)?))
 }
 
-/// Who uses the service.
+/// `?since=&until=`: days counted from the Unix epoch, `until` excluded.
+#[derive(Deserialize)]
+struct Days {
+    since: Option<i32>,
+    until: Option<i32>,
+}
+
+/// Who uses the service on the days asked, or over the last 30 without them.
 async fn usage<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
+    Query(Days { since, until }): Query<Days>,
 ) -> Result<Json<Vec<Usage>>, Denied> {
-    Ok(Json(host.usage(&service).await?))
+    let days = since.zip(until).map(|(since, until)| since..until);
+    Ok(Json(host.usage(&service, days).await?))
 }
 
 /// What the service used over the last 30 days, a day each.
