@@ -2,7 +2,7 @@
 
 use berm_api::{
     Program,
-    host::{self, Call},
+    host::{self, Call, ToolUsage},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -150,6 +150,19 @@ pub struct Costed {
     /// of USD micros. Its day's storage is charged with the day. `None` for a
     /// call the host refused.
     pub cost_micros_decimal: Option<String>,
+}
+
+/// What one tool's calls used, with what that use costs its service's owner.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCosted {
+    #[serde(flatten)]
+    pub usage: ToolUsage,
+    /// What the calls' own use costs at the fleet's rates, summed, as a decimal
+    /// of USD micros. The CPU each call used past its first
+    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU) is estimated from
+    /// [`ToolUsage::cpu`]'s shares.
+    pub cost_micros_decimal: String,
 }
 
 /// One deploy of a service that went live.

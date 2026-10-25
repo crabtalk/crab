@@ -3,7 +3,7 @@
 //! days.
 
 use crate::{
-    host,
+    host::{self, Invoked},
     record::{logs::Emitted, usage},
     state::store::Store,
 };
@@ -11,7 +11,10 @@ use anyhow::Result;
 use berm::{Now, tape::Tape};
 use berm_api::{
     Meter,
-    host::{Bucket, Call, CallInput, CallPage, CallStats, Outcome, ServiceCall, Source},
+    host::{
+        Bucket, Call, CallInput, CallPage, CallStats, Outcome, ServiceCall, Source, Spread,
+        ToolUsage,
+    },
 };
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
@@ -47,6 +50,8 @@ pub(crate) struct Ran {
     outcome: Outcome,
     ms: u64,
     meter: Option<Meter>,
+    /// What the tool's own invocation used.
+    own: Option<Meter>,
     /// Kept for a run that failed.
     input: Option<CallInput>,
     /// Kept for a run that failed, encoded.
@@ -97,7 +102,7 @@ impl Pending {
         source: Source,
         caller: &str,
         outcome: Outcome,
-        meter: Option<Meter>,
+        invoked: Option<&Invoked>,
         input: Option<CallInput>,
         tape: Option<&Tape>,
     ) {
@@ -111,7 +116,8 @@ impl Pending {
             caller: caller.to_owned(),
             outcome,
             ms: started.began.elapsed().as_millis() as u64,
-            meter,
+            meter: invoked.map(|invoked| invoked.meter),
+            own: invoked.map(|invoked| invoked.own),
             input: input.filter(|_| failed),
             tape: tape.filter(|_| failed).map(Vec::from),
         });
@@ -188,8 +194,9 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 .map(|input| serde_json::to_string(input).expect("an input is JSON"));
             tx.prepare_cached(
                 "INSERT INTO service_calls
-                        (id, scope, name, at, tool, source, caller, outcome, ms, meter, input, tape)
-                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11, ?12
+                        (id, scope, name, at, tool, source, caller, outcome, ms, meter, input, tape,
+                         cpu, read, written)
+                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11, ?12, ?13, ?14, ?15
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
             )?
             .execute(params![
@@ -204,7 +211,10 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 meter,
                 call.id as i64,
                 input,
-                call.tape
+                call.tape,
+                call.own.map(|own| own.cpu as i64),
+                call.own.map(|own| own.read as i64),
+                call.own.map(|own| own.written as i64)
             ])?;
             Ok(())
         })
@@ -459,9 +469,7 @@ pub(crate) async fn stats(
                 *stats.outcomes.entry(outcome).or_default() += calls as u64;
             }
             if name.is_none() {
-                for (service, _, calls) in
-                    count("c.name", None, tool, page.outcome)?
-                {
+                for (service, _, calls) in count("c.name", None, tool, page.outcome)? {
                     *stats.services.entry(service).or_default() += calls as u64;
                 }
             }
@@ -512,6 +520,63 @@ pub(crate) async fn stats(
                 .map(|(at, outcomes)| Bucket { at, outcomes })
                 .collect();
             Ok(stats)
+        })
+        .await
+}
+
+/// What each tool of `scope/name` used over its calls written, by tool.
+pub(crate) async fn tools(
+    store: &Store,
+    scope: &str,
+    name: &str,
+) -> Result<BTreeMap<String, ToolUsage>> {
+    let (scope, name) = (scope.to_owned(), name.to_owned());
+    store
+        .read(move |conn| {
+            #[derive(Default)]
+            struct Counted {
+                calls: u64,
+                read: u64,
+                written: u64,
+                cpu: BTreeMap<usize, u64>,
+                rows: BTreeMap<usize, u64>,
+                cpu_max: u64,
+                rows_max: u64,
+            }
+            let mut tools: BTreeMap<String, Counted> = BTreeMap::new();
+            let mut statement = conn.prepare_cached(
+                "SELECT tool, cpu, read, written FROM service_calls
+                  WHERE scope = ?1 AND name = ?2 AND cpu IS NOT NULL",
+            )?;
+            let mut rows = statement.query(params![scope, name])?;
+            while let Some(row) = rows.next()? {
+                let counted = tools.entry(row.get(0)?).or_default();
+                let cpu = row.get::<_, i64>(1)? as u64;
+                let (read, written) = (row.get::<_, i64>(2)? as u64, row.get::<_, i64>(3)? as u64);
+                counted.calls += 1;
+                counted.read += read;
+                counted.written += written;
+                *counted.cpu.entry(Spread::index(cpu)).or_default() += 1;
+                *counted
+                    .rows
+                    .entry(Spread::index(read + written))
+                    .or_default() += 1;
+                counted.cpu_max = counted.cpu_max.max(cpu);
+                counted.rows_max = counted.rows_max.max(read + written);
+            }
+            Ok(tools
+                .into_iter()
+                .map(|(tool, counted)| {
+                    let usage = ToolUsage {
+                        calls: counted.calls,
+                        read: counted.read,
+                        written: counted.written,
+                        cpu: Spread::of(&counted.cpu, counted.cpu_max),
+                        rows: Spread::of(&counted.rows, counted.rows_max),
+                    };
+                    (tool, usage)
+                })
+                .collect())
         })
         .await
 }

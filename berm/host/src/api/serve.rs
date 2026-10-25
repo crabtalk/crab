@@ -13,10 +13,12 @@ use axum::{
 use berm_api::{
     Budget, Cron, Listing, Program, Runtime, Terms,
     host::{
-        CallPage, CallStats, Caller, Crons, Live, Memory, Metered, Page, ToolUpdate, Usage, Wakes,
+        CallPage, CallStats, Caller, Crons, Live, Memory, Metered, Page, ToolUpdate, ToolUsage,
+        Usage, Wakes,
     },
 };
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 /// The service a request is for, as its daemon names it. The daemon puts it in
 /// the request's extensions before [`router`] runs, and the [`Caller`] a call
@@ -51,6 +53,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/logs", get(logs::<E>))
         .route("/calls", get(calls::<E>))
         .route("/calls/stats", get(call_stats::<E>))
+        .route("/calls/tools", get(call_tools::<E>))
         .route("/calls/{id}/input", get(call_input::<E>))
         .route("/calls/{id}/tape", get(call_tape::<E>))
         .route("/calls/{id}/image", get(call_image::<E>))
@@ -187,6 +190,14 @@ async fn call_stats<E: Env>(
     Query(page): Query<CallPage>,
 ) -> Result<Json<CallStats>, Denied> {
     Ok(Json(host.call_stats(&service, page).await?))
+}
+
+/// What each of the service's tools used over its calls, by tool.
+async fn call_tools<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+) -> Result<Json<BTreeMap<String, ToolUsage>>, Denied> {
+    Ok(Json(host.tool_usage(&service).await?))
 }
 
 /// What the scope's calls on the page asked count to, by time and by facet.

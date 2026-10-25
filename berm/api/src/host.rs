@@ -479,6 +479,92 @@ impl CallStats {
     }
 }
 
+/// What one tool's calls used over the last 30 days, each by the tool's own
+/// invocation as its [`Budget`](crate::Budget) counts it: services it called
+/// are not in it. Calls recorded before a host kept this are not counted.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolUsage {
+    pub calls: u64,
+    /// Rows read and written, summed over the calls.
+    pub read: u64,
+    pub written: u64,
+    /// CPU microseconds.
+    pub cpu: Spread,
+    /// Rows read and written together.
+    pub rows: Spread,
+}
+
+/// How one resource's use is spread over a tool's calls.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Spread {
+    /// The [`Share::upto`] of the share half the calls are in or below.
+    pub p50: u64,
+    /// The [`Share::upto`] of the share 95% of the calls are in or below.
+    pub p95: u64,
+    /// The most one call used.
+    pub max: u64,
+    /// Each share with a call, smallest first.
+    pub shares: Vec<Share>,
+}
+
+/// The calls that used at least the [`Share::upto`] of the share before, and
+/// less than this one's. Each share's bound is 2^(1/8) times the one before:
+/// [`Spread::bound`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Share {
+    pub upto: u64,
+    pub calls: u64,
+}
+
+impl Spread {
+    /// The index of the share `used` falls in: 0 for nothing, else one past
+    /// eight times its base-2 logarithm.
+    pub fn index(used: u64) -> usize {
+        if used == 0 {
+            return 0;
+        }
+        (8.0 * (used as f64).log2()).floor() as usize + 1
+    }
+
+    /// The exclusive upper bound of share `index`.
+    pub fn bound(index: usize) -> u64 {
+        if index == 0 {
+            return 1;
+        }
+        2f64.powf(index as f64 / 8.0).ceil() as u64
+    }
+
+    /// The spread of calls counted by share index, and the most one used.
+    pub fn of(counted: &BTreeMap<usize, u64>, max: u64) -> Self {
+        let total: u64 = counted.values().sum();
+        let at = |part: f64| {
+            let mut seen = 0;
+            for (&index, &calls) in counted {
+                seen += calls;
+                if seen as f64 >= part * total as f64 {
+                    return Self::bound(index).min(max.max(1));
+                }
+            }
+            max
+        };
+        Self {
+            p50: if total == 0 { 0 } else { at(0.5) },
+            p95: if total == 0 { 0 } else { at(0.95) },
+            max,
+            shares: counted
+                .iter()
+                .map(|(&index, &calls)| Share {
+                    upto: Self::bound(index),
+                    calls,
+                })
+                .collect(),
+        }
+    }
+}
+
 /// One run of one of a scope's services.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

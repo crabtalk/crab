@@ -284,7 +284,7 @@ impl<E: Env> Host<E> {
             source,
             who,
             outcome,
-            Some(invoked.meter),
+            Some(&invoked),
             Some(input),
             failed.then(|| recorder.tape()).as_ref(),
         );

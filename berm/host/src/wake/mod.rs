@@ -203,7 +203,7 @@ impl<E: Env> Host<E> {
                 Source::Service,
                 &from,
                 outcome,
-                invoked.as_ref().ok().map(|invoked| invoked.meter),
+                invoked.as_ref().ok(),
                 Some(input),
                 (outcome == Outcome::Failed)
                     .then(|| recorder.tape())

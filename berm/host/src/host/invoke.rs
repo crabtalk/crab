@@ -39,13 +39,16 @@ impl<E: Env> Host<E> {
             )
             .await;
         self.logs.ended(chain);
-        let meter = self.metered(meters.take());
+        let meters = meters.take();
+        let own = meters.get(&program.name).copied().unwrap_or_default();
+        let meter = self.metered(meters);
         let outcome = outcome?;
         if matches!(outcome.result, Output::Failed(_)) {
             return Ok(Invoked {
                 result: outcome.result,
                 denied: outcome.denied,
                 meter,
+                own,
             });
         }
         self.commits.commit(&outcome.changes).await?;
@@ -53,6 +56,7 @@ impl<E: Env> Host<E> {
             result: outcome.result,
             denied: false,
             meter,
+            own,
         })
     }
 
@@ -77,4 +81,6 @@ pub(crate) struct Invoked {
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,
+    /// What the tool's own invocation used, as its budget counts it.
+    pub own: Meter,
 }

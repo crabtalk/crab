@@ -19,7 +19,7 @@ use berm_api::{
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     ops::Range,
     sync::Arc,
     time::{Duration, Instant},
@@ -358,6 +358,18 @@ impl<E: Env> Host<E> {
         .await?)
     }
 
+    /// What each of `service`'s tools used over its calls of the last 30
+    /// days, by tool, as their budgets count it.
+    pub async fn tool_usage(
+        &self,
+        service: &str,
+    ) -> Result<BTreeMap<String, wire::ToolUsage>, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let _reading = self.flushing.read().await;
+        Ok(calls::tools(&self.store, scope, name).await?)
+    }
+
     /// [`Host::call_stats`] of every service in `scope`, of `page.service`
     /// alone when it names one.
     pub async fn scope_call_stats(
@@ -608,7 +620,7 @@ impl<E: Env> Host<E> {
             Source::Stripe,
             "",
             outcome,
-            invoked.as_ref().ok().map(|invoked| invoked.meter),
+            invoked.as_ref().ok(),
             Some(input),
             (outcome == Outcome::Failed)
                 .then(|| recorder.tape())
