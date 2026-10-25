@@ -536,8 +536,7 @@ pub(crate) async fn tools(
             #[derive(Default)]
             struct Counted {
                 calls: u64,
-                read: u64,
-                written: u64,
+                meter: Meter,
                 cpu: BTreeMap<usize, u64>,
                 rows: BTreeMap<usize, u64>,
                 cpu_max: u64,
@@ -545,32 +544,31 @@ pub(crate) async fn tools(
             }
             let mut tools: BTreeMap<String, Counted> = BTreeMap::new();
             let mut statement = conn.prepare_cached(
-                "SELECT tool, cpu, read, written FROM service_calls
-                  WHERE scope = ?1 AND name = ?2 AND cpu IS NOT NULL",
+                "SELECT tool, meter, cpu, read + written FROM service_calls
+                  WHERE scope = ?1 AND name = ?2 AND meter IS NOT NULL",
             )?;
             let mut rows = statement.query(params![scope, name])?;
             while let Some(row) = rows.next()? {
                 let counted = tools.entry(row.get(0)?).or_default();
-                let cpu = row.get::<_, i64>(1)? as u64;
-                let (read, written) = (row.get::<_, i64>(2)? as u64, row.get::<_, i64>(3)? as u64);
                 counted.calls += 1;
-                counted.read += read;
-                counted.written += written;
-                *counted.cpu.entry(Spread::index(cpu)).or_default() += 1;
-                *counted
-                    .rows
-                    .entry(Spread::index(read + written))
-                    .or_default() += 1;
-                counted.cpu_max = counted.cpu_max.max(cpu);
-                counted.rows_max = counted.rows_max.max(read + written);
+                if let Ok(meter) = serde_json::from_str::<Meter>(&row.get::<_, String>(1)?) {
+                    counted.meter += meter;
+                }
+                let own: Option<(i64, i64)> = row.get::<_, Option<i64>>(2)?.zip(row.get(3)?);
+                if let Some((cpu, used)) = own {
+                    let (cpu, used) = (cpu as u64, used as u64);
+                    *counted.cpu.entry(Spread::index(cpu)).or_default() += 1;
+                    *counted.rows.entry(Spread::index(used)).or_default() += 1;
+                    counted.cpu_max = counted.cpu_max.max(cpu);
+                    counted.rows_max = counted.rows_max.max(used);
+                }
             }
             Ok(tools
                 .into_iter()
                 .map(|(tool, counted)| {
                     let usage = ToolUsage {
                         calls: counted.calls,
-                        read: counted.read,
-                        written: counted.written,
+                        meter: counted.meter,
                         cpu: Spread::of(&counted.cpu, counted.cpu_max),
                         rows: Spread::of(&counted.rows, counted.rows_max),
                     };

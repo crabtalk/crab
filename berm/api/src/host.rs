@@ -479,19 +479,19 @@ impl CallStats {
     }
 }
 
-/// What one tool's calls used over the last 30 days, each by the tool's own
-/// invocation as its [`Budget`](crate::Budget) counts it: services it called
-/// are not in it. Calls recorded before a host kept this are not counted.
+/// What one tool's calls of the last 30 days used.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolUsage {
+    /// Its calls the host ran, refused ones left out.
     pub calls: u64,
-    /// Rows read and written, summed over the calls.
-    pub read: u64,
-    pub written: u64,
-    /// CPU microseconds.
+    /// Their meters summed, each over every service its call reached.
+    pub meter: Meter,
+    /// CPU microseconds each call's own invocation used, as its
+    /// [`Budget`](crate::Budget) counts it. Calls recorded before a host kept
+    /// it are not in it.
     pub cpu: Spread,
-    /// Rows read and written together.
+    /// Rows each call's own invocation read and wrote together, as `cpu`.
     pub rows: Spread,
 }
 

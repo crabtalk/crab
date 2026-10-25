@@ -158,10 +158,9 @@ pub struct Costed {
 pub struct ToolCosted {
     #[serde(flatten)]
     pub usage: ToolUsage,
-    /// What the calls' own use costs at the fleet's rates, summed, as a decimal
-    /// of USD micros. The CPU each call used past its first
-    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU) is estimated from
-    /// [`ToolUsage::cpu`]'s shares.
+    /// What the calls cost at the fleet's rates, summed, as a decimal of USD
+    /// micros: [`ToolUsage::meter`] with each call's overage, as [`Costed`]
+    /// prices one call.
     pub cost_micros_decimal: String,
 }
 
