@@ -1,5 +1,5 @@
-//! The routes a host serves for one service, for a daemon to nest under the
-//! path it names services by.
+//! The routes a host serves for one service, and for one scope, for a daemon
+//! to nest under the paths it names them by.
 
 use crate::{Denied, env::Env, host::Host};
 use axum::{
@@ -12,7 +12,7 @@ use axum::{
 };
 use berm_api::{
     Budget, Cron, Listing, Program, Runtime, Terms,
-    host::{CallPage, Caller, Crons, Live, Metered, Page, ToolUpdate, Usage, Wakes},
+    host::{CallPage, Caller, Crons, Live, Memory, Metered, Page, ToolUpdate, Usage, Wakes},
 };
 use serde::Deserialize;
 
@@ -21,6 +21,19 @@ use serde::Deserialize;
 /// is made as beside it when there is one.
 #[derive(Debug, Clone)]
 pub struct Named(pub String);
+
+/// The scope a request is for, as its daemon names it, put in the request's
+/// extensions before [`scope_router`] runs.
+#[derive(Debug, Clone)]
+pub struct Scoped(pub String);
+
+/// One scope's routes, relative to where the daemon nests them.
+pub fn scope_router<E: Env>(host: Host<E>) -> Router {
+    Router::new()
+        .route("/calls", get(scope_calls::<E>))
+        .route("/memory", get(memory::<E>))
+        .with_state(host)
+}
 
 /// One service's routes, relative to where the daemon nests them.
 pub fn router<E: Env>(host: Host<E>) -> Router {
@@ -130,6 +143,28 @@ async fn calls<E: Env>(
         AppendHeaders(link.map(|link| (header::LINK, link))),
         Json(calls),
     ))
+}
+
+/// The runs of the scope's services, newest first, below the id `before`, a
+/// page at a time, with the next page in `Link`.
+async fn scope_calls<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Scoped(scope)): Extension<Scoped>,
+    Query(page): Query<CallPage>,
+) -> Result<impl IntoResponse, Denied> {
+    let (calls, link) = host.scope_calls(&scope, page).await?;
+    Ok((
+        AppendHeaders(link.map(|link| (header::LINK, link))),
+        Json(calls),
+    ))
+}
+
+/// The memory the scope's services hold, and its limit.
+async fn memory<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Scoped(scope)): Extension<Scoped>,
+) -> Json<Memory> {
+    Json(host.memory(&scope))
 }
 
 /// What one of the service's calls that failed ran with.

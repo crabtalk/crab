@@ -285,9 +285,13 @@ impl Page {
     }
 }
 
-/// `?tool=&event=&outcome=&since=&until=&before=&limit=` on a service's calls.
+/// `?service=&tool=&event=&outcome=&since=&until=&before=&limit=` on a
+/// service's calls, or a scope's.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
+    /// Only calls of this service, on a scope's calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
     /// Only calls of this tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
@@ -402,6 +406,16 @@ pub struct Call {
     pub meter: Option<Meter>,
     /// How many logs it emitted.
     pub logs: u64,
+}
+
+/// One run of one of a scope's services.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceCall {
+    /// The service's name in its scope.
+    pub service: String,
+    #[serde(flatten)]
+    pub call: Call,
 }
 
 /// What a call that failed ran with, kept so it can be run again.

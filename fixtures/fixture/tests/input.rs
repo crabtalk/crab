@@ -36,6 +36,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
             .calls(
                 "acct/fixture",
                 CallPage {
+                    service: None,
                     tool: None,
                     event: None,
                     outcome: None,

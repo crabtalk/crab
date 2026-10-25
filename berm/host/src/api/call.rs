@@ -281,18 +281,51 @@ impl<E: Env> Host<E> {
         let (scope, name) = host::split(service);
         page.limit = page.limit.clamp(1, MAX_PAGE);
         let _reading = self.flushing.read().await;
+        let calls: Vec<wire::Call> = calls::read(
+            &self.store,
+            scope,
+            Some(name),
+            page.clone(),
+            self.unsaved(service),
+        )
+        .await?
+        .into_iter()
+        .map(|ran| ran.call)
+        .collect();
+        let link = calls
+            .last()
+            .filter(|_| calls.len() as i64 == page.limit)
+            .map(|last| page.next(last.id));
+        Ok((calls, link))
+    }
+
+    /// The runs of `scope`'s services, of `page.service` alone when it names
+    /// one, newest first, below the id `before`, a page at a time, with the
+    /// next page's `Link`.
+    pub async fn scope_calls(
+        &self,
+        scope: &str,
+        mut page: wire::CallPage,
+    ) -> Result<(Vec<wire::ServiceCall>, Option<String>), Denied> {
+        page.limit = page.limit.clamp(1, MAX_PAGE);
+        let _reading = self.flushing.read().await;
+        let unsaved = calls::Unsaved {
+            ran: self.calls.unsaved_in(scope),
+            emitted: self.logs.unsaved_in(scope),
+        };
+        let service = page.service.clone();
         let calls = calls::read(
             &self.store,
             scope,
-            name,
+            service.as_deref(),
             page.clone(),
-            self.unsaved(service),
+            unsaved,
         )
         .await?;
         let link = calls
             .last()
             .filter(|_| calls.len() as i64 == page.limit)
-            .map(|last| page.next(last.id));
+            .map(|last| page.next(last.call.id));
         Ok((calls, link))
     }
 

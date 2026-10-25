@@ -152,6 +152,16 @@ pub struct Costed {
     pub cost_micros_decimal: Option<String>,
 }
 
+/// A call of one of an account's services, with what its meter costs.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountCall {
+    /// The service's name in the account.
+    pub service: String,
+    #[serde(flatten)]
+    pub call: Costed,
+}
+
 /// A service's billing in one UTC calendar month.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

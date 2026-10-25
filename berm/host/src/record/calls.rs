@@ -11,7 +11,7 @@ use anyhow::Result;
 use berm::{Now, tape::Tape};
 use berm_api::{
     Meter,
-    host::{Call, CallInput, CallPage, Outcome, Source},
+    host::{Call, CallInput, CallPage, Outcome, ServiceCall, Source},
 };
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
@@ -130,6 +130,16 @@ impl Pending {
             .cloned()
             .collect()
     }
+
+    /// The runs of `scope`'s services not yet written.
+    pub(crate) fn unsaved_in(&self, scope: &str) -> Vec<Ran> {
+        self.pending
+            .lock()
+            .iter()
+            .filter(|ran| host::split(&ran.service).0 == scope)
+            .cloned()
+            .collect()
+    }
 }
 
 impl Ran {
@@ -142,18 +152,21 @@ impl Ran {
             && page.before.is_none_or(|before| self.id < before)
     }
 
-    /// The run as a call that emitted `logs` logs.
-    fn call(self, logs: u64) -> Call {
-        Call {
-            id: self.id,
-            at: self.at,
-            tool: self.tool,
-            source: self.source,
-            caller: usage::caller(self.source, self.caller),
-            outcome: self.outcome,
-            ms: self.ms,
-            meter: self.meter,
-            logs,
+    /// The run as a call of its service that emitted `logs` logs.
+    fn call(self, logs: u64) -> ServiceCall {
+        ServiceCall {
+            service: host::split(&self.service).1.to_owned(),
+            call: Call {
+                id: self.id,
+                at: self.at,
+                tool: self.tool,
+                source: self.source,
+                caller: usage::caller(self.source, self.caller),
+                outcome: self.outcome,
+                ms: self.ms,
+                meter: self.meter,
+                logs,
+            },
         }
     }
 }
@@ -269,20 +282,21 @@ pub(crate) async fn input(
         .await
 }
 
-/// `scope/name`'s runs on `page`, newest first, as written and in `unsaved`.
-/// A service caller is named by its name.
+/// The runs on `page` of `scope/name`, or of every service in `scope`
+/// without a `name`, newest first, as written and in `unsaved`. A service
+/// caller is named by its name.
 pub(crate) async fn read(
     store: &Store,
     scope: &str,
-    name: &str,
+    name: Option<&str>,
     page: CallPage,
     unsaved: Unsaved,
-) -> Result<Vec<Call>> {
-    let (scope, name) = (scope.to_owned(), name.to_owned());
+) -> Result<Vec<ServiceCall>> {
+    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
     store
         .read(move |conn| {
             const MATCHING: &str = "FROM service_calls c
-                  WHERE c.scope = :scope AND c.name = :name
+                  WHERE c.scope = :scope AND (:name IS NULL OR c.name = :name)
                     AND (:tool IS NULL OR c.tool = :tool)
                     AND (:outcome IS NULL OR c.outcome = :outcome)
                     AND (:since IS NULL OR c.at >= :since)
@@ -312,12 +326,19 @@ pub(crate) async fn read(
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             let Unsaved { ran, emitted } = unsaved;
-            let ran = ran.into_iter().filter(|ran| ran.on(&page)).collect();
-            let unsaved = unwritten(conn, &scope, &name, ran, &emitted, page.event.as_deref())?;
+            let ran = ran
+                .into_iter()
+                .filter(|ran| {
+                    name.as_ref()
+                        .is_none_or(|name| host::split(&ran.service).1 == name)
+                        && ran.on(&page)
+                })
+                .collect();
+            let unsaved = unwritten(conn, &scope, ran, &emitted, page.event.as_deref())?;
             let mut ids: Vec<(i64, bool)> = written
                 .into_iter()
                 .map(|id| (id, true))
-                .chain(unsaved.iter().map(|call| (call.id as i64, false)))
+                .chain(unsaved.iter().map(|ran| (ran.call.id as i64, false)))
                 .collect();
             ids.sort_unstable_by_key(|(id, _)| Reverse(*id));
             ids.truncate(page.limit as usize);
@@ -326,18 +347,23 @@ pub(crate) async fn read(
                 .filter(|(_, written)| *written)
                 .map(|(id, _)| *id)
                 .collect();
-            let mut found: HashMap<u64, Call> = conn
+            let mut found: HashMap<u64, ServiceCall> = conn
                 .prepare_cached(&format!(
-                    "SELECT {COLUMNS} FROM service_calls c
+                    "SELECT {COLUMNS}, c.name FROM service_calls c
                       WHERE c.id IN (SELECT value FROM json_each(?1))"
                 ))?
                 .query_map(
                     params![serde_json::to_string(&shown).expect("ids are JSON")],
-                    call,
+                    |row| {
+                        Ok(ServiceCall {
+                            call: call(row)?,
+                            service: row.get(9)?,
+                        })
+                    },
                 )?
-                .map(|call| call.map(|call| (call.id, call)))
+                .map(|ran| ran.map(|ran| (ran.call.id, ran)))
                 .collect::<rusqlite::Result<_>>()?;
-            found.extend(unsaved.into_iter().map(|call| (call.id, call)));
+            found.extend(unsaved.into_iter().map(|ran| (ran.call.id, ran)));
             let calls = ids
                 .into_iter()
                 .filter_map(|(id, _)| found.remove(&(id as u64)))
@@ -347,17 +373,16 @@ pub(crate) async fn read(
         .await
 }
 
-/// `ran`, runs of `scope/name` not yet written, as calls, each with the logs
-/// it emitted, written and in `emitted`; only those that emitted one carrying
-/// `event` when given.
+/// `ran`, runs of `scope`'s services not yet written, as calls, each with the
+/// logs it emitted, written and in `emitted`; only those that emitted one
+/// carrying `event` when given. A call's id is its host's alone.
 fn unwritten(
     conn: &Connection,
     scope: &str,
-    name: &str,
     ran: Vec<Ran>,
     emitted: &[Emitted],
     event: Option<&str>,
-) -> rusqlite::Result<Vec<Call>> {
+) -> rusqlite::Result<Vec<ServiceCall>> {
     if ran.is_empty() {
         return Ok(Vec::new());
     }
@@ -368,13 +393,13 @@ fn unwritten(
                     MAX(:event IS NOT NULL AND EXISTS (
                         SELECT 1 FROM json_each(l.topics) t WHERE t.value = :event))
                FROM service_logs l
-              WHERE l.scope = :scope AND l.name = :name
+              WHERE l.scope = :scope
                 AND l.call IN (SELECT value FROM json_each(:ids))
               GROUP BY l.call",
         )?
         .query_map(
             named_params! {
-                ":scope": scope, ":name": name, ":event": event,
+                ":scope": scope, ":event": event,
                 ":ids": serde_json::to_string(&ids).expect("ids are JSON"),
             },
             |row| {
@@ -398,12 +423,11 @@ fn unwritten(
         .collect())
 }
 
-/// The newer of `written` and the last run of `tool` on `scope/name` in
-/// `unsaved` that `caller`, a service key, made.
+/// The newer of `written` and the last run of `tool` of a service in `scope`
+/// in `unsaved`, that service's own, that `caller`, a service key, made.
 pub(crate) fn last(
     conn: &Connection,
     scope: &str,
-    name: &str,
     written: Option<Call>,
     unsaved: &Unsaved,
     tool: &str,
@@ -420,9 +444,11 @@ pub(crate) fn last(
         })
         .max_by_key(|ran| ran.id);
     match newer {
-        Some(ran) => {
-            Ok(unwritten(conn, scope, name, vec![ran.clone()], &unsaved.emitted, None)?.pop())
-        }
+        Some(ran) => Ok(
+            unwritten(conn, scope, vec![ran.clone()], &unsaved.emitted, None)?
+                .pop()
+                .map(|ran| ran.call),
+        ),
         None => Ok(written),
     }
 }

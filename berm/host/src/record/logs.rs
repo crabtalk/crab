@@ -108,6 +108,16 @@ impl Pending {
             .cloned()
             .collect()
     }
+
+    /// The logs of `scope`'s services not yet written.
+    pub(crate) fn unsaved_in(&self, scope: &str) -> Vec<Emitted> {
+        self.pending
+            .lock()
+            .iter()
+            .filter(|log| host::split(&log.service).0 == scope)
+            .cloned()
+            .collect()
+    }
 }
 
 /// Add `logs`, each numbered after its service's last, and drop what is older

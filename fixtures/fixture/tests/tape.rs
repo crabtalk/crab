@@ -25,6 +25,7 @@ fn caller() -> Caller {
 
 fn page() -> CallPage {
     CallPage {
+        service: None,
         tool: None,
         event: None,
         outcome: None,

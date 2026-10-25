@@ -14,7 +14,7 @@ use std::fmt;
 
 pub use api::{
     outside::{Call, Called, Layers, Outside},
-    serve::{Named, router},
+    serve::{Named, Scoped, router, scope_router},
 };
 pub use config::Config;
 pub use env::{Clock, Edges, Env, Images, Observe, Peers, Secrets, System};

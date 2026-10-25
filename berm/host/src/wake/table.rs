@@ -221,15 +221,8 @@ pub(crate) async fn crons(
             })?;
             let mut crons = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             for job in &mut crons {
-                job.last = calls::last(
-                    conn,
-                    &scope,
-                    &name,
-                    job.last.take(),
-                    &unsaved,
-                    &job.tool,
-                    &caller,
-                )?;
+                job.last =
+                    calls::last(conn, &scope, job.last.take(), &unsaved, &job.tool, &caller)?;
             }
             Ok(crons)
         })
@@ -277,15 +270,8 @@ pub(crate) async fn armed(
             let mut wakes = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             for wake in &mut wakes {
                 let armer = host::join(&scope, &wake.by);
-                wake.last = calls::last(
-                    conn,
-                    &scope,
-                    &program,
-                    wake.last.take(),
-                    &unsaved,
-                    &wake.tool,
-                    &armer,
-                )?;
+                wake.last =
+                    calls::last(conn, &scope, wake.last.take(), &unsaved, &wake.tool, &armer)?;
             }
             Ok(wakes)
         })
