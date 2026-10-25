@@ -123,3 +123,60 @@ async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let image = test::build("berm-fixture")?;
+    for service in ["acct/fixture", "acct/inner", "other/fixture"] {
+        host.deploy(service, &image).await?;
+    }
+    let caller = Caller {
+        id: "acct".to_owned(),
+        app: None,
+        user: None,
+        client: None,
+        agent: None,
+    };
+    for service in [
+        "acct/fixture",
+        "acct/fixture",
+        "acct/inner",
+        "other/fixture",
+    ] {
+        host.host()
+            .call(
+                service,
+                Some(&caller),
+                "echo",
+                br#"{"query":"hi"}"#.to_vec(),
+                false,
+            )
+            .await?;
+    }
+
+    for written in [false, true] {
+        if written {
+            host.flush().await?;
+        }
+        let stats = host
+            .host()
+            .scope_call_stats("acct", page(None, None))
+            .await?;
+        let counted: u64 = stats.buckets.iter().flat_map(|b| b.outcomes.values()).sum();
+        assert_eq!(counted, 3, "written: {written}");
+        assert_eq!(stats.tools.get("echo"), Some(&3));
+        assert_eq!(stats.services.get("fixture"), Some(&2));
+        assert_eq!(stats.services.get("inner"), Some(&1));
+
+        // A facet drops its own filter: the services still count each other.
+        let one = host
+            .host()
+            .scope_call_stats("acct", page(Some("inner"), None))
+            .await?;
+        let counted: u64 = one.buckets.iter().flat_map(|b| b.outcomes.values()).sum();
+        assert_eq!(counted, 1, "written: {written}");
+        assert_eq!(one.services.get("fixture"), Some(&2));
+    }
+    Ok(())
+}

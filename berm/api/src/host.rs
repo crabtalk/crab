@@ -159,7 +159,7 @@ pub enum Source {
 
 /// How a use ended.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
     Done,
@@ -410,6 +410,73 @@ pub struct Call {
     pub meter: Option<Meter>,
     /// How many logs it emitted.
     pub logs: u64,
+}
+
+/// What a page of calls matches, counted: by time and by what it can be
+/// narrowed to.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CallStats {
+    /// Each bucket's length, in milliseconds.
+    pub bucket: u64,
+    /// Each bucket with a call, oldest first.
+    pub buckets: Vec<Bucket>,
+    /// The calls of each tool, every filter but `tool` applied.
+    pub tools: BTreeMap<String, u64>,
+    /// The calls that ended each way, every filter but `outcome` applied.
+    pub outcomes: BTreeMap<Outcome, u64>,
+    /// The calls of each service, every filter but `service` applied; empty
+    /// for one service's calls.
+    pub services: BTreeMap<String, u64>,
+}
+
+/// The calls begun in one bucket of time, by how they ended.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bucket {
+    /// Its start, in epoch milliseconds.
+    pub at: u64,
+    pub outcomes: BTreeMap<Outcome, u64>,
+}
+
+impl CallStats {
+    /// The bucket length, in milliseconds, that cuts `since..until` into at
+    /// most 60: a minute, 5 or 15 minutes, an hour, 3 or 6 hours, or a day.
+    pub fn bucket(since: u64, until: u64) -> u64 {
+        const STEPS: [u64; 7] = [
+            60_000, 300_000, 900_000, 3_600_000, 10_800_000, 21_600_000, 86_400_000,
+        ];
+        let span = until.saturating_sub(since);
+        STEPS
+            .into_iter()
+            .find(|step| span / step <= 60)
+            .unwrap_or(86_400_000)
+    }
+
+    /// Add `other`, read over the same range and buckets.
+    pub fn merge(&mut self, other: CallStats) {
+        self.bucket = other.bucket;
+        for bucket in other.buckets {
+            match self.buckets.iter_mut().find(|mine| mine.at == bucket.at) {
+                Some(mine) => {
+                    for (outcome, calls) in bucket.outcomes {
+                        *mine.outcomes.entry(outcome).or_default() += calls;
+                    }
+                }
+                None => self.buckets.push(bucket),
+            }
+        }
+        self.buckets.sort_by_key(|bucket| bucket.at);
+        for (tool, calls) in other.tools {
+            *self.tools.entry(tool).or_default() += calls;
+        }
+        for (outcome, calls) in other.outcomes {
+            *self.outcomes.entry(outcome).or_default() += calls;
+        }
+        for (service, calls) in other.services {
+            *self.services.entry(service).or_default() += calls;
+        }
+    }
 }
 
 /// One run of one of a scope's services.

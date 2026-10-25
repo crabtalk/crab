@@ -335,6 +335,58 @@ impl<E: Env> Host<E> {
         Ok((calls, link))
     }
 
+    /// What `service`'s calls on `page` count to, by time and by facet, in
+    /// [`wire::CallStats::bucket`]s of the range it asks for, its last 30
+    /// days through now without one.
+    pub async fn call_stats(
+        &self,
+        service: &str,
+        page: wire::CallPage,
+    ) -> Result<wire::CallStats, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let (page, bucket) = self.ranged(page);
+        let _reading = self.flushing.read().await;
+        Ok(calls::stats(
+            &self.store,
+            scope,
+            Some(name),
+            page,
+            bucket,
+            self.unsaved(service),
+        )
+        .await?)
+    }
+
+    /// [`Host::call_stats`] of every service in `scope`, of `page.service`
+    /// alone when it names one.
+    pub async fn scope_call_stats(
+        &self,
+        scope: &str,
+        page: wire::CallPage,
+    ) -> Result<wire::CallStats, Denied> {
+        let (page, bucket) = self.ranged(page);
+        let _reading = self.flushing.read().await;
+        let unsaved = calls::Unsaved {
+            ran: self.calls.unsaved_in(scope),
+            emitted: self.logs.unsaved_in(scope),
+        };
+        Ok(calls::stats(&self.store, scope, None, page, bucket, unsaved).await?)
+    }
+
+    /// `page` with its range set, the last 30 days through now where it
+    /// names none, and the bucket length that range is counted in.
+    fn ranged(&self, mut page: wire::CallPage) -> (wire::CallPage, u64) {
+        let now = (self.now)();
+        // `until` is excluded, so a call begun now is in the range.
+        let until = page.until.unwrap_or(now + 1);
+        let since = page
+            .since
+            .unwrap_or(until.saturating_sub(usage::WINDOW as u64 * 86_400_000));
+        (page.since, page.until) = (Some(since), Some(until));
+        (page, wire::CallStats::bucket(since, until))
+    }
+
     /// What `service`'s call `id` ran with. Only a call that failed keeps it.
     pub async fn call_input(&self, service: &str, id: u64) -> Result<wire::CallInput, Denied> {
         self.deployed(service)?;

@@ -11,13 +11,13 @@ use anyhow::Result;
 use berm::{Now, tape::Tape};
 use berm_api::{
     Meter,
-    host::{Call, CallInput, CallPage, Outcome, ServiceCall, Source},
+    host::{Bucket, Call, CallInput, CallPage, CallStats, Outcome, ServiceCall, Source},
 };
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
 use std::{
     cmp::Reverse,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     mem,
     sync::atomic::{AtomicU64, Ordering},
     time::Instant,
@@ -282,20 +282,10 @@ pub(crate) async fn input(
         .await
 }
 
-/// The runs on `page` of `scope/name`, or of every service in `scope`
-/// without a `name`, newest first, as written and in `unsaved`. A service
-/// caller is named by its name.
-pub(crate) async fn read(
-    store: &Store,
-    scope: &str,
-    name: Option<&str>,
-    page: CallPage,
-    unsaved: Unsaved,
-) -> Result<Vec<ServiceCall>> {
-    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
-    store
-        .read(move |conn| {
-            const MATCHING: &str = "FROM service_calls c
+/// The calls a page names, of `service_calls c`, as `:scope`, `:name`,
+/// `:tool`, `:outcome`, `:since`, `:until`, `:before`, `:event` and `:q` bind
+/// them; each `NULL` names every call.
+const MATCHING: &str = "FROM service_calls c
                   WHERE c.scope = :scope AND (:name IS NULL OR c.name = :name)
                     AND (:tool IS NULL OR c.tool = :tool)
                     AND (:outcome IS NULL OR c.outcome = :outcome)
@@ -310,6 +300,20 @@ pub(crate) async fn read(
                         SELECT 1 FROM service_logs l
                          WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
                            AND (instr(lower(l.data), :q) > 0 OR instr(lower(l.topics), :q) > 0)))";
+
+/// The runs on `page` of `scope/name`, or of every service in `scope`
+/// without a `name`, newest first, as written and in `unsaved`. A service
+/// caller is named by its name.
+pub(crate) async fn read(
+    store: &Store,
+    scope: &str,
+    name: Option<&str>,
+    page: CallPage,
+    unsaved: Unsaved,
+) -> Result<Vec<ServiceCall>> {
+    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
+    store
+        .read(move |conn| {
             let since = page.since.map(|since| since as i64);
             let until = page.until.map(|until| until as i64);
             let before = page.before.map(|before| before as i64);
@@ -383,6 +387,142 @@ pub(crate) async fn read(
             Ok(calls)
         })
         .await
+}
+
+/// What the calls on `page` of `scope/name`, or of every service in `scope`
+/// without a `name`, count to, as written and in `unsaved`, by `bucket`
+/// milliseconds of their start and by what each facet narrows them to. Its
+/// `before` and `limit` are not read.
+pub(crate) async fn stats(
+    store: &Store,
+    scope: &str,
+    name: Option<&str>,
+    page: CallPage,
+    bucket: u64,
+    unsaved: Unsaved,
+) -> Result<CallStats> {
+    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
+    store
+        .read(move |conn| {
+            let q = page.q.as_deref().map(str::to_ascii_lowercase);
+            // Each count is one query of the same calls: the facets drop
+            // their own filter.
+            let count = |group: &str,
+                         name: Option<&str>,
+                         tool: Option<&str>,
+                         outcome: Option<Outcome>|
+             -> rusqlite::Result<Vec<(String, Outcome, i64)>> {
+                conn.prepare_cached(&format!(
+                    "SELECT {group}, c.outcome, COUNT(*) {MATCHING} GROUP BY 1, 2"
+                ))?
+                .query_map(
+                    named_params! {
+                        ":scope": scope, ":name": name, ":tool": tool,
+                        ":event": page.event, ":q": q, ":outcome": outcome,
+                        ":since": page.since.map(|since| since as i64),
+                        ":until": page.until.map(|until| until as i64),
+                        ":before": None::<i64>,
+                    },
+                    |row| {
+                        Ok((
+                            row.get::<_, rusqlite::types::Value>(0).map(text)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                        ))
+                    },
+                )?
+                .collect()
+            };
+            // A scope's calls are narrowed to `page.service` but by the services facet.
+            let (tool, name_) = (
+                page.tool.as_deref(),
+                name.as_deref().or(page.service.as_deref()),
+            );
+            let mut stats = CallStats {
+                bucket,
+                ..CallStats::default()
+            };
+            let mut buckets: BTreeMap<u64, BTreeMap<Outcome, u64>> = BTreeMap::new();
+            // The length is the host's own number, so it is written in.
+            let by_time = format!("(c.at / {bucket}) * {bucket}");
+            for (at, outcome, calls) in count(&by_time, name_, tool, page.outcome)? {
+                *buckets
+                    .entry(at.parse().unwrap_or(0))
+                    .or_default()
+                    .entry(outcome)
+                    .or_default() += calls as u64;
+            }
+            for (tool, _, calls) in count("c.tool", name_, None, page.outcome)? {
+                *stats.tools.entry(tool).or_default() += calls as u64;
+            }
+            for (_, outcome, calls) in count("''", name_, tool, None)? {
+                *stats.outcomes.entry(outcome).or_default() += calls as u64;
+            }
+            if name.is_none() {
+                for (service, _, calls) in
+                    count("c.name", None, tool, page.outcome)?
+                {
+                    *stats.services.entry(service).or_default() += calls as u64;
+                }
+            }
+            let Unsaved { ran, emitted } = unsaved;
+            let ran = ran
+                .into_iter()
+                .filter(|ran| {
+                    page.since.is_none_or(|since| ran.at >= since)
+                        && page.until.is_none_or(|until| ran.at < until)
+                })
+                .collect();
+            for ran in unwritten(
+                conn,
+                &scope,
+                ran,
+                &emitted,
+                page.event.as_deref(),
+                q.as_deref(),
+            )? {
+                let ServiceCall { service, call } = ran;
+                let mine = name.as_ref().is_none_or(|name| *name == service);
+                let of_service = page.service.as_ref().is_none_or(|named| *named == service);
+                let of_tool = page.tool.as_ref().is_none_or(|tool| *tool == call.tool);
+                let of_outcome = page.outcome.is_none_or(|outcome| outcome == call.outcome);
+                if !mine {
+                    continue;
+                }
+                if of_service && of_tool && of_outcome {
+                    let at = call.at / bucket * bucket;
+                    *buckets
+                        .entry(at)
+                        .or_default()
+                        .entry(call.outcome)
+                        .or_default() += 1;
+                }
+                if of_service && of_outcome {
+                    *stats.tools.entry(call.tool.clone()).or_default() += 1;
+                }
+                if of_service && of_tool {
+                    *stats.outcomes.entry(call.outcome).or_default() += 1;
+                }
+                if name.is_none() && of_tool && of_outcome {
+                    *stats.services.entry(service).or_default() += 1;
+                }
+            }
+            stats.buckets = buckets
+                .into_iter()
+                .map(|(at, outcomes)| Bucket { at, outcomes })
+                .collect();
+            Ok(stats)
+        })
+        .await
+}
+
+/// A value SQLite answered, as text.
+fn text(value: rusqlite::types::Value) -> String {
+    match value {
+        rusqlite::types::Value::Integer(n) => n.to_string(),
+        rusqlite::types::Value::Text(text) => text,
+        _ => String::new(),
+    }
 }
 
 /// `ran`, runs of `scope`'s services not yet written, as calls, each with the
