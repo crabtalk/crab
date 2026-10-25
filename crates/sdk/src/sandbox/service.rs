@@ -119,6 +119,7 @@ pub struct Service {
     #[serde(flatten)]
     pub program: Program,
     pub private: bool,
+    pub served: host::Served,
 }
 
 /// Who a service answers.

@@ -51,10 +51,10 @@ pub fn info(client: &Client, org: &str, json: bool) -> Result<()> {
         account.handle.as_deref().unwrap_or(&account.id),
         account.name
     );
+    println!("  since {}", format::date(account.created_at));
     if let Some(private) = &view.private {
         println!("  you are {}", private.role);
         println!("  plan {}", private.plan);
-        println!("  since {}", format::date(private.created_at));
     }
     Ok(())
 }

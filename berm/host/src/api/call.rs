@@ -43,11 +43,13 @@ impl<E: Env> Host<E> {
         let served = usage::served(
             &self.store,
             scope,
-            name,
+            Some(name),
             usage::seconds(&self.now),
             self.usage.unsaved(service),
         )
-        .await?;
+        .await?
+        .remove(name)
+        .unwrap_or_default();
         Ok(Listing { program, served })
     }
 
@@ -84,12 +86,26 @@ impl<E: Env> Host<E> {
         })
     }
 
-    /// The IDL of every service in `scope` this host runs.
-    pub fn idls(&self, scope: &str) -> Vec<berm_api::Program> {
-        self.list(scope)
+    /// Every service in `scope` this host runs, as anyone it is visible to
+    /// sees it.
+    pub async fn listings(&self, scope: &str) -> Result<Vec<Listing>, Denied> {
+        let _reading = self.flushing.read().await;
+        let mut served = usage::served(
+            &self.store,
+            scope,
+            None,
+            usage::seconds(&self.now),
+            self.usage.unsaved_in(scope),
+        )
+        .await?;
+        Ok(self
+            .list(scope)
             .into_iter()
-            .map(|(name, program)| program.idl(&name))
-            .collect()
+            .map(|(name, program)| Listing {
+                program: program.idl(&name),
+                served: served.remove(&name).unwrap_or_default(),
+            })
+            .collect())
     }
 
     /// `service`'s terms: each public tool's budget, what its owner set or

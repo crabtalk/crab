@@ -13,6 +13,10 @@ pub struct User {
     pub handle: Option<String>,
     pub name: String,
     pub avatar: Option<String>,
+    /// A line about the person, shown on their profile.
+    pub bio: Option<String>,
+    /// `https://` URLs shown on their profile, in their order.
+    pub links: Vec<String>,
     pub email: String,
     pub created_at: i64,
     pub updated_at: i64,
@@ -58,4 +62,10 @@ pub struct UpdateUserRequest {
     /// Absent and `null` both leave it alone, as `handle` does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// At most 160 characters after trimming whitespace; empty clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bio: Option<String>,
+    /// Replaces every link: at most 4 `https://` URLs under 512 characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<String>>,
 }
