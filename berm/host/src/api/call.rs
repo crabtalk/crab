@@ -477,7 +477,12 @@ impl<E: Env> Host<E> {
                 format!("{service} is {paused}"),
             ));
         }
-        let _capped = self.caps.take(host::split(service).0).await;
+        if self.pools.pool(host::split(service).0).full() {
+            return Err(deny(
+                StatusCode::TOO_MANY_REQUESTS,
+                "the account holds as much memory as it may; retry",
+            ));
+        }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
         let recorder = Recorder::default();
@@ -578,11 +583,18 @@ impl<E: Env> Host<E> {
         Ok(self.routes.replace(routes).await?)
     }
 
-    /// Cap each of `caps`, by scope, at that many chains at once, and every
-    /// other scope at `Config::cap`. A chain past its scope's cap is refused
-    /// from outside with `429`; a wake fires again later; a Stripe event waits.
-    pub fn cap(&self, caps: HashMap<String, u32>) {
-        self.caps.replace(caps);
+    /// Limit each of `limits`, by scope, to that many bytes of memory held at
+    /// once, and every other scope to `Config::held`. A scope at its limit is
+    /// refused a chain from outside or a Stripe event with `429`, and a wake
+    /// fires again later; an invocation growing past it traps, and a deploy
+    /// whose images would hold more is refused.
+    pub fn limit(&self, limits: HashMap<String, u64>) {
+        self.pools.replace(limits);
+    }
+
+    /// The memory `scope`'s services hold now, and its limit.
+    pub fn memory(&self, scope: &str) -> wire::Memory {
+        self.pools.pool(scope).now()
     }
 
     /// Hold `scopes` in place of the scopes held. A held scope's services fire

@@ -43,7 +43,7 @@ pub use engine::{Config, Engine};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
-pub use meter::{Meters, Running};
+pub use meter::{Meters, Pool, Running};
 pub use program::{Ended, Invocation, Link, Outcome, Program, Refused, chain, digest};
 use std::{
     collections::BTreeMap,
@@ -53,8 +53,8 @@ use std::{
 };
 pub use storage::{Records, Storage};
 pub use syscall::call::{
-    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Reaching, Remote, Reported, Resolve,
-    Scope,
+    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Pooled, Reaching, Remote, Reported,
+    Resolve, Scope,
 };
 
 pub mod abi;
@@ -214,9 +214,13 @@ impl Berm {
     /// Compiling here rather than on first call means a broken image is refused
     /// by the deploy that introduced it, not on a model's turn. Written down
     /// before it is published, so a tool that is served is one a restart brings
-    /// back.
+    /// back. Refused when its pool's images, the one it replaces left out,
+    /// would hold more than the pool's limit.
     pub fn deploy(&self, name: &str, image: &[u8]) -> Result<Arc<Program>> {
         let program = self.load(name, image)?;
+        program
+            .pool
+            .fits(self.get(name).map_or(0, |replaced| replaced.bytes()))?;
         self.storage.put(Records::Programs, name, image)?;
         self.programs
             .write()

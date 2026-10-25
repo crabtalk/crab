@@ -4,7 +4,7 @@ use crate::{
     Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi,
     engine::{Engine, Image},
     journal::{Changes, Journal, Mark},
-    meter::{Held, Own, Running},
+    meter::{Held, Own, Pool, Running},
     syscall::{
         self,
         call::{Budgeted, Calls, Enter, Invoked, Now, Scope},
@@ -63,6 +63,9 @@ pub struct Program {
     invoked: Invoked,
     /// What its invocations hold while they run.
     pub running: Arc<Running>,
+    /// What it draws its memory from, its image counted in it while it is
+    /// loaded.
+    pub pool: Arc<Pool>,
     /// How long a chain it starts runs, [`crate::Config::deadline`].
     deadline: Duration,
 }
@@ -70,6 +73,12 @@ pub struct Program {
 struct Tool {
     symbol: String,
     query: bool,
+}
+
+impl Drop for Program {
+    fn drop(&mut self) {
+        self.pool.unload(self.image.bytes);
+    }
 }
 
 impl Program {
@@ -141,6 +150,8 @@ impl Program {
         }
 
         let name: Arc<str> = name.into();
+        let pool = (calls.pool)(&name);
+        pool.load(compiled.bytes);
         Ok(Self {
             issuer: (calls.named)(&name).into(),
             name,
@@ -154,6 +165,7 @@ impl Program {
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running: Arc::default(),
+            pool,
             deadline: engine.deadline,
         })
     }
@@ -432,7 +444,7 @@ impl Program {
         let mark = journal.mark();
         let site = at.clone();
         let invocation = Invocation {
-            held: Held::new(self.running.clone()),
+            held: Held::new(self.running.clone(), self.pool.clone()),
             at,
             now: self.now.clone(),
             issuer: self.issuer.clone(),

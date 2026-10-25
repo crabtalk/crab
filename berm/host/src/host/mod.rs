@@ -13,7 +13,7 @@ use crate::{
         usage::{self, Counts},
     },
     state::{
-        self, cap::Caps, commit::Commits, hold::Holds, routes::Routes, service, sql, stop::Stops,
+        self, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql, stop::Stops,
         store::Store, terms::Terms,
     },
     wake,
@@ -75,8 +75,8 @@ pub struct Inner<E: Env> {
     /// Chains the host may run at once: the permits [`Self::gate`] was made
     /// with.
     pub chains: usize,
-    /// Chains each scope may run at once, beside [`Self::gate`].
-    pub(crate) caps: Caps,
+    /// The memory each scope's services hold.
+    pub(crate) pools: Arc<Pools>,
     /// Wakes the timer.
     pub(crate) waking: Notify,
     /// Uses not yet written.
@@ -173,6 +173,7 @@ impl<E: Env> Host<E> {
         let terms = Terms::default();
         terms.load(&store).await?;
         let chains = (config.instances / (config.depth + 1)).max(1);
+        let pools = Arc::new(Pools::new(config.held));
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
             let mut syscalls = vec![
                 fetch::syscall(host, fetch.clone(), Door::Fetch),
@@ -185,14 +186,21 @@ impl<E: Env> Host<E> {
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
             syscalls.push(wake::syscall(host));
-            let calls = nest::calls(host, config.depth, commits.clone(), observe, now.clone());
+            let calls = nest::calls(
+                host,
+                config.depth,
+                commits.clone(),
+                observe,
+                now.clone(),
+                pools.clone(),
+            );
             let berm = Berm::new(&engine, calls, syscalls, Arc::new(Unrecorded));
             Inner {
                 store,
                 berm,
                 gate: Semaphore::new(chains as usize),
                 chains: chains as usize,
-                caps: Caps::new(config.cap),
+                pools,
                 waking: Notify::new(),
                 usage: Counts::new(now.clone()),
                 calls: ran,

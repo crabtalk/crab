@@ -3,6 +3,7 @@
 
 use crate::{format, utils};
 use anyhow::Result;
+use berm_api::host::Memory;
 use crabtalk_sdk::{account::billing::Period, client::Client};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -59,6 +60,7 @@ struct Sum {
 pub fn account(client: &Client, json: bool) -> Result<()> {
     let usage = utils::wait(client.services_usage())?;
     let period = utils::wait(client.period())?;
+    let memory = utils::wait(client.memory())?;
     let services: BTreeMap<String, Sum> = usage
         .into_iter()
         .map(|(name, days)| {
@@ -75,10 +77,12 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         struct Account<'a> {
             services: &'a BTreeMap<String, Sum>,
             period: &'a Period,
+            memory: &'a Memory,
         }
         return utils::json(&Account {
             services: &services,
             period: &period,
+            memory: &memory,
         });
     }
 
@@ -137,6 +141,22 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
     for warning in &period.warnings {
         println!("  warned: {} at {}%", warning.unit, warning.threshold);
     }
+    println!();
+    let held = memory.loaded + memory.running;
+    let limit = match memory.limit {
+        0 => "no limit".to_owned(),
+        limit => format!(
+            "of {}  {}",
+            format::bytes(limit),
+            format::percent(held as f64 / limit as f64)
+        ),
+    };
+    println!(
+        "memory {} held {limit}: {} loaded, {} running",
+        format::bytes(held),
+        format::bytes(memory.loaded),
+        format::bytes(memory.running)
+    );
     Ok(())
 }
 

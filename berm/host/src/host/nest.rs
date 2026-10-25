@@ -4,7 +4,10 @@
 use crate::{
     env::{Env, Observe, Peers},
     host::{self, Inner},
-    state::commit::{self, Commits},
+    state::{
+        commit::{self, Commits},
+        pool::Pools,
+    },
 };
 use anyhow::{Result, bail};
 use berm::{Caller, Calls, Callsite, Ended, Meter, Now};
@@ -15,14 +18,16 @@ use std::{
 };
 
 /// How `host`'s services call services, `depth` deep at most, committing
-/// through `commits`, with `observe` told of each invocation and `now` the
-/// clock `berm.now` answers.
+/// through `commits`, with `observe` told of each invocation, `now` the
+/// clock `berm.now` answers, and each service drawing from its scope's pool of
+/// `pools`.
 pub(crate) fn calls<E: Env>(
     host: &Weak<Inner<E>>,
     depth: u32,
     commits: Commits,
     observe: E::Observe,
     now: Now,
+    pools: Arc<Pools>,
 ) -> Calls {
     Calls {
         depth,
@@ -123,6 +128,7 @@ pub(crate) fn calls<E: Env>(
                 }))
             })
         },
+        pool: Arc::new(move |program: &str| pools.pool(host::split(program).0)),
     }
 }
 

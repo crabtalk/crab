@@ -27,10 +27,11 @@ pub struct Config {
     /// How deep a chain of services calling services may go.
     #[serde(default = "depth")]
     pub depth: u32,
-    /// Chains a scope may run at once until its daemon caps it; omitted is no
-    /// cap.
+    /// Bytes of memory a scope's services may hold at once, their images and
+    /// their invocations running, until its daemon limits it; omitted is no
+    /// limit.
     #[serde(default)]
-    pub cap: Option<u32>,
+    pub held: Option<u64>,
     /// Where compiled code is cached between processes.
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
@@ -48,7 +49,7 @@ impl Default for Config {
             rows: rows(),
             deadline: deadline(),
             depth: depth(),
-            cap: None,
+            held: None,
             cache_dir: None,
             databases: databases(),
         }

@@ -6,8 +6,8 @@
 //! reaches is the embedder's [`Calls::resolve`].
 
 use crate::{
-    Berm, Budget, Caller, Callsite, Changes, Ended, Link, Meter, Program, Refused, Syscall, abi,
-    wire,
+    Berm, Budget, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Program, Refused, Syscall,
+    abi, wire,
 };
 use anyhow::{Result, bail};
 use berm_api::{Output, host::Outcome};
@@ -41,6 +41,10 @@ pub type Enter = Arc<dyn Fn(&Program, &Callsite) -> Opening + Send + Sync>;
 /// The budget of one invocation of `tool` of the program deployed as
 /// `program`. `None` takes the engine's [`crate::Config`].
 pub type Budgeted = Arc<dyn Fn(&str, &str) -> Option<Budget> + Send + Sync>;
+
+/// The pool the program deployed as a name draws its memory from, asked once
+/// as it loads.
+pub type Pooled = Arc<dyn Fn(&str) -> Arc<Pool> + Send + Sync>;
 
 /// What `berm.now` answers: milliseconds since the Unix epoch. Called inside a
 /// syscall, where an unwind aborts the process.
@@ -113,6 +117,7 @@ pub struct Calls {
     pub called: Reported,
     pub invoked: Invoked,
     pub remote: Remote,
+    pub pool: Pooled,
 }
 
 impl Calls {
@@ -129,6 +134,7 @@ impl Calls {
             called: Arc::new(|_, _, _, _| {}),
             invoked: Arc::new(|_, _, _| {}),
             remote: Arc::new(|_, _, _, _, _| None),
+            pool: Arc::new(|_| Arc::default()),
         }
     }
 }
@@ -152,6 +158,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
         called,
         invoked: _,
         remote,
+        pool: _,
     } = calls;
     Syscall {
         name: abi::CALL.to_owned(),

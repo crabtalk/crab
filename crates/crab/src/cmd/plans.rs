@@ -31,9 +31,9 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             format::count(included.written),
             format::bytes(included.stored)
         );
-        match plan.concurrency {
-            0 => println!("  no cap on calls at once"),
-            cap => println!("  {cap} calls at once"),
+        match plan.memory {
+            0 => println!("  no limit on memory held"),
+            memory => println!("  {} of memory held at once", format::bytes(memory)),
         }
     }
     Ok(())
