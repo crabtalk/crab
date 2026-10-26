@@ -2,6 +2,7 @@
 
 use crate::{account::org::Kind, utils::text_enum};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// One plan as a client renders it: what the plan promises, never what keeping
 /// the promise costs us. Every field is a limit the caller trips directly and
@@ -48,6 +49,10 @@ pub struct Period {
     /// at the rates: what credit pays, in USD micros.
     #[serde(default)]
     pub charge: i64,
+    /// What `charge` is made of, by unit past its included amount, in USD
+    /// micros, each rounded down; a unit within it is left out.
+    #[serde(default)]
+    pub costs: BTreeMap<Unit, i64>,
     /// Credit drawn since `since`, in USD micros.
     #[serde(default)]
     pub drawn: i64,
@@ -67,7 +72,7 @@ pub struct Warning {
 /// What a warning is about: a field of [`Included`], or `credit` when credit
 /// ran out.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
     Runs,

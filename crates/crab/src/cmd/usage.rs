@@ -4,7 +4,10 @@
 use crate::{format, utils};
 use anyhow::Result;
 use berm_api::host::Memory;
-use crabtalk_sdk::{account::billing::Period, client::Client};
+use crabtalk_sdk::{
+    account::billing::{Period, Unit},
+    client::Client,
+};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -113,54 +116,68 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         format::day(period.since.into()),
         format::day(i64::from(period.until) - 1)
     );
-    // A unit's label, what was used of it and what is included, and how it reads.
-    type Line = (&'static str, u64, u64, fn(u64) -> String);
+    // A unit's label, what was used of it and what is included, how it reads,
+    // and the unit its cost past the included amount is kept under.
+    type Line = (&'static str, u64, u64, fn(u64) -> String, Unit);
     let included: [Line; 6] = [
         (
             "runs",
             period.used.runs,
             period.included.runs,
             format::count,
+            Unit::Runs,
         ),
         (
             "CPU µs",
             period.used.cpu,
             period.included.cpu,
             format::count,
+            Unit::Cpu,
         ),
         (
             "rows read",
             period.used.read,
             period.included.read,
             format::count,
+            Unit::Read,
         ),
         (
             "rows written",
             period.used.written,
             period.included.written,
             format::count,
+            Unit::Written,
         ),
         (
             "memory held",
             period.used.held,
             period.included.held,
             format::gb_hours,
+            Unit::Held,
         ),
         (
             "storage",
             period.used.stored,
             period.included.stored,
             format::bytes,
+            Unit::Stored,
         ),
     ];
     let mut any = false;
-    for (label, used, of, size) in included.into_iter().filter(|unit| unit.2 > 0) {
+    for (label, used, of, size, unit) in included.into_iter().filter(|unit| unit.2 > 0) {
         any = true;
         println!(
-            "  {label:<14}  {:>10} of {:<10}  {}",
+            "  {label:<14}  {:>10} of {:<10}  {:>5}  {}",
             size(used),
             size(of),
-            format::percent(used as f64 / of as f64)
+            format::percent(used as f64 / of as f64),
+            format::usd(period.costs.get(&unit).copied().unwrap_or(0) as f64)
+        );
+    }
+    if any {
+        println!(
+            "  past the included amounts  {}",
+            format::usd(period.charge as f64)
         );
     }
     if !any {
