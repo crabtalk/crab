@@ -62,30 +62,3 @@ pub struct LinkResponse {
     /// Provider consent URL the FE should navigate the browser to.
     pub redirect_url: String,
 }
-
-/// The address `POST /auth/email` emails a sign-in code to.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodeRequest {
-    pub email: String,
-}
-
-/// An emailed code, spent at `POST /auth/email/verify` for a session.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyRequest {
-    pub email: String,
-    pub code: String,
-    /// The surface the session is opened for.
-    pub client: Client,
-}
-
-/// A session over the account at the address.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyResponse {
-    /// Session JWT, sent as `Authorization: Bearer`.
-    pub token: String,
-    /// Whether the account was created by this sign-in.
-    pub new: bool,
-}

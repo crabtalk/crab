@@ -9,7 +9,6 @@ use reqwest::{Method, RequestBuilder, Response, StatusCode, header::RETRY_AFTER}
 use serde::{Deserialize, de::DeserializeOwned};
 use std::{fmt, time::Duration};
 mod app;
-mod auth;
 mod billing;
 mod key;
 mod meta;
