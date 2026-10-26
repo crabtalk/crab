@@ -5,10 +5,14 @@
 use crate::{host, record::usage, state::store::Store};
 use anyhow::Result;
 use berm::{Meter, Now, database::Databases};
-use berm_api::host::Metered;
+use berm_api::host::{Metered, Served, ServedDay};
 use parking_lot::Mutex;
 use rusqlite::params;
-use std::{collections::HashMap, fs, mem, ops::AddAssign};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs, mem,
+    ops::AddAssign,
+};
 
 /// What one service used on one day.
 pub(crate) struct Day {
@@ -108,8 +112,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                 tx.prepare_cached(
                     "INSERT INTO service_meters
                         (scope, name, day, calls, cpu, memory, read, written,
-                         proxied, logged, failed, sent)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+                         proxied, logged, failed, sent, runs)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
                  ON CONFLICT (scope, name, day) DO UPDATE SET
                     calls = calls + excluded.calls,
@@ -120,7 +124,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                     proxied = proxied + excluded.proxied,
                     logged = logged + excluded.logged,
                     failed = failed + excluded.failed,
-                    sent = sent + excluded.sent",
+                    sent = sent + excluded.sent,
+                    runs = runs + excluded.runs",
                 )?
                 .execute(params![
                     scope,
@@ -134,7 +139,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                     meter.proxied as i64,
                     meter.logged as i64,
                     meter.failed as i64,
-                    meter.sent as i64
+                    meter.sent as i64,
+                    meter.runs as i64
                 ])?;
                 Ok(())
             },
@@ -215,7 +221,7 @@ pub(crate) async fn read(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT day, calls, cpu, memory, read, written, proxied, stored,
-                        logged, failed, sent
+                        logged, failed, sent, runs
                    FROM service_meters
                   WHERE scope = ?1 AND name = ?2 AND day > ?3
                   ORDER BY day",
@@ -233,6 +239,7 @@ pub(crate) async fn read(
                     logged: row.get::<_, i64>(8)? as u64,
                     failed: row.get::<_, i64>(9)? as u64,
                     sent: row.get::<_, i64>(10)? as u64,
+                    runs: row.get::<_, i64>(11)? as u64,
                 })
             })?;
             let mut metered = rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -248,6 +255,67 @@ pub(crate) async fn read(
         .await
 }
 
+/// The runs of each service in `scope`, or only `name` when given, as
+/// written and in `unsaved`, by name: per day over the [`usage::WINDOW`] days
+/// to `today`, and in total. A service never run is absent.
+pub(crate) async fn served(
+    store: &Store,
+    scope: &str,
+    name: Option<&str>,
+    today: i32,
+    unsaved: Vec<Day>,
+) -> Result<BTreeMap<String, Served>> {
+    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
+    let since = today - usage::WINDOW;
+    store
+        .read(move |conn| {
+            let mut statement = conn.prepare(
+                "SELECT name, day, runs, calls, failed
+                   FROM service_meters
+                  WHERE scope = ?1 AND (?2 IS NULL OR name = ?2)",
+            )?;
+            let mut days: BTreeMap<String, BTreeMap<i32, Meter>> = BTreeMap::new();
+            let mut rows = statement.query(params![scope, name])?;
+            while let Some(row) = rows.next()? {
+                let (served, day): (String, i32) = (row.get(0)?, row.get(1)?);
+                *days.entry(served).or_default().entry(day).or_default() += Meter {
+                    runs: row.get::<_, i64>(2)? as u64,
+                    calls: row.get::<_, i64>(3)? as u64,
+                    failed: row.get::<_, i64>(4)? as u64,
+                    ..Meter::default()
+                };
+            }
+            for Day { service, day, used } in unsaved {
+                let (of, served) = host::split(&service);
+                if of == scope && name.as_deref().is_none_or(|name| name == served) {
+                    *days
+                        .entry(served.to_owned())
+                        .or_default()
+                        .entry(day)
+                        .or_default() += used;
+                }
+            }
+            Ok(days
+                .into_iter()
+                .map(|(served, days)| {
+                    let runs = days.values().map(|used| used.runs).sum();
+                    let days = days
+                        .into_iter()
+                        .filter(|(day, _)| *day > since)
+                        .map(|(day, used)| ServedDay {
+                            day,
+                            runs: used.runs,
+                            calls: used.calls,
+                            failed: used.failed,
+                        })
+                        .collect();
+                    (served, Served { days, runs })
+                })
+                .collect())
+        })
+        .await
+}
+
 /// Every service's meters on `since` and the days after, as written and in
 /// `unsaved`, by service.
 pub(crate) async fn since(
@@ -259,7 +327,7 @@ pub(crate) async fn since(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
-                        stored, logged, failed, sent
+                        stored, logged, failed, sent, runs
                    FROM service_meters
                   WHERE day >= ?1",
             )?;
@@ -279,6 +347,7 @@ pub(crate) async fn since(
                         logged: row.get::<_, i64>(10)? as u64,
                         failed: row.get::<_, i64>(11)? as u64,
                         sent: row.get::<_, i64>(12)? as u64,
+                        runs: row.get::<_, i64>(13)? as u64,
                     },
                 ))
             })?;

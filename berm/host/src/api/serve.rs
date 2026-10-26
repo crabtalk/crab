@@ -1,5 +1,5 @@
-//! The routes a host serves for one service, for a daemon to nest under the
-//! path it names services by.
+//! The routes a host serves for one service, and for one scope, for a daemon
+//! to nest under the paths it names them by.
 
 use crate::{Denied, env::Env, host::Host};
 use axum::{
@@ -12,15 +12,33 @@ use axum::{
 };
 use berm_api::{
     Budget, Cron, Listing, Program, Runtime, Terms,
-    host::{CallPage, Caller, Crons, Live, Metered, Page, ToolUpdate, Usage, Wakes},
+    host::{
+        CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
+        ToolUsage, Usage, Wakes,
+    },
 };
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 /// The service a request is for, as its daemon names it. The daemon puts it in
 /// the request's extensions before [`router`] runs, and the [`Caller`] a call
 /// is made as beside it when there is one.
 #[derive(Debug, Clone)]
 pub struct Named(pub String);
+
+/// The scope a request is for, as its daemon names it, put in the request's
+/// extensions before [`scope_router`] runs.
+#[derive(Debug, Clone)]
+pub struct Scoped(pub String);
+
+/// One scope's routes, relative to where the daemon nests them.
+pub fn scope_router<E: Env>(host: Host<E>) -> Router {
+    Router::new()
+        .route("/calls", get(scope_calls::<E>))
+        .route("/calls/stats", get(scope_call_stats::<E>))
+        .route("/memory", get(memory::<E>))
+        .with_state(host)
+}
 
 /// One service's routes, relative to where the daemon nests them.
 pub fn router<E: Env>(host: Host<E>) -> Router {
@@ -34,8 +52,12 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/live", get(live::<E>))
         .route("/logs", get(logs::<E>))
         .route("/calls", get(calls::<E>))
+        .route("/calls/stats", get(call_stats::<E>))
+        .route("/calls/tools", get(call_tools::<E>))
         .route("/calls/{id}/input", get(call_input::<E>))
+        .route("/calls/{id}/nested", get(call_nested::<E>))
         .route("/calls/{id}/tape", get(call_tape::<E>))
+        .route("/calls/{id}/image", get(call_image::<E>))
         .route("/crons", get(crons::<E>))
         .route("/wakes", get(wakes::<E>))
         .route(
@@ -79,12 +101,21 @@ async fn terms<E: Env>(
     Ok(Json(host.terms(&service)?))
 }
 
-/// Who uses the service.
+/// `?since=&until=`: days counted from the Unix epoch, `until` excluded.
+#[derive(Deserialize)]
+struct Days {
+    since: Option<i32>,
+    until: Option<i32>,
+}
+
+/// Who uses the service on the days asked, or over the last 30 without them.
 async fn usage<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
+    Query(Days { since, until }): Query<Days>,
 ) -> Result<Json<Vec<Usage>>, Denied> {
-    Ok(Json(host.usage(&service).await?))
+    let days = since.zip(until).map(|(since, until)| since..until);
+    Ok(Json(host.usage(&service, days).await?))
 }
 
 /// What the service used over the last 30 days, a day each.
@@ -131,7 +162,64 @@ async fn calls<E: Env>(
     ))
 }
 
+/// The runs of the scope's services, newest first, below the id `before`, a
+/// page at a time, with the next page in `Link`.
+async fn scope_calls<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Scoped(scope)): Extension<Scoped>,
+    Query(page): Query<CallPage>,
+) -> Result<impl IntoResponse, Denied> {
+    let (calls, link) = host.scope_calls(&scope, page).await?;
+    Ok((
+        AppendHeaders(link.map(|link| (header::LINK, link))),
+        Json(calls),
+    ))
+}
+
+/// The memory the scope's services hold, and its limit.
+async fn memory<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Scoped(scope)): Extension<Scoped>,
+) -> Json<Memory> {
+    Json(host.memory(&scope))
+}
+
+/// What the service's calls on the page asked count to, by time and by facet.
+async fn call_stats<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Query(page): Query<CallPage>,
+) -> Result<Json<CallStats>, Denied> {
+    Ok(Json(host.call_stats(&service, page).await?))
+}
+
+/// What each of the service's tools used over its calls, by tool.
+async fn call_tools<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+) -> Result<Json<BTreeMap<String, ToolUsage>>, Denied> {
+    Ok(Json(host.tool_usage(&service).await?))
+}
+
+/// What the scope's calls on the page asked count to, by time and by facet.
+async fn scope_call_stats<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Scoped(scope)): Extension<Scoped>,
+    Query(page): Query<CallPage>,
+) -> Result<Json<CallStats>, Denied> {
+    Ok(Json(host.scope_call_stats(&scope, page).await?))
+}
+
 /// What one of the service's calls that failed ran with.
+/// The calls a run made past its first, in the order they began.
+async fn call_nested<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(CallId { id }): Path<CallId>,
+) -> Result<Json<Vec<NestedCall>>, Denied> {
+    Ok(Json(host.call_nested(&service, id).await?))
+}
+
 async fn call_input<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
@@ -150,6 +238,18 @@ async fn call_tape<E: Env>(
     Ok((
         [(header::CONTENT_TYPE, "application/octet-stream")],
         host.call_tape(&service, id).await?,
+    ))
+}
+
+/// The image one of the service's calls that failed ran.
+async fn call_image<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(CallId { id }): Path<CallId>,
+) -> Result<impl IntoResponse, Denied> {
+    Ok((
+        [(header::CONTENT_TYPE, "application/wasm")],
+        host.call_image(&service, id).await?,
     ))
 }
 

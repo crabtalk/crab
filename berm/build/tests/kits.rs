@@ -125,7 +125,7 @@ fn a_program_naming_no_service_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
     program(root, "", "");
-    write(root, "program/crab.toml", "public = []\n");
+    write(root, "program/crab.toml", "deploy = true\n");
 
     let error = berm_build::build(&root.join("program"), None, FILE).unwrap_err();
     assert!(error.to_string().contains("names its service"), "{error:#}");

@@ -1,25 +1,23 @@
 //! The local host — deploys programs and serves their tools over MCP.
 //!
-//! A thin daemon over [`Host`], run by `crab serve`, with one flat namespace of programs. Every
+//! A thin daemon over [`Host`], run by `crab dev`, with one flat namespace of programs. Every
 //! deployed program appears on one MCP endpoint, its tools namespaced
 //! `{program}.{tool}`.
 
 use crate::host::secrets::Grants;
 use anyhow::{Context, Result};
 use berm::Program;
-use berm_host::{Config, Edges, Host, Layers, System};
+use berm_host::{Config, Edges, Host, Layers, Stored, System};
 use std::{io::IsTerminal, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 
 pub use env::Local;
 pub use fetch::Fetch;
-pub use images::Stored;
 pub use peers::Alone;
 
 mod api;
 mod env;
 mod fetch;
-mod images;
 mod mcp;
 mod peers;
 mod program;

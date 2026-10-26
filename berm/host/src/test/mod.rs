@@ -24,7 +24,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use berm::{
-    Manifest, Meter, Program,
+    Meter, Program,
     syscall::{
         http::{Request, Response},
         sql::Statement,
@@ -199,12 +199,19 @@ impl TestHost {
         image: &[u8],
         seed: Option<&Path>,
     ) -> Result<Arc<Program>> {
-        self.installed(service, image, seed, DATABASE_SIZE).await
+        self.installed(service, image, seed, DATABASE_SIZE, false)
+            .await
     }
 
     /// [`TestHost::deploy`], its database held to `size` bytes.
     pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Program>> {
-        self.installed(service, image, None, size).await
+        self.installed(service, image, None, size, false).await
+    }
+
+    /// [`TestHost::deploy`], installed stopped.
+    pub async fn pushed(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+        self.installed(service, image, None, DATABASE_SIZE, true)
+            .await
     }
 
     async fn installed(
@@ -213,8 +220,8 @@ impl TestHost {
         image: &[u8],
         seed: Option<&Path>,
         size: u64,
+        stopped: bool,
     ) -> Result<Arc<Program>> {
-        let manifest = Manifest::from_image(image)?;
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
         self.images
@@ -228,15 +235,10 @@ impl TestHost {
                 Deploy {
                     reference,
                     digest,
-                    public: manifest
-                        .tools
-                        .iter()
-                        .filter(|tool| tool.public)
-                        .map(|tool| tool.name.clone())
-                        .collect(),
                     force: true,
                     crons: None,
                     size,
+                    stopped,
                 },
                 seed,
             )

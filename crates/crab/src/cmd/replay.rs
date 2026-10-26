@@ -2,13 +2,12 @@
 //! another host's state.
 
 use crate::{cmd::call, utils};
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use berm::{
     Berm, Calls, Config, Engine, Output, User, abi, chain, digest, storage,
     syscall::{call::DEFAULT_CALL_DEPTH, emit},
     tape::{Tape, Taping},
 };
-use berm_oci::{Access, Reference, Registry};
 use crabtalk_sdk::client::Client;
 use std::{process::ExitCode, sync::Arc};
 
@@ -21,13 +20,12 @@ const FAILED: u8 = 2;
 pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
     let input = utils::wait(from.call_input(program, id))?;
     let tape = Tape::try_from(&utils::wait(from.call_tape(program, id))?[..])?;
-    let image = input
-        .image
-        .context("the service was deployed from no registry, so its image cannot be pulled")?;
-    let reference: Reference = image.parse()?;
-    let bytes = Registry::open(&reference, Access::Read)?.pull(&reference.reference)?;
+    let bytes = utils::wait(from.call_image(program, id))?;
     if input.digest.strip_prefix("sha256:") != Some(digest(&bytes).as_str()) {
-        bail!("{image} pulled an image of another digest");
+        bail!(
+            "the host served an image of another digest than {}",
+            input.digest
+        );
     }
     if !tape.complete {
         eprintln!("the tape was cut short; the replay stops where it ends");

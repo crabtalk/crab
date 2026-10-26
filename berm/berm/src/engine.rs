@@ -187,10 +187,11 @@ impl Image {
                         door => match syscall::request(&mut caller, ptr, len) {
                             Ok((at, request)) => {
                                 let deck = caller.data().tape.clone();
-                                let asked = tape::asked(&request);
-                                let replayed = deck
-                                    .as_ref()
-                                    .and_then(|deck| deck.lock().replay(&at, number, asked));
+                                let asked = deck.as_ref().map(|_| tape::asked(&request));
+                                let replayed =
+                                    deck.as_ref().zip(asked).and_then(|(deck, asked)| {
+                                        deck.lock().replay(&at, number, asked)
+                                    });
                                 match (replayed, door) {
                                     (Some(Err(diverged)), _) => Err(diverged),
                                     (Some(Ok(answer)), door) => {
@@ -203,7 +204,7 @@ impl Image {
                                     }
                                     (None, Some(Door::Hosted(call))) => {
                                         let reply = call(at, request).await;
-                                        if let Some(deck) = deck {
+                                        if let Some((deck, asked)) = deck.zip(asked) {
                                             deck.lock().record(number, asked, Answer::of(&reply));
                                         }
                                         Ok(syscall::stage(&mut caller, reply))

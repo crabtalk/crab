@@ -59,10 +59,6 @@ pub struct User {
 pub struct Deploy {
     pub reference: String,
     pub digest: String,
-    /// The tools this deploy may make public that the deployed version does
-    /// not.
-    #[serde(default)]
-    pub public: Vec<String>,
     /// Deploy even when it breaks what callers used, or undoes a cron its
     /// owner set.
     #[serde(default)]
@@ -76,6 +72,9 @@ pub struct Deploy {
     /// [`MAX_DATABASE_SIZE`].
     #[serde(default = "database_size")]
     pub size: u64,
+    /// Install it stopped, to serve once started.
+    #[serde(default)]
+    pub stopped: bool,
 }
 
 /// [`DATABASE_SIZE`], for `#[serde(default = "...")]`.
@@ -160,7 +159,7 @@ pub enum Source {
 
 /// How a use ended.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {
     Done,
@@ -215,24 +214,26 @@ pub struct Used {
     pub last: i64,
 }
 
-/// The calls of a service's tools from outside its scope that ended `done`:
-/// from an account, an app, or anonymously.
+/// A service's runs, as anyone it is visible to sees them: the [`Metered`]
+/// counts that say how it ran, and nothing it cost.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Served {
     /// Each of the last 30 days with any, oldest first.
     pub days: Vec<ServedDay>,
-    /// Since the service was first deployed.
-    pub total: u64,
+    /// Runs since the service was first deployed.
+    pub runs: u64,
 }
 
-/// One day of [`Served`].
+/// One day of [`Served`], counted as [`Metered`] counts it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServedDay {
     /// Days since the Unix epoch.
     pub day: i32,
+    pub runs: u64,
     pub calls: u64,
+    pub failed: u64,
 }
 
 /// One caller of one of a service's tools or events over the last 30 days.
@@ -286,15 +287,23 @@ impl Page {
     }
 }
 
-/// `?tool=&event=&outcome=&since=&until=&before=&limit=` on a service's calls.
+/// `?service=&tool=&event=&q=&outcome=&since=&until=&before=&limit=` on a
+/// service's calls, or a scope's.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
+    /// Only calls of this service, on a scope's calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
     /// Only calls of this tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
     /// Only calls that emitted a log carrying this topic.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<String>,
+    /// Only calls that emitted a log whose data or a topic holds this text,
+    /// its ASCII letters in either case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
     /// Only calls that ended so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,
@@ -405,6 +414,203 @@ pub struct Call {
     pub logs: u64,
 }
 
+/// One call a run made to another of its owner's services, or to its own
+/// tools, on the host the run ran on.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NestedCall {
+    /// Its number in the run, in the order the run's calls began; the run's
+    /// first call is 0.
+    pub id: u32,
+    /// The number of the call that made it.
+    pub parent: u32,
+    /// The service's name, in the run's scope.
+    pub service: String,
+    pub tool: String,
+    /// When it began, in epoch milliseconds.
+    pub at: u64,
+    pub ms: u64,
+    pub outcome: Outcome,
+    /// CPU microseconds it spent itself, the calls it made excluded.
+    pub cpu: u64,
+    pub read: u64,
+    pub written: u64,
+}
+
+/// What a page of calls matches, counted: by time and by what it can be
+/// narrowed to.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CallStats {
+    /// Each bucket's length, in milliseconds.
+    pub bucket: u64,
+    /// Each bucket with a call, oldest first.
+    pub buckets: Vec<Bucket>,
+    /// The calls of each tool, every filter but `tool` applied.
+    pub tools: BTreeMap<String, u64>,
+    /// The calls that ended each way, every filter but `outcome` applied.
+    pub outcomes: BTreeMap<Outcome, u64>,
+    /// The calls of each service, every filter but `service` applied; empty
+    /// for one service's calls.
+    pub services: BTreeMap<String, u64>,
+}
+
+/// The calls begun in one bucket of time, by how they ended.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bucket {
+    /// Its start, in epoch milliseconds.
+    pub at: u64,
+    pub outcomes: BTreeMap<Outcome, u64>,
+}
+
+impl CallStats {
+    /// The bucket length, in milliseconds, that cuts `since..until` into at
+    /// most 60: a minute, 5 or 15 minutes, an hour, 3 or 6 hours, or a day.
+    pub fn bucket(since: u64, until: u64) -> u64 {
+        const STEPS: [u64; 7] = [
+            60_000, 300_000, 900_000, 3_600_000, 10_800_000, 21_600_000, 86_400_000,
+        ];
+        let span = until.saturating_sub(since);
+        STEPS
+            .into_iter()
+            .find(|step| span / step <= 60)
+            .unwrap_or(86_400_000)
+    }
+
+    /// Add `other`, read over the same range and buckets.
+    pub fn merge(&mut self, other: CallStats) {
+        self.bucket = other.bucket;
+        for bucket in other.buckets {
+            match self.buckets.iter_mut().find(|mine| mine.at == bucket.at) {
+                Some(mine) => {
+                    for (outcome, calls) in bucket.outcomes {
+                        *mine.outcomes.entry(outcome).or_default() += calls;
+                    }
+                }
+                None => self.buckets.push(bucket),
+            }
+        }
+        self.buckets.sort_by_key(|bucket| bucket.at);
+        for (tool, calls) in other.tools {
+            *self.tools.entry(tool).or_default() += calls;
+        }
+        for (outcome, calls) in other.outcomes {
+            *self.outcomes.entry(outcome).or_default() += calls;
+        }
+        for (service, calls) in other.services {
+            *self.services.entry(service).or_default() += calls;
+        }
+    }
+}
+
+/// What one tool's calls of the last 30 days used.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolUsage {
+    /// Its calls the host ran, refused ones left out.
+    pub calls: u64,
+    /// Their meters summed, each over every service its call reached.
+    pub meter: Meter,
+    /// CPU microseconds each call's own invocation used, as its
+    /// [`Budget`](crate::Budget) counts it. Calls recorded before a host kept
+    /// it are not in it.
+    pub cpu: Spread,
+    /// Rows each call's own invocation read and wrote together, as `cpu`.
+    pub rows: Spread,
+    /// Each UTC day with a call, oldest first.
+    pub days: Vec<ToolDay>,
+}
+
+/// One UTC day of a tool's calls.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolDay {
+    /// Days since the Unix epoch.
+    pub day: i32,
+    pub calls: u64,
+}
+
+/// How one resource's use is spread over a tool's calls.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Spread {
+    /// The [`Share::upto`] of the share half the calls are in or below.
+    pub p50: u64,
+    /// The [`Share::upto`] of the share 95% of the calls are in or below.
+    pub p95: u64,
+    /// The most one call used.
+    pub max: u64,
+    /// Each share with a call, smallest first.
+    pub shares: Vec<Share>,
+}
+
+/// The calls that used at least the [`Share::upto`] of the share before, and
+/// less than this one's. Each share's bound is 2^(1/8) times the one before:
+/// [`Spread::bound`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Share {
+    pub upto: u64,
+    pub calls: u64,
+}
+
+impl Spread {
+    /// The index of the share `used` falls in: 0 for nothing, else one past
+    /// eight times its base-2 logarithm.
+    pub fn index(used: u64) -> usize {
+        if used == 0 {
+            return 0;
+        }
+        (8.0 * (used as f64).log2()).floor() as usize + 1
+    }
+
+    /// The exclusive upper bound of share `index`.
+    pub fn bound(index: usize) -> u64 {
+        if index == 0 {
+            return 1;
+        }
+        2f64.powf(index as f64 / 8.0).ceil() as u64
+    }
+
+    /// The spread of calls counted by share index, and the most one used.
+    pub fn of(counted: &BTreeMap<usize, u64>, max: u64) -> Self {
+        let total: u64 = counted.values().sum();
+        let at = |part: f64| {
+            let mut seen = 0;
+            for (&index, &calls) in counted {
+                seen += calls;
+                if seen as f64 >= part * total as f64 {
+                    return Self::bound(index).min(max.max(1));
+                }
+            }
+            max
+        };
+        Self {
+            p50: if total == 0 { 0 } else { at(0.5) },
+            p95: if total == 0 { 0 } else { at(0.95) },
+            max,
+            shares: counted
+                .iter()
+                .map(|(&index, &calls)| Share {
+                    upto: Self::bound(index),
+                    calls,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One run of one of a scope's services.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceCall {
+    /// The service's name in its scope.
+    pub service: String,
+    #[serde(flatten)]
+    pub call: Call,
+}
+
 /// What a call that failed ran with, kept so it can be run again.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallInput {
@@ -416,11 +622,6 @@ pub struct CallInput {
     pub caller: Option<Caller>,
     /// The image it ran, as `sha256:` and hex.
     pub digest: String,
-    /// Where that image is pulled from: the repository the service is
-    /// deployed from when this is read, at `digest`. None for a service
-    /// deployed from no registry.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub image: Option<String>,
 }
 
 /// What a service is using now.
@@ -445,6 +646,18 @@ pub struct Live {
     pub logged: Count,
 }
 
+/// The memory a scope's services hold now, and the most they may.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct Memory {
+    /// Bytes; `0` is no limit.
+    pub limit: u64,
+    /// Bytes of the images and compiled code of its services deployed.
+    pub loaded: u64,
+    /// Bytes of linear memory its invocations running now hold.
+    pub running: u64,
+}
+
 /// One of a [`Live`]'s counts.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -461,6 +674,10 @@ pub struct Count {
 pub struct Metered {
     /// Days since the Unix epoch.
     pub day: i32,
+    /// Chains whose first link the service was: a call from outside, a wake
+    /// or a Stripe event.
+    #[serde(default)]
+    pub runs: u64,
     /// Invocations of the service: from outside, from other services, and
     /// wakes.
     pub calls: u64,
@@ -493,6 +710,7 @@ pub struct Metered {
 impl std::ops::AddAssign<Meter> for Metered {
     /// Sums every count but `memory`, which keeps the larger.
     fn add_assign(&mut self, used: Meter) {
+        self.runs += used.runs;
         self.calls += used.calls;
         self.cpu += used.cpu;
         self.memory = self.memory.max(used.memory);

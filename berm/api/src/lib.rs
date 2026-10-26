@@ -92,6 +92,10 @@ pub struct Runtime {
     /// The part of `deps` this host answers to nothing for.
     #[serde(default, skip_serializing_if = "Deps::is_empty")]
     pub unresolved: Deps,
+    /// Stopped by its owners, or deployed stopped: it takes no calls and fires
+    /// no wakes.
+    #[serde(default)]
+    pub stopped: bool,
 }
 
 /// A deploy's answer.
@@ -227,14 +231,17 @@ impl From<Output> for Result<String, String> {
 /// The most bytes one log may hold, its data and topics together.
 pub const MAX_LOG: usize = 4096;
 
-/// What a call used of one program: its invocations, the CPU time they spent
-/// in microseconds, nested calls excluded, the largest linear memory one
+/// What a call used of one program: its runs, the chains it was the first link
+/// of; its invocations, the CPU time they spent in microseconds, nested calls
+/// excluded, the largest linear memory one
 /// reached, in bytes, the rows they read and wrote, the bytes sent and
 /// received through the proxy, the bytes of the logs they emitted, and the
 /// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meter {
+    #[serde(default)]
+    pub runs: u64,
     pub calls: u64,
     pub cpu: u64,
     pub memory: u64,
@@ -252,6 +259,7 @@ pub struct Meter {
 impl std::ops::AddAssign for Meter {
     /// Sums every count but `memory`, which keeps the larger.
     fn add_assign(&mut self, other: Meter) {
+        self.runs += other.runs;
         self.calls += other.calls;
         self.cpu += other.cpu;
         self.memory = self.memory.max(other.memory);

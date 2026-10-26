@@ -1,6 +1,6 @@
 # crabtalk-sdk
 
-Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`. The same client also talks to the local host, `crab serve`.
+Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`. The same client also talks to the local host, `crab dev`.
 
 ## Install
 
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Error> {
 
 The token is a session token or an API key. Without `owner`, the client addresses a local host at `base`, and account calls return `Error::Host`.
 
-`Error::retryable` is true for transport failures, `429` and `5xx` only. A structured refusal carries its stable `code` (e.g. `orgs_closed`); branch on that rather than on the status.
+A `429` that names its `Retry-After` is sent again after that wait, up to three times, unless its body streams. `Error::retryable` is true for transport failures, `429` and `5xx` only. A structured refusal carries its stable `code` (e.g. `orgs_closed`); branch on that rather than on the status.
 
 ## Modules
 

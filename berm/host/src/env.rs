@@ -87,17 +87,19 @@ pub trait Secrets: Send + Sync + 'static {
 /// ended.
 pub trait Observe: Send + Sync + 'static {
     /// `call` is the run on this host the invocation is part of, as the
-    /// service's calls number it; `None` in a link from a peer.
-    fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter);
+    /// service's calls number it; `None` in a link from a peer. `spent` is the
+    /// CPU microseconds its chain spent through this invocation, `used`
+    /// included; a link from a peer counts from its own start.
+    fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter, spent: u64);
 }
 
 impl Observe for () {
-    fn invoked(&self, _: &str, _: &str, _: Option<u64>, _: &Meter) {}
+    fn invoked(&self, _: &str, _: &str, _: Option<u64>, _: &Meter, _: u64) {}
 }
 
 impl<O: Observe> Observe for std::sync::Arc<O> {
-    fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter) {
-        (**self).invoked(service, tool, call, used);
+    fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter, spent: u64) {
+        (**self).invoked(service, tool, call, used, spent);
     }
 }
 

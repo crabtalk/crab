@@ -8,10 +8,11 @@ The agent for the CrabTalk platform: write a service, run it locally, deploy it 
 
 ```sh
 cargo install crab-agent
-crab login                 # CrabTalk Cloud; --email for a code by email
+crab login                     # CrabTalk Cloud; --email for a code by email
 crab new example && cd example
-crab dev -d                # build and run it on the local host
-crab deploy                # or deploy it to Cloud
+crab dev -d                    # start the local host
+crab --context default deploy  # build and run it there
+crab deploy                    # or deploy it to Cloud
 crab call example echo '{"query":"hello"}'
 ```
 
@@ -27,7 +28,7 @@ pub fn echo(query: String) -> Result<String> {
 }
 ```
 
-The docs are at [crab.talk/docs](https://crab.talk/docs/build/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).
+The docs are at [crab.talk/docs](https://crab.talk/docs/development/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).
 
 ## Kits
 
@@ -46,4 +47,6 @@ Rust 2024 edition, POSIX only. `rustup target add wasm32-unknown-unknown`, then 
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+The runtime and the CLI that runs it — `berm`, `berm-host`, `berm-oci`, `berm-build` and `crab-agent` — are licensed under the [GNU Affero General Public License, version 3](LICENSE-AGPL).
+
+Everything else — `berm-lang`, `berm-codegen`, `berm-api`, `crabtalk-sdk`, `crabkit`, `crab-html` and the kits — is licensed under the [Apache License, Version 2.0](LICENSE-APACHE). A service built with them is yours to license as you choose.

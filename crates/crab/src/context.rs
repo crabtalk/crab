@@ -12,7 +12,7 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 /// The context that is always there: the local host on this machine.
 pub const DEFAULT: &str = "default";
 
-/// Where `crab serve` listens by default, and `crab dev` always.
+/// Where `crab dev` listens by default, and the `default` context talks.
 pub const LOCAL: &str = "127.0.0.1:7777";
 
 /// The file, under `~/.crab`.

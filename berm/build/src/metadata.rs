@@ -23,6 +23,9 @@ pub struct Package {
     pub description: Option<String>,
     pub homepage: Option<String>,
     pub repository: Option<String>,
+    /// Relative to the package's directory; Cargo reports `README.md` there
+    /// when the manifest names none.
+    pub readme: Option<PathBuf>,
     pub targets: Vec<Target>,
 }
 

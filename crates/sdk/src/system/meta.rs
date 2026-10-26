@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// CPU microseconds an invocation spends before those past them are charged as
-/// overage.
+/// CPU microseconds a run spends, over every call in it, before those past
+/// them are charged as overage.
 pub const INCLUDED_CPU: u64 = 100;
 
 /// What is deployed, served unauthenticated at `GET /meta/version`.
@@ -30,7 +30,7 @@ pub struct VersionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metering {
     pub rates: Rates,
-    /// CPU microseconds of each call `overage` does not count.
+    /// CPU microseconds of each run `overage` does not count.
     pub included_cpu: u64,
     /// Bytes one log holds at most.
     pub max_log: usize,
@@ -41,8 +41,8 @@ pub struct Metering {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Rates {
-    pub calls: u64,
-    /// CPU microseconds past each call's first [`INCLUDED_CPU`].
+    pub runs: u64,
+    /// CPU microseconds past each run's first [`INCLUDED_CPU`].
     pub overage: u64,
     pub read: u64,
     pub written: u64,

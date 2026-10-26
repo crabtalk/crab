@@ -1,5 +1,6 @@
 //! `/requests` — what an account asks a person to do, handed to them as a
-//! short code: pay for a purchase, or set secrets of a service.
+//! short code: pay for a purchase, set secrets of a service, or sign a device
+//! in as them.
 
 use crate::{account::org::PublicAccount, utils::text_enum};
 use berm_api::Credential;
@@ -15,9 +16,11 @@ pub enum RequestKind {
     Payment,
     /// Set secrets of a service.
     Secret,
+    /// Sign a device in as the person: RFC 8628's device grant.
+    Login,
 }
 
-text_enum!(RequestKind { Payment => "payment", Secret => "secret" });
+text_enum!(RequestKind { Payment => "payment", Secret => "secret", Login => "login" });
 
 /// What a payment request buys.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -41,7 +44,7 @@ text_enum!(Purchase { Plan => "plan", Trial => "trial", Credit => "credit" });
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
-    /// Paid, the trial started, or the secrets set.
+    /// Paid, the trial started, the secrets set, or the sign-in approved.
     Completed,
     /// The person declined it.
     Declined,
@@ -95,14 +98,15 @@ pub enum CreateRequest {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
-    /// What a person types at `/pay` or `/secrets`, as `WDJB-MJHT`.
+    /// What a person types at `/pay`, `/secrets` or `/device`, as
+    /// `WDJB-MJHT`.
     pub code: String,
     /// The page that opens it.
     pub url: String,
     pub kind: RequestKind,
     pub status: RequestStatus,
-    /// The account it is for.
-    pub account: PublicAccount,
+    /// The account it is for; none for a sign-in until a person approves it.
+    pub account: Option<PublicAccount>,
     pub context: String,
     pub created_at: i64,
     pub expires_at: i64,
@@ -223,4 +227,51 @@ pub struct PayResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretValues {
     pub values: BTreeMap<String, String>,
+}
+
+/// A sign-in request a device made, at `POST /requests/login`: RFC 8628's
+/// device authorization response.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceAuthorization {
+    /// What the device polls with. Never shown to the person.
+    pub device_code: String,
+    /// What the person enters at `verification_uri`, as `WDJB-MJHT`.
+    pub user_code: String,
+    pub verification_uri: String,
+    /// The page that opens the request without typing its code.
+    pub verification_uri_complete: String,
+    /// Seconds the codes last.
+    pub expires_in: i64,
+    /// Seconds to wait between polls.
+    pub interval: u64,
+}
+
+/// A device's poll, at `POST /requests/login/token`.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceTokenRequest {
+    pub device_code: String,
+}
+
+/// The session an approved sign-in opens, answered to the first poll after
+/// approval.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceToken {
+    pub token: String,
+}
+
+/// RFC 8628's error codes a poll answers, in [`Error::Api`]'s `code`.
+///
+/// [`Error::Api`]: crate::client::Error::Api
+pub mod device {
+    /// Not approved or declined yet.
+    pub const AUTHORIZATION_PENDING: &str = "authorization_pending";
+    /// Polled sooner than `interval` after the last poll.
+    pub const SLOW_DOWN: &str = "slow_down";
+    /// The person declined it.
+    pub const ACCESS_DENIED: &str = "access_denied";
+    /// Past its expiry, or its token already answered.
+    pub const EXPIRED_TOKEN: &str = "expired_token";
 }

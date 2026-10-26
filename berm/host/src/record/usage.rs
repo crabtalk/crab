@@ -5,13 +5,10 @@
 use crate::{host, state::store::Store};
 use anyhow::Result;
 use berm::Now;
-use berm_api::host::{Kind, Outcome, Served, ServedDay, Source, Usage, Used};
+use berm_api::host::{Kind, Outcome, Source, Usage, Used};
 use parking_lot::Mutex;
 use rusqlite::{OptionalExtension, params};
-use std::{
-    collections::{BTreeMap, HashMap},
-    mem,
-};
+use std::{collections::HashMap, mem, ops::Range};
 
 /// Days of usage a deploy and `/usage` look back over.
 pub(crate) const WINDOW: i32 = 30;
@@ -135,8 +132,15 @@ pub(crate) async fn write(store: &Store, used: Vec<Used>) -> Result<()> {
         .await
 }
 
-/// `scope/name`'s usage over the last [`WINDOW`] days, as written and in
-/// `unsaved`, one row per item, caller and outcome, of one item and outcome
+/// The last [`WINDOW`] days through the one `now`, in epoch seconds, falls on,
+/// counted from the Unix epoch.
+pub(crate) fn window(now: i64) -> Range<i32> {
+    let today = now.div_euclid(86_400) as i32;
+    today - WINDOW + 1..today + 1
+}
+
+/// `scope/name`'s usage on `days`, counted from the Unix epoch, as written and
+/// in `unsaved`, one row per item, caller and outcome, of one item and outcome
 /// when `of` names them. A service caller is named by its name, an account by
 /// its id.
 pub(crate) async fn read(
@@ -144,26 +148,26 @@ pub(crate) async fn read(
     scope: &str,
     name: &str,
     of: Option<(Kind, &str, Outcome)>,
-    now: i64,
+    days: Range<i32>,
     unsaved: Vec<Used>,
 ) -> Result<Vec<Usage>> {
     let (kind, item, outcome) = of.map_or((None, None, None), |(kind, item, outcome)| {
         (Some(kind), Some(item.to_owned()), Some(outcome))
     });
     let (scope, name) = (scope.to_owned(), name.to_owned());
-    let since = (now / 86_400) as i32 - WINDOW;
     store
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT kind, item, source, caller, outcome, SUM(calls), MAX(last)
                    FROM service_usage
-                  WHERE scope = ?1 AND name = ?2 AND day > ?3
+                  WHERE scope = ?1 AND name = ?2 AND day >= ?3 AND day < ?7
                     AND (?4 IS NULL OR (kind = ?4 AND item = ?5 AND outcome = ?6))
                   GROUP BY kind, item, source, caller, outcome
                   ORDER BY kind, item, MAX(last) DESC",
             )?;
-            let rows =
-                statement.query_map(params![scope, name, since, kind, item, outcome], |row| {
+            let rows = statement.query_map(
+                params![scope, name, days.start, kind, item, outcome, days.end],
+                |row| {
                     let source = row.get(2)?;
                     Ok(Usage {
                         kind: row.get(0)?,
@@ -175,10 +179,11 @@ pub(crate) async fn read(
                         last: row.get(6)?,
                         public: None,
                     })
-                })?;
+                },
+            )?;
             let mut usage = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             for used in unsaved {
-                if used.day <= since
+                if !days.contains(&used.day)
                     || kind.is_some_and(|kind| {
                         (kind, item.as_deref(), outcome)
                             != (used.kind, Some(used.item.as_str()), Some(used.outcome))
@@ -213,53 +218,6 @@ pub(crate) async fn read(
                     .then(b.last.cmp(&a.last))
             });
             Ok(usage)
-        })
-        .await
-}
-
-/// `scope/name`'s [`Served`], as written and in `unsaved`: per day over the
-/// last [`WINDOW`] days, and in total.
-pub(crate) async fn served(
-    store: &Store,
-    scope: &str,
-    name: &str,
-    now: i64,
-    unsaved: Vec<Used>,
-) -> Result<Served> {
-    let (scope, name) = (scope.to_owned(), name.to_owned());
-    let since = (now / 86_400) as i32 - WINDOW;
-    store
-        .read(move |conn| {
-            let mut statement = conn.prepare(
-                "SELECT day, SUM(calls)
-                   FROM service_usage
-                  WHERE scope = ?1 AND name = ?2 AND kind = 'tool' AND outcome = 'done'
-                    AND source <> 'service'
-                  GROUP BY day
-                  ORDER BY day",
-            )?;
-            let mut days: BTreeMap<i32, u64> = BTreeMap::new();
-            let mut rows = statement.query(params![scope, name])?;
-            while let Some(row) = rows.next()? {
-                let (day, calls): (i32, i64) = (row.get(0)?, row.get(1)?);
-                *days.entry(day).or_default() += calls as u64;
-            }
-            for used in unsaved {
-                if used.kind == Kind::Tool
-                    && used.outcome == Outcome::Done
-                    && used.source != Source::Service
-                {
-                    *days.entry(used.day).or_default() += used.calls as u64;
-                }
-            }
-            Ok(Served {
-                total: days.values().sum(),
-                days: days
-                    .into_iter()
-                    .filter(|(day, _)| *day > since)
-                    .map(|(day, calls)| ServedDay { day, calls })
-                    .collect(),
-            })
         })
         .await
 }

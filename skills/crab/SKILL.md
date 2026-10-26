@@ -1,6 +1,6 @@
 ---
 name: crab
-description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, and before changing a local crab checkout from a product's repository.
+description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
 ---
 
 # Building on crab
@@ -9,9 +9,9 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 
 ## Services belong to the product
 
-- A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `crab.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `crab.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it. A bare `cargo build` writes an image a host refuses.
+- A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `crab.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `crab.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it; `crab push` does the same and leaves it stopped; `crab stop` and `crab start` stop and serve it, keeping its data. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
-- `crab dev -d` in the product's workspace has the local host at `127.0.0.1:7777` watch it: every service in it is built and deployed, and again as its files change, and the command returns once each is deployed or failed. The host is one per machine and watches several workspaces at once; `crab dev` starts it when it is not running. `crab dev status` says what it watches and why a rebuild failed; `crab dev stop` stops the host. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
+- `crab dev -d` starts the local host at `127.0.0.1:7777` in the background, one per machine. `crab --context default deploy` builds and deploys there the service whose directory it runs in, or at the workspace's root every service in it, or those named with `-p`, starting the host when it is not running; run it again after a change. `crab dev status` says whether the host runs; `crab dev stop` stops it. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
 - On Cloud each service reserves its `[database] size` of the account's plan storage, 1GiB when unset, whatever it holds. A deploy refused for storage is met by sizing each service to what it holds (`crab usage <service>` reports `stored`) before any change of plan.
 
 ## Kits are libraries
@@ -28,13 +28,18 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
 - A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
 - Each kit's `README.md` lists what the service still declares itself.
 
+## Calling another account's service
+
+- On Cloud, a service is addressed as `owner/name`, its page at `https://crab.talk/{owner}/{name}`. `crab inspect owner/name` prints another account's public service: its README and its public tools with their arguments. Read it before the first call.
+- `crab call owner/name <tool> '<arguments as JSON>'` calls one of its public tools, reading the arguments from stdin when they are left out. It prints the result, and what the call used on stderr; a tool that ran and refused exits 2.
+
 ## Signing in, paying and secrets
 
 The person you act for is not at your machine: never open a browser or wait on a prompt for something only they can do.
 
-- Sign in with `crab login --email <address>`: it emails a code and exits. Ask the person for the code from that email, then run `crab login --email <address> --code <code>`. A new address gets an account. Plain `crab login` opens a browser on your machine, which they cannot reach.
+- Sign in with `crab login --device`: it prints a link and a code, then waits until the person approves or declines, up to 30 minutes. Send them the link, or the code to enter at `crab.talk/device`; once they approve, you are signed in as them. Plain `crab login` opens a browser on your machine, which they cannot reach.
 - To buy a plan, start the trial or buy credit, run `crab billing plan <slug>`, `crab billing trial` or `crab billing credit` with `--for` saying what it is for; the person reads it before paying. Send them the link it prints, with what it buys and its price, then run `crab request <code> --wait`. The code lasts 30 minutes; if it expires or they decline, ask before making another.
-- Never ask the person to paste a secret's value into the chat. For local development under `crab dev`, ask them to run `crab --context default secret fill <service>` in their own terminal, with `--copy KEY=VALUE` for the values its credentials have them enter at the provider: it shows each credential's guide and sets what they type on the local host, where test keys belong. It refuses to run where stdin is not a terminal, so never run it yourself. On Cloud, once the service is deployed, ask for every secret it has unset in one request: `crab secret request <service>` with `--for` saying what they are for and `--copy KEY=VALUE` for each value its credentials have the person enter at the provider, such as `--copy callback=<URL>`. The guides to getting them come from the `[credentials]` of its `crab.toml` and its kits'; a service's own secret that needs steps is declared as a credential with a `guide` naming the provider, the steps in its dashboard, and the URL of the page. `--credential <id>` asks again for one, as after rotating it. Send them the link it prints, then run `crab request <code> --wait`. They set them on that page, signed in; you see that they were set, never their values. A code sent to the wrong person, or asking for the wrong thing, is ended with `crab request <code> --expire` before you ask again; what was already saved stays set.
+- Never ask the person to paste a secret's value into the chat. For local development on the local host, ask them to run `crab --context default secret fill <service>` in their own terminal, with `--copy KEY=VALUE` for the values its credentials have them enter at the provider: it shows each credential's guide and sets what they type on the local host, where test keys belong. It refuses to run where stdin is not a terminal, so never run it yourself. On Cloud, once the service is deployed, ask for every secret it has unset in one request: `crab secret request <service>` with `--for` saying what they are for and `--copy KEY=VALUE` for each value its credentials have the person enter at the provider, such as `--copy callback=<URL>`. The guides to getting them come from the `[credentials]` of its `crab.toml` and its kits'; a service's own secret that needs steps is declared as a credential with a `guide` naming the provider, the steps in its dashboard, and the URL of the page. `--credential <id>` asks again for one, as after rotating it. Send them the link it prints, then run `crab request <code> --wait`. They set them on that page, signed in; you see that they were set, never their values. A code sent to the wrong person, or asking for the wrong thing, is ended with `crab request <code> --expire` before you ask again; what was already saved stays set.
 
 ## Where the truth is
 
@@ -43,12 +48,12 @@ Read these before writing code. Paths are relative to the crab repository.
 | Question | Source |
 | --- | --- |
 | The CLI, contexts, `crab.toml` | `crates/crab/README.md` |
-| Tools, `#[tool(...)]` and its `public`, `anonymous`, `query`, `cron`, `stripe`, `callers(...)`; building with `crab build` | https://crab.talk/docs/build/writing, `berm/lang/README.md` |
-| Caller, user, database, HTTP, calls between services | https://crab.talk/docs/build/guest-api |
-| `crab.toml` keys, syscalls, secrets, credentials, kits | https://crab.talk/docs/build/crab-toml |
-| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/build/local |
-| Deploying to Cloud, images and registries | https://crab.talk/docs/services/deploy |
-| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/services/secrets |
+| Tools, `#[tool(...)]` and its `public`, `anonymous`, `query`, `cron`, `stripe`, `callers(...)`; building with `crab build` | https://crab.talk/docs/development/writing, `berm/lang/README.md` |
+| Caller, user, database, HTTP, calls between services | https://crab.talk/docs/development/guest-api |
+| `crab.toml` keys, syscalls, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |
+| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/development/local |
+| Deploying to Cloud, images and registries | https://crab.talk/docs/development/deploy |
+| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/development/secrets |
 | A kit's API and setup | `kits/<kit>/README.md` |
 
 ## A local crab checkout

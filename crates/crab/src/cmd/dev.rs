@@ -1,148 +1,179 @@
-//! `crab dev` — have the local host watch a workspace: build and deploy its
-//! services, and again as its files change. The host is the one on this
-//! machine, started in the background when nothing answers.
+//! `crab dev` — the local host: deploy programs to it and serve their tools
+//! over HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`, or
+//! in the background with `-d`. One per machine.
 
 use crate::{
-    cmd::serve,
     context,
-    dev::{Event, Named, Status, Watching},
-    format, utils,
+    dev::{Dev, Status},
+    format,
+    host::{self, Service, secrets},
+    utils,
 };
 use anyhow::{Context, Result, bail};
+use berm::syscall::call;
+use clap::Args;
 use reqwest::StatusCode;
 use std::{
     env,
+    ffi::OsString,
     fs::{self, File},
+    net::SocketAddr,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{self, Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
+use tokio::net::TcpListener;
 
 /// The file the host started in the background writes to, under its root.
 const LOG: &str = "host.log";
 
-/// How often the host is asked whether it is up, or a workspace deployed.
+/// How often a host started in the background is asked whether it is up.
 const POLL: Duration = Duration::from_millis(250);
 
 /// How long a host started in the background has to answer.
 const STARTING: Duration = Duration::from_secs(15);
 
-fn url(path: &str) -> String {
+/// How the host runs.
+#[derive(Args)]
+pub struct Daemon {
+    /// Address to listen on. Loopback by default: the MCP endpoint carries
+    /// no authorization yet, so anything wider would be an open one.
+    #[arg(long, default_value = context::LOCAL)]
+    pub addr: SocketAddr,
+    /// Where deployed images and the code cache live; `~/.crab/host` by
+    /// default.
+    #[arg(long)]
+    pub root: Option<PathBuf>,
+    /// How deep a chain of programs calling programs may go. `0` refuses
+    /// the first one, which is composition off.
+    ///
+    /// The bound is on runaway composition, not on the stack: a level
+    /// costs ~720 bytes of it, and 64 MiB of guest address space.
+    #[arg(long, default_value_t = call::DEFAULT_CALL_DEPTH)]
+    pub max_call_depth: u32,
+    /// The proxy `berm.http.proxy` goes through, e.g.
+    /// `http://user:pass@gate.example.com:3120`. Without one it goes
+    /// direct.
+    #[arg(long)]
+    pub proxy: Option<String>,
+    /// How many milliseconds of CPU one call may spend, nested calls
+    /// excluded.
+    #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
+    pub max_cpu_millis: u64,
+    /// How many seconds a call may run before it is stopped.
+    #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
+    pub max_call_seconds: u64,
+}
+
+impl Daemon {
+    fn root(&self) -> Result<PathBuf> {
+        match &self.root {
+            Some(root) => Ok(root.clone()),
+            None => root(),
+        }
+    }
+
+    /// The flags that run the same host again.
+    fn args(&self) -> Vec<OsString> {
+        let mut args: Vec<OsString> = vec![
+            "--addr".into(),
+            self.addr.to_string().into(),
+            "--max-call-depth".into(),
+            self.max_call_depth.to_string().into(),
+            "--max-cpu-millis".into(),
+            self.max_cpu_millis.to_string().into(),
+            "--max-call-seconds".into(),
+            self.max_call_seconds.to_string().into(),
+        ];
+        if let Some(root) = &self.root {
+            args.extend(["--root".into(), root.into()]);
+        }
+        if let Some(proxy) = &self.proxy {
+            args.extend(["--proxy".into(), proxy.into()]);
+        }
+        args
+    }
+}
+
+/// `~/.crab/host`.
+pub fn root() -> Result<PathBuf> {
+    Ok(utils::home()?.join(".crab").join("host"))
+}
+
+pub fn url(path: &str) -> String {
     format!("http://{}{path}", context::LOCAL)
 }
 
-/// Watch the workspace `dir` is in and print what it does until Ctrl-C, which
-/// stops the watch.
-pub fn run(dir: &Path, json: bool) -> Result<()> {
-    let dir = canonical(dir)?;
-    up()?;
-    let printed = utils::wait(async {
-        // Listening before the watch begins, so its first deploys are heard.
-        let mut response = reqwest::Client::new()
-            .get(url("/dev/events"))
-            .query(&Named {
-                workspace: dir.clone(),
-            })
-            .send()
-            .await?
-            .error_for_status()?;
-        let watching = watch(&dir).await?;
-        eprintln!(
-            "watching {} on http://{}; Ctrl-C stops watching it",
-            watching.root.display(),
-            context::LOCAL
-        );
-        for name in &watching.skipped {
-            eprintln!("skipped   {name}: deploy = false");
-        }
-        let mut pending = Vec::new();
-        loop {
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => return anyhow::Ok(()),
-                chunk = response.chunk() => {
-                    let Some(chunk) = chunk? else {
-                        bail!("the host on {} stopped", context::LOCAL);
-                    };
-                    pending.extend_from_slice(&chunk);
-                    while let Some(end) = pending.iter().position(|b| *b == b'\n') {
-                        let line: Vec<u8> = pending.drain(..=end).collect();
-                        let line = String::from_utf8_lossy(&line);
-                        match json {
-                            true => print!("{line}"),
-                            false => {
-                                if let Ok(event) = serde_json::from_str::<Event>(&line) {
-                                    println!("{}", event.line());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
-    let _ = utils::wait(
-        reqwest::Client::new()
-            .delete(url("/dev/workspaces"))
-            .query(&Named { workspace: dir })
-            .send(),
-    );
-    printed
-}
-
-/// Watch the workspace `dir` is in, and return once each of its services is
-/// deployed or failed.
-pub fn detach(dir: &Path, json: bool) -> Result<()> {
-    let dir = canonical(dir)?;
-    up()?;
-    let watching = utils::wait(watch(&dir))?;
-    loop {
-        let status = utils::wait(ask())?.context("the host stopped")?;
-        let ours = status
-            .workspaces
-            .iter()
-            .find(|w| w.root == watching.root)
-            .context("the host stopped watching the workspace")?;
-        if ours.services.iter().all(|one| one.rebuilt.is_some()) {
-            return show(&status, Some(&watching.root), json);
-        }
-        thread::sleep(POLL);
-    }
-}
-
-fn canonical(dir: &Path) -> Result<PathBuf> {
-    dir.canonicalize()
-        .with_context(|| format!("no directory {}", dir.display()))
-}
-
-/// Ask the host to watch the workspace `dir` is in.
-async fn watch(dir: &Path) -> Result<Watching> {
-    let response = reqwest::Client::new()
-        .put(url("/dev/workspaces"))
-        .json(&Named {
-            workspace: dir.to_owned(),
-        })
-        .send()
+/// Run the host in the foreground until Ctrl-C or `crab dev stop`.
+pub fn run(daemon: &Daemon) -> Result<()> {
+    host::trace();
+    let root = daemon.root()?;
+    utils::wait(async {
+        let secrets = root.join(secrets::FILE);
+        let service = Service::new(
+            root.clone(),
+            secrets,
+            daemon.max_call_depth,
+            Duration::from_millis(daemon.max_cpu_millis),
+            Duration::from_secs(daemon.max_call_seconds),
+            daemon.proxy.as_deref(),
+        )
         .await?;
-    if !response.status().is_success() {
-        bail!("{}", response.text().await?);
-    }
-    Ok(response.json().await?)
+        let addr = daemon.addr;
+        let listener = TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("failed to bind {addr}"))?;
+        let dev = Dev::new(
+            service,
+            Status {
+                pid: process::id(),
+                root,
+                since: call::system_now(),
+            },
+        );
+        tracing::info!("listening on http://{addr}, mcp at http://{addr}/mcp");
+        axum::serve(listener, dev.clone().router())
+            .with_graceful_shutdown(async move {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = dev.stopped() => {}
+                }
+            })
+            .await
+            .context("server failed")
+    })
 }
 
-/// Make sure the host on this machine answers, starting it in the background
-/// when nothing does.
-fn up() -> Result<()> {
-    match utils::wait(ask()) {
-        Ok(Some(_)) => return Ok(()),
-        Ok(None) => bail!(
-            "the host on {} takes no workspaces; stop it and run `crab dev` again",
-            context::LOCAL
-        ),
-        Err(_) => {}
+/// Start the host in the background and return once it answers. A host
+/// already answering is left as it is.
+pub fn detach(daemon: &Daemon) -> Result<()> {
+    let at = format!("http://{}", daemon.addr);
+    match utils::wait(ask(&at)) {
+        Ok(Some(_)) => {
+            eprintln!("the host is already running on {at}");
+            Ok(())
+        }
+        Ok(None) => bail!("something other than the host answers on {at}"),
+        Err(_) => start(&at, &daemon.root()?, daemon.args()),
     }
-    let root = serve::root()?;
-    fs::create_dir_all(&root).with_context(|| format!("cannot create {}", root.display()))?;
+}
+
+/// Make sure the host on [`context::LOCAL`] answers, starting it in the
+/// background with its defaults when nothing does.
+pub fn up() -> Result<()> {
+    let at = url("");
+    match utils::wait(ask(&at)) {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => bail!("something other than the host answers on {at}"),
+        Err(_) => start(&at, &root()?, Vec::new()),
+    }
+}
+
+/// Run `crab dev` with `args` out of this terminal, writing to the log under
+/// `root`, and wait until it answers at `at`.
+fn start(at: &str, root: &Path, args: Vec<OsString>) -> Result<()> {
+    fs::create_dir_all(root).with_context(|| format!("cannot create {}", root.display()))?;
     let path = root.join(LOG);
     let log = File::options()
         .create(true)
@@ -151,7 +182,8 @@ fn up() -> Result<()> {
         .with_context(|| format!("cannot write {}", path.display()))?;
     let mut command = Command::new(env::current_exe().context("cannot find crab itself")?);
     command
-        .arg("serve")
+        .arg("dev")
+        .args(args)
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);
@@ -169,12 +201,8 @@ fn up() -> Result<()> {
         if let Some(exit) = child.try_wait()? {
             bail!("the host {exit}; {} says why", path.display());
         }
-        if let Ok(Some(_)) = utils::wait(ask()) {
-            eprintln!(
-                "started the host on http://{}, writing to {}",
-                context::LOCAL,
-                path.display()
-            );
+        if let Ok(Some(_)) = utils::wait(ask(at)) {
+            eprintln!("started the host on {at}, writing to {}", path.display());
             return Ok(());
         }
         if started.elapsed() > STARTING {
@@ -189,42 +217,18 @@ const DETACHED_PROCESS: u32 = 0x0000_0008;
 #[cfg(windows)]
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
-/// Print the host's state and every workspace it watches. Fails when no
-/// host answers.
+/// Print the host's state. Fails when no host answers.
 pub fn status(json: bool) -> Result<()> {
-    match utils::wait(ask()) {
-        Ok(Some(status)) => show(&status, None, json),
-        Ok(None) => bail!("the host on {} takes no workspaces", context::LOCAL),
+    let status = match utils::wait(ask(&url(""))) {
+        Ok(Some(status)) => status,
+        Ok(None) => bail!(
+            "something other than the host answers on {}",
+            context::LOCAL
+        ),
         Err(_) => bail!("no host on {}", context::LOCAL),
-    }
-}
-
-/// Stop the host.
-pub fn stop() -> Result<()> {
-    let response = utils::wait(reqwest::Client::new().post(url("/dev/stop")).send())
-        .with_context(|| format!("no host on {}", context::LOCAL))?;
-    if response.status() == StatusCode::NOT_FOUND {
-        bail!("the host on {} takes no workspaces", context::LOCAL);
-    }
-    response.error_for_status()?;
-    println!("stopped");
-    Ok(())
-}
-
-/// The host's state, `None` from a host that takes no workspaces, such as
-/// one from before the host was one per machine.
-async fn ask() -> reqwest::Result<Option<Status>> {
-    let response = reqwest::get(url("/dev")).await?;
-    if response.status() == StatusCode::NOT_FOUND {
-        return Ok(None);
-    }
-    Ok(response.error_for_status()?.json().await.ok())
-}
-
-/// Print `status`, its workspaces or only the one at `only`.
-fn show(status: &Status, only: Option<&PathBuf>, json: bool) -> Result<()> {
+    };
     if json {
-        return utils::json(status);
+        return utils::json(&status);
     }
     println!(
         "host      http://{}  pid {}  since {}",
@@ -233,25 +237,29 @@ fn show(status: &Status, only: Option<&PathBuf>, json: bool) -> Result<()> {
         format::instant(status.since)
     );
     println!("root      {}", status.root.display());
-    let watched = status
-        .workspaces
-        .iter()
-        .filter(|w| only.is_none_or(|root| w.root == *root));
-    for watching in watched {
-        println!("workspace {}", watching.root.display());
-        for name in &watching.skipped {
-            println!("  {name}  skipped: deploy = false");
-        }
-        for one in &watching.services {
-            let deployed = match (&one.version, one.deployed) {
-                (Some(version), Some(at)) => format!("{version}, deployed {}", format::instant(at)),
-                _ => "not deployed".to_owned(),
-            };
-            println!("  {}  {deployed}", one.name);
-            if let Some(error) = &one.error {
-                println!("    failed  {error}");
-            }
-        }
-    }
     Ok(())
+}
+
+/// Stop the host.
+pub fn stop() -> Result<()> {
+    let response = utils::wait(reqwest::Client::new().post(url("/dev/stop")).send())
+        .with_context(|| format!("no host on {}", context::LOCAL))?;
+    if response.status() == StatusCode::NOT_FOUND {
+        bail!(
+            "something other than the host answers on {}",
+            context::LOCAL
+        );
+    }
+    response.error_for_status()?;
+    println!("stopped");
+    Ok(())
+}
+
+/// The state of the host at `at`; `None` when something else answers there.
+async fn ask(at: &str) -> reqwest::Result<Option<Status>> {
+    let response = reqwest::get(format!("{at}/dev")).await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    Ok(response.error_for_status()?.json().await.ok())
 }

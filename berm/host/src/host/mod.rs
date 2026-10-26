@@ -13,8 +13,8 @@ use crate::{
         usage::{self, Counts},
     },
     state::{
-        self, cap::Caps, commit::Commits, hold::Holds, routes::Routes, service, sql, store::Store,
-        terms::Terms,
+        self, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql, stop::Stops,
+        store::Store, terms::Terms,
     },
     wake,
 };
@@ -75,8 +75,8 @@ pub struct Inner<E: Env> {
     /// Chains the host may run at once: the permits [`Self::gate`] was made
     /// with.
     pub chains: usize,
-    /// Chains each scope may run at once, beside [`Self::gate`].
-    pub(crate) caps: Caps,
+    /// The memory each scope's services hold.
+    pub(crate) pools: Arc<Pools>,
     /// Wakes the timer.
     pub(crate) waking: Notify,
     /// Uses not yet written.
@@ -100,8 +100,10 @@ pub struct Inner<E: Env> {
     pub(crate) routes: Routes,
     /// The scopes held.
     pub(crate) holds: Holds,
+    /// The services stopped.
+    pub(crate) stops: Stops,
     pub(crate) peers: E::Peers,
-    images: E::Images,
+    pub(crate) images: E::Images,
     pub(crate) secrets: E::Secrets,
     /// [`Edges::layers`].
     pub(crate) layers: Layers,
@@ -156,6 +158,7 @@ impl<E: Env> Host<E> {
         let store = Store::open(state)?;
         let routes = Routes::open(store.clone()).await?;
         let holds = Holds::open(store.clone()).await?;
+        let stops = Stops::open(store.clone()).await?;
         let engine = Engine::new(&berm::Config {
             cache_dir: config.cache_dir.clone(),
             instances: config.instances,
@@ -170,6 +173,7 @@ impl<E: Env> Host<E> {
         let terms = Terms::default();
         terms.load(&store).await?;
         let chains = (config.instances / (config.depth + 1)).max(1);
+        let pools = Arc::new(Pools::new(config.held));
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
             let mut syscalls = vec![
                 fetch::syscall(host, fetch.clone(), Door::Fetch),
@@ -182,14 +186,21 @@ impl<E: Env> Host<E> {
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
             syscalls.push(wake::syscall(host));
-            let calls = nest::calls(host, config.depth, commits.clone(), observe, now.clone());
+            let calls = nest::calls(
+                host,
+                config.depth,
+                commits.clone(),
+                observe,
+                now.clone(),
+                pools.clone(),
+            );
             let berm = Berm::new(&engine, calls, syscalls, Arc::new(Unrecorded));
             Inner {
                 store,
                 berm,
                 gate: Semaphore::new(chains as usize),
                 chains: chains as usize,
-                caps: Caps::new(config.cap),
+                pools,
                 waking: Notify::new(),
                 usage: Counts::new(now.clone()),
                 calls: ran,
@@ -201,6 +212,7 @@ impl<E: Env> Host<E> {
                 commits,
                 routes,
                 holds,
+                stops,
                 peers,
                 images,
                 secrets,
@@ -354,7 +366,41 @@ impl<E: Env> Host<E> {
         self.databases.remove(service)?;
         let removed = service::remove(&self.store, scope, name).await?;
         self.terms.forget(service);
+        self.stops.mark(service, false);
         Ok(removed)
+    }
+
+    /// Stop `service`: it takes no calls and fires no wakes until
+    /// [`Self::start`], and calls in flight finish. What it stored and what
+    /// comes due stays. `false` when it is not deployed.
+    pub async fn stop(&self, service: &str) -> Result<bool> {
+        self.switch(service, false).await
+    }
+
+    /// Start `service` stopped by [`Self::stop`] or deployed stopped; wakes
+    /// that came due meanwhile fire. `false` when it is not deployed.
+    pub async fn start(&self, service: &str) -> Result<bool> {
+        self.switch(service, true).await
+    }
+
+    /// Whether `service` is stopped.
+    pub fn stopped(&self, service: &str) -> bool {
+        self.stops.stopped(service)
+    }
+
+    async fn switch(&self, service: &str, running: bool) -> Result<bool> {
+        let lock = self
+            .deploying
+            .lock()
+            .entry(service.to_owned())
+            .or_default()
+            .clone();
+        let _deploying = lock.lock().await;
+        let set = self.stops.set(service, !running).await?;
+        if set && running {
+            self.waking.notify_one();
+        }
+        Ok(set)
     }
 
     /// Days since the Unix epoch, as the clock tells it.

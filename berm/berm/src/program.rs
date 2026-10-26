@@ -4,21 +4,21 @@ use crate::{
     Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi,
     engine::{Engine, Image},
     journal::{Changes, Journal, Mark},
-    meter::{Held, Own, Running},
+    meter::{Held, Own, Pool, Running},
     syscall::{
         self,
-        call::{Budgeted, Calls, Enter, Invoked, Now, Scope},
+        call::{Budgeted, Calls, Enter, Invoked, Now, Ran, Scope},
     },
     tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Callers, Manifest, Output, Runtime};
+use berm_api::{Callers, Manifest, Output, Runtime, host};
 use std::{
     collections::BTreeMap,
     error, fmt,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -63,6 +63,9 @@ pub struct Program {
     invoked: Invoked,
     /// What its invocations hold while they run.
     pub running: Arc<Running>,
+    /// What it draws its memory from, its image counted in it while it is
+    /// loaded.
+    pub pool: Arc<Pool>,
     /// How long a chain it starts runs, [`crate::Config::deadline`].
     deadline: Duration,
 }
@@ -70,6 +73,12 @@ pub struct Program {
 struct Tool {
     symbol: String,
     query: bool,
+}
+
+impl Drop for Program {
+    fn drop(&mut self) {
+        self.pool.unload(self.image.bytes);
+    }
 }
 
 impl Program {
@@ -141,6 +150,8 @@ impl Program {
         }
 
         let name: Arc<str> = name.into();
+        let pool = (calls.pool)(&name);
+        pool.load(compiled.bytes);
         Ok(Self {
             issuer: (calls.named)(&name).into(),
             name,
@@ -154,6 +165,7 @@ impl Program {
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running: Arc::default(),
+            pool,
             deadline: engine.deadline,
         })
     }
@@ -223,16 +235,16 @@ impl Program {
             repository,
             readme,
             tools,
-        } = self.manifest.clone();
+        } = &self.manifest;
         berm_api::Program {
             name: name.to_owned(),
-            version,
-            description,
-            homepage,
-            repository,
-            readme,
+            version: version.clone(),
+            description: description.clone(),
+            homepage: homepage.clone(),
+            repository: repository.clone(),
+            readme: readme.clone(),
             digest: self.digest.clone(),
-            tools: tools.into_iter().filter(|tool| tool.public).collect(),
+            tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
         }
     }
 
@@ -249,6 +261,7 @@ impl Program {
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
             unresolved: Default::default(),
+            stopped: false,
         }
     }
 
@@ -311,6 +324,7 @@ impl Program {
                 meters,
                 Arc::from([self.name.clone()]),
                 taping.deck(),
+                None,
             )
             .await?;
         let changes = match result {
@@ -359,6 +373,7 @@ impl Program {
                 meters,
                 stack,
                 None,
+                None,
             )
             .await?;
         let changes = match result {
@@ -376,7 +391,7 @@ impl Program {
     /// has to be done by `deadline`, under the programs in `stack`. `query` is
     /// whether a link above it is a query. What it keeps lands in `journal`,
     /// and a failure takes it back out; what it uses lands in `meters`, failed
-    /// or not.
+    /// or not. `parent` is the invocation that called it on this runtime.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn invoke(
         &self,
@@ -393,7 +408,9 @@ impl Program {
         meters: Arc<Meters>,
         stack: Arc<[Arc<str>]>,
         tape: Option<Deck>,
+        parent: Option<&Callsite>,
     ) -> Result<Ended> {
+        let (at_ms, began) = ((self.now)(), Instant::now());
         let Some(Tool {
             symbol,
             query: declared,
@@ -414,11 +431,18 @@ impl Program {
             query: query || *declared,
             deadline,
             chain,
+            span: parent.map_or(0, |parent| parent.spans.fetch_add(1, Ordering::Relaxed)),
+            parent: parent.map(|parent| parent.span),
+            spans: parent.map_or_else(
+                || Arc::new(AtomicU32::new(1)),
+                |parent| parent.spans.clone(),
+            ),
             journal: journal.clone(),
             meters,
             own: Arc::new(Own::new(budget.rows)),
         };
         at.meter(Meter {
+            runs: u64::from(depth == 1),
             calls: 1,
             ..Meter::default()
         });
@@ -431,7 +455,7 @@ impl Program {
         let mark = journal.mark();
         let site = at.clone();
         let invocation = Invocation {
-            held: Held::new(self.running.clone()),
+            held: Held::new(self.running.clone(), self.pool.clone()),
             at,
             now: self.now.clone(),
             issuer: self.issuer.clone(),
@@ -454,13 +478,25 @@ impl Program {
                 .with_context(|| format!("program trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
         };
-        self.ran(&site, tool, &ended);
+        self.ran(
+            &site,
+            tool,
+            &ended,
+            Ran {
+                at: at_ms,
+                ms: began.elapsed().as_millis() as u64,
+                outcome: match &ended {
+                    Ok(ended) => host::Outcome::of(&ended.result, ended.denied),
+                    Err(_) => host::Outcome::Failed,
+                },
+            },
+        );
         settle(&ended, scope, held, &journal, mark).await?;
         ended
     }
 
     /// Count a failed invocation at `site` and report what it used itself.
-    fn ran(&self, site: &Callsite, tool: &str, ended: &Result<Ended>) {
+    fn ran(&self, site: &Callsite, tool: &str, ended: &Result<Ended>, ran: Ran) {
         if matches!(
             ended,
             Err(_)
@@ -474,7 +510,7 @@ impl Program {
                 ..Meter::default()
             });
         }
-        (self.invoked)(site, tool, site.own.take());
+        (self.invoked)(site, tool, site.own.take(), ran);
     }
 }
 

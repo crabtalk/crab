@@ -1,7 +1,9 @@
 //! `/requests` — asking a person to pay or to set a secret, by a code.
 
 use crate::{
-    account::request::{CreateRequest, Purchase, Request},
+    account::request::{
+        CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest, Purchase, Request,
+    },
     client::{Client, Error},
 };
 use reqwest::Method;
@@ -57,9 +59,28 @@ impl Client {
             .await
     }
 
-    /// The request `code` names. Takes no token.
-    pub async fn request(&self, code: &str) -> Result<Request, Error> {
-        self.json(self.at(Method::GET, &format!("/requests/{code}")))
+    /// Ask a person to sign this device in. Takes no token.
+    pub async fn ask_login(&self) -> Result<DeviceAuthorization, Error> {
+        self.json(self.at(Method::POST, "/requests/login")).await
+    }
+
+    /// The session the sign-in `device_code` opened, once a person approved
+    /// it; refused with a [`device`](crate::account::request::device) code
+    /// until then. Takes no token.
+    pub async fn login_token(&self, device_code: &str) -> Result<DeviceToken, Error> {
+        let body = DeviceTokenRequest {
+            device_code: device_code.to_owned(),
+        };
+        self.json(self.at(Method::POST, "/requests/login/token").json(&body))
             .await
+    }
+
+    /// The request `code` names, once its status changes while pending or
+    /// `wait` seconds pass, at most 60; at once with `wait` 0. Takes no token.
+    pub async fn request(&self, code: &str, wait: u64) -> Result<Request, Error> {
+        let req = self
+            .at(Method::GET, &format!("/requests/{code}"))
+            .query(&[("wait", wait)]);
+        self.json(req).await
     }
 }

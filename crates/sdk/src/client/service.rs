@@ -4,7 +4,7 @@
 use crate::{
     client::{Client, Error},
     sandbox::service::{
-        Billing, Costed, DeployRequest, MeteredDay, Secret, SeedRequest, SeedUpload, SetSecret,
+        Billing, Costed, DeployRequest, MeteredDay, Secret, SetSecret, Upload, UploadRequest,
         Visibility,
     },
 };
@@ -12,9 +12,8 @@ use berm_api::{
     Budget, Cron, Deployed, Logged, Meter, Output, Program, Runtime, Terms,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
-use reqwest::{Method, RequestBuilder};
+use reqwest::{Body, Method, RequestBuilder};
 use std::collections::BTreeMap;
-use tokio::fs::File;
 
 impl Client {
     /// Every service the owner runs on Cloud, or every program on a local host.
@@ -37,26 +36,26 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Deploy `image` as `name` on a local host, confirming the tools it may make
-    /// public, setting each cron tool's expression when `crons` is given, and
-    /// holding its database to `size` bytes.
+    /// Deploy `image` as `name` on a local host, setting each cron tool's
+    /// expression when `crons` is given, holding its database to `size` bytes,
+    /// and installing it stopped when `stopped`.
     pub async fn deploy_image(
         &self,
         name: &str,
         image: Vec<u8>,
-        public: &[String],
         force: bool,
         crons: Option<&BTreeMap<String, String>>,
         size: u64,
+        stopped: bool,
     ) -> Result<Deployed, Error> {
         if self.owner.is_some() {
             return Err(Error::Host("Cloud deploys from a registry, not from bytes"));
         }
         let mut request = self
             .at(Method::PUT, &self.program(name))
-            .query(&[("public", public.join(","))])
             .query(&[("force", force)])
-            .query(&[("size", size)]);
+            .query(&[("size", size)])
+            .query(&[("stopped", stopped)]);
         if let Some(crons) = crons {
             let crons =
                 serde_json::to_string(crons).map_err(|_| Error::Host("crons do not serialize"))?;
@@ -73,20 +72,27 @@ impl Client {
     }
 
     /// Where to upload `seed` for a deploy of `name` on Cloud to name.
-    pub async fn seed(&self, name: &str, seed: &SeedRequest) -> Result<SeedUpload, Error> {
+    pub async fn seed(&self, name: &str, seed: &UploadRequest) -> Result<Upload, Error> {
         self.account()?;
         let path = format!("{}/seed", self.program(name));
         self.json(self.at(Method::POST, &path).json(seed)).await
     }
 
-    /// Upload the `size` bytes of `file` to `url`, an upload [`Client::seed`]
-    /// answered.
-    pub async fn upload_seed(&self, url: &str, file: File, size: u64) -> Result<(), Error> {
+    /// Where to upload `image` for a deploy of `name` on Cloud to name.
+    pub async fn image(&self, name: &str, image: &UploadRequest) -> Result<Upload, Error> {
+        self.account()?;
+        let path = format!("{}/image", self.program(name));
+        self.json(self.at(Method::POST, &path).json(image)).await
+    }
+
+    /// Upload the `size` bytes of `body` to `url`, an upload [`Client::seed`]
+    /// or [`Client::image`] answered.
+    pub async fn upload(&self, url: &str, body: impl Into<Body>, size: u64) -> Result<(), Error> {
         let request = self
             .http
             .put(url)
             .header(reqwest::header::CONTENT_LENGTH, size)
-            .body(file);
+            .body(body);
         self.ok(request).await.map(drop)
     }
 
@@ -99,6 +105,11 @@ impl Client {
         arguments: Vec<u8>,
         caller: Option<&Caller>,
     ) -> Result<(Output, Option<Meter>), Error> {
+        if self.owner.is_none() && program.contains('/') {
+            return Err(Error::Host(
+                "the local host has no accounts: call its services by name alone",
+            ));
+        }
         let path = format!("{}/tools/{tool}", self.program(program));
         let request = self.as_caller(self.at(Method::POST, &path).body(arguments), caller)?;
         self.answered(request).await
@@ -202,6 +213,12 @@ impl Client {
         self.bytes(self.at(Method::GET, &path)).await
     }
 
+    /// The image `name`'s call `id` ran. Only a call that failed names one.
+    pub async fn call_image(&self, name: &str, id: u64) -> Result<Vec<u8>, Error> {
+        let path = format!("{}/calls/{id}/image", self.program(name));
+        self.bytes(self.at(Method::GET, &path)).await
+    }
+
     /// What `name` used in UTC month `month`, `YYYY-MM`, or this one, and what
     /// it cost. Cloud only.
     pub async fn billing(&self, name: &str, month: Option<&str>) -> Result<Billing, Error> {
@@ -242,6 +259,20 @@ impl Client {
         Ok(())
     }
 
+    /// Serve `name` again, stopped or deployed stopped.
+    pub async fn start(&self, name: &str) -> Result<(), Error> {
+        let path = format!("{}/start", self.program(name));
+        self.ok(self.at(Method::POST, &path)).await?;
+        Ok(())
+    }
+
+    /// Stop serving `name`, keeping what it committed.
+    pub async fn stop(&self, name: &str) -> Result<(), Error> {
+        let path = format!("{}/stop", self.program(name));
+        self.ok(self.at(Method::POST, &path)).await?;
+        Ok(())
+    }
+
     pub async fn undeploy(&self, name: &str) -> Result<(), Error> {
         self.ok(self.at(Method::DELETE, &self.program(name)))
             .await?;
@@ -266,8 +297,11 @@ impl Client {
         Ok(format!("/services/{}/{name}", self.account()?.name()))
     }
 
+    /// The path of `name`. On Cloud, `owner/name` names another account's
+    /// service, and a bare name the context's own.
     fn program(&self, name: &str) -> String {
         match &self.owner {
+            Some(_) if name.contains('/') => format!("/services/{name}"),
             Some(owner) => format!("/services/{}/{name}", owner.name()),
             None => format!("/programs/{name}"),
         }

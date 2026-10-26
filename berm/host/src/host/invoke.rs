@@ -3,7 +3,7 @@
 use crate::{env::Env, host::Host};
 use anyhow::Result;
 use berm::{Meter, Meters, Program, User, tape::Taping};
-use berm_api::Output;
+use berm_api::{Output, host::NestedCall};
 use std::{collections::BTreeMap, sync::Arc};
 
 impl<E: Env> Host<E> {
@@ -39,20 +39,27 @@ impl<E: Env> Host<E> {
             )
             .await;
         self.logs.ended(chain);
-        let meter = self.metered(meters.take());
+        let nested = self.calls.take_nested(call);
+        let meters = meters.take();
+        let own = meters.get(&program.name).copied().unwrap_or_default();
+        let meter = self.metered(meters);
         let outcome = outcome?;
         if matches!(outcome.result, Output::Failed(_)) {
             return Ok(Invoked {
                 result: outcome.result,
                 denied: outcome.denied,
                 meter,
+                own,
+                nested,
             });
         }
-        self.commits.commit(&outcome.changes).await?;
+        self.commits.commit(outcome.changes, None).await?;
         Ok(Invoked {
             result: outcome.result,
             denied: false,
             meter,
+            own,
+            nested,
         })
     }
 
@@ -77,4 +84,8 @@ pub(crate) struct Invoked {
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,
+    /// What the tool's own invocation used, as its budget counts it.
+    pub own: Meter,
+    /// The calls the run made past its first, on this host.
+    pub nested: Arc<[NestedCall]>,
 }

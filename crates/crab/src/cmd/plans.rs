@@ -19,21 +19,21 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             .map_or("anyone".to_owned(), |kind| kind.to_string());
         println!("{}  {price}  for {kind}", plan.slug);
         let included = &plan.included;
-        if included.calls + included.cpu + included.read + included.written + included.stored == 0 {
+        if included.runs + included.cpu + included.read + included.written + included.stored == 0 {
             println!("  includes no amounts");
             continue;
         }
         println!(
-            "  {} calls, {} CPU µs, {} rows read, {} rows written, {}",
-            format::count(included.calls),
+            "  {} runs, {} CPU µs, {} rows read, {} rows written, {}",
+            format::count(included.runs),
             format::count(included.cpu),
             format::count(included.read),
             format::count(included.written),
             format::bytes(included.stored)
         );
-        match plan.concurrency {
-            0 => println!("  no cap on calls at once"),
-            cap => println!("  {cap} calls at once"),
+        match plan.memory {
+            0 => println!("  no limit on memory held"),
+            memory => println!("  {} of memory held at once", format::bytes(memory)),
         }
     }
     Ok(())

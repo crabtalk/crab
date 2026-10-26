@@ -24,6 +24,7 @@ pub use workspace::Workspace;
 
 mod artifact;
 mod metadata;
+mod toolchain;
 mod workspace;
 
 /// What a program is built for.
@@ -61,7 +62,7 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
         description: program.description.clone().unwrap_or_default(),
         homepage: program.homepage.clone().unwrap_or_default(),
         repository: program.repository.clone().unwrap_or_default(),
-        readme: match &project.readme {
+        readme: match &program.readme {
             Some(readme) => {
                 let path = program.dir().join(readme);
                 fs::read_to_string(&path)
@@ -79,6 +80,7 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
     let lock = fs::File::create(out.join("build.lock"))?;
     lock.lock()?;
 
+    toolchain::ensure(dir)?;
     let spec = format!("{}@{}", program.name, program.version);
     let artifacts = Artifact::build(
         &cargo,

@@ -114,6 +114,12 @@ impl<E: Env> Host<E> {
                 format!("{tool} is not a query; POST it"),
             ));
         }
+        if self.stops.stopped(service) {
+            return Err(deny(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("{service} is stopped"),
+            ));
+        }
         let refused = |denied: Denied, caller: Option<&Caller>| {
             let (source, who) = counted(caller);
             self.usage
@@ -201,12 +207,12 @@ impl<E: Env> Host<E> {
                 );
             }
         }
-        let Some(_capped) = self.caps.try_take(host::split(&service).0) else {
+        if self.pools.pool(scope).full() {
             return Err(deny(
                 StatusCode::TOO_MANY_REQUESTS,
-                "the account has as many calls running as it may; retry",
+                "the account holds as much memory as it may; retry",
             ));
-        };
+        }
         let Ok(_slot) = self.gate.try_acquire() else {
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -220,7 +226,6 @@ impl<E: Env> Host<E> {
             args: String::from_utf8_lossy(&args).into_owned(),
             caller: caller.clone(),
             digest: format!("sha256:{}", program.digest),
-            image: None,
         };
         let (source, who) = counted(caller.as_ref());
         let invoked = self
@@ -279,7 +284,7 @@ impl<E: Env> Host<E> {
             source,
             who,
             outcome,
-            Some(invoked.meter),
+            Some(&invoked),
             Some(input),
             failed.then(|| recorder.tape()).as_ref(),
         );

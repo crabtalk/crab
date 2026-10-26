@@ -28,12 +28,10 @@ pub struct Project {
     /// The service the program deploys as.
     #[serde(default)]
     pub name: Option<String>,
-    /// The registry repository Cloud pulls the image from, without a tag.
+    /// The public registry repository the image is published to and Cloud
+    /// pulls it from, without a tag. Absent, a deploy uploads the image.
     #[serde(default)]
     pub image: Option<String>,
-    /// The tools the program may make public.
-    #[serde(default)]
-    pub public: Vec<String>,
     /// Whether the program is deployed: `false` keeps it out of a
     /// workspace's deploys, and refuses deploying it.
     #[serde(default = "deployed")]
@@ -56,10 +54,6 @@ pub struct Project {
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
     pub buffer: Option<usize>,
-    /// A Markdown file, relative to `crab.toml`, the manifest carries as the
-    /// program's README; none when absent.
-    #[serde(default)]
-    pub readme: Option<PathBuf>,
     /// Syscalls it makes beyond the ABI's own, each beside what it reaches
     /// through that call: `"berm.http.fetch" = ["example.com"]`, or `[]` for
     /// the call alone.
@@ -155,11 +149,9 @@ impl Project {
         let program_only = [
             ("name", self.name.is_some()),
             ("image", self.image.is_some()),
-            ("public", !self.public.is_empty()),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("buffer", self.buffer.is_some()),
-            ("readme", self.readme.is_some()),
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),
         ];

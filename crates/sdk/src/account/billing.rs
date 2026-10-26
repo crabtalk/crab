@@ -23,8 +23,9 @@ pub struct PublicPlan {
     pub price_micros: Option<i64>,
     /// What the plan includes each billing period.
     pub included: Included,
-    /// Calls to the account's services in flight at once; `0` is no cap.
-    pub concurrency: u32,
+    /// Bytes of memory the account's services may hold at once, their images
+    /// and their calls running; `0` is no limit.
+    pub memory: u64,
 }
 
 /// An account's billing period: what its plan includes, what it used, and
@@ -43,6 +44,9 @@ pub struct Period {
     pub used: Included,
     /// Bytes its placed services keep, as each was last sampled.
     pub stored: u64,
+    /// Credit drawn since `since`, in USD micros.
+    #[serde(default)]
+    pub drawn: i64,
     /// Each share of an included amount reached, and running out of credit.
     pub warnings: Vec<Warning>,
 }
@@ -62,7 +66,7 @@ pub struct Warning {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
-    Calls,
+    Runs,
     Cpu,
     Read,
     Written,
@@ -72,7 +76,7 @@ pub enum Unit {
 }
 
 text_enum!(Unit {
-    Calls => "calls",
+    Runs => "runs",
     Cpu => "cpu",
     Read => "read",
     Written => "written",
@@ -141,8 +145,8 @@ text_enum!(InvoiceStatus {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Included {
-    pub calls: u64,
-    /// CPU microseconds past each call's first
+    pub runs: u64,
+    /// CPU microseconds past each run's first
     /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU).
     pub cpu: u64,
     /// Rows read.

@@ -4,13 +4,26 @@ use crate::utils;
 use anyhow::Result;
 use berm_api::Program;
 use crabtalk_sdk::client::Client;
+use serde::Serialize;
 
 /// Enough of a digest to tell two images apart at a glance, which is all a
 /// listing is for. `inspect` prints the whole one.
 const SHORT: usize = 12;
 
+/// A deployed program, and whether it is stopped.
+#[derive(Serialize)]
+struct Listed {
+    #[serde(flatten)]
+    program: Program,
+    stopped: bool,
+}
+
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let programs = utils::wait(client.list())?;
+    let mut programs = Vec::new();
+    for program in utils::wait(client.list())? {
+        let stopped = utils::wait(client.runtime(&program.name))?.stopped;
+        programs.push(Listed { program, stopped });
+    }
     if json {
         return utils::json(&programs);
     }
@@ -21,15 +34,22 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
 
     let width = programs
         .iter()
-        .map(|program| program.name.len())
+        .map(|listed| listed.program.name.len())
         .max()
         .unwrap_or(0)
         .max("NAME".len());
 
-    println!("{:<width$}  {:<SHORT$}  TOOLS", "NAME", "DIGEST");
-    for program in &programs {
+    println!(
+        "{:<width$}  {:<SHORT$}  {:<7}  TOOLS",
+        "NAME", "DIGEST", "STATE"
+    );
+    for Listed { program, stopped } in &programs {
+        let state = match stopped {
+            true => "stopped",
+            false => "running",
+        };
         println!(
-            "{:<width$}  {:<SHORT$}  {}",
+            "{:<width$}  {:<SHORT$}  {state:<7}  {}",
             program.name,
             digest(program),
             tools(program),

@@ -26,17 +26,20 @@ impl Commits {
         Self { store, databases }
     }
 
-    /// Commit `changes`' writes, each service's in one transaction.
-    pub(crate) async fn commit(&self, changes: &Changes) -> Result<()> {
-        if changes.writes.is_empty() {
+    /// Commit `changes`' writes in one transaction, counting a commit of
+    /// each service they wrote and of `took`, the service whose database
+    /// was committed.
+    pub(crate) async fn commit(&self, changes: Changes, took: Option<String>) -> Result<()> {
+        if changes.writes.is_empty() && took.is_none() {
             return Ok(());
         }
         let mut shares: BTreeMap<String, Vec<(String, Vec<u8>)>> = BTreeMap::new();
-        for write in &changes.writes {
+        shares.extend(took.map(|key| (key, Vec::new())));
+        for write in changes.writes {
             shares
                 .entry(write.program.to_string())
                 .or_default()
-                .push((write.key.clone(), write.value.clone()));
+                .push((write.key, write.value));
         }
         self.store
             .run(move |conn| {

@@ -160,9 +160,9 @@ impl<E: Env> Host<E> {
                 }
                 return Ok(());
             };
-            let Some(_capped) = self.caps.try_take(&wake.scope) else {
-                bail!("{} has as many calls running as it may", wake.scope);
-            };
+            if self.pools.pool(&wake.scope).full() {
+                bail!("{} holds as much memory as it may", wake.scope);
+            }
             let _slot = self.gate.acquire().await?;
             let started = self.calls.start();
             let recorder = Recorder::default();
@@ -171,7 +171,6 @@ impl<E: Env> Host<E> {
                 args: wake.args.clone(),
                 caller: None,
                 digest: format!("sha256:{}", target.digest),
-                image: None,
             };
             let invoked = self
                 .invoke(
@@ -204,7 +203,7 @@ impl<E: Env> Host<E> {
                 Source::Service,
                 &from,
                 outcome,
-                invoked.as_ref().ok().map(|invoked| invoked.meter),
+                invoked.as_ref().ok(),
                 Some(input),
                 (outcome == Outcome::Failed)
                     .then(|| recorder.tape())

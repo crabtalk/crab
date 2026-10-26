@@ -42,6 +42,14 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0022.sql"),
     include_str!("migrations/0023.sql"),
     include_str!("migrations/0024.sql"),
+    include_str!("migrations/0025.sql"),
+    include_str!("migrations/0026.sql"),
+    // `runs` counts the chains a service was the first link of; days metered
+    // before it hold 0.
+    include_str!("migrations/0027.sql"),
+    // A run's calls past its first, on the host it ran on: `call` is the
+    // run's id, `id` and `parent` number the calls within it.
+    include_str!("migrations/0028.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.
@@ -68,6 +76,7 @@ impl Store {
         let mut conn =
             Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.set_prepared_statement_cache_capacity(PREPARED);

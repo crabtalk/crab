@@ -2,8 +2,8 @@
 //! setting what each service is.
 
 use crate::{
-    Denied, deny,
-    env::{Env, Secrets},
+    Denied, Stored, deny,
+    env::{Env, Images, Secrets},
     host::{self, Host},
     record::{calls, logs, meter, usage},
     state::service,
@@ -19,7 +19,8 @@ use berm_api::{
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
+    ops::Range,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -39,14 +40,16 @@ impl<E: Env> Host<E> {
         let program = self.idl(service)?;
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
-        let served = usage::served(
+        let served = meter::served(
             &self.store,
             scope,
-            name,
-            usage::seconds(&self.now),
-            self.usage.unsaved(service),
+            Some(name),
+            self.today(),
+            self.meters.days(i32::MIN),
         )
-        .await?;
+        .await?
+        .remove(name)
+        .unwrap_or_default();
         Ok(Listing { program, served })
     }
 
@@ -78,16 +81,31 @@ impl<E: Env> Host<E> {
                     .cloned()
                     .collect(),
             },
+            stopped: self.stops.stopped(service),
             ..program.runtime()
         })
     }
 
-    /// The IDL of every service in `scope` this host runs.
-    pub fn idls(&self, scope: &str) -> Vec<berm_api::Program> {
-        self.list(scope)
+    /// Every service in `scope` this host runs, as anyone it is visible to
+    /// sees it.
+    pub async fn listings(&self, scope: &str) -> Result<Vec<Listing>, Denied> {
+        let _reading = self.flushing.read().await;
+        let mut served = meter::served(
+            &self.store,
+            scope,
+            None,
+            self.today(),
+            self.meters.days(i32::MIN),
+        )
+        .await?;
+        Ok(self
+            .list(scope)
             .into_iter()
-            .map(|(name, program)| program.idl(&name))
-            .collect()
+            .map(|(name, program)| Listing {
+                program: program.idl(&name),
+                served: served.remove(&name).unwrap_or_default(),
+            })
+            .collect())
     }
 
     /// `service`'s terms: each public tool's budget, what its owner set or
@@ -200,8 +218,13 @@ impl<E: Env> Host<E> {
         Ok(())
     }
 
-    /// Who uses `service`.
-    pub async fn usage(&self, service: &str) -> Result<Vec<Usage>, Denied> {
+    /// Who uses `service` on `days`, counted from the Unix epoch, or over the
+    /// last [`usage::WINDOW`] days without them.
+    pub async fn usage(
+        &self,
+        service: &str,
+        days: Option<Range<i32>>,
+    ) -> Result<Vec<Usage>, Denied> {
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
         let mut used = usage::read(
@@ -209,7 +232,7 @@ impl<E: Env> Host<E> {
             scope,
             name,
             None,
-            usage::seconds(&self.now),
+            days.unwrap_or_else(|| usage::window(usage::seconds(&self.now))),
             self.usage.unsaved(service),
         )
         .await?;
@@ -280,14 +303,17 @@ impl<E: Env> Host<E> {
         let (scope, name) = host::split(service);
         page.limit = page.limit.clamp(1, MAX_PAGE);
         let _reading = self.flushing.read().await;
-        let calls = calls::read(
+        let calls: Vec<wire::Call> = calls::read(
             &self.store,
             scope,
-            name,
+            Some(name),
             page.clone(),
             self.unsaved(service),
         )
-        .await?;
+        .await?
+        .into_iter()
+        .map(|ran| ran.call)
+        .collect();
         let link = calls
             .last()
             .filter(|_| calls.len() as i64 == page.limit)
@@ -295,35 +321,146 @@ impl<E: Env> Host<E> {
         Ok((calls, link))
     }
 
+    /// The runs of `scope`'s services, of `page.service` alone when it names
+    /// one, newest first, below the id `before`, a page at a time, with the
+    /// next page's `Link`.
+    pub async fn scope_calls(
+        &self,
+        scope: &str,
+        mut page: wire::CallPage,
+    ) -> Result<(Vec<wire::ServiceCall>, Option<String>), Denied> {
+        page.limit = page.limit.clamp(1, MAX_PAGE);
+        let _reading = self.flushing.read().await;
+        let unsaved = calls::Unsaved {
+            ran: self.calls.unsaved_in(scope),
+            emitted: self.logs.unsaved_in(scope),
+        };
+        let service = page.service.clone();
+        let calls = calls::read(
+            &self.store,
+            scope,
+            service.as_deref(),
+            page.clone(),
+            unsaved,
+        )
+        .await?;
+        let link = calls
+            .last()
+            .filter(|_| calls.len() as i64 == page.limit)
+            .map(|last| page.next(last.call.id));
+        Ok((calls, link))
+    }
+
+    /// What `service`'s calls on `page` count to, by time and by facet, in
+    /// [`wire::CallStats::bucket`]s of the range it asks for, its last 30
+    /// days through now without one.
+    pub async fn call_stats(
+        &self,
+        service: &str,
+        page: wire::CallPage,
+    ) -> Result<wire::CallStats, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let (page, bucket) = self.ranged(page);
+        let _reading = self.flushing.read().await;
+        Ok(calls::stats(
+            &self.store,
+            scope,
+            Some(name),
+            page,
+            bucket,
+            self.unsaved(service),
+        )
+        .await?)
+    }
+
+    /// What each of `service`'s tools used over its calls of the last 30
+    /// days, by tool, as their budgets count it.
+    pub async fn tool_usage(
+        &self,
+        service: &str,
+    ) -> Result<BTreeMap<String, wire::ToolUsage>, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let _reading = self.flushing.read().await;
+        Ok(calls::tools(&self.store, scope, name).await?)
+    }
+
+    /// [`Host::call_stats`] of every service in `scope`, of `page.service`
+    /// alone when it names one.
+    pub async fn scope_call_stats(
+        &self,
+        scope: &str,
+        page: wire::CallPage,
+    ) -> Result<wire::CallStats, Denied> {
+        let (page, bucket) = self.ranged(page);
+        let _reading = self.flushing.read().await;
+        let unsaved = calls::Unsaved {
+            ran: self.calls.unsaved_in(scope),
+            emitted: self.logs.unsaved_in(scope),
+        };
+        Ok(calls::stats(&self.store, scope, None, page, bucket, unsaved).await?)
+    }
+
+    /// `page` with its range set, the last 30 days through now where it
+    /// names none, and the bucket length that range is counted in.
+    fn ranged(&self, mut page: wire::CallPage) -> (wire::CallPage, u64) {
+        let now = (self.now)();
+        // `until` is excluded, so a call begun now is in the range.
+        let until = page.until.unwrap_or(now + 1);
+        let since = page
+            .since
+            .unwrap_or(until.saturating_sub(usage::WINDOW as u64 * 86_400_000));
+        (page.since, page.until) = (Some(since), Some(until));
+        (page, wire::CallStats::bucket(since, until))
+    }
+
     /// What `service`'s call `id` ran with. Only a call that failed keeps it.
+    /// The calls `service`'s run `id` made past its first.
+    pub async fn call_nested(
+        &self,
+        service: &str,
+        id: u64,
+    ) -> Result<Vec<wire::NestedCall>, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let _reading = self.flushing.read().await;
+        calls::nested(&self.store, scope, name, id, self.calls.unsaved(service))
+            .await?
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such call"))
+    }
+
     pub async fn call_input(&self, service: &str, id: u64) -> Result<wire::CallInput, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
         match calls::input(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
-            Some(Some(mut input)) => {
-                let deployed = service::row(&self.store, scope, name).await?;
-                input.image = deployed
-                    .map(|row| row.reference)
-                    .filter(|reference| reference.contains('/'))
-                    .map(|reference| {
-                        let reference = reference.split('@').next().unwrap_or_default();
-                        let repository = match reference.rsplit_once('/') {
-                            Some((head, last)) => {
-                                format!("{head}/{}", last.split(':').next().unwrap_or(last))
-                            }
-                            None => reference.to_owned(),
-                        };
-                        format!("{repository}@{}", input.digest)
-                    });
-                Ok(input)
-            }
+            Some(Some(input)) => Ok(input),
             Some(None) => Err(deny(
                 StatusCode::NOT_FOUND,
                 "the call kept no input; only a call that failed does",
             )),
             None => Err(deny(StatusCode::NOT_FOUND, "no such call")),
         }
+    }
+
+    /// The image `service`'s call `id` ran, pulled as the service's images
+    /// are: from the registry it is deployed from when this is read, or kept
+    /// here for an uploaded one. Only a call that failed names one.
+    pub async fn call_image(&self, service: &str, id: u64) -> Result<Vec<u8>, Denied> {
+        let input = self.call_input(service, id).await?;
+        let (scope, name) = host::split(service);
+        let row = service::row(&self.store, scope, name)
+            .await?
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
+        let reference = match Stored::uploaded(&row.reference, &row.digest) {
+            true => &input.digest,
+            false => &row.reference,
+        };
+        self.images
+            .pull(reference, &input.digest)
+            .await
+            .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))
     }
 
     /// `service`'s call `id`'s tape, encoded. Only a call that failed keeps
@@ -371,6 +508,9 @@ impl<E: Env> Host<E> {
         if self.holds.holds(host::split(service).0) {
             return refused(format!("{service} is held"));
         }
+        if self.stops.stopped(service) {
+            return refused(format!("{service} is stopped"));
+        }
         if !program.public(tool) {
             return refused(format!("{service} has no public tool named {tool:?}"));
         }
@@ -412,7 +552,7 @@ impl<E: Env> Host<E> {
             },
         };
         if matches!(outcome.result, Output::Done(_)) {
-            self.commits.commit(&outcome.changes).await?;
+            self.commits.commit(outcome.changes, None).await?;
         }
         let ended = Outcome::of(&outcome.result, outcome.denied);
         self.usage.record(
@@ -451,7 +591,12 @@ impl<E: Env> Host<E> {
                 "the service has no stripe tool",
             ));
         };
-        if self.holds.holds(host::split(service).0) {
+        let paused = match () {
+            _ if self.holds.holds(host::split(service).0) => Some("held"),
+            _ if self.stops.stopped(service) => Some("stopped"),
+            _ => None,
+        };
+        if let Some(paused) = paused {
             self.usage.record(
                 service,
                 Kind::Tool,
@@ -462,10 +607,15 @@ impl<E: Env> Host<E> {
             );
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("{service} is held"),
+                format!("{service} is {paused}"),
             ));
         }
-        let _capped = self.caps.take(host::split(service).0).await;
+        if self.pools.pool(host::split(service).0).full() {
+            return Err(deny(
+                StatusCode::TOO_MANY_REQUESTS,
+                "the account holds as much memory as it may; retry",
+            ));
+        }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
         let recorder = Recorder::default();
@@ -474,7 +624,6 @@ impl<E: Env> Host<E> {
             args: String::from_utf8_lossy(&event).into_owned(),
             caller: None,
             digest: format!("sha256:{}", program.digest),
-            image: None,
         };
         let invoked = self
             .invoke(
@@ -501,7 +650,7 @@ impl<E: Env> Host<E> {
             Source::Stripe,
             "",
             outcome,
-            invoked.as_ref().ok().map(|invoked| invoked.meter),
+            invoked.as_ref().ok(),
             Some(input),
             (outcome == Outcome::Failed)
                 .then(|| recorder.tape())
@@ -567,11 +716,18 @@ impl<E: Env> Host<E> {
         Ok(self.routes.replace(routes).await?)
     }
 
-    /// Cap each of `caps`, by scope, at that many chains at once, and every
-    /// other scope at `Config::cap`. A chain past its scope's cap is refused
-    /// from outside with `429`; a wake fires again later; a Stripe event waits.
-    pub fn cap(&self, caps: HashMap<String, u32>) {
-        self.caps.replace(caps);
+    /// Limit each of `limits`, by scope, to that many bytes of memory held at
+    /// once, and every other scope to `Config::held`. A scope at its limit is
+    /// refused a chain from outside or a Stripe event with `429`, and a wake
+    /// fires again later; an invocation growing past it traps, and a deploy
+    /// whose images would hold more is refused.
+    pub fn limit(&self, limits: HashMap<String, u64>) {
+        self.pools.replace(limits);
+    }
+
+    /// The memory `scope`'s services hold now, and its limit.
+    pub fn memory(&self, scope: &str) -> wire::Memory {
+        self.pools.pool(scope).now()
     }
 
     /// Hold `scopes` in place of the scopes held. A held scope's services fire

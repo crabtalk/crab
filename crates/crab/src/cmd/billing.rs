@@ -111,6 +111,8 @@ pub fn invoices(client: &Client, json: bool) -> Result<()> {
 
 /// Open the Stripe portal, on `flow` when one is given.
 pub fn portal(client: &Client, flow: Option<PortalFlow>) -> Result<()> {
-    utils::open(&utils::wait(client.portal(Surface::Terminal, flow))?.url);
+    if !utils::open(&utils::wait(client.portal(Surface::Terminal, flow))?.url) {
+        eprintln!("open the URL above in a browser");
+    }
     Ok(())
 }

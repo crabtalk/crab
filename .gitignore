@@ -3,5 +3,3 @@ target/
 .wrangler
 
 
-# mdbook output
-/docs/book

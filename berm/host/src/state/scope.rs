@@ -1,7 +1,4 @@
-use crate::{
-    host,
-    state::{commit::Entered, service},
-};
+use crate::state::commit::Entered;
 use anyhow::Result;
 use berm::{Changes, Scope};
 use std::{future::Future, pin::Pin};
@@ -23,22 +20,11 @@ impl Scope for Entered {
             } = *self;
             let took = held.took().map(str::to_owned);
             held.commit().await?;
-            if let Some(key) = took {
-                let (scope, name) = host::split(&key);
-                let (scope, name) = (scope.to_owned(), name.to_owned());
-                commits
-                    .store
-                    .run(move |conn| {
-                        let tx = conn.transaction()?;
-                        service::commit(&tx, &scope, &name, &[])?;
-                        tx.commit()
-                    })
-                    .await?;
-            }
             if first {
+                commits.commit(Changes::default(), took).await?;
                 return Ok(changes);
             }
-            commits.commit(&changes).await?;
+            commits.commit(changes, took).await?;
             Ok(Changes::default())
         })
     }

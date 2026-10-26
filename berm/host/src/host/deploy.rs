@@ -18,9 +18,8 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 impl<E: Env> Host<E> {
     /// Run the index entry `deploy` names as `service`. Refused when it
-    /// needs a syscall this host does not serve, when it makes a tool public
-    /// that the program it replaces did not and `public` does not confirm it,
-    /// or, unless `force`, when it breaks a public tool or event of the program
+    /// needs a syscall this host does not serve, or, unless `force`, when it
+    /// breaks a public tool or event of the program
     /// it replaces that a caller used, with a call that was done, in the last
     /// [`usage::WINDOW`] days. Refused too when its `size` is outside
     /// [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`] or below what its
@@ -41,10 +40,10 @@ impl<E: Env> Host<E> {
         let Deploy {
             reference,
             digest,
-            public,
             force,
             crons,
             size,
+            stopped,
         } = deploy;
         if !(MIN_DATABASE_SIZE..=MAX_DATABASE_SIZE).contains(&size) {
             return Err(deny(
@@ -96,7 +95,6 @@ impl<E: Env> Host<E> {
             }
             None => None,
         };
-        confirmed(current.as_deref(), &manifest, &public)?;
         let cron_tools = self
             .cron_tools(service, &manifest, crons.as_ref(), force)
             .await?;
@@ -154,9 +152,11 @@ impl<E: Env> Host<E> {
                 deprecated,
                 cron_tools,
                 crons,
+                stopped,
                 (self.now)() as i64,
             )
             .await?;
+            self.stops.mark(&key, stopped);
             Ok(program)
         }
         .await;
@@ -289,7 +289,7 @@ impl<E: Env> Host<E> {
                 scope,
                 name,
                 Some(of),
-                usage::seconds(&self.now),
+                usage::window(usage::seconds(&self.now)),
                 self.usage.unsaved(service),
             )
             .await?;
@@ -318,36 +318,4 @@ impl<E: Env> Host<E> {
         }
         Ok(())
     }
-}
-
-/// Refuses a deploy of `manifest` that makes a tool public that `current`
-/// did not, unless `public` confirms it.
-fn confirmed(
-    current: Option<&Program>,
-    manifest: &Manifest,
-    public: &[String],
-) -> Result<(), Denied> {
-    let published: Vec<&str> = match current {
-        Some(current) => current.manifest().publishes(manifest),
-        None => manifest
-            .tools
-            .iter()
-            .filter(|tool| tool.public)
-            .map(|tool| tool.name.as_str())
-            .collect(),
-    };
-    let unconfirmed: Vec<&str> = published
-        .into_iter()
-        .filter(|tool| !public.iter().any(|confirmed| confirmed == tool))
-        .collect();
-    if !unconfirmed.is_empty() {
-        return Err(deny(
-            StatusCode::CONFLICT,
-            format!(
-                "this deploy makes {} public: any caller may run them, with arguments of their choosing. Confirm each by listing it in `public`",
-                unconfirmed.join(", ")
-            ),
-        ));
-    }
-    Ok(())
 }

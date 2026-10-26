@@ -14,17 +14,19 @@ use std::fmt;
 
 pub use api::{
     outside::{Call, Called, Layers, Outside},
-    serve::{Named, router},
+    serve::{Named, Scoped, router, scope_router},
 };
 pub use config::Config;
 pub use env::{Clock, Edges, Env, Images, Observe, Peers, Secrets, System};
 pub use host::Host;
+pub use images::Stored;
 pub use state::store::Store;
 
 mod api;
 mod config;
 mod env;
 mod host;
+mod images;
 mod record;
 mod state;
 #[cfg(feature = "test")]

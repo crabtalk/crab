@@ -12,6 +12,7 @@ use crate::{
     client::{Client, Error},
     sandbox::service::CostedDay,
 };
+use berm_api::host::Memory;
 use reqwest::Method;
 use std::collections::BTreeMap;
 
@@ -26,6 +27,12 @@ impl Client {
     /// each, oldest first.
     pub async fn services_usage(&self) -> Result<BTreeMap<String, Vec<CostedDay>>, Error> {
         let path = format!("{}/services/usage", self.account()?.path());
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// The memory the account's services hold now, and its plan's limit.
+    pub async fn memory(&self) -> Result<Memory, Error> {
+        let path = format!("{}/memory", self.account()?.path());
         self.json(self.at(Method::GET, &path)).await
     }
 

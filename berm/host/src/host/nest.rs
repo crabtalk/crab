@@ -4,25 +4,30 @@
 use crate::{
     env::{Env, Observe, Peers},
     host::{self, Inner},
-    state::commit::{self, Commits},
+    state::{
+        commit::{self, Commits},
+        pool::Pools,
+    },
 };
 use anyhow::{Result, bail};
-use berm::{Caller, Calls, Callsite, Ended, Meter, Now};
-use berm_api::host::{Kind, Link, Outcome, Reply, Source, User};
+use berm::{Caller, Calls, Callsite, Ended, Meter, Now, Ran};
+use berm_api::host::{Kind, Link, NestedCall, Outcome, Reply, Source, User};
 use std::{
     sync::{Arc, Weak},
     time::Instant,
 };
 
 /// How `host`'s services call services, `depth` deep at most, committing
-/// through `commits`, with `observe` told of each invocation and `now` the
-/// clock `berm.now` answers.
+/// through `commits`, with `observe` told of each invocation, `now` the
+/// clock `berm.now` answers, and each service drawing from its scope's pool of
+/// `pools`.
 pub(crate) fn calls<E: Env>(
     host: &Weak<Inner<E>>,
     depth: u32,
     commits: Commits,
     observe: E::Observe,
     now: Now,
+    pools: Arc<Pools>,
 ) -> Calls {
     Calls {
         depth,
@@ -30,8 +35,12 @@ pub(crate) fn calls<E: Env>(
             let host = host.clone();
             Arc::new(move |at: &Callsite, target: &str, _: &str| {
                 let key = resolve(at, target)?;
-                if host::alive(&host)?.holds.holds(host::split(&key).0) {
+                let alive = host::alive(&host)?;
+                if alive.holds.holds(host::split(&key).0) {
                     bail!("{target} is held");
+                }
+                if alive.stops.stopped(&key) {
+                    bail!("{target} is stopped");
                 }
                 Ok(key)
             })
@@ -63,9 +72,27 @@ pub(crate) fn calls<E: Env>(
         named: Arc::new(|program: &str| host::split(program).1.to_owned()),
         invoked: {
             let host = host.clone();
-            Arc::new(move |at: &Callsite, tool: &str, used: Meter| {
-                let call = host.upgrade().and_then(|host| host.logs.run(at.chain));
-                observe.invoked(&at.program, tool, call, &used);
+            Arc::new(move |at: &Callsite, tool: &str, used: Meter, ran: Ran| {
+                let host = host.upgrade();
+                let call = host.as_ref().and_then(|host| host.logs.run(at.chain));
+                if let (Some(host), Some(call), Some(parent)) = (&host, call, at.parent) {
+                    host.calls.nested(
+                        call,
+                        NestedCall {
+                            id: at.span,
+                            parent,
+                            service: host::split(&at.program).1.to_owned(),
+                            tool: tool.to_owned(),
+                            at: ran.at,
+                            ms: ran.ms,
+                            outcome: ran.outcome,
+                            cpu: used.cpu,
+                            read: used.read,
+                            written: used.written,
+                        },
+                    );
+                }
+                observe.invoked(&at.program, tool, call, &used, at.spent());
             })
         },
         enter: commit::enter(commits),
@@ -119,6 +146,7 @@ pub(crate) fn calls<E: Env>(
                 }))
             })
         },
+        pool: Arc::new(move |program: &str| pools.pool(host::split(program).0)),
     }
 }
 

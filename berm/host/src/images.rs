@@ -1,7 +1,7 @@
 //! Uploaded images, one file per digest under `{root}/images`.
 
+use crate::Images;
 use anyhow::{Context, Result};
-use berm_host::Images;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -18,6 +18,12 @@ impl Stored {
         Self {
             dir: root.join("images"),
         }
+    }
+
+    /// Whether `reference` names an uploaded image: one deployed by its
+    /// digest alone.
+    pub fn uploaded(reference: &str, digest: &str) -> bool {
+        reference == digest
     }
 
     /// Keep `image`, answering with its digest.

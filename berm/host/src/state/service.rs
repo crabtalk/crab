@@ -90,6 +90,7 @@ pub(crate) async fn install(
     deprecated: Vec<String>,
     cron_tools: Vec<String>,
     crons: Option<BTreeMap<String, String>>,
+    stopped: bool,
     now: i64,
 ) -> Result<()> {
     let row = [scope, name, reference, digest, version].map(str::to_owned);
@@ -101,13 +102,21 @@ pub(crate) async fn install(
             let [scope, name, reference, digest, version] = row;
             let tx = conn.transaction()?;
             tx.execute(
-                "INSERT INTO services (scope, name, reference, digest, version, size)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO services (scope, name, reference, digest, version, size, stopped)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT (scope, name) DO UPDATE
                     SET reference = excluded.reference, digest = excluded.digest,
                         version = excluded.version, size = excluded.size,
-                        updated_at = unixepoch()",
-                params![scope, name, reference, digest, version, size as i64],
+                        stopped = excluded.stopped, updated_at = unixepoch()",
+                params![
+                    scope,
+                    name,
+                    reference,
+                    digest,
+                    version,
+                    size as i64,
+                    stopped
+                ],
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;
             schedule(&tx, &scope, &name, &cron_tools, declared.as_deref())?;

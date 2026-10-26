@@ -2,20 +2,18 @@
 
 use berm_api::{
     Program,
-    host::{self, Call},
+    host::{self, Call, ToolUsage},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// What a service runs next: the image a registry reference names.
+/// What a service runs next: the image a registry reference names, or one
+/// uploaded through `POST /services/{owner}/{name}/image`, named by its digest,
+/// `sha256:` and its SHA-256 in hex.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployRequest {
     pub reference: String,
-    /// The tools this deploy may make public that the deployed version does
-    /// not. Every public tool, on a service's first deploy.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub public: Vec<String>,
     /// Deploy even when it breaks a tool or event a caller used in the last
     /// 30 days, or undoes a cron its owners set since the last deploy that set
     /// them.
@@ -36,33 +34,38 @@ pub struct DeployRequest {
     /// service has a database.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
+    /// Install it stopped: it takes no calls and fires no wakes until
+    /// started.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 
-/// A seed to upload: its SHA-256 in hex, and its size in bytes.
+/// A file to upload, a seed or an image: its SHA-256 in hex, and its size in
+/// bytes.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SeedRequest {
+pub struct UploadRequest {
     pub sha256: String,
     pub size: u64,
 }
 
-/// Where a seed's bytes go.
+/// Where a file's bytes go.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SeedUpload {
+pub struct Upload {
     /// A URL to `PUT` the bytes to, with their `Content-Length`, within an
-    /// hour; none when Cloud holds that seed already.
+    /// hour; none when Cloud holds that file already.
     pub upload: Option<String>,
 }
 
-/// One day of a service's meter, with what Cloud charges past each
-/// invocation's included CPU time.
+/// One day of a service's meter, with what Cloud charges past each run's
+/// included CPU time.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeteredDay {
     #[serde(flatten)]
     pub used: berm_api::host::Metered,
-    /// The CPU microseconds each invocation spent past its first
+    /// The CPU microseconds each run spent in the service past the run's first
     /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU), summed.
     #[serde(default)]
     pub overage: u64,
@@ -116,6 +119,7 @@ pub struct Service {
     #[serde(flatten)]
     pub program: Program,
     pub private: bool,
+    pub served: host::Served,
 }
 
 /// Who a service answers.
@@ -147,6 +151,44 @@ pub struct Costed {
     /// of USD micros. Its day's storage is charged with the day. `None` for a
     /// call the host refused.
     pub cost_micros_decimal: Option<String>,
+}
+
+/// What one tool's calls used, with what that use costs its service's owner.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCosted {
+    #[serde(flatten)]
+    pub usage: ToolUsage,
+    /// What the calls cost at the fleet's rates, summed, as a decimal of USD
+    /// micros: [`ToolUsage::meter`] with each call's overage, as [`Costed`]
+    /// prices one call.
+    pub cost_micros_decimal: String,
+}
+
+/// One deploy of a service that went live.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Deployed {
+    pub version: String,
+    /// `sha256:` and the hex SHA-256 of the image.
+    pub digest: String,
+    /// What it was deployed from: a registry reference, or `sha256:` and an
+    /// upload's SHA-256.
+    pub reference: String,
+    /// Who deployed it, by handle, or by id when they have none.
+    pub by: String,
+    /// When, in epoch seconds.
+    pub at: i64,
+}
+
+/// A call of one of an account's services, with what its meter costs.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountCall {
+    /// The service's name in the account.
+    pub service: String,
+    #[serde(flatten)]
+    pub call: Costed,
 }
 
 /// A service's billing in one UTC calendar month.

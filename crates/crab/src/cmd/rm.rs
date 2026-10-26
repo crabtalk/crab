@@ -1,12 +1,20 @@
-//! `crab rm` — take a program out of service.
+//! `crab rm` — take programs out of service.
 
-use crate::utils;
+use crate::{project, utils};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
-pub fn run(client: &Client, name: &str, yes: bool) -> Result<()> {
-    utils::confirm(yes, &format!("remove {name} and what it committed"))?;
-    utils::wait(client.undeploy(name))?;
-    eprintln!("removed {name}");
+/// Remove the programs `names`, or with none, the services the current
+/// directory selects.
+pub fn run(client: &Client, names: &[String], yes: bool) -> Result<()> {
+    let names = project::selected(names)?;
+    utils::confirm(
+        yes,
+        &format!("remove {} and what it committed", names.join(", ")),
+    )?;
+    for name in &names {
+        utils::wait(client.undeploy(name))?;
+        eprintln!("removed {name}");
+    }
     Ok(())
 }

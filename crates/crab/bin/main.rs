@@ -1,20 +1,15 @@
 use anyhow::Result;
-use berm::syscall::call;
 use berm_api::{
     Budget,
     host::{Caller, User},
 };
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{
-    cmd,
-    context::{self, Contexts},
-    utils,
-};
+use crab_agent::{cmd, context::Contexts, utils};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
 };
-use std::{io::IsTerminal, net::SocketAddr, path::PathBuf, process::ExitCode, time::Duration};
+use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]
 #[command(
@@ -46,8 +41,7 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Sign in to Cloud in the browser, or with a code emailed to the address,
-    /// and use it from now on.
+    /// Sign in to Cloud in the browser, and use it from now on.
     Login {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
@@ -55,13 +49,10 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
-        /// Sign in with a code emailed to this address, without a browser.
+        /// Print a code for a person to approve at `/device` in place of
+        /// opening a browser here, as when none opens.
         #[arg(long, conflicts_with = "github")]
-        email: Option<String>,
-        /// The code emailed to `--email`. Without it, a code is sent and the
-        /// command exits; a second run gives it here.
-        #[arg(long, requires = "email")]
-        code: Option<String>,
+        device: bool,
         /// The context to keep the session as.
         #[arg(long, default_value = "cloud")]
         name: String,
@@ -84,51 +75,17 @@ enum Command {
     },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
-    /// Run the workspace's services on a local host at 127.0.0.1:7777,
-    /// rebuilding and redeploying them as their files change, until Ctrl-C.
+    /// Run the local host: deploy programs to it and serve their tools over
+    /// HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`.
     #[command(args_conflicts_with_subcommands = true)]
     Dev {
         #[command(subcommand)]
         command: Option<DevCommand>,
-        /// A service's directory, for that service alone, or any other
-        /// directory of a workspace, for every service in it.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Return once every service is deployed or failed, leaving the host
-        /// watching the workspace.
+        #[command(flatten)]
+        daemon: cmd::dev::Daemon,
+        /// Run it in the background and return once it answers.
         #[arg(short, long)]
         detach: bool,
-    },
-    /// Run the local host in the foreground: deploy programs to it and serve
-    /// their tools over HTTP and MCP.
-    Serve {
-        /// Address to listen on. Loopback by default: the MCP endpoint carries
-        /// no authorization yet, so anything wider would be an open one.
-        #[arg(long, default_value = context::LOCAL)]
-        addr: SocketAddr,
-        /// Where deployed images and the code cache live; `~/.berm` by
-        /// default.
-        #[arg(long)]
-        root: Option<PathBuf>,
-        /// How deep a chain of programs calling programs may go. `0` refuses
-        /// the first one, which is composition off.
-        ///
-        /// The bound is on runaway composition, not on the stack: a level
-        /// costs ~720 bytes of it, and 64 MiB of guest address space.
-        #[arg(long, default_value_t = call::DEFAULT_CALL_DEPTH)]
-        max_call_depth: u32,
-        /// The proxy `berm.http.proxy` goes through, e.g.
-        /// `http://user:pass@gate.example.com:3120`. Without one it goes
-        /// direct.
-        #[arg(long)]
-        proxy: Option<String>,
-        /// How many milliseconds of CPU one call may spend, nested calls
-        /// excluded.
-        #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
-        max_cpu_millis: u64,
-        /// How many seconds a call may run before it is stopped.
-        #[arg(long, default_value_t = berm::Config::default().deadline.as_secs())]
-        max_call_seconds: u64,
     },
     /// Scaffold a program crate.
     New { name: String },
@@ -139,26 +96,22 @@ enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Build the project in a directory and deploy it as its `crab.toml`
-    /// names it, replacing whatever holds the name.
-    Deploy {
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// The registry repository to push to, in place of `image` in
-        /// `crab.toml`.
-        #[arg(long)]
-        image: Option<String>,
-        /// Deploy even when it breaks what callers used, or undoes a cron its
-        /// owners set.
-        #[arg(long)]
-        force: bool,
-        /// Write the crons its owners set into `[crons]` in `crab.toml` before
-        /// deploying.
-        #[arg(long, conflicts_with = "force")]
-        pull: bool,
-    },
+    /// Build services and deploy each as its `crab.toml` names it, replacing
+    /// whatever holds the name, and serve it: the one whose directory this is,
+    /// or at a workspace's root every one not saying `deploy = false`.
+    Deploy(cmd::deploy::Deploy),
+    /// `crab deploy`, installing each stopped, to serve once started.
+    Push(cmd::deploy::Deploy),
+    /// Serve stopped programs again: those named, or the services `crab
+    /// deploy` would deploy here.
+    Start { names: Vec<String> },
+    /// Stop serving programs, keeping what they committed: those named, or the
+    /// services `crab deploy` would deploy here.
+    Stop { names: Vec<String> },
     /// Call one of a program's tools.
     Call {
+        /// The service: a name on the context's account, or `owner/name` on
+        /// Cloud for another account's public service.
         program: String,
         tool: String,
         /// The argument object. Read from stdin when omitted.
@@ -185,8 +138,12 @@ enum Command {
         #[arg(long)]
         on: Option<String>,
     },
-    /// Show a program's tools and their arguments.
-    Inspect { name: String },
+    /// Show a program's README, tools and their arguments.
+    Inspect {
+        /// The service: a name on the context's account, or `owner/name` on
+        /// Cloud for another account's public service.
+        name: String,
+    },
     /// Write a deployed program's IDL, which `declare_program!` reads.
     Idl {
         name: String,
@@ -194,8 +151,9 @@ enum Command {
         #[arg(long, default_value = "idls")]
         out: PathBuf,
     },
-    /// Remove a program and what it committed.
-    Rm { name: String },
+    /// Remove programs and what they committed: those named, or the services
+    /// `crab deploy` would deploy here.
+    Rm { names: Vec<String> },
     /// Print what a program emitted, oldest first.
     Logs {
         name: String,
@@ -392,9 +350,9 @@ enum BillingCommand {
 
 #[derive(Subcommand)]
 enum DevCommand {
-    /// Whether a dev host runs, and what it serves.
+    /// Whether the local host runs, and where.
     Status,
-    /// Stop the dev host.
+    /// Stop the local host.
     Stop,
 }
 
@@ -550,14 +508,10 @@ fn main() -> Result<ExitCode> {
     match &args.command {
         Command::Login {
             host,
-            github: _,
-            email: Some(email),
-            code,
+            github,
+            device,
             name,
-        } => cmd::login::email(name, host, email, code.as_deref())?,
-        Command::Login {
-            host, github, name, ..
-        } => cmd::login::run(name, host, *github)?,
+        } => cmd::login::run(name, host, *github, *device)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
         Command::Request {
             code, expire: true, ..
@@ -579,29 +533,14 @@ fn main() -> Result<ExitCode> {
         } => cmd::dev::stop()?,
         Command::Dev {
             command: None,
-            dir,
+            daemon,
             detach: true,
-        } => cmd::dev::detach(dir, json)?,
+        } => cmd::dev::detach(daemon)?,
         Command::Dev {
             command: None,
-            dir,
+            daemon,
             detach: false,
-        } => cmd::dev::run(dir, json)?,
-        Command::Serve {
-            addr,
-            root,
-            max_call_depth,
-            proxy,
-            max_cpu_millis,
-            max_call_seconds,
-        } => cmd::serve::run(
-            *addr,
-            root.clone(),
-            *max_call_depth,
-            Duration::from_millis(*max_cpu_millis),
-            Duration::from_secs(*max_call_seconds),
-            proxy.as_deref(),
-        )?,
+        } => cmd::dev::run(daemon)?,
         Command::Context(ContextCommand::Add {
             name,
             host,
@@ -622,15 +561,13 @@ fn main() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Deploy {
-            dir,
-            image,
-            force,
-            pull,
-        } => cmd::deploy::run(&client()?, dir, image.as_deref(), *force, *pull)?,
+        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false)?,
+        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true)?,
+        Command::Start { names } => cmd::start::run(&client()?, names)?,
+        Command::Stop { names } => cmd::stop::run(&client()?, names)?,
         Command::Inspect { name } => cmd::inspect::run(&client()?, name, json)?,
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
-        Command::Rm { name } => cmd::rm::run(&client()?, name, yes)?,
+        Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,
         Command::Logs { name, after } => cmd::logs::run(&client()?, name, *after, json)?,
         Command::Usage { name: Some(name) } => cmd::usage::run(&client()?, name, json)?,
         Command::Usage { name: None } => cmd::usage::account(&client()?, json)?,

@@ -43,18 +43,18 @@ pub use engine::{Config, Engine};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
-pub use meter::{Meters, Running};
+pub use meter::{Meters, Pool, Running};
 pub use program::{Ended, Invocation, Link, Outcome, Program, Refused, chain, digest};
 use std::{
     collections::BTreeMap,
     pin::Pin,
-    sync::{Arc, RwLock, Weak},
+    sync::{Arc, RwLock, Weak, atomic::AtomicU32},
     time::Instant,
 };
 pub use storage::{Records, Storage};
 pub use syscall::call::{
-    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Reaching, Remote, Reported, Resolve,
-    Scope,
+    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Pooled, Ran, Reaching, Remote, Reported,
+    Resolve, Scope,
 };
 
 pub mod abi;
@@ -110,6 +110,13 @@ pub struct Callsite {
     pub query: bool,
     /// Which chain this is, unique within the process.
     pub chain: u64,
+    /// This invocation's number in the chain on this runtime: 0 for the first,
+    /// then each in the order it began.
+    pub span: u32,
+    /// The number of the invocation that called this one.
+    pub parent: Option<u32>,
+    /// The number the chain's next invocation takes.
+    pub(crate) spans: Arc<AtomicU32>,
     /// When the chain has to be done by. A guest suspended in a syscall cannot
     /// notice it until the reply resolves, so a syscall bounds its own wait
     /// inside this.
@@ -133,6 +140,12 @@ impl Callsite {
     /// Refused once this invocation has used its budget of rows.
     pub fn rows_left(&self) -> Result<()> {
         self.own.left()
+    }
+
+    /// CPU microseconds the chain has spent so far, every program's metered
+    /// here included.
+    pub fn spent(&self) -> u64 {
+        self.meters.cpu()
     }
 
     /// Count `used` against `program`, run elsewhere for this chain.
@@ -214,9 +227,13 @@ impl Berm {
     /// Compiling here rather than on first call means a broken image is refused
     /// by the deploy that introduced it, not on a model's turn. Written down
     /// before it is published, so a tool that is served is one a restart brings
-    /// back.
+    /// back. Refused when its pool's images, the one it replaces left out,
+    /// would hold more than the pool's limit.
     pub fn deploy(&self, name: &str, image: &[u8]) -> Result<Arc<Program>> {
         let program = self.load(name, image)?;
+        program
+            .pool
+            .fits(self.get(name).map_or(0, |replaced| replaced.bytes()))?;
         self.storage.put(Records::Programs, name, image)?;
         self.programs
             .write()

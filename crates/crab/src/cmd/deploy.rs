@@ -1,35 +1,100 @@
-//! `crab deploy` — build a project and hand the context's host its image.
+//! `crab deploy` and `crab push` — build services and hand the context's host
+//! their images, serving or stopped.
 
-use crate::{cmd::inspect, project, utils};
+use crate::{
+    cmd::{dev, inspect},
+    project, utils,
+};
 use anyhow::{Context, Result, bail};
 use berm_api::Manifest;
+use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
+use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{DeployRequest, SeedRequest},
+    sandbox::service::{DeployRequest, UploadRequest},
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use tempfile::TempDir;
 use tokio::fs::File as AsyncFile;
 
+/// Which services a deploy builds, and how.
+#[derive(Args)]
+pub struct Deploy {
+    #[arg(default_value = ".")]
+    pub dir: PathBuf,
+    /// This service of the workspace in place of the directory's; repeatable.
+    #[arg(short = 'p', long = "package")]
+    pub packages: Vec<String>,
+    /// The registry repository to push to, in place of `image` in
+    /// `crab.toml`.
+    #[arg(long)]
+    pub image: Option<String>,
+    /// Deploy even when it breaks what callers used, or undoes a cron its
+    /// owners set.
+    #[arg(long)]
+    pub force: bool,
+    /// Write the crons its owners set into `[crons]` in `crab.toml` before
+    /// deploying.
+    #[arg(long, conflicts_with = "force")]
+    pub pull: bool,
+}
+
+/// Deploy the services of the workspace `deploy.dir` is in that it selects,
+/// each as [`one`] does, stopping at the first that fails. `stopped` installs
+/// them to serve once started.
+pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
+    let Deploy {
+        dir,
+        packages,
+        image,
+        force,
+        pull,
+    } = deploy;
+    let (image, force, pull) = (image.as_deref(), *force, *pull);
+    let workspace = Workspace::read(dir, project::FILE, packages)?;
+    if workspace.services.is_empty() {
+        bail!(
+            "no {} in the workspace at {} names a service to deploy",
+            project::FILE,
+            workspace.root.display()
+        );
+    }
+    if workspace.services.len() > 1 && (image.is_some() || pull) {
+        bail!("--image and --pull take one service; pick it with -p");
+    }
+    for name in &workspace.skipped {
+        eprintln!("skipped   {name}: deploy = false");
+    }
+    if client.base == dev::url("") {
+        dev::up()?;
+    }
+    for dir in &workspace.services {
+        one(client, dir, image, force, pull, stopped)?;
+    }
+    Ok(())
+}
+
 /// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
 /// is pushed to `image`, or `crab.toml`'s, tagged with the crate's version, and
-/// deployed from there, and a service deployed for the first time starts from
+/// deployed from there, or uploaded to Cloud when neither names a registry; a
+/// service deployed for the first time starts from
 /// `[database] seed`. With `pull`, the crons the service's owners set on the
 /// host are written into `crab.toml`'s `[crons]` first.
-pub fn run(
+fn one(
     client: &Client,
     dir: &Path,
     image: Option<&str>,
     force: bool,
     pull: bool,
+    stopped: bool,
 ) -> Result<()> {
     let mut project = project::read(dir)?;
     if !project.deploy {
@@ -61,20 +126,20 @@ pub fn run(
         None => utils::wait(client.deploy_image(
             name,
             bytes,
-            &project.public,
             force,
             project.crons.as_ref(),
             project.database.size(),
+            stopped,
         ))?,
         Some(_) => {
-            let image = image.or(project.image.as_deref()).with_context(|| {
-                format!(
-                    "Cloud deploys through a registry; name one as `image` in {}",
-                    project::FILE
-                )
-            })?;
-            let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
-            push(&reference, &bytes)?;
+            let reference = match image.or(project.image.as_deref()) {
+                Some(image) => {
+                    let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
+                    push(&reference, &bytes)?;
+                    reference
+                }
+                None => send(client, name, bytes)?,
+            };
             let seed = match &project.database.seed {
                 Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
                 _ => None,
@@ -83,11 +148,11 @@ pub fn run(
                 name,
                 &DeployRequest {
                     reference,
-                    public: project.public.clone(),
                     force,
                     crons: project.crons.clone(),
                     size: project.database.size(),
                     seed,
+                    stopped,
                 },
             ))?
         }
@@ -97,7 +162,7 @@ pub fn run(
     let runtime = utils::wait(client.runtime(name))?;
     inspect::show(
         &deployed.program,
-        &runtime,
+        Some(&runtime),
         &utils::wait(client.terms(name))?,
     );
     for broken in &deployed.breaks {
@@ -146,16 +211,32 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
         .execute("VACUUM INTO ?1", [into])
         .with_context(|| format!("copying the seed {}", seed.display()))?;
     let (sha256, size) = hash(&copy)?;
-    let request = SeedRequest {
+    let request = UploadRequest {
         sha256: sha256.clone(),
         size,
     };
     if let Some(url) = utils::wait(client.seed(name, &request))?.upload {
         eprintln!("uploading the seed, {size} bytes");
         let file = utils::wait(AsyncFile::open(&copy))?;
-        utils::wait(client.upload_seed(&url, file, size))?;
+        utils::wait(client.upload(&url, file, size))?;
     }
     Ok(sha256)
+}
+
+/// Upload `image` for `name`'s deploy unless Cloud holds it already, answering
+/// the digest the deploy names it by.
+fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
+    let sha256 = berm::digest(&image);
+    let size = image.len() as u64;
+    let request = UploadRequest {
+        sha256: sha256.clone(),
+        size,
+    };
+    if let Some(url) = utils::wait(client.image(name, &request))?.upload {
+        eprintln!("uploading the image, {size} bytes");
+        utils::wait(client.upload(&url, image, size))?;
+    }
+    Ok(format!("sha256:{sha256}"))
 }
 
 /// The SHA-256 of the file at `path`, in hex, and its size.
