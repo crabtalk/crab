@@ -5,11 +5,11 @@
 use crate::{host, state::store::Store};
 use anyhow::Result;
 use berm::Now;
-use berm_api::host::{Kind, Outcome, Served, ServedDay, Source, Usage, Used};
+use berm_api::host::{Kind, Outcome, Source, Usage, Used};
 use parking_lot::Mutex;
 use rusqlite::{OptionalExtension, params};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     mem,
     ops::Range,
 };
@@ -83,16 +83,6 @@ impl Counts {
             .lock()
             .iter()
             .filter(|(key, _)| key.service == service)
-            .map(|(key, (calls, last))| key.clone().row(*calls, *last))
-            .collect()
-    }
-
-    /// What `scope`'s services used that is not yet written, as rows.
-    pub(crate) fn unsaved_in(&self, scope: &str) -> Vec<Used> {
-        self.pending
-            .lock()
-            .iter()
-            .filter(|(key, _)| host::split(&key.service).0 == scope)
             .map(|(key, (calls, last))| key.clone().row(*calls, *last))
             .collect()
     }
@@ -232,64 +222,6 @@ pub(crate) async fn read(
                     .then(b.last.cmp(&a.last))
             });
             Ok(usage)
-        })
-        .await
-}
-
-/// What each service in `scope` served, or only `name` when given, as
-/// written and in `unsaved`, by name: per day over the last [`WINDOW`] days,
-/// and in total. A service with no calls served is absent.
-pub(crate) async fn served(
-    store: &Store,
-    scope: &str,
-    name: Option<&str>,
-    now: i64,
-    unsaved: Vec<Used>,
-) -> Result<BTreeMap<String, Served>> {
-    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
-    let since = (now / 86_400) as i32 - WINDOW;
-    store
-        .read(move |conn| {
-            let mut statement = conn.prepare(
-                "SELECT name, day, SUM(calls)
-                   FROM service_usage
-                  WHERE scope = ?1 AND (?2 IS NULL OR name = ?2)
-                    AND kind = 'tool' AND outcome = 'done' AND source <> 'service'
-                  GROUP BY name, day",
-            )?;
-            let mut days: BTreeMap<String, BTreeMap<i32, u64>> = BTreeMap::new();
-            let mut rows = statement.query(params![scope, name])?;
-            while let Some(row) = rows.next()? {
-                let (served, day, calls): (String, i32, i64) =
-                    (row.get(0)?, row.get(1)?, row.get(2)?);
-                *days.entry(served).or_default().entry(day).or_default() += calls as u64;
-            }
-            for used in unsaved {
-                let (_, served) = host::split(&used.service);
-                if used.kind == Kind::Tool
-                    && used.outcome == Outcome::Done
-                    && used.source != Source::Service
-                    && name.as_deref().is_none_or(|name| name == served)
-                {
-                    *days
-                        .entry(served.to_owned())
-                        .or_default()
-                        .entry(used.day)
-                        .or_default() += used.calls as u64;
-                }
-            }
-            Ok(days
-                .into_iter()
-                .map(|(served, days)| {
-                    let total = days.values().sum();
-                    let days = days
-                        .into_iter()
-                        .filter(|(day, _)| *day > since)
-                        .map(|(day, calls)| ServedDay { day, calls })
-                        .collect();
-                    (served, Served { days, total })
-                })
-                .collect())
         })
         .await
 }

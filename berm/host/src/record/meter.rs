@@ -5,10 +5,14 @@
 use crate::{host, record::usage, state::store::Store};
 use anyhow::Result;
 use berm::{Meter, Now, database::Databases};
-use berm_api::host::Metered;
+use berm_api::host::{Metered, Served, ServedDay};
 use parking_lot::Mutex;
 use rusqlite::params;
-use std::{collections::HashMap, fs, mem, ops::AddAssign};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs, mem,
+    ops::AddAssign,
+};
 
 /// What one service used on one day.
 pub(crate) struct Day {
@@ -247,6 +251,63 @@ pub(crate) async fn read(
             }
             metered.sort_by_key(|row| row.day);
             Ok(metered)
+        })
+        .await
+}
+
+/// The runs of each service in `scope`, or only `name` when given, as
+/// written and in `unsaved`, by name: per day over the [`usage::WINDOW`] days
+/// to `today`, and in total. A service never run is absent.
+pub(crate) async fn served(
+    store: &Store,
+    scope: &str,
+    name: Option<&str>,
+    today: i32,
+    unsaved: Vec<Day>,
+) -> Result<BTreeMap<String, Served>> {
+    let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
+    let since = today - usage::WINDOW;
+    store
+        .read(move |conn| {
+            let mut statement = conn.prepare(
+                "SELECT name, day, runs, calls, failed
+                   FROM service_meters
+                  WHERE scope = ?1 AND (?2 IS NULL OR name = ?2)",
+            )?;
+            let mut days: BTreeMap<String, BTreeMap<i32, Meter>> = BTreeMap::new();
+            let mut rows = statement.query(params![scope, name])?;
+            while let Some(row) = rows.next()? {
+                let (served, day): (String, i32) = (row.get(0)?, row.get(1)?);
+                *days.entry(served).or_default().entry(day).or_default() += Meter {
+                    runs: row.get::<_, i64>(2)? as u64,
+                    calls: row.get::<_, i64>(3)? as u64,
+                    failed: row.get::<_, i64>(4)? as u64,
+                    ..Meter::default()
+                };
+            }
+            for Day { service, day, used } in unsaved {
+                let (of, served) = host::split(&service);
+                if of == scope && name.as_deref().is_none_or(|name| name == served) {
+                    *days.entry(served.to_owned()).or_default().entry(day).or_default() += used;
+                }
+            }
+            Ok(days
+                .into_iter()
+                .map(|(served, days)| {
+                    let runs = days.values().map(|used| used.runs).sum();
+                    let days = days
+                        .into_iter()
+                        .filter(|(day, _)| *day > since)
+                        .map(|(day, used)| ServedDay {
+                            day,
+                            runs: used.runs,
+                            calls: used.calls,
+                            failed: used.failed,
+                        })
+                        .collect();
+                    (served, Served { days, runs })
+                })
+                .collect())
         })
         .await
 }

@@ -40,12 +40,12 @@ impl<E: Env> Host<E> {
         let program = self.idl(service)?;
         let (scope, name) = host::split(service);
         let _reading = self.flushing.read().await;
-        let served = usage::served(
+        let served = meter::served(
             &self.store,
             scope,
             Some(name),
-            usage::seconds(&self.now),
-            self.usage.unsaved(service),
+            self.today(),
+            self.meters.days(i32::MIN),
         )
         .await?
         .remove(name)
@@ -90,12 +90,12 @@ impl<E: Env> Host<E> {
     /// sees it.
     pub async fn listings(&self, scope: &str) -> Result<Vec<Listing>, Denied> {
         let _reading = self.flushing.read().await;
-        let mut served = usage::served(
+        let mut served = meter::served(
             &self.store,
             scope,
             None,
-            usage::seconds(&self.now),
-            self.usage.unsaved_in(scope),
+            self.today(),
+            self.meters.days(i32::MIN),
         )
         .await?;
         Ok(self
