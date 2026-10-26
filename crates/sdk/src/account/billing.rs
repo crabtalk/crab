@@ -44,6 +44,10 @@ pub struct Period {
     pub used: Included,
     /// Bytes its placed services keep, as each was last sampled.
     pub stored: u64,
+    /// What its services used since `since` past the included amounts costs
+    /// at the rates: what credit pays, in USD micros.
+    #[serde(default)]
+    pub charge: i64,
     /// Credit drawn since `since`, in USD micros.
     #[serde(default)]
     pub drawn: i64,
