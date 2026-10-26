@@ -27,6 +27,10 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         "memory held   ${} per GB-hour, waiting included",
         rates.held as f64 * meta::GB_HOUR as f64 / 1e15
     );
+    println!(
+        "storage       ${} per GB-month past the plan's",
+        rates.stored as f64 * meta::GB_MONTH as f64 / 1e15
+    );
     match rates.proxied {
         Some(rate) => println!("proxied       {} bytes", per_million(rate)),
         None => println!("proxied       free"),
