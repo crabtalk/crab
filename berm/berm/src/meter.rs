@@ -10,6 +10,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Instant,
 };
 
 /// One chain's meters, by program, shared by every invocation in it. Filled
@@ -135,6 +136,10 @@ pub(crate) struct Held {
     reserve: Arc<Pool>,
     /// Bytes of linear memory it may grow to, reserved from `reserve`.
     budget: u64,
+    /// When `budget` was last set.
+    since: Instant,
+    /// Byte-microseconds of budget held before `since`.
+    spent: u128,
 }
 
 impl Held {
@@ -155,7 +160,43 @@ impl Held {
             memory: 0,
             reserve,
             budget,
+            since: Instant::now(),
+            spent: 0,
         })
+    }
+
+    /// Hold it to `budget` from now on, releasing the rest of its reservation.
+    /// Refused past its budget, and below the memory it holds already.
+    pub(crate) fn lower(&mut self, budget: u64) -> Result<()> {
+        if budget > self.budget {
+            bail!(Refused(format!(
+                "{budget} bytes of memory is past this call's budget of {}",
+                self.budget
+            )));
+        }
+        if budget < self.memory {
+            bail!(Refused(format!(
+                "this call holds {} bytes of memory already",
+                self.memory
+            )));
+        }
+        self.spent = self.held_until_now();
+        self.since = Instant::now();
+        self.reserve
+            .running
+            .fetch_sub(self.budget - budget, Ordering::Relaxed);
+        self.budget = budget;
+        Ok(())
+    }
+
+    /// Its budget held over its wall-clock time so far, each budget for as
+    /// long as it was set, in MiB-microseconds.
+    pub(crate) fn held(&self) -> u64 {
+        (self.held_until_now() >> 20).min(u128::from(u64::MAX)) as u64
+    }
+
+    fn held_until_now(&self) -> u128 {
+        self.spent + u128::from(self.budget) * self.since.elapsed().as_micros()
     }
 }
 
@@ -214,15 +255,25 @@ impl wasmtime::ResourceLimiter for Held {
 #[derive(Debug)]
 pub(crate) struct Own {
     used: Mutex<Meter>,
-    budget: u64,
+    budget: AtomicU64,
 }
 
 impl Own {
     pub(crate) fn new(budget: u64) -> Self {
         Self {
             used: Mutex::default(),
-            budget,
+            budget: AtomicU64::new(budget),
         }
+    }
+
+    /// Its budget of rows.
+    pub(crate) fn budget(&self) -> u64 {
+        self.budget.load(Ordering::Relaxed)
+    }
+
+    /// Hold it to `rows` from now on.
+    pub(crate) fn lower(&self, rows: u64) {
+        self.budget.fetch_min(rows, Ordering::Relaxed);
     }
 
     pub(crate) fn add(&self, used: Meter) {
@@ -236,12 +287,9 @@ impl Own {
     /// Refused once the budget is used.
     pub(crate) fn left(&self) -> Result<()> {
         let used = *self.used.lock();
-        if used.read + used.written >= self.budget {
-            return Err(Refused(format!(
-                "this call has used its budget of {} rows",
-                self.budget
-            ))
-            .into());
+        let budget = self.budget();
+        if used.read + used.written >= budget {
+            return Err(Refused(format!("this call has used its budget of {budget} rows")).into());
         }
         Ok(())
     }

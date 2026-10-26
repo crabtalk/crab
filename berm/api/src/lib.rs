@@ -239,7 +239,7 @@ pub const MAX_LOG: usize = 4096;
 /// What a call used of one program: its runs, the chains it was the first link
 /// of; its invocations, the CPU time they spent in microseconds, nested calls
 /// excluded, the largest linear memory one
-/// reached, in bytes, the linear memory they held over their wall-clock time
+/// reached, in bytes, their budgets of memory held over their wall-clock time
 /// in MiB-microseconds, the rows they read and wrote, the bytes sent and
 /// received through the proxy, the bytes of the logs they emitted, and the
 /// bytes sent off the host.

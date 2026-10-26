@@ -159,8 +159,8 @@ pub struct Included {
     pub read: u64,
     /// Rows written.
     pub written: u64,
-    /// MiB-microseconds of linear memory the account's runs held, waiting
-    /// included.
+    /// MiB-microseconds of memory budget the account's calls held, each from
+    /// its start to its return, waiting included.
     #[serde(default)]
     pub held: u64,
     /// Bytes the account's services reserve for their databases together. A

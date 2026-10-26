@@ -138,6 +138,32 @@ pub fn vouch(subject: &str) -> Result<(), CallError> {
     Ok(())
 }
 
+/// Lower this call's budget for this call alone, once, from now on: `cpu` in
+/// microseconds, `rows` read and written together, `memory` in bytes, `0`
+/// keeping each. Memory is billed at the budget it holds, so a tool that can
+/// tell from its arguments how much it needs lowers it before it does the
+/// work:
+///
+/// ```ignore
+/// berm_lang::limit(0, 0, 4 << 20)?;
+/// ```
+///
+/// [`CallError::Refused`] a second time in one call, past the budget, and
+/// below the memory the call holds already.
+pub fn limit(cpu: u64, rows: u64, memory: u64) -> Result<(), CallError> {
+    let mut bytes = [0u8; 24];
+    for (slot, value) in bytes
+        .as_chunks_mut::<8>()
+        .0
+        .iter_mut()
+        .zip([cpu, rows, memory])
+    {
+        *slot = value.to_le_bytes();
+    }
+    host::call(abi::HOST_LIMIT, &bytes)?;
+    Ok(())
+}
+
 /// The outside client this chain runs for, as an opaque key that names it for
 /// one day, carried into every nested call. `None` when the host supplied none.
 pub fn client() -> Result<Option<String>, CallError> {

@@ -465,6 +465,8 @@ impl Program {
         let mark = journal.mark();
         let site = at.clone();
         let invocation = Invocation {
+            cpu: Arc::new(AtomicU64::new(budget.cpu)),
+            limited: false,
             held: reserved,
             at,
             now: self.now.clone(),
@@ -483,7 +485,7 @@ impl Program {
             }),
             false => self
                 .image
-                .call(symbol, invocation, budget.cpu)
+                .call(symbol, invocation)
                 .await
                 .with_context(|| format!("program trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
@@ -633,6 +635,10 @@ pub struct Invocation {
     pub(crate) outcome: Option<Result<Vec<u8>, String>>,
     /// Set by `berm.deny`.
     pub(crate) denied: bool,
+    /// Its budget of CPU, in microseconds.
+    pub(crate) cpu: Arc<AtomicU64>,
+    /// Set once `berm.limit` lowered its budget.
+    pub(crate) limited: bool,
     /// Its part of its program's [`Running`].
     pub(crate) held: Held,
     /// The tape it records or answers from; only a chain's first link has one.

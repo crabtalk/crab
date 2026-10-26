@@ -49,7 +49,7 @@ pub struct Rates {
     pub overage: u64,
     pub read: u64,
     pub written: u64,
-    /// MiB-microseconds of linear memory held, waiting included.
+    /// MiB-microseconds of a call's memory budget held, waiting included.
     #[serde(default)]
     pub held: u64,
     /// Bytes through `berm.http.proxy`; unset is free.

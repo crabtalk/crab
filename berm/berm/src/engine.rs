@@ -253,21 +253,17 @@ impl Image {
         self.exports.iter().map(String::as_str).collect()
     }
 
-    /// Instantiate and run one tool, spending at most `cpu` microseconds of
-    /// CPU, and meter the CPU it spent, the linear memory it reached and that
-    /// memory over the instance's wall-clock time against its program, trapped
+    /// Instantiate and run one tool, spending at most its invocation's budget
+    /// of CPU, and meter the CPU it spent, the linear memory it reached and its
+    /// budget of memory over its wall-clock time against its program, trapped
     /// or not.
     ///
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
     /// built for this call and dropped with it.
-    pub(crate) async fn call(
-        &self,
-        symbol: &str,
-        invocation: Invocation,
-        cpu: u64,
-    ) -> Result<Invocation> {
+    pub(crate) async fn call(&self, symbol: &str, invocation: Invocation) -> Result<Invocation> {
         let deadline = invocation.at.deadline;
+        let cpu = invocation.cpu.clone();
         let mut store = Store::new(&self.engine, invocation);
         store.limiter(|invocation| &mut invocation.held);
 
@@ -277,12 +273,12 @@ impl Image {
         let over = Arc::new(AtomicBool::new(false));
         store.set_epoch_deadline(1);
         store.epoch_deadline_callback({
-            let (clock, over) = (clock.clone(), over.clone());
+            let (clock, over, cpu) = (clock.clone(), over.clone(), cpu.clone());
             move |_| {
                 if Instant::now() >= deadline {
                     return Err(Trap::Interrupt.into());
                 }
-                if clock.spent() / 1_000 > cpu {
+                if clock.spent() / 1_000 > cpu.load(Ordering::Relaxed) {
                     over.store(true, Ordering::Relaxed);
                     return Err(Trap::Interrupt.into());
                 }
@@ -292,7 +288,6 @@ impl Image {
 
         // Instantiating runs the guest's own start-up, which is counted with
         // its call.
-        let began = Instant::now();
         let (instance, called) = clock
             .time(async {
                 let instance = self.pre.instantiate_async(&mut store).await;
@@ -311,15 +306,17 @@ impl Image {
                 .get_memory(&mut store, "memory")
                 .map_or(0, |memory| memory.data_size(&store) as u64)
         });
-        let micros = began.elapsed().as_micros();
         store.data().at.meter(Meter {
             cpu: clock.spent() / 1_000,
             memory,
-            held: ((u128::from(memory) * micros) >> 20).min(u128::from(u64::MAX)) as u64,
+            held: store.data().held.held(),
             ..Meter::default()
         });
         if over.load(Ordering::Relaxed) {
-            bail!("ran past its budget of {cpu}µs of CPU");
+            bail!(
+                "ran past its budget of {}µs of CPU",
+                cpu.load(Ordering::Relaxed)
+            );
         }
         instance?;
         called?;

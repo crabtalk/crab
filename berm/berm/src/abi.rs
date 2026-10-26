@@ -202,6 +202,14 @@ pub const HOST_CLIENT: u64 = hash("berm.client");
 /// berm serves this one itself; the host reads it in [`crate::Outcome`].
 pub const HOST_DENY: u64 = hash("berm.deny");
 
+/// Lower this invocation's budget, once: `(ptr, len)` holds its CPU in
+/// microseconds, its rows and its bytes of memory, each a little-endian `u64`,
+/// `0` keeping that one. `-> staged length`
+///
+/// berm serves this one itself. Refused a second time in one invocation, past
+/// a budget, and below the memory it holds already.
+pub const HOST_LIMIT: u64 = hash("berm.limit");
+
 /// Milliseconds since the Unix epoch, as the host reads its clock. `() -> millis`
 ///
 /// berm serves this one itself: a clock needs no root, no cap and no

@@ -686,7 +686,7 @@ pub struct Metered {
     pub cpu: u64,
     /// The largest linear memory one of them reached, in bytes.
     pub memory: u64,
-    /// The linear memory they held, each from its start to its return,
+    /// Their budgets of memory, each held from its start to its return,
     /// waiting included, in MiB-microseconds.
     #[serde(default)]
     pub held: u64,
