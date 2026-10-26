@@ -13,20 +13,21 @@ use std::{
     time::Instant,
 };
 
-/// One chain's meters, by program, shared by every invocation in it. Filled
-/// whether the chain returns, fails or traps.
+/// Meters by program and the tool of it that ran.
+pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
+
+/// One chain's meters, shared by every invocation in it. Filled whether the
+/// chain returns, fails or traps.
 #[derive(Debug, Default)]
-pub struct Meters(Mutex<BTreeMap<Arc<str>, Meter>>);
+pub struct Meters(Mutex<ByTool>);
 
 impl Meters {
-    pub(crate) fn add(&self, program: &str, used: Meter) {
-        let mut meters = self.0.lock();
-        match meters.get_mut(program) {
-            Some(meter) => *meter += used,
-            None => {
-                meters.insert(program.into(), used);
-            }
-        }
+    pub(crate) fn add(&self, program: &str, tool: &str, used: Meter) {
+        *self
+            .0
+            .lock()
+            .entry((program.into(), tool.into()))
+            .or_default() += used;
     }
 
     /// CPU microseconds over every program.
@@ -34,7 +35,7 @@ impl Meters {
         self.0.lock().values().map(|meter| meter.cpu).sum()
     }
 
-    pub fn take(&self) -> BTreeMap<Arc<str>, Meter> {
+    pub fn take(&self) -> ByTool {
         std::mem::take(&mut *self.0.lock())
     }
 }

@@ -15,7 +15,7 @@ use berm::{
     tape::{Recorder, Taping},
 };
 use berm_api::{
-    Deps, Listing, Logged, Output, Terms, ToolTerms,
+    Deps, Listing, Logged, Meter, Output, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
 };
 use std::{
@@ -375,18 +375,6 @@ impl<E: Env> Host<E> {
         .await?)
     }
 
-    /// What each of `service`'s tools used over its calls of the last 30
-    /// days, by tool, as their budgets count it.
-    pub async fn tool_usage(
-        &self,
-        service: &str,
-    ) -> Result<BTreeMap<String, wire::ToolUsage>, Denied> {
-        self.deployed(service)?;
-        let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
-        Ok(calls::tools(&self.store, scope, name).await?)
-    }
-
     /// [`Host::call_stats`] of every service in `scope`, of `page.service`
     /// alone when it names one.
     pub async fn scope_call_stats(
@@ -567,10 +555,16 @@ impl<E: Env> Host<E> {
         Ok(Reply {
             result: outcome.result,
             denied: outcome.denied,
-            meters: used
-                .into_iter()
-                .map(|(service, used)| (service.to_string(), used))
-                .collect(),
+            meters: used.into_iter().fold(
+                BTreeMap::new(),
+                |mut meters: BTreeMap<String, BTreeMap<String, Meter>>, ((service, tool), used)| {
+                    meters
+                        .entry(service.to_string())
+                        .or_default()
+                        .insert(tool.to_string(), used);
+                    meters
+                },
+            ),
         })
     }
 

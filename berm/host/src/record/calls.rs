@@ -13,7 +13,6 @@ use berm_api::{
     Meter,
     host::{
         Bucket, Call, CallInput, CallPage, CallStats, NestedCall, Outcome, ServiceCall, Source,
-        Spread, ToolDay, ToolUsage,
     },
 };
 use parking_lot::Mutex;
@@ -616,68 +615,6 @@ pub(crate) async fn stats(
                 .map(|(at, outcomes)| Bucket { at, outcomes })
                 .collect();
             Ok(stats)
-        })
-        .await
-}
-
-/// What each tool of `scope/name` used over its calls written, by tool.
-pub(crate) async fn tools(
-    store: &Store,
-    scope: &str,
-    name: &str,
-) -> Result<BTreeMap<String, ToolUsage>> {
-    let (scope, name) = (scope.to_owned(), name.to_owned());
-    store
-        .read(move |conn| {
-            #[derive(Default)]
-            struct Counted {
-                runs: u64,
-                meter: Meter,
-                cpu: BTreeMap<usize, u64>,
-                rows: BTreeMap<usize, u64>,
-                cpu_max: u64,
-                rows_max: u64,
-                days: BTreeMap<i32, u64>,
-            }
-            let mut tools: BTreeMap<String, Counted> = BTreeMap::new();
-            let mut statement = conn.prepare_cached(
-                "SELECT tool, meter, cpu, read + written, at / 86400000 FROM service_calls
-                  WHERE scope = ?1 AND name = ?2 AND meter IS NOT NULL",
-            )?;
-            let mut rows = statement.query(params![scope, name])?;
-            while let Some(row) = rows.next()? {
-                let counted = tools.entry(row.get(0)?).or_default();
-                counted.runs += 1;
-                *counted.days.entry(row.get(4)?).or_default() += 1;
-                if let Ok(meter) = serde_json::from_str::<Meter>(&row.get::<_, String>(1)?) {
-                    counted.meter += meter;
-                }
-                let own: Option<(i64, i64)> = row.get::<_, Option<i64>>(2)?.zip(row.get(3)?);
-                if let Some((cpu, used)) = own {
-                    let (cpu, used) = (cpu as u64, used as u64);
-                    *counted.cpu.entry(Spread::index(cpu)).or_default() += 1;
-                    *counted.rows.entry(Spread::index(used)).or_default() += 1;
-                    counted.cpu_max = counted.cpu_max.max(cpu);
-                    counted.rows_max = counted.rows_max.max(used);
-                }
-            }
-            Ok(tools
-                .into_iter()
-                .map(|(tool, counted)| {
-                    let usage = ToolUsage {
-                        runs: counted.runs,
-                        meter: counted.meter,
-                        cpu: Spread::of(&counted.cpu, counted.cpu_max),
-                        rows: Spread::of(&counted.rows, counted.rows_max),
-                        days: counted
-                            .days
-                            .into_iter()
-                            .map(|(day, runs)| ToolDay { day, runs })
-                            .collect(),
-                    };
-                    (tool, usage)
-                })
-                .collect())
         })
         .await
 }

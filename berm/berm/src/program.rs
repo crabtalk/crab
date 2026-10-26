@@ -432,6 +432,7 @@ impl Program {
         )?;
         let mut at = Callsite {
             program: self.name.clone(),
+            tool: tool.into(),
             deps: self.deps.clone(),
             caller,
             user,

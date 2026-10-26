@@ -1,6 +1,6 @@
-//! What each service used, per day: counted in memory and written in batches
-//! to `service_meters` on the host the service runs on, beside the bytes it
-//! stored, sampled once a day.
+//! What each service's tools used, per day: counted in memory and written in
+//! batches to `service_meters` on the host the service runs on, beside the
+//! bytes the service stored, sampled once a day under the empty tool.
 
 use crate::{host, record::usage, state::store::Store};
 use anyhow::Result;
@@ -14,9 +14,10 @@ use std::{
     ops::AddAssign,
 };
 
-/// What one service used on one day.
+/// What one service's tool used on one day.
 pub(crate) struct Day {
     pub service: String,
+    pub tool: String,
     pub day: i32,
     pub used: Meter,
 }
@@ -35,9 +36,9 @@ impl AddAssign for Totals {
     }
 }
 
-/// Meters not yet written, by service and day.
+/// Meters not yet written, by service, tool and day.
 pub(crate) struct Meters {
-    pending: Mutex<HashMap<(String, i32), Meter>>,
+    pending: Mutex<HashMap<(String, String, i32), Meter>>,
     now: Now,
 }
 
@@ -49,20 +50,20 @@ impl Meters {
         }
     }
 
-    /// Count `used` against `service` today.
-    pub(crate) fn record(&self, service: &str, used: Meter) {
+    /// Count `used` against `service`'s `tool` today.
+    pub(crate) fn record(&self, service: &str, tool: &str, used: Meter) {
         let day = (usage::seconds(&self.now) / 86_400) as i32;
         *self
             .pending
             .lock()
-            .entry((service.to_owned(), day))
+            .entry((service.to_owned(), tool.to_owned(), day))
             .or_default() += used;
     }
 
     /// What `service` used that is not yet written, in all and on `day`.
     pub(crate) fn unsaved(&self, service: &str, day: i32) -> Totals {
         let mut totals = Totals::default();
-        for ((pending, at), used) in self.pending.lock().iter() {
+        for ((pending, _, at), used) in self.pending.lock().iter() {
             if pending == service {
                 totals.all += *used;
                 if *at == day {
@@ -73,15 +74,16 @@ impl Meters {
         totals
     }
 
-    /// What each service used on `since` and the days after that is not yet
-    /// written.
+    /// What each service's tools used on `since` and the days after that is
+    /// not yet written.
     pub(crate) fn days(&self, since: i32) -> Vec<Day> {
         self.pending
             .lock()
             .iter()
-            .filter(|((_, day), _)| *day >= since)
-            .map(|((service, day), used)| Day {
+            .filter(|((_, _, day), _)| *day >= since)
+            .map(|((service, tool, day), used)| Day {
                 service: service.clone(),
+                tool: tool.clone(),
                 day: *day,
                 used: *used,
             })
@@ -92,7 +94,12 @@ impl Meters {
     pub(crate) fn take(&self) -> Vec<Day> {
         mem::take(&mut *self.pending.lock())
             .into_iter()
-            .map(|((service, day), used)| Day { service, day, used })
+            .map(|((service, tool, day), used)| Day {
+                service,
+                tool,
+                day,
+                used,
+            })
             .collect()
     }
 }
@@ -105,6 +112,7 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
             |tx,
              Day {
                  service,
+                 tool,
                  day,
                  used: meter,
              }| {
@@ -112,10 +120,10 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                 tx.prepare_cached(
                     "INSERT INTO service_meters
                         (scope, name, day, calls, cpu, memory, read, written,
-                         proxied, logged, failed, sent, runs, held)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+                         proxied, logged, failed, sent, runs, held, tool)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
-                 ON CONFLICT (scope, name, day) DO UPDATE SET
+                 ON CONFLICT (scope, name, tool, day) DO UPDATE SET
                     calls = calls + excluded.calls,
                     cpu = cpu + excluded.cpu,
                     memory = MAX(memory, excluded.memory),
@@ -142,7 +150,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                     meter.failed as i64,
                     meter.sent as i64,
                     meter.runs as i64,
-                    meter.held as i64
+                    meter.held as i64,
+                    tool
                 ])?;
                 Ok(())
             },
@@ -164,10 +173,10 @@ pub(crate) async fn sample(
     store
         .run(move |conn| {
             conn.execute(
-                "INSERT INTO service_meters (scope, name, day, stored)
-                 SELECT ?1, ?2, ?3, ?4
+                "INSERT INTO service_meters (scope, name, tool, day, stored)
+                 SELECT ?1, ?2, '', ?3, ?4
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
-                 ON CONFLICT (scope, name, day) DO UPDATE SET stored = excluded.stored",
+                 ON CONFLICT (scope, name, tool, day) DO UPDATE SET stored = excluded.stored",
                 params![scope, name, day, stored as i64],
             )?;
             Ok(())
@@ -209,7 +218,7 @@ pub(crate) async fn stored(
 }
 
 /// `scope/name`'s meters over the [`usage::WINDOW`] days to `today`, as
-/// written and in `unsaved`, by day, oldest first.
+/// written and in `unsaved`, by day and tool, oldest first.
 pub(crate) async fn read(
     store: &Store,
     scope: &str,
@@ -223,14 +232,14 @@ pub(crate) async fn read(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT day, calls, cpu, memory, read, written, proxied, stored,
-                        logged, failed, sent, runs, held
+                        logged, failed, sent, runs, held, tool
                    FROM service_meters
-                  WHERE scope = ?1 AND name = ?2 AND day > ?3
-                  ORDER BY day",
+                  WHERE scope = ?1 AND name = ?2 AND day > ?3",
             )?;
             let rows = statement.query_map(params![scope, name, since], |row| {
                 Ok(Metered {
                     day: row.get(0)?,
+                    tool: row.get(13)?,
                     calls: row.get::<_, i64>(1)? as u64,
                     cpu: row.get::<_, i64>(2)? as u64,
                     memory: row.get::<_, i64>(3)? as u64,
@@ -246,13 +255,19 @@ pub(crate) async fn read(
                 })
             })?;
             let mut metered = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-            for Day { day, used, .. } in unsaved.into_iter().filter(|unsaved| unsaved.day > since) {
-                match metered.iter_mut().find(|row| row.day == day) {
+            for Day {
+                tool, day, used, ..
+            } in unsaved.into_iter().filter(|unsaved| unsaved.day > since)
+            {
+                match metered
+                    .iter_mut()
+                    .find(|row| row.day == day && row.tool == tool)
+                {
                     Some(row) => *row += used,
-                    None => metered.push(fresh(day, used)),
+                    None => metered.push(fresh(day, tool, used)),
                 }
             }
-            metered.sort_by_key(|row| row.day);
+            metered.sort_by(|a, b| (a.day, &a.tool).cmp(&(b.day, &b.tool)));
             Ok(metered)
         })
         .await
@@ -288,7 +303,10 @@ pub(crate) async fn served(
                     ..Meter::default()
                 };
             }
-            for Day { service, day, used } in unsaved {
+            for Day {
+                service, day, used, ..
+            } in unsaved
+            {
                 let (of, served) = host::split(&service);
                 if of == scope && name.as_deref().is_none_or(|name| name == served) {
                     *days
@@ -320,7 +338,7 @@ pub(crate) async fn served(
 }
 
 /// Every service's meters on `since` and the days after, as written and in
-/// `unsaved`, by service.
+/// `unsaved`, by service, day and tool.
 pub(crate) async fn since(
     store: &Store,
     since: i32,
@@ -330,7 +348,7 @@ pub(crate) async fn since(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
-                        stored, logged, failed, sent, runs, held
+                        stored, logged, failed, sent, runs, held, tool
                    FROM service_meters
                   WHERE day >= ?1",
             )?;
@@ -340,6 +358,7 @@ pub(crate) async fn since(
                     host::join(&scope, &name),
                     Metered {
                         day: row.get(2)?,
+                        tool: row.get(15)?,
                         calls: row.get::<_, i64>(3)? as u64,
                         cpu: row.get::<_, i64>(4)? as u64,
                         memory: row.get::<_, i64>(5)? as u64,
@@ -356,13 +375,19 @@ pub(crate) async fn since(
                 ))
             })?;
             let mut metered = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-            for Day { service, day, used } in unsaved {
+            for Day {
+                service,
+                tool,
+                day,
+                used,
+            } in unsaved
+            {
                 match metered
                     .iter_mut()
-                    .find(|(of, row)| *of == service && row.day == day)
+                    .find(|(of, row)| *of == service && row.day == day && row.tool == tool)
                 {
                     Some((_, row)) => *row += used,
-                    None => metered.push((service, fresh(day, used))),
+                    None => metered.push((service, fresh(day, tool, used))),
                 }
             }
             Ok(metered)
@@ -370,10 +395,11 @@ pub(crate) async fn since(
         .await
 }
 
-/// A day's meter of only `used`.
-fn fresh(day: i32, used: Meter) -> Metered {
+/// A day's meter of `tool` of only `used`.
+fn fresh(day: i32, tool: String, used: Meter) -> Metered {
     let mut row = Metered {
         day,
+        tool,
         ..Metered::default()
     };
     row += used;

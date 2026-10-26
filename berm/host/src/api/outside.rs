@@ -276,7 +276,7 @@ impl<E: Env> Host<E> {
             sent: body.len() as u64,
             ..Meter::default()
         };
-        self.meters.record(&service, answer);
+        self.meters.record(&service, &tool, answer);
         invoked.meter += answer;
         let id = started.id;
         let outcome = Outcome::of(&invoked.result, invoked.denied);

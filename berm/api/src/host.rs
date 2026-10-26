@@ -127,9 +127,10 @@ pub struct Reply {
     pub result: Output,
     /// The service refused its caller, through `berm.deny`.
     pub denied: bool,
-    /// What the call used, by each service it reached.
+    /// What the call used, by each service it reached and the tool of it
+    /// that ran.
     #[serde(default)]
-    pub meters: BTreeMap<String, Meter>,
+    pub meters: BTreeMap<String, BTreeMap<String, Meter>>,
 }
 
 /// What was used. Variants are in the order SQLite sorts their names.
@@ -504,104 +505,6 @@ impl CallStats {
     }
 }
 
-/// What the runs that started at one tool over the last 30 days used.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolUsage {
-    /// Its runs the host ran, refused ones left out.
-    pub runs: u64,
-    /// Their meters summed, each over every service the run reached.
-    pub meter: Meter,
-    /// CPU microseconds each run's own invocation of the tool used, as its
-    /// [`Budget`](crate::Budget) counts it. Runs recorded before a host kept
-    /// it are not in it.
-    pub cpu: Spread,
-    /// Rows each run's own invocation of the tool read and wrote together, as
-    /// `cpu`.
-    pub rows: Spread,
-    /// Each UTC day with a run, oldest first.
-    pub days: Vec<ToolDay>,
-}
-
-/// One UTC day of a tool's runs.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolDay {
-    /// Days since the Unix epoch.
-    pub day: i32,
-    pub runs: u64,
-}
-
-/// How one resource's use is spread over a tool's calls.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Spread {
-    /// The [`Share::upto`] of the share half the calls are in or below.
-    pub p50: u64,
-    /// The [`Share::upto`] of the share 95% of the calls are in or below.
-    pub p95: u64,
-    /// The most one call used.
-    pub max: u64,
-    /// Each share with a call, smallest first.
-    pub shares: Vec<Share>,
-}
-
-/// The calls that used at least the [`Share::upto`] of the share before, and
-/// less than this one's. Each share's bound is 2^(1/8) times the one before:
-/// [`Spread::bound`].
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Share {
-    pub upto: u64,
-    pub calls: u64,
-}
-
-impl Spread {
-    /// The index of the share `used` falls in: 0 for nothing, else one past
-    /// eight times its base-2 logarithm.
-    pub fn index(used: u64) -> usize {
-        if used == 0 {
-            return 0;
-        }
-        (8.0 * (used as f64).log2()).floor() as usize + 1
-    }
-
-    /// The exclusive upper bound of share `index`.
-    pub fn bound(index: usize) -> u64 {
-        if index == 0 {
-            return 1;
-        }
-        2f64.powf(index as f64 / 8.0).ceil() as u64
-    }
-
-    /// The spread of calls counted by share index, and the most one used.
-    pub fn of(counted: &BTreeMap<usize, u64>, max: u64) -> Self {
-        let total: u64 = counted.values().sum();
-        let at = |part: f64| {
-            let mut seen = 0;
-            for (&index, &calls) in counted {
-                seen += calls;
-                if seen as f64 >= part * total as f64 {
-                    return Self::bound(index).min(max.max(1));
-                }
-            }
-            max
-        };
-        Self {
-            p50: if total == 0 { 0 } else { at(0.5) },
-            p95: if total == 0 { 0 } else { at(0.95) },
-            max,
-            shares: counted
-                .iter()
-                .map(|(&index, &calls)| Share {
-                    upto: Self::bound(index),
-                    calls,
-                })
-                .collect(),
-        }
-    }
-}
-
 /// One run of one of a scope's services.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -669,12 +572,16 @@ pub struct Count {
     pub per_second: f64,
 }
 
-/// One day of a service's meter.
+/// One day of a service's meter, of one of its tools.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metered {
     /// Days since the Unix epoch.
     pub day: i32,
+    /// The tool whose invocations these are. Empty for what the service
+    /// holds itself, `stored`, and for a day summed over its tools.
+    #[serde(default)]
+    pub tool: String,
     /// Chains whose first link the service was: a call from outside, a wake
     /// or a Stripe event.
     #[serde(default)]

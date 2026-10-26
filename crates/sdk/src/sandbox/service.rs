@@ -1,8 +1,8 @@
 //! Service wire types.
 
 use berm_api::{
-    Program,
-    host::{self, Call, ToolUsage},
+    Meter, Program,
+    host::{self, Call, ServedDay},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -153,16 +153,18 @@ pub struct Costed {
     pub cost_micros_decimal: Option<String>,
 }
 
-/// What one tool's calls used, with what that use costs its service's owner.
+/// What one tool's invocations used over the last 30 days, as its service's
+/// meters count them, with what that use costs its service's owner.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCosted {
-    #[serde(flatten)]
-    pub usage: ToolUsage,
-    /// What the calls cost at the fleet's rates, summed, as a decimal of USD
-    /// micros: [`ToolUsage::meter`] with each call's overage, as [`Costed`]
-    /// prices one call.
-    pub cost_micros_decimal: String,
+    /// Its meters summed.
+    pub meter: Meter,
+    /// Each day it ran, oldest first.
+    pub days: Vec<ServedDay>,
+    /// What its meters cost at the fleet's rates, in USD micros: each day's
+    /// [`CostedDay::cost_micros`], summed.
+    pub cost_micros: i64,
 }
 
 /// One deploy of a service that went live.
