@@ -687,7 +687,7 @@ pub struct Metered {
     /// The largest linear memory one of them reached, in bytes.
     pub memory: u64,
     /// The linear memory they held, each from its start to its return,
-    /// waiting included, in MiB-milliseconds.
+    /// waiting included, in MiB-microseconds.
     #[serde(default)]
     pub held: u64,
     /// Rows read and written in the service's database and state.

@@ -420,6 +420,16 @@ impl Program {
         };
 
         let budget = (self.budget)(&self.name, tool).unwrap_or(self.image.budget);
+        let largest = self.image.budget.memory;
+        let reserved = Held::new(
+            self.running.clone(),
+            self.pool.clone(),
+            self.image.reserve.clone(),
+            match budget.memory {
+                0 => largest,
+                memory => memory.min(largest),
+            },
+        )?;
         let mut at = Callsite {
             program: self.name.clone(),
             deps: self.deps.clone(),
@@ -455,7 +465,7 @@ impl Program {
         let mark = journal.mark();
         let site = at.clone();
         let invocation = Invocation {
-            held: Held::new(self.running.clone(), self.pool.clone()),
+            held: reserved,
             at,
             now: self.now.clone(),
             issuer: self.issuer.clone(),

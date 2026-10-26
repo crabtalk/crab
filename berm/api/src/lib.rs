@@ -142,12 +142,17 @@ pub struct Cron {
 }
 
 /// The most one invocation may use: CPU time in microseconds, nested calls
-/// excluded, and rows read and written together.
+/// excluded, rows read and written together, and bytes of linear memory.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Budget {
     pub cpu: u64,
     pub rows: u64,
+    /// Held from the invocation's start to its return, and reserved from the
+    /// host's memory for that long; `0` is the most the host lets one guest
+    /// grow to.
+    #[serde(default)]
+    pub memory: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,7 +240,7 @@ pub const MAX_LOG: usize = 4096;
 /// of; its invocations, the CPU time they spent in microseconds, nested calls
 /// excluded, the largest linear memory one
 /// reached, in bytes, the linear memory they held over their wall-clock time
-/// in MiB-milliseconds, the rows they read and wrote, the bytes sent and
+/// in MiB-microseconds, the rows they read and wrote, the bytes sent and
 /// received through the proxy, the bytes of the logs they emitted, and the
 /// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

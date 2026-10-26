@@ -143,12 +143,13 @@ impl<E: Env> Host<E> {
             || budget.rows == 0
             || budget.cpu > self.budget.cpu
             || budget.rows > self.budget.rows
+            || budget.memory > self.budget.memory
         {
             return Err(deny(
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "a budget is between 1 and {}µs of CPU, and 1 and {} rows",
-                    self.budget.cpu, self.budget.rows
+                    "a budget is between 1 and {}µs of CPU, 1 and {} rows, and at most {} bytes of memory",
+                    self.budget.cpu, self.budget.rows, self.budget.memory
                 ),
             ));
         }

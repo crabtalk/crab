@@ -51,6 +51,7 @@ const MIGRATIONS: &[&str] = &[
     // run's id, `id` and `parent` number the calls within it.
     include_str!("migrations/0028.sql"),
     include_str!("migrations/0029.sql"),
+    include_str!("migrations/0030.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.

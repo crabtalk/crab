@@ -1,6 +1,6 @@
 //! `crab inspect` — what a program claims to be.
 
-use crate::utils;
+use crate::{format, utils};
 use anyhow::Result;
 use berm_api::{Program, Runtime, Terms, ToolSpec};
 use crabtalk_sdk::client::{Client, Error};
@@ -108,8 +108,12 @@ fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
         println!("  {}{marks}", tool.name);
         println!("    {}", tool.description);
         if let Some(held) = terms.tools.get(&tool.name) {
+            let memory = match held.budget.memory {
+                0 => "the host's most".to_owned(),
+                bytes => format::bytes(bytes),
+            };
             println!(
-                "    at most {}µs of CPU and {} rows a call",
+                "    at most {}µs of CPU, {} rows and {memory} of memory a call",
                 held.budget.cpu, held.budget.rows
             );
         }

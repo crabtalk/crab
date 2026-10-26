@@ -213,6 +213,12 @@ impl<E: Env> Host<E> {
                 "the account holds as much memory as it may; retry",
             ));
         }
+        if self.reserve.full() {
+            return Err(deny(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the host holds as much memory as it may; retry",
+            ));
+        }
         let Ok(_slot) = self.gate.try_acquire() else {
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,

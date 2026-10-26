@@ -7,7 +7,7 @@
 //! free until the reply resolves.
 
 use crate::{
-    Budget, Invocation, Meter,
+    Budget, Invocation, Meter, Pool,
     bound::{cpu::Clock, watchdog},
     syscall::{self, Door, Table},
     tape::{self, Answer},
@@ -49,6 +49,9 @@ pub struct Config {
     pub instances: u32,
     /// The largest linear memory one guest may grow to, in bytes.
     pub memory: usize,
+    /// Bytes the invocations running at once may reserve between them, each
+    /// its tool's budget of memory; `0` is no limit.
+    pub reserved: u64,
     /// The most CPU time one invocation may spend, nested calls excluded.
     pub cpu: Duration,
     /// The most rows one invocation may read and write together. A row
@@ -65,6 +68,7 @@ impl Default for Config {
             cache_dir: None,
             instances: 1_000,
             memory: 128 << 20,
+            reserved: 0,
             cpu: Duration::from_millis(100),
             rows: 1_000_000,
             deadline: watchdog::TIMEOUT,
@@ -78,6 +82,10 @@ impl Default for Config {
 #[derive(Clone)]
 pub struct Engine {
     wasmtime: wasmtime::Engine,
+    /// [`Config::memory`].
+    memory: usize,
+    /// What its invocations reserve, held to [`Config::reserved`].
+    pub reserve: Arc<Pool>,
     /// [`Config::cpu`].
     cpu: Duration,
     /// [`Config::rows`].
@@ -112,8 +120,12 @@ impl Engine {
         wasmtime.allocation_strategy(InstanceAllocationStrategy::Pooling(pool));
         let engine = wasmtime::Engine::new(&wasmtime)?;
         tick(&engine);
+        let reserve = Arc::new(Pool::default());
+        reserve.limit(config.reserved);
         Ok(Self {
             wasmtime: engine,
+            memory: config.memory,
+            reserve,
             cpu: config.cpu,
             rows: config.rows,
             deadline: config.deadline,
@@ -150,8 +162,10 @@ fn tick(engine: &wasmtime::Engine) {
 /// One compiled program, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
-    /// [`Config::cpu`] and [`Config::rows`].
+    /// [`Config::cpu`], [`Config::rows`] and [`Config::memory`].
     pub(crate) budget: Budget,
+    /// [`Engine::reserve`].
+    pub(crate) reserve: Arc<Pool>,
     /// Imports resolved once, at deploy. A guest reaching for something no
     /// syscall is registered for is refused by the deploy that introduced it,
     /// rather than trapping on a model's turn.
@@ -167,7 +181,9 @@ impl Image {
         let budget = Budget {
             cpu: engine.cpu.as_micros() as u64,
             rows: engine.rows,
+            memory: engine.memory as u64,
         };
+        let reserve = engine.reserve.clone();
         let engine = engine.wasmtime.clone();
         let module = Module::new(&engine, image)?;
 
@@ -227,6 +243,7 @@ impl Image {
             pre: linker.instantiate_pre(&module)?,
             engine,
             budget,
+            reserve,
         })
     }
 
@@ -294,11 +311,11 @@ impl Image {
                 .get_memory(&mut store, "memory")
                 .map_or(0, |memory| memory.data_size(&store) as u64)
         });
-        let ms = began.elapsed().as_millis();
+        let micros = began.elapsed().as_micros();
         store.data().at.meter(Meter {
             cpu: clock.spent() / 1_000,
             memory,
-            held: ((u128::from(memory) * ms) >> 20).min(u128::from(u64::MAX)) as u64,
+            held: ((u128::from(memory) * micros) >> 20).min(u128::from(u64::MAX)) as u64,
             ..Meter::default()
         });
         if over.load(Ordering::Relaxed) {

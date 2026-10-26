@@ -159,7 +159,7 @@ pub struct Included {
     pub read: u64,
     /// Rows written.
     pub written: u64,
-    /// MiB-milliseconds of linear memory the account's runs held, waiting
+    /// MiB-microseconds of linear memory the account's runs held, waiting
     /// included.
     #[serde(default)]
     pub held: u64,

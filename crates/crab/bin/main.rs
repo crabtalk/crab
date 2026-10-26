@@ -211,6 +211,10 @@ enum Command {
         cpu: u64,
         #[arg(long)]
         rows: u64,
+        /// Linear memory, in MiB; omitted is the most the host lets a call
+        /// grow to.
+        #[arg(long, value_name = "MIB")]
+        memory: Option<u64>,
     },
     /// A program's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
@@ -623,6 +627,7 @@ fn main() -> Result<ExitCode> {
             tool,
             cpu,
             rows,
+            memory,
         } => {
             utils::wait(client()?.budget(
                 name,
@@ -630,9 +635,13 @@ fn main() -> Result<ExitCode> {
                 Budget {
                     cpu: *cpu,
                     rows: *rows,
+                    memory: memory.map_or(0, |mib| mib << 20),
                 },
             ))?;
-            eprintln!("{name}.{tool}: at most {cpu}µs of CPU and {rows} rows a call");
+            let memory = memory.map_or("the host's most".to_owned(), |mib| format!("{mib} MiB"));
+            eprintln!(
+                "{name}.{tool}: at most {cpu}µs of CPU, {rows} rows and {memory} of memory a call"
+            );
         }
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {

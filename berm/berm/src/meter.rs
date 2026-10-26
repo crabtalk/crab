@@ -111,7 +111,7 @@ impl Pool {
     }
 
     /// Take `bytes` more for an invocation, refused past its limit.
-    fn grow(&self, bytes: u64) -> Result<()> {
+    pub(crate) fn grow(&self, bytes: u64) -> Result<()> {
         let running = self.running.fetch_add(bytes, Ordering::Relaxed) + bytes;
         let held = running + self.loaded.load(Ordering::Relaxed);
         let limit = self.limit.load(Ordering::Relaxed);
@@ -124,28 +124,46 @@ impl Pool {
 }
 
 /// One invocation's part of its program's [`Running`] and of its [`Pool`],
-/// from when it is built until it is dropped. Its store's limiter, so the
-/// memory it holds is counted as it grows.
+/// and its budget of memory reserved from the engine's, from when it is built
+/// until it is dropped. Its store's limiter, so the memory it holds is counted
+/// as it grows and held to its budget.
 #[derive(Debug)]
 pub(crate) struct Held {
     running: Arc<Running>,
     pool: Arc<Pool>,
     memory: u64,
+    reserve: Arc<Pool>,
+    /// Bytes of linear memory it may grow to, reserved from `reserve`.
+    budget: u64,
 }
 
 impl Held {
-    pub(crate) fn new(running: Arc<Running>, pool: Arc<Pool>) -> Self {
+    /// Refused when `reserve` cannot spare `budget` bytes.
+    pub(crate) fn new(
+        running: Arc<Running>,
+        pool: Arc<Pool>,
+        reserve: Arc<Pool>,
+        budget: u64,
+    ) -> Result<Self> {
+        reserve
+            .grow(budget)
+            .map_err(|_| Refused("the host holds as much memory as it may; retry".to_owned()))?;
         running.calls.fetch_add(1, Ordering::Relaxed);
-        Self {
+        Ok(Self {
             running,
             pool,
             memory: 0,
-        }
+            reserve,
+            budget,
+        })
     }
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
+        self.reserve
+            .running
+            .fetch_sub(self.budget, Ordering::Relaxed);
         self.running.calls.fetch_sub(1, Ordering::Relaxed);
         self.running
             .memory
@@ -165,6 +183,12 @@ impl wasmtime::ResourceLimiter for Held {
     ) -> wasmtime::Result<bool> {
         if maximum.is_some_and(|maximum| desired > maximum) {
             return Ok(false);
+        }
+        if desired as u64 > self.budget {
+            return Err(wasmtime::Error::msg(format!(
+                "growing to {desired} bytes of memory would pass this call's budget of {}",
+                self.budget
+            )));
         }
         let grown = (desired - current) as u64;
         self.pool

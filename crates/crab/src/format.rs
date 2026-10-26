@@ -37,7 +37,7 @@ pub fn bytes(n: u64) -> String {
     }
 }
 
-/// MiB-milliseconds of memory held, as GB-hours: `12.5 GB-h`.
+/// MiB-microseconds of memory held, as GB-hours: `12.5 GB-h`.
 pub fn gb_hours(held: u64) -> String {
     format!("{:.1} GB-h", held as f64 / meta::GB_HOUR as f64)
 }

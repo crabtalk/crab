@@ -20,7 +20,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use berm::{
-    Berm, Engine, Now, Program, User,
+    Berm, Engine, Now, Pool, Program, User,
     database::{Database, Databases},
 };
 use berm_api::{
@@ -77,6 +77,8 @@ pub struct Inner<E: Env> {
     pub chains: usize,
     /// The memory each scope's services hold.
     pub(crate) pools: Arc<Pools>,
+    /// The memory budgets its invocations running now reserve.
+    pub(crate) reserve: Arc<Pool>,
     /// Wakes the timer.
     pub(crate) waking: Notify,
     /// Uses not yet written.
@@ -163,6 +165,7 @@ impl<E: Env> Host<E> {
             cache_dir: config.cache_dir.clone(),
             instances: config.instances,
             memory: config.memory,
+            reserved: config.reserved,
             cpu: config.cpu,
             rows: config.rows,
             deadline: config.deadline,
@@ -201,6 +204,7 @@ impl<E: Env> Host<E> {
                 gate: Semaphore::new(chains as usize),
                 chains: chains as usize,
                 pools,
+                reserve: engine.reserve.clone(),
                 waking: Notify::new(),
                 usage: Counts::new(now.clone()),
                 calls: ran,
@@ -220,6 +224,7 @@ impl<E: Env> Host<E> {
                 budget: Budget {
                     cpu: config.cpu.as_micros() as u64,
                     rows: config.rows,
+                    memory: config.memory as u64,
                 },
                 terms,
                 deploying: Mutex::default(),
