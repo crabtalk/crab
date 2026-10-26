@@ -48,12 +48,12 @@ pub use program::{Ended, Invocation, Link, Outcome, Program, Refused, chain, dig
 use std::{
     collections::BTreeMap,
     pin::Pin,
-    sync::{Arc, RwLock, Weak},
+    sync::{Arc, RwLock, Weak, atomic::AtomicU32},
     time::Instant,
 };
 pub use storage::{Records, Storage};
 pub use syscall::call::{
-    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Pooled, Reaching, Remote, Reported,
+    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Pooled, Ran, Reaching, Remote, Reported,
     Resolve, Scope,
 };
 
@@ -110,6 +110,13 @@ pub struct Callsite {
     pub query: bool,
     /// Which chain this is, unique within the process.
     pub chain: u64,
+    /// This invocation's number in the chain on this runtime: 0 for the first,
+    /// then each in the order it began.
+    pub span: u32,
+    /// The number of the invocation that called this one.
+    pub parent: Option<u32>,
+    /// The number the chain's next invocation takes.
+    pub(crate) spans: Arc<AtomicU32>,
     /// When the chain has to be done by. A guest suspended in a syscall cannot
     /// notice it until the reply resolves, so a syscall bounds its own wait
     /// inside this.

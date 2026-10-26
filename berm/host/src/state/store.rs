@@ -47,6 +47,9 @@ const MIGRATIONS: &[&str] = &[
     // `runs` counts the chains a service was the first link of; days metered
     // before it hold 0.
     include_str!("migrations/0027.sql"),
+    // A run's calls past its first, on the host it ran on: `call` is the
+    // run's id, `id` and `parent` number the calls within it.
+    include_str!("migrations/0028.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.

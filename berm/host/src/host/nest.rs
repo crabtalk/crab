@@ -10,8 +10,8 @@ use crate::{
     },
 };
 use anyhow::{Result, bail};
-use berm::{Caller, Calls, Callsite, Ended, Meter, Now};
-use berm_api::host::{Kind, Link, Outcome, Reply, Source, User};
+use berm::{Caller, Calls, Callsite, Ended, Meter, Now, Ran};
+use berm_api::host::{Kind, Link, NestedCall, Outcome, Reply, Source, User};
 use std::{
     sync::{Arc, Weak},
     time::Instant,
@@ -72,8 +72,26 @@ pub(crate) fn calls<E: Env>(
         named: Arc::new(|program: &str| host::split(program).1.to_owned()),
         invoked: {
             let host = host.clone();
-            Arc::new(move |at: &Callsite, tool: &str, used: Meter| {
-                let call = host.upgrade().and_then(|host| host.logs.run(at.chain));
+            Arc::new(move |at: &Callsite, tool: &str, used: Meter, ran: Ran| {
+                let host = host.upgrade();
+                let call = host.as_ref().and_then(|host| host.logs.run(at.chain));
+                if let (Some(host), Some(call), Some(parent)) = (&host, call, at.parent) {
+                    host.calls.nested(
+                        call,
+                        NestedCall {
+                            id: at.span,
+                            parent,
+                            service: host::split(&at.program).1.to_owned(),
+                            tool: tool.to_owned(),
+                            at: ran.at,
+                            ms: ran.ms,
+                            outcome: ran.outcome,
+                            cpu: used.cpu,
+                            read: used.read,
+                            written: used.written,
+                        },
+                    );
+                }
                 observe.invoked(&at.program, tool, call, &used, at.spent());
             })
         },

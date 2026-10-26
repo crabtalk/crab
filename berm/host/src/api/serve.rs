@@ -13,8 +13,8 @@ use axum::{
 use berm_api::{
     Budget, Cron, Listing, Program, Runtime, Terms,
     host::{
-        CallPage, CallStats, Caller, Crons, Live, Memory, Metered, Page, ToolUpdate, ToolUsage,
-        Usage, Wakes,
+        CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
+        ToolUsage, Usage, Wakes,
     },
 };
 use serde::Deserialize;
@@ -55,6 +55,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/calls/stats", get(call_stats::<E>))
         .route("/calls/tools", get(call_tools::<E>))
         .route("/calls/{id}/input", get(call_input::<E>))
+        .route("/calls/{id}/nested", get(call_nested::<E>))
         .route("/calls/{id}/tape", get(call_tape::<E>))
         .route("/calls/{id}/image", get(call_image::<E>))
         .route("/crons", get(crons::<E>))
@@ -210,6 +211,15 @@ async fn scope_call_stats<E: Env>(
 }
 
 /// What one of the service's calls that failed ran with.
+/// The calls a run made past its first, in the order they began.
+async fn call_nested<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(CallId { id }): Path<CallId>,
+) -> Result<Json<Vec<NestedCall>>, Denied> {
+    Ok(Json(host.call_nested(&service, id).await?))
+}
+
 async fn call_input<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,

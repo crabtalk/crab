@@ -7,18 +7,18 @@ use crate::{
     meter::{Held, Own, Pool, Running},
     syscall::{
         self,
-        call::{Budgeted, Calls, Enter, Invoked, Now, Scope},
+        call::{Budgeted, Calls, Enter, Invoked, Now, Ran, Scope},
     },
     tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Callers, Manifest, Output, Runtime};
+use berm_api::{Callers, Manifest, Output, Runtime, host};
 use std::{
     collections::BTreeMap,
     error, fmt,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU32, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -324,6 +324,7 @@ impl Program {
                 meters,
                 Arc::from([self.name.clone()]),
                 taping.deck(),
+                None,
             )
             .await?;
         let changes = match result {
@@ -372,6 +373,7 @@ impl Program {
                 meters,
                 stack,
                 None,
+                None,
             )
             .await?;
         let changes = match result {
@@ -389,7 +391,7 @@ impl Program {
     /// has to be done by `deadline`, under the programs in `stack`. `query` is
     /// whether a link above it is a query. What it keeps lands in `journal`,
     /// and a failure takes it back out; what it uses lands in `meters`, failed
-    /// or not.
+    /// or not. `parent` is the invocation that called it on this runtime.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn invoke(
         &self,
@@ -406,7 +408,9 @@ impl Program {
         meters: Arc<Meters>,
         stack: Arc<[Arc<str>]>,
         tape: Option<Deck>,
+        parent: Option<&Callsite>,
     ) -> Result<Ended> {
+        let (at_ms, began) = ((self.now)(), Instant::now());
         let Some(Tool {
             symbol,
             query: declared,
@@ -427,6 +431,12 @@ impl Program {
             query: query || *declared,
             deadline,
             chain,
+            span: parent.map_or(0, |parent| parent.spans.fetch_add(1, Ordering::Relaxed)),
+            parent: parent.map(|parent| parent.span),
+            spans: parent.map_or_else(
+                || Arc::new(AtomicU32::new(1)),
+                |parent| parent.spans.clone(),
+            ),
             journal: journal.clone(),
             meters,
             own: Arc::new(Own::new(budget.rows)),
@@ -468,13 +478,25 @@ impl Program {
                 .with_context(|| format!("program trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
         };
-        self.ran(&site, tool, &ended);
+        self.ran(
+            &site,
+            tool,
+            &ended,
+            Ran {
+                at: at_ms,
+                ms: began.elapsed().as_millis() as u64,
+                outcome: match &ended {
+                    Ok(ended) => host::Outcome::of(&ended.result, ended.denied),
+                    Err(_) => host::Outcome::Failed,
+                },
+            },
+        );
         settle(&ended, scope, held, &journal, mark).await?;
         ended
     }
 
     /// Count a failed invocation at `site` and report what it used itself.
-    fn ran(&self, site: &Callsite, tool: &str, ended: &Result<Ended>) {
+    fn ran(&self, site: &Callsite, tool: &str, ended: &Result<Ended>, ran: Ran) {
         if matches!(
             ended,
             Err(_)
@@ -488,7 +510,7 @@ impl Program {
                 ..Meter::default()
             });
         }
-        (self.invoked)(site, tool, site.own.take());
+        (self.invoked)(site, tool, site.own.take(), ran);
     }
 }
 

@@ -12,8 +12,8 @@ use berm::{Now, tape::Tape};
 use berm_api::{
     Meter,
     host::{
-        Bucket, Call, CallInput, CallPage, CallStats, Outcome, ServiceCall, Source, Spread,
-        ToolDay, ToolUsage,
+        Bucket, Call, CallInput, CallPage, CallStats, NestedCall, Outcome, ServiceCall, Source,
+        Spread, ToolDay, ToolUsage,
     },
 };
 use parking_lot::Mutex;
@@ -35,6 +35,8 @@ const TAPES_MAX: usize = 64 << 20;
 /// Runs not yet written, each with the key of the service it ran.
 pub(crate) struct Pending {
     pending: Mutex<Vec<Ran>>,
+    /// The calls each run in flight made past its first, by its id.
+    nested: Mutex<HashMap<u64, Vec<NestedCall>>>,
     /// The last id handed out.
     last: AtomicU64,
     now: Now,
@@ -59,6 +61,8 @@ pub(crate) struct Ran {
     input: Option<Arc<CallInput>>,
     /// Kept for a run that failed, encoded.
     tape: Option<Arc<[u8]>>,
+    /// The calls it made past its first.
+    nested: Arc<[NestedCall]>,
 }
 
 /// A service's runs and logs not yet written.
@@ -81,6 +85,7 @@ impl Pending {
     pub(crate) fn new(now: Now, last: u64) -> Self {
         Self {
             pending: Mutex::default(),
+            nested: Mutex::default(),
             last: AtomicU64::new(last),
             now,
         }
@@ -123,7 +128,18 @@ impl Pending {
             own: invoked.map(|invoked| invoked.own),
             input: input.filter(|_| failed).map(Arc::new),
             tape: tape.filter(|_| failed).map(|tape| Vec::from(tape).into()),
+            nested: invoked.map_or_else(|| Arc::from([]), |invoked| invoked.nested.clone()),
         });
+    }
+
+    /// Hold `nested`, a call run `call` made past its first.
+    pub(crate) fn nested(&self, call: u64, nested: NestedCall) {
+        self.nested.lock().entry(call).or_default().push(nested);
+    }
+
+    /// The calls run `call` made past its first, taken out.
+    pub(crate) fn take_nested(&self, call: u64) -> Arc<[NestedCall]> {
+        self.nested.lock().remove(&call).unwrap_or_default().into()
     }
 
     pub(crate) fn take(&self) -> Vec<Ran> {
@@ -219,6 +235,30 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 call.own.map(|own| own.read as i64),
                 call.own.map(|own| own.written as i64)
             ])?;
+            let mut nested = tx.prepare_cached(
+                "INSERT INTO service_nested_calls
+                        (scope, name, call, id, parent, service, tool, at, ms, outcome, cpu, read,
+                         written)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
+                  WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
+            )?;
+            for made in call.nested.iter() {
+                nested.execute(params![
+                    scope,
+                    name,
+                    call.id as i64,
+                    made.id,
+                    made.parent,
+                    made.service,
+                    made.tool,
+                    made.at as i64,
+                    made.ms as i64,
+                    made.outcome,
+                    made.cpu as i64,
+                    made.read as i64,
+                    made.written as i64
+                ])?;
+            }
             Ok(())
         })
         .await?;
@@ -226,6 +266,10 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
         .run(move |conn| {
             conn.execute(
                 "DELETE FROM service_calls WHERE at < ?1",
+                params![since as i64],
+            )?;
+            conn.execute(
+                "DELETE FROM service_nested_calls WHERE at < ?1",
                 params![since as i64],
             )?;
             conn.execute(
@@ -264,6 +308,55 @@ pub(crate) async fn tape(
                 |row| row.get(0),
             )
             .optional()
+        })
+        .await
+}
+
+/// The calls `scope/name`'s run `id` made past its first, as written or in
+/// `unsaved`, in the order they began: `None` for no such run.
+pub(crate) async fn nested(
+    store: &Store,
+    scope: &str,
+    name: &str,
+    id: u64,
+    unsaved: Vec<Ran>,
+) -> Result<Option<Vec<NestedCall>>> {
+    if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
+        return Ok(Some(ran.nested.to_vec()));
+    }
+    let (scope, name) = (scope.to_owned(), name.to_owned());
+    store
+        .read(move |conn| {
+            let ran: bool = conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM service_calls
+                                 WHERE scope = ?1 AND name = ?2 AND id = ?3)",
+                params![scope, name, id as i64],
+                |row| row.get(0),
+            )?;
+            if !ran {
+                return Ok(None);
+            }
+            let mut statement = conn.prepare_cached(
+                "SELECT id, parent, service, tool, at, ms, outcome, cpu, read, written
+                   FROM service_nested_calls
+                  WHERE scope = ?1 AND name = ?2 AND call = ?3
+                  ORDER BY id",
+            )?;
+            let rows = statement.query_map(params![scope, name, id as i64], |row| {
+                Ok(NestedCall {
+                    id: row.get(0)?,
+                    parent: row.get(1)?,
+                    service: row.get(2)?,
+                    tool: row.get(3)?,
+                    at: row.get::<_, i64>(4)? as u64,
+                    ms: row.get::<_, i64>(5)? as u64,
+                    outcome: row.get(6)?,
+                    cpu: row.get::<_, i64>(7)? as u64,
+                    read: row.get::<_, i64>(8)? as u64,
+                    written: row.get::<_, i64>(9)? as u64,
+                })
+            })?;
+            Ok(Some(rows.collect::<rusqlite::Result<Vec<_>>>()?))
         })
         .await
 }

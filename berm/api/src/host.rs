@@ -412,6 +412,29 @@ pub struct Call {
     pub logs: u64,
 }
 
+/// One call a run made to another of its owner's services, or to its own
+/// tools, on the host the run ran on.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NestedCall {
+    /// Its number in the run, in the order the run's calls began; the run's
+    /// first call is 0.
+    pub id: u32,
+    /// The number of the call that made it.
+    pub parent: u32,
+    /// The service's name, in the run's scope.
+    pub service: String,
+    pub tool: String,
+    /// When it began, in epoch milliseconds.
+    pub at: u64,
+    pub ms: u64,
+    pub outcome: Outcome,
+    /// CPU microseconds it spent itself, the calls it made excluded.
+    pub cpu: u64,
+    pub read: u64,
+    pub written: u64,
+}
+
 /// What a page of calls matches, counted: by time and by what it can be
 /// narrowed to.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

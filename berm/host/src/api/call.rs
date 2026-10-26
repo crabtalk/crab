@@ -416,6 +416,20 @@ impl<E: Env> Host<E> {
     }
 
     /// What `service`'s call `id` ran with. Only a call that failed keeps it.
+    /// The calls `service`'s run `id` made past its first.
+    pub async fn call_nested(
+        &self,
+        service: &str,
+        id: u64,
+    ) -> Result<Vec<wire::NestedCall>, Denied> {
+        self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let _reading = self.flushing.read().await;
+        calls::nested(&self.store, scope, name, id, self.calls.unsaved(service))
+            .await?
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such call"))
+    }
+
     pub async fn call_input(&self, service: &str, id: u64) -> Result<wire::CallInput, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);

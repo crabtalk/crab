@@ -55,8 +55,18 @@ pub type Now = Arc<dyn Fn() -> u64 + Send + Sync>;
 pub type Reported = Arc<dyn Fn(&Callsite, &str, &str, Outcome) + Send + Sync>;
 
 /// Told of every invocation once it ran, trapped or not: its site, the tool,
-/// and what it used itself, the programs it called left out.
-pub type Invoked = Arc<dyn Fn(&Callsite, &str, Meter) + Send + Sync>;
+/// what it used itself, the programs it called left out, and how it ran.
+pub type Invoked = Arc<dyn Fn(&Callsite, &str, Meter, Ran) + Send + Sync>;
+
+/// How one invocation ran.
+#[derive(Clone, Copy, Debug)]
+pub struct Ran {
+    /// When it began, in epoch milliseconds.
+    pub at: u64,
+    pub ms: u64,
+    /// A trap is [`Outcome::Failed`].
+    pub outcome: Outcome,
+}
 
 /// Reaches a program deployed outside this runtime: asked with the calling
 /// site, the deployed name, the tool, its arguments, and the link the target
@@ -132,7 +142,7 @@ impl Calls {
             budget: Arc::new(|_, _| None),
             now: Arc::new(system_now),
             called: Arc::new(|_, _, _, _| {}),
-            invoked: Arc::new(|_, _, _| {}),
+            invoked: Arc::new(|_, _, _, _| {}),
             remote: Arc::new(|_, _, _, _, _| None),
             pool: Arc::new(|_| Arc::default()),
         }
@@ -271,6 +281,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                         at.meters.clone(),
                         stack,
                         None,
+                        Some(&at),
                     )
                     .await;
                 called(&at, &deployed, tool, ended(&invoked));
