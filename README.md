@@ -47,4 +47,6 @@ Rust 2024 edition, POSIX only. `rustup target add wasm32-unknown-unknown`, then 
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+The runtime and the CLI that runs it — `berm`, `berm-host`, `berm-oci`, `berm-build` and `crab-agent` — are licensed under the [GNU Affero General Public License, version 3](LICENSE-AGPL).
+
+Everything else — `berm-lang`, `berm-codegen`, `berm-api`, `crabtalk-sdk`, `crabkit`, `crab-html` and the kits — is licensed under the [Apache License, Version 2.0](LICENSE-APACHE). A service built with them is yours to license as you choose.
