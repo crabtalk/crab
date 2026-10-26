@@ -2,7 +2,7 @@
 
 use crate::utils;
 use anyhow::Result;
-use crabtalk_sdk::client::Client;
+use crabtalk_sdk::{client::Client, system::meta};
 
 /// USD micros per billion units, as USD per million.
 fn per_million(rate: u64) -> String {
@@ -23,6 +23,10 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
     );
     println!("rows read     {}", per_million(rates.read));
     println!("rows written  {}", per_million(rates.written));
+    println!(
+        "memory held   ${} per GB-hour, waiting included",
+        rates.held as f64 * meta::GB_HOUR as f64 / 1e15
+    );
     match rates.proxied {
         Some(rate) => println!("proxied       {} bytes", per_million(rate)),
         None => println!("proxied       free"),

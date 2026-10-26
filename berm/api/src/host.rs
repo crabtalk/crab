@@ -686,6 +686,10 @@ pub struct Metered {
     pub cpu: u64,
     /// The largest linear memory one of them reached, in bytes.
     pub memory: u64,
+    /// The linear memory they held, each from its start to its return,
+    /// waiting included, in MiB-milliseconds.
+    #[serde(default)]
+    pub held: u64,
     /// Rows read and written in the service's database and state.
     pub read: u64,
     pub written: u64,
@@ -715,6 +719,7 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.calls += used.calls;
         self.cpu += used.cpu;
         self.memory = self.memory.max(used.memory);
+        self.held += used.held;
         self.read += used.read;
         self.written += used.written;
         self.proxied += used.proxied;

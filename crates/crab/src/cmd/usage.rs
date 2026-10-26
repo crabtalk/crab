@@ -113,26 +113,49 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         format::day(period.since.into()),
         format::day(i64::from(period.until) - 1)
     );
-    let included = [
-        ("runs", period.used.runs, period.included.runs, false),
-        ("CPU µs", period.used.cpu, period.included.cpu, false),
-        ("rows read", period.used.read, period.included.read, false),
+    // A unit's label, what was used of it and what is included, and how it reads.
+    type Line = (&'static str, u64, u64, fn(u64) -> String);
+    let included: [Line; 6] = [
+        (
+            "runs",
+            period.used.runs,
+            period.included.runs,
+            format::count,
+        ),
+        (
+            "CPU µs",
+            period.used.cpu,
+            period.included.cpu,
+            format::count,
+        ),
+        (
+            "rows read",
+            period.used.read,
+            period.included.read,
+            format::count,
+        ),
         (
             "rows written",
             period.used.written,
             period.included.written,
-            false,
+            format::count,
         ),
-        ("storage", period.used.stored, period.included.stored, true),
+        (
+            "memory held",
+            period.used.held,
+            period.included.held,
+            format::gb_hours,
+        ),
+        (
+            "storage",
+            period.used.stored,
+            period.included.stored,
+            format::bytes,
+        ),
     ];
     let mut any = false;
-    for (label, used, of, in_bytes) in included.into_iter().filter(|unit| unit.2 > 0) {
+    for (label, used, of, size) in included.into_iter().filter(|unit| unit.2 > 0) {
         any = true;
-        let size = if in_bytes {
-            format::bytes
-        } else {
-            format::count
-        };
         println!(
             "  {label:<14}  {:>10} of {:<10}  {}",
             size(used),

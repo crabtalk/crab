@@ -74,6 +74,7 @@ pub enum Unit {
     Cpu,
     Read,
     Written,
+    Held,
     Stored,
     Sent,
     Credit,
@@ -84,6 +85,7 @@ text_enum!(Unit {
     Cpu => "cpu",
     Read => "read",
     Written => "written",
+    Held => "held",
     Stored => "stored",
     Sent => "sent",
     Credit => "credit",
@@ -157,6 +159,10 @@ pub struct Included {
     pub read: u64,
     /// Rows written.
     pub written: u64,
+    /// MiB-milliseconds of linear memory the account's runs held, waiting
+    /// included.
+    #[serde(default)]
+    pub held: u64,
     /// Bytes the account's services reserve for their databases together. A
     /// deploy that would reserve past it is refused.
     pub stored: u64,

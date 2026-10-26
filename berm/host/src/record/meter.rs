@@ -112,8 +112,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                 tx.prepare_cached(
                     "INSERT INTO service_meters
                         (scope, name, day, calls, cpu, memory, read, written,
-                         proxied, logged, failed, sent, runs)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
+                         proxied, logged, failed, sent, runs, held)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
                  ON CONFLICT (scope, name, day) DO UPDATE SET
                     calls = calls + excluded.calls,
@@ -125,7 +125,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                     logged = logged + excluded.logged,
                     failed = failed + excluded.failed,
                     sent = sent + excluded.sent,
-                    runs = runs + excluded.runs",
+                    runs = runs + excluded.runs,
+                    held = held + excluded.held",
                 )?
                 .execute(params![
                     scope,
@@ -140,7 +141,8 @@ pub(crate) async fn write(store: &Store, metered: Vec<Day>) -> Result<()> {
                     meter.logged as i64,
                     meter.failed as i64,
                     meter.sent as i64,
-                    meter.runs as i64
+                    meter.runs as i64,
+                    meter.held as i64
                 ])?;
                 Ok(())
             },
@@ -221,7 +223,7 @@ pub(crate) async fn read(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT day, calls, cpu, memory, read, written, proxied, stored,
-                        logged, failed, sent, runs
+                        logged, failed, sent, runs, held
                    FROM service_meters
                   WHERE scope = ?1 AND name = ?2 AND day > ?3
                   ORDER BY day",
@@ -240,6 +242,7 @@ pub(crate) async fn read(
                     failed: row.get::<_, i64>(9)? as u64,
                     sent: row.get::<_, i64>(10)? as u64,
                     runs: row.get::<_, i64>(11)? as u64,
+                    held: row.get::<_, i64>(12)? as u64,
                 })
             })?;
             let mut metered = rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -327,7 +330,7 @@ pub(crate) async fn since(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
-                        stored, logged, failed, sent, runs
+                        stored, logged, failed, sent, runs, held
                    FROM service_meters
                   WHERE day >= ?1",
             )?;
@@ -348,6 +351,7 @@ pub(crate) async fn since(
                         failed: row.get::<_, i64>(11)? as u64,
                         sent: row.get::<_, i64>(12)? as u64,
                         runs: row.get::<_, i64>(13)? as u64,
+                        held: row.get::<_, i64>(14)? as u64,
                     },
                 ))
             })?;

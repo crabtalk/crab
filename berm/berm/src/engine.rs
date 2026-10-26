@@ -237,8 +237,9 @@ impl Image {
     }
 
     /// Instantiate and run one tool, spending at most `cpu` microseconds of
-    /// CPU, and meter the CPU it spent and the linear memory it reached against
-    /// its program, trapped or not.
+    /// CPU, and meter the CPU it spent, the linear memory it reached and that
+    /// memory over the instance's wall-clock time against its program, trapped
+    /// or not.
     ///
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
@@ -274,6 +275,7 @@ impl Image {
 
         // Instantiating runs the guest's own start-up, which is counted with
         // its call.
+        let began = Instant::now();
         let (instance, called) = clock
             .time(async {
                 let instance = self.pre.instantiate_async(&mut store).await;
@@ -292,9 +294,11 @@ impl Image {
                 .get_memory(&mut store, "memory")
                 .map_or(0, |memory| memory.data_size(&store) as u64)
         });
+        let ms = began.elapsed().as_millis();
         store.data().at.meter(Meter {
             cpu: clock.spent() / 1_000,
             memory,
+            held: ((u128::from(memory) * ms) >> 20).min(u128::from(u64::MAX)) as u64,
             ..Meter::default()
         });
         if over.load(Ordering::Relaxed) {

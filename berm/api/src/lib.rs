@@ -234,7 +234,8 @@ pub const MAX_LOG: usize = 4096;
 /// What a call used of one program: its runs, the chains it was the first link
 /// of; its invocations, the CPU time they spent in microseconds, nested calls
 /// excluded, the largest linear memory one
-/// reached, in bytes, the rows they read and wrote, the bytes sent and
+/// reached, in bytes, the linear memory they held over their wall-clock time
+/// in MiB-milliseconds, the rows they read and wrote, the bytes sent and
 /// received through the proxy, the bytes of the logs they emitted, and the
 /// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -245,6 +246,8 @@ pub struct Meter {
     pub calls: u64,
     pub cpu: u64,
     pub memory: u64,
+    #[serde(default)]
+    pub held: u64,
     pub read: u64,
     pub written: u64,
     pub proxied: u64,
@@ -263,6 +266,7 @@ impl std::ops::AddAssign for Meter {
         self.calls += other.calls;
         self.cpu += other.cpu;
         self.memory = self.memory.max(other.memory);
+        self.held += other.held;
         self.read += other.read;
         self.written += other.written;
         self.proxied += other.proxied;
