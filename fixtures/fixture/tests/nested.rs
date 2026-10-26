@@ -50,13 +50,21 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         let [echo, nest] = calls.as_slice() else {
             panic!("two runs, got {}", calls.len());
         };
-        assert!(host.host().call_nested("acct/fixture", echo.id).await?.is_empty());
+        assert!(
+            host.host()
+                .call_nested("acct/fixture", echo.id)
+                .await?
+                .is_empty()
+        );
         let nested = host.host().call_nested("acct/fixture", nest.id).await?;
         let [inner] = nested.as_slice() else {
             panic!("one nested call, got {}", nested.len());
         };
         assert_eq!((inner.id, inner.parent), (1, 0), "written: {written}");
-        assert_eq!((inner.service.as_str(), inner.tool.as_str()), ("inner", "echo"));
+        assert_eq!(
+            (inner.service.as_str(), inner.tool.as_str()),
+            ("inner", "echo")
+        );
         assert_eq!(inner.outcome, Outcome::Done);
     }
     assert!(host.host().call_nested("acct/fixture", 999).await.is_err());

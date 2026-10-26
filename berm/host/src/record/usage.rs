@@ -8,11 +8,7 @@ use berm::Now;
 use berm_api::host::{Kind, Outcome, Source, Usage, Used};
 use parking_lot::Mutex;
 use rusqlite::{OptionalExtension, params};
-use std::{
-    collections::HashMap,
-    mem,
-    ops::Range,
-};
+use std::{collections::HashMap, mem, ops::Range};
 
 /// Days of usage a deploy and `/usage` look back over.
 pub(crate) const WINDOW: i32 = 30;

@@ -288,7 +288,11 @@ pub(crate) async fn served(
             for Day { service, day, used } in unsaved {
                 let (of, served) = host::split(&service);
                 if of == scope && name.as_deref().is_none_or(|name| name == served) {
-                    *days.entry(served.to_owned()).or_default().entry(day).or_default() += used;
+                    *days
+                        .entry(served.to_owned())
+                        .or_default()
+                        .entry(day)
+                        .or_default() += used;
                 }
             }
             Ok(days
