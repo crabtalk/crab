@@ -631,7 +631,7 @@ pub(crate) async fn tools(
         .read(move |conn| {
             #[derive(Default)]
             struct Counted {
-                calls: u64,
+                runs: u64,
                 meter: Meter,
                 cpu: BTreeMap<usize, u64>,
                 rows: BTreeMap<usize, u64>,
@@ -647,7 +647,7 @@ pub(crate) async fn tools(
             let mut rows = statement.query(params![scope, name])?;
             while let Some(row) = rows.next()? {
                 let counted = tools.entry(row.get(0)?).or_default();
-                counted.calls += 1;
+                counted.runs += 1;
                 *counted.days.entry(row.get(4)?).or_default() += 1;
                 if let Ok(meter) = serde_json::from_str::<Meter>(&row.get::<_, String>(1)?) {
                     counted.meter += meter;
@@ -665,14 +665,14 @@ pub(crate) async fn tools(
                 .into_iter()
                 .map(|(tool, counted)| {
                     let usage = ToolUsage {
-                        calls: counted.calls,
+                        runs: counted.runs,
                         meter: counted.meter,
                         cpu: Spread::of(&counted.cpu, counted.cpu_max),
                         rows: Spread::of(&counted.rows, counted.rows_max),
                         days: counted
                             .days
                             .into_iter()
-                            .map(|(day, calls)| ToolDay { day, calls })
+                            .map(|(day, runs)| ToolDay { day, runs })
                             .collect(),
                     };
                     (tool, usage)

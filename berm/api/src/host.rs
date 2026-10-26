@@ -504,31 +504,32 @@ impl CallStats {
     }
 }
 
-/// What one tool's calls of the last 30 days used.
+/// What the runs that started at one tool over the last 30 days used.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolUsage {
-    /// Its calls the host ran, refused ones left out.
-    pub calls: u64,
-    /// Their meters summed, each over every service its call reached.
+    /// Its runs the host ran, refused ones left out.
+    pub runs: u64,
+    /// Their meters summed, each over every service the run reached.
     pub meter: Meter,
-    /// CPU microseconds each call's own invocation used, as its
-    /// [`Budget`](crate::Budget) counts it. Calls recorded before a host kept
+    /// CPU microseconds each run's own invocation of the tool used, as its
+    /// [`Budget`](crate::Budget) counts it. Runs recorded before a host kept
     /// it are not in it.
     pub cpu: Spread,
-    /// Rows each call's own invocation read and wrote together, as `cpu`.
+    /// Rows each run's own invocation of the tool read and wrote together, as
+    /// `cpu`.
     pub rows: Spread,
-    /// Each UTC day with a call, oldest first.
+    /// Each UTC day with a run, oldest first.
     pub days: Vec<ToolDay>,
 }
 
-/// One UTC day of a tool's calls.
+/// One UTC day of a tool's runs.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolDay {
     /// Days since the Unix epoch.
     pub day: i32,
-    pub calls: u64,
+    pub runs: u64,
 }
 
 /// How one resource's use is spread over a tool's calls.
