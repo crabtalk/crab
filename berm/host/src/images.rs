@@ -26,6 +26,14 @@ impl Stored {
         reference == digest
     }
 
+    /// Whether the image `digest` names is kept.
+    pub async fn holds(&self, digest: &str) -> bool {
+        match digest.strip_prefix(SHA256) {
+            Some(hex) => fs::try_exists(self.dir.join(hex)).await.unwrap_or(false),
+            None => false,
+        }
+    }
+
     /// Keep `image`, answering with its digest.
     pub async fn put(&self, image: &[u8]) -> Result<String> {
         let hex = berm::digest(image);

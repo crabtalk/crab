@@ -66,6 +66,11 @@ impl Service {
         Ok(self.images.put(image).await?)
     }
 
+    /// Whether the image `digest` names is kept.
+    pub async fn holds(&self, digest: &str) -> bool {
+        self.images.holds(digest).await
+    }
+
     /// Stop running a program and drop what it committed. `false` if it wasn't
     /// deployed.
     pub async fn undeploy(&self, name: &str) -> Result<bool, Denied> {
@@ -98,20 +103,11 @@ impl Service {
 /// A name has to survive being half of an MCP tool name. The dot is the one
 /// that matters: dispatch splits `{program}.{tool}` on the first one, so a
 /// program carrying a dot would eat its own tool.
-/// The segment under `/services` that deploys several services together.
-pub(crate) const DEPLOYS: &str = "deploys";
-
 fn validate(name: &str) -> Result<(), Denied> {
     if name.is_empty() {
         return Err(deny(
             StatusCode::BAD_REQUEST,
             "a service name cannot be empty",
-        ));
-    }
-    if name == DEPLOYS {
-        return Err(deny(
-            StatusCode::BAD_REQUEST,
-            format!("{DEPLOYS} is where several services are deployed, not a service name"),
         ));
     }
     if !name

@@ -1,8 +1,8 @@
 //! The HTTP client for a CrabTalk Cloud deployment, and for a local host.
 //!
 //! One [`Client`] holds the transport; each submodule hangs that surface's calls
-//! off it. A local host answers only the calls addressed by a program's name:
-//! `list`, `inspect`, `run` and the rest.
+//! off it. A local host answers Cloud's service paths for one account,
+//! [`LOCAL`], and none of its account routes.
 
 use crate::error::{ApiError, ErrorResponse};
 use reqwest::{Method, RequestBuilder, Response, StatusCode, header::RETRY_AFTER};
@@ -17,7 +17,7 @@ mod owner;
 mod request;
 mod service;
 mod user;
-pub use owner::Owner;
+pub use owner::{LOCAL, Owner};
 
 /// Times a call is sent again after a `429`.
 const RETRIES: usize = 3;
@@ -92,6 +92,14 @@ impl Client {
     pub fn token(mut self, token: impl Into<String>) -> Self {
         self.token = Some(token.into());
         self
+    }
+
+    /// The account the service paths are under: the context's on Cloud, and
+    /// [`LOCAL`] on a local host.
+    pub(crate) fn addressed(&self) -> Owner {
+        self.owner
+            .clone()
+            .unwrap_or_else(|| Owner::User(LOCAL.to_owned()))
     }
 
     /// The account the client acts for, which only Cloud has.

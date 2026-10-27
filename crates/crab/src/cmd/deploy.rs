@@ -94,10 +94,7 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
     for dir in &workspace.services {
         let (project, bytes) = build(client, dir, false)?;
         let name = project.name()?.to_owned();
-        let reference = match &client.owner {
-            None => kept(client, &project, bytes)?,
-            Some(_) => reference(client, &name, &project, None, bytes)?,
-        };
+        let reference = reference(client, &name, &project, None, bytes)?;
         let request = request(
             client,
             dir,
@@ -114,18 +111,6 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
         report(client, name, deployed)?;
     }
     Ok(())
-}
-
-/// Keep `bytes`, `project`'s image, on the local host, answering the digest a
-/// deploy names it by; refused for a project naming a seed.
-fn kept(client: &Client, project: &Project, bytes: Vec<u8>) -> Result<String> {
-    if project.database.seed.is_some() {
-        bail!(
-            "{}: a seed starts a service on Cloud; the local host's own database is where one is made",
-            project.name()?
-        );
-    }
-    Ok(utils::wait(client.keep_image(project.name()?, bytes))?)
 }
 
 /// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
@@ -145,10 +130,7 @@ fn one(
 ) -> Result<()> {
     let (project, bytes) = build(client, dir, pull)?;
     let name = project.name()?;
-    let reference = match &client.owner {
-        None => kept(client, &project, bytes)?,
-        Some(_) => reference(client, name, &project, image, bytes)?,
-    };
+    let reference = reference(client, name, &project, image, bytes)?;
     let request = request(client, dir, &project, reference, workspace, force, stopped)?;
     let deployed = utils::wait(client.deploy(name, &request))?;
     report(client, name, &deployed)
@@ -181,9 +163,9 @@ fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> 
     Ok((project, bytes))
 }
 
-/// Where Cloud deploys `name` from: the image pushed to `image`, or
-/// `crab.toml`'s, tagged with the crate's version, or uploaded to Cloud when
-/// neither names a registry.
+/// Where the host deploys `name` from: on Cloud, the image pushed to `image`,
+/// or `crab.toml`'s, tagged with the crate's version; else uploaded to the
+/// host.
 fn reference(
     client: &Client,
     name: &str,
@@ -192,12 +174,12 @@ fn reference(
     bytes: Vec<u8>,
 ) -> Result<String> {
     match image.or(project.image.as_deref()) {
-        Some(image) => {
+        Some(image) if client.owner.is_some() => {
             let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
             push(&reference, &bytes)?;
             Ok(reference)
         }
-        None => send(client, name, bytes),
+        _ => send(client, name, bytes),
     }
 }
 
@@ -215,9 +197,10 @@ fn request(
 ) -> Result<DeployRequest> {
     let name = project.name()?;
     let seed = match &project.database.seed {
-        Some(seed) if client.owner.is_some() && first(client, name)? => {
-            Some(upload(client, name, &dir.join(seed))?)
-        }
+        Some(_) if client.owner.is_none() => bail!(
+            "{name}: a seed starts a service on Cloud; the local host's own database is where one is made"
+        ),
+        Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
         _ => None,
     };
     Ok(DeployRequest {
@@ -300,8 +283,8 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
     Ok(sha256)
 }
 
-/// Upload `image` for `name`'s deploy unless Cloud holds it already, answering
-/// the digest the deploy names it by.
+/// Upload `image` for `name`'s deploy unless the host holds it already,
+/// answering the digest the deploy names it by.
 fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
     let sha256 = berm::digest(&image);
     let size = image.len() as u64;

@@ -1,5 +1,5 @@
-//! A host's services: `/services/{owner}/{name}` on Cloud, `/services/{name}`
-//! on a local host.
+//! A host's services, at `/services/{owner}/{name}`: on a local host, under
+//! [`LOCAL`](crate::client::LOCAL).
 
 use crate::{
     client::{Client, Error},
@@ -16,13 +16,10 @@ use reqwest::{Body, Method, RequestBuilder};
 use std::collections::BTreeMap;
 
 impl Client {
-    /// Every service the owner runs on Cloud, or every program on a local host.
+    /// Every service the account runs.
     pub async fn list(&self) -> Result<Vec<Program>, Error> {
-        let path = match &self.owner {
-            Some(owner) => owner.services(),
-            None => "/services".to_owned(),
-        };
-        self.json(self.at(Method::GET, &path)).await
+        self.json(self.at(Method::GET, &self.addressed().services()))
+            .await
     }
 
     pub async fn inspect(&self, name: &str) -> Result<Program, Error> {
@@ -36,8 +33,7 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Deploy as `name` what `deploy` names: on a local host, an image kept
-    /// through [`Client::keep_image`].
+    /// Deploy as `name` what `deploy` names.
     pub async fn deploy(&self, name: &str, deploy: &DeployRequest) -> Result<Deployed, Error> {
         let request = self.at(Method::PUT, &self.path_of(name)).json(deploy);
         self.json(request).await
@@ -49,21 +45,8 @@ impl Client {
         &self,
         set: &DeploySetRequest,
     ) -> Result<BTreeMap<String, Deployed>, Error> {
-        let path = match &self.owner {
-            Some(owner) => format!("{}/deploys", owner.services()),
-            None => "/services/deploys".to_owned(),
-        };
+        let path = format!("{}/deploys", self.addressed().services());
         self.json(self.at(Method::POST, &path).json(set)).await
-    }
-
-    /// Keep `image` on a local host for a deploy to name, answering its
-    /// digest.
-    pub async fn keep_image(&self, name: &str, image: Vec<u8>) -> Result<String, Error> {
-        if self.owner.is_some() {
-            return Err(Error::Host("Cloud takes an image through its upload"));
-        }
-        let path = format!("{}/image", self.path_of(name));
-        self.ok(self.at(Method::POST, &path).body(image)).await
     }
 
     /// `name`'s last 100 deploys on Cloud, newest first, refused and failed
@@ -80,9 +63,8 @@ impl Client {
         self.json(self.at(Method::POST, &path).json(seed)).await
     }
 
-    /// Where to upload `image` for a deploy of `name` on Cloud to name.
+    /// Where to upload `image` for a deploy of `name` to name.
     pub async fn image(&self, name: &str, image: &UploadRequest) -> Result<Upload, Error> {
-        self.account()?;
         let path = format!("{}/image", self.path_of(name));
         self.json(self.at(Method::POST, &path).json(image)).await
     }
@@ -294,18 +276,18 @@ impl Client {
         format!("{}/secrets", self.path_of(name))
     }
 
-    /// `name`'s path on Cloud, which alone serves it.
+    /// `name`'s path, for a route only Cloud serves.
     fn service(&self, name: &str) -> Result<String, Error> {
-        Ok(format!("/services/{}/{name}", self.account()?.name()))
+        self.account()?;
+        Ok(self.path_of(name))
     }
 
-    /// The path of `name`. On Cloud, `owner/name` names another account's
-    /// service, and a bare name the context's own.
+    /// The path of `name`: `owner/name` names another account's service, and
+    /// a bare name the context's own.
     fn path_of(&self, name: &str) -> String {
-        match &self.owner {
-            Some(_) if name.contains('/') => format!("/services/{name}"),
-            Some(owner) => format!("/services/{}/{name}", owner.name()),
-            None => format!("/services/{name}"),
+        match name.contains('/') {
+            true => format!("/services/{name}"),
+            false => format!("/services/{}/{name}", self.addressed().name()),
         }
     }
 
