@@ -3,23 +3,24 @@
 
 use crate::{
     cmd::{dev, inspect},
+    fill::Form,
     project, utils,
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Deployed, Manifest, project::Project};
+use berm_api::{Credential, Deployed, Manifest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{DeployRequest, DeploySetRequest, UploadRequest},
+    sandbox::service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::{self, File},
-    io::Read,
+    io::{self, IsTerminal, Read},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -145,7 +146,9 @@ fn one(
 }
 
 /// Deploy `from`, another account's public service as `owner/name`, as the
-/// context's own `name`, from the registry image it runs.
+/// context's own `name`, from the registry image it runs. A first deploy at a
+/// terminal goes in stopped, asks the person for each credential with a secret
+/// unset, and starts once every secret is set, unless `stopped`.
 fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
     if client.owner.is_none() {
         bail!("--from deploys from a registry, which only Cloud pulls");
@@ -157,16 +160,46 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
     let Some(reference) = listing.reference else {
         bail!("{from} runs an image uploaded to Cloud, which only its owner deploys");
     };
+    let ask = first(client, name)? && io::stdin().is_terminal() && io::stdout().is_terminal();
     let request = DeployRequest {
         reference,
         force,
         crons: None,
         size: None,
         seed: None,
-        stopped,
+        stopped: stopped || ask,
         project: None,
     };
     let deployed = utils::wait(client.deploy(name, &request))?;
+    if ask {
+        let deps = utils::wait(client.runtime(name))?.deps;
+        let unset = |set: &[Secret]| -> Vec<(String, Credential)> {
+            deps.grouped()
+                .into_iter()
+                .filter(|(_, credential)| {
+                    credential
+                        .secrets
+                        .iter()
+                        .any(|secret| !set.iter().any(|one| one.name == secret.name))
+                })
+                .collect()
+        };
+        let asked = unset(&utils::wait(client.secrets(name))?);
+        if !asked.is_empty() {
+            Form::new(client, name, asked, &BTreeMap::new())?.run()?;
+        }
+        if !stopped {
+            match unset(&utils::wait(client.secrets(name))?).is_empty() {
+                true => {
+                    utils::wait(client.start(name))?;
+                    eprintln!("started {name}");
+                }
+                false => eprintln!(
+                    "{name} is stopped until its secrets are set: `crab secret fill {name}`, then `crab start {name}`"
+                ),
+            }
+        }
+    }
     report(client, name, &deployed)
 }
 

@@ -83,15 +83,11 @@ pub fn fill(client: &Client, name: &str, copies: &[(String, String)]) -> Result<
             "crab secret fill takes values typed at a terminal: ask the person to run `crab secret fill {name}` in theirs"
         );
     }
-    let target = match &client.owner {
-        None => "the local host on this machine".to_owned(),
-        Some(owner) => format!("Cloud, the account {}", owner.name()),
-    };
     let credentials = utils::wait(client.runtime(name))?.deps.grouped();
     if credentials.is_empty() {
         eprintln!("{name} declares no secrets");
         return Ok(());
     }
     let copy = copies.iter().cloned().collect();
-    Form::new(client, name, target, credentials, &copy)?.run()
+    Form::new(client, name, credentials, &copy)?.run()
 }

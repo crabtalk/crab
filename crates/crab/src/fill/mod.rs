@@ -76,16 +76,18 @@ impl Field {
 }
 
 impl<'a> Form<'a> {
-    /// `credentials` of `service`, set on the host `client` talks to, which
-    /// `target` names for the person; `copy` holds the values their copy keys
-    /// take.
+    /// `credentials` of `service`, set on the host `client` talks to; `copy`
+    /// holds the values their copy keys take.
     pub fn new(
         client: &'a Client,
         service: &str,
-        target: String,
         credentials: Vec<(String, Credential)>,
         copy: &BTreeMap<String, String>,
     ) -> Result<Self> {
+        let target = match &client.owner {
+            None => "the local host on this machine".to_owned(),
+            Some(owner) => format!("Cloud, the account {}", owner.name()),
+        };
         let set: Vec<String> = utils::wait(client.secrets(service))?
             .into_iter()
             .map(|secret| secret.name)

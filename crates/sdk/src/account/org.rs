@@ -99,6 +99,10 @@ pub struct Subscription {
     /// paid for, so this is what says whether the account is renewing or running
     /// out. Access is unchanged until it passes.
     pub cancel_at: Option<i64>,
+    /// The plan slug it changes to at `current_period_end`, or `null` when no
+    /// change is scheduled.
+    #[serde(default)]
+    pub next_plan: Option<String>,
 }
 
 /// Which kind of account: a person or a shared org.
