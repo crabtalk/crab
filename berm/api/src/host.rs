@@ -784,6 +784,10 @@ pub struct Metered {
     /// Rows read and written in the service's database and state.
     pub read: u64,
     pub written: u64,
+    /// CPU time the service's SQL statements spent on its database's threads,
+    /// in microseconds; not part of `cpu`.
+    #[serde(default)]
+    pub sql_cpu: u64,
     /// Bytes sent and received through `berm.http.proxy`.
     pub proxied: u64,
     /// Bytes of the logs those invocations emitted.
@@ -813,6 +817,7 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.held += used.held;
         self.read += used.read;
         self.written += used.written;
+        self.sql_cpu += used.sql_cpu;
         self.proxied += used.proxied;
         self.logged += used.logged;
         self.failed += used.failed;

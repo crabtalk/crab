@@ -23,7 +23,7 @@ thread_local! {
 }
 
 /// Nanoseconds of CPU this thread has used.
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     let mut time = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,

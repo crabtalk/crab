@@ -6,9 +6,6 @@ use serde::{Deserialize, Serialize};
 /// them are charged as overage.
 pub const INCLUDED_CPU: u64 = 100;
 
-/// MiB-hours of storage in a GB-month of 730 hours.
-pub const GB_MONTH: u64 = 1024 * 730;
-
 /// MiB-microseconds of memory held in a GB-hour.
 pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
 
@@ -55,9 +52,6 @@ pub struct Rates {
     /// MiB-microseconds of a call's memory budget held, waiting included.
     #[serde(default)]
     pub held: u64,
-    /// MiB-hours of storage reserved past a plan's included amount.
-    #[serde(default)]
-    pub stored: u64,
     /// Bytes through `berm.http.proxy`; unset is free.
     pub proxied: Option<u64>,
 }

@@ -28,6 +28,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
             at.meter(Meter {
                 read: answer.read,
                 written: answer.written,
+                sql_cpu: answer.cpu,
                 ..Meter::default()
             });
             Ok(answer.json)

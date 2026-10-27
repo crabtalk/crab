@@ -21,7 +21,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         return Ok(());
     }
     println!(
-        "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>10}  {:>13}  {:>12}",
+        "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>13}  {:>12}",
         "DAY",
         "RUNS",
         "CALLS",
@@ -30,13 +30,14 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         "OVERAGE",
         "READ",
         "WRITTEN",
+        "SQL CPU µs",
         "MEMORY",
         "PROXIED BYTES",
         "STORED BYTES"
     );
     for day in &meters {
         println!(
-            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>8}Ki  {:>13}  {:>12}",
+            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>8}Ki  {:>13}  {:>12}",
             format::day(day.used.day.into()),
             day.used.runs,
             day.used.calls,
@@ -45,6 +46,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             day.overage,
             day.used.read,
             day.used.written,
+            day.used.sql_cpu,
             day.used.memory / 1024,
             day.used.proxied,
             day.used.stored,

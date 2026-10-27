@@ -253,8 +253,9 @@ pub const MAX_LOG: usize = 4096;
 /// of; its invocations, the CPU time they spent in microseconds, nested calls
 /// excluded, the largest linear memory one
 /// reached, in bytes, their budgets of memory held over their wall-clock time
-/// in MiB-microseconds, the rows they read and wrote, the bytes sent and
-/// received through the proxy, the bytes of the logs they emitted, and the
+/// in MiB-microseconds, the rows they read and wrote, the CPU time their SQL
+/// statements spent on the database's threads in microseconds, the bytes sent
+/// and received through the proxy, the bytes of the logs they emitted, and the
 /// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,6 +269,8 @@ pub struct Meter {
     pub held: u64,
     pub read: u64,
     pub written: u64,
+    #[serde(default)]
+    pub sql_cpu: u64,
     pub proxied: u64,
     #[serde(default)]
     pub logged: u64,
@@ -287,6 +290,7 @@ impl std::ops::AddAssign for Meter {
         self.held += other.held;
         self.read += other.read;
         self.written += other.written;
+        self.sql_cpu += other.sql_cpu;
         self.proxied += other.proxied;
         self.logged += other.logged;
         self.failed += other.failed;
