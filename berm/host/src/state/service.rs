@@ -1,6 +1,6 @@
 //! The `services` table and what a service's calls commit beside it.
 
-use crate::{state::store::Store, wake::cron};
+use crate::{images::Stored, state::store::Store, wake::cron};
 use anyhow::Result;
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::collections::{BTreeMap, HashMap};
@@ -15,6 +15,13 @@ pub(crate) struct Row {
     pub size: u64,
     /// The project it was last deployed in.
     pub project: Option<String>,
+}
+
+impl Row {
+    /// The registry reference it runs, none for an uploaded image.
+    pub(crate) fn registry(&self) -> Option<String> {
+        (!Stored::uploaded(&self.reference, &self.digest)).then(|| self.reference.clone())
+    }
 }
 
 /// Every deployed service.
@@ -63,16 +70,27 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
         .await
 }
 
-/// The project each of `scope`'s services was last deployed in, by name; a
-/// service in none is left out.
-pub(crate) async fn projects(store: &Store, scope: &str) -> Result<HashMap<String, String>> {
+/// Every service in `scope`, by name.
+pub(crate) async fn scoped(store: &Store, scope: &str) -> Result<HashMap<String, Row>> {
     let scope = scope.to_owned();
     store
         .read(move |conn| {
             conn.prepare(
-                "SELECT name, project FROM services WHERE scope = ?1 AND project IS NOT NULL",
+                "SELECT scope, name, reference, digest, size, project FROM services WHERE scope = ?1",
             )?
-            .query_map(params![scope], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .query_map(params![scope], |row| {
+                Ok((
+                    row.get(1)?,
+                    Row {
+                        scope: row.get(0)?,
+                        name: row.get(1)?,
+                        reference: row.get(2)?,
+                        digest: row.get(3)?,
+                        size: row.get::<_, i64>(4)? as u64,
+                        project: row.get(5)?,
+                    },
+                ))
+            })?
             .collect()
         })
         .await

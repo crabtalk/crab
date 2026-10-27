@@ -46,6 +46,10 @@ pub struct Deploy {
     /// deploying.
     #[arg(long, conflicts_with = "force")]
     pub pull: bool,
+    /// Deploy another account's public service, `owner/name`, as your own
+    /// `name`, from the registry image it runs; on Cloud.
+    #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "image", "pull"])]
+    pub from: Option<String>,
 }
 
 /// Deploy the services of the workspace `deploy.dir` is in that it selects:
@@ -58,7 +62,11 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
         image,
         force,
         pull,
+        from,
     } = deploy;
+    if let Some(from) = from {
+        return copy(client, from, *force, stopped);
+    }
     let (image, force, pull) = (image.as_deref(), *force, *pull);
     let workspace = Workspace::read(dir, project::FILE, packages)?;
     if workspace.services.is_empty() {
@@ -136,6 +144,32 @@ fn one(
     report(client, name, &deployed)
 }
 
+/// Deploy `from`, another account's public service as `owner/name`, as the
+/// context's own `name`, from the registry image it runs.
+fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
+    if client.owner.is_none() {
+        bail!("--from deploys from a registry, which only Cloud pulls");
+    }
+    let Some((_, name)) = from.split_once('/') else {
+        bail!("--from takes another account's service as owner/name, not {from:?}");
+    };
+    let listing = utils::wait(client.listing(from))?;
+    let Some(reference) = listing.reference else {
+        bail!("{from} runs an image uploaded to Cloud, which only its owner deploys");
+    };
+    let request = DeployRequest {
+        reference,
+        force,
+        crons: None,
+        size: None,
+        seed: None,
+        stopped,
+        project: None,
+    };
+    let deployed = utils::wait(client.deploy(name, &request))?;
+    report(client, name, &deployed)
+}
+
 /// Read and build the project in `dir`, refused when its `crab.toml` says
 /// `deploy = false`. With `pull`, the crons its owners set on the host are
 /// written into its `[crons]` first.
@@ -207,7 +241,7 @@ fn request(
         reference,
         force,
         crons: project.crons.clone(),
-        size: project.database.size(),
+        size: Some(project.database.size()),
         seed,
         stopped,
         project: Some(workspace.to_owned()),

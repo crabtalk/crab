@@ -145,6 +145,13 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
     };
     assert_eq!(of("one").as_deref(), Some("p"));
     assert_eq!(of("three").as_deref(), Some("q"));
+    // A registry reference another account can deploy; the test host's images
+    // are all named by one.
+    let reference = listed
+        .iter()
+        .find(|listing| listing.program.name == "one")
+        .and_then(|listing| listing.reference.clone());
+    assert_eq!(reference.as_deref(), Some("test/acct/one"));
 
     let page = CallPage {
         service: None,

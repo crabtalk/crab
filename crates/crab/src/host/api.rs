@@ -142,7 +142,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
         reference: deploy.reference,
         force: deploy.force,
         crons: deploy.crons,
-        size: deploy.size,
+        size: deploy.size.unwrap_or_else(host::database_size),
         stopped: deploy.stopped,
         project: deploy.project,
         exempt: Vec::new(),

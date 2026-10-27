@@ -50,13 +50,12 @@ impl<E: Env> Host<E> {
         .await?
         .remove(name)
         .unwrap_or_default();
-        let project = service::row(&self.store, scope, name)
-            .await?
-            .and_then(|row| row.project);
+        let row = service::row(&self.store, scope, name).await?;
         Ok(Listing {
             program,
             served,
-            project,
+            reference: row.as_ref().and_then(service::Row::registry),
+            project: row.and_then(|row| row.project),
         })
     }
 
@@ -109,14 +108,18 @@ impl<E: Env> Host<E> {
             self.meters.days(i32::MIN),
         )
         .await?;
-        let mut projects = service::projects(&self.store, scope).await?;
+        let mut rows = service::scoped(&self.store, scope).await?;
         Ok(self
             .list(scope)
             .into_iter()
-            .map(|(name, program)| Listing {
-                program: program.idl(&name),
-                served: served.remove(&name).unwrap_or_default(),
-                project: projects.remove(&name),
+            .map(|(name, program)| {
+                let row = rows.remove(&name);
+                Listing {
+                    program: program.idl(&name),
+                    served: served.remove(&name).unwrap_or_default(),
+                    reference: row.as_ref().and_then(service::Row::registry),
+                    project: row.and_then(|row| row.project),
+                }
             })
             .collect())
     }

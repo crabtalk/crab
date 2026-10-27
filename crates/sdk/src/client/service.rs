@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use berm_api::{
-    Budget, Cron, Deployed, Logged, Meter, Output, Program, Runtime, Terms,
+    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Program, Runtime, Terms,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Body, Method, RequestBuilder};
@@ -20,6 +20,12 @@ impl Client {
     pub async fn list(&self) -> Result<Vec<Program>, Error> {
         self.json(self.at(Method::GET, &self.addressed().services()))
             .await
+    }
+
+    /// `name` as anyone it is visible to sees it: its IDL, what it served,
+    /// its project and the registry reference it runs.
+    pub async fn listing(&self, name: &str) -> Result<Listing, Error> {
+        self.json(self.at(Method::GET, &self.path_of(name))).await
     }
 
     pub async fn inspect(&self, name: &str) -> Result<Program, Error> {

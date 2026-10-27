@@ -26,9 +26,11 @@ pub struct DeployRequest {
     pub crons: Option<BTreeMap<String, String>>,
     /// Bytes the service's database may hold, from
     /// [`MIN_DATABASE_SIZE`](berm_api::host::MIN_DATABASE_SIZE) to
-    /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
-    #[serde(default = "host::database_size")]
-    pub size: u64,
+    /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE). Absent, a
+    /// service keeps what it holds, and one deployed for the first time holds
+    /// [`DATABASE_SIZE`](berm_api::host::DATABASE_SIZE).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
     /// The SHA-256, in hex, of a seed uploaded through
     /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
     /// database starts as, held to the image's migrations. Refused when the
@@ -136,6 +138,9 @@ pub struct Service {
     pub served: host::Served,
     /// The project it was last deployed in.
     pub project: Option<String>,
+    /// The registry reference it runs, which another account can deploy as
+    /// its own; none for an uploaded image.
+    pub reference: Option<String>,
 }
 
 /// Who a service answers.
@@ -231,6 +236,20 @@ pub struct ProjectDeploy {
     pub at: i64,
     /// Each service's deploy, by name.
     pub services: Vec<Deployment>,
+}
+
+/// The public service of another account a service was deployed from: one
+/// running an image of the same registry repository.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Origin {
+    /// Its owner, by handle, or by id when they have none.
+    pub owner: String,
+    pub name: String,
+    /// The registry reference it runs now.
+    pub reference: String,
+    /// The version it runs now.
+    pub version: String,
 }
 
 /// How a deploy ended.

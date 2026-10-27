@@ -123,6 +123,10 @@ pub struct Listing {
     /// The project it was last deployed in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// The registry reference it runs, which another account can deploy as
+    /// its own; none for an uploaded image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// What a service's owner set for calling it, as the host answering holds it.

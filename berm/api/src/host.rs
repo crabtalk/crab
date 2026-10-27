@@ -96,6 +96,10 @@ pub struct Checked {
     pub version: String,
     /// The services it calls by name, as its manifest declares them.
     pub calls: Vec<String>,
+    /// The migrations it would apply, a kit's as `{kit}/{name}`; none for a
+    /// service with no database yet.
+    #[serde(default)]
+    pub migrations: Vec<String>,
     /// How it breaks what callers of the running version used in the last
     /// [`USED_DAYS`] days, the callers `exempt` names left out.
     pub breaks: Vec<Broken>,

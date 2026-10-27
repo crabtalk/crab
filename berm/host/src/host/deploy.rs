@@ -227,6 +227,7 @@ impl<E: Env> Host<E> {
                 format!("{service} has a database, so a seed cannot start it"),
             ));
         }
+        let mut migrations = Vec::new();
         if manifest.keeps_database() && exists {
             let database = self
                 .databases
@@ -240,11 +241,12 @@ impl<E: Env> Host<E> {
             if let Err(e) = database.limit(before).await {
                 tracing::error!(service, error = %e, "the checked size stays");
             }
-            rehearsed.map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            migrations = rehearsed.map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         }
         Ok(Checked {
             version: manifest.version.clone(),
             calls: manifest.deps.programs.clone(),
+            migrations,
             breaks,
         })
     }
