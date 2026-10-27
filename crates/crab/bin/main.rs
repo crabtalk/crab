@@ -188,6 +188,9 @@ enum Command {
     Cron(CronCommand),
     /// The wakes armed to call a program's tools.
     Wakes { name: String },
+    /// A service's last 100 deploys on Cloud, newest first, refused and
+    /// failed ones included.
+    Deploys { name: String },
     /// Who a service answers on Cloud, or with an argument, set it.
     Visibility {
         name: String,
@@ -597,6 +600,7 @@ fn main() -> Result<ExitCode> {
             cmd::cron::set(&client()?, name, tool, None)?
         }
         Command::Wakes { name } => cmd::wakes::run(&client()?, name, json)?,
+        Command::Deploys { name } => cmd::deploys::run(&client()?, name, json)?,
         Command::Visibility { name, set } => cmd::visibility::run(
             &client()?,
             name,

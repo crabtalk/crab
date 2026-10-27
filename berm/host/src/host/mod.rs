@@ -43,6 +43,7 @@ use tokio::{
     task, time,
 };
 
+pub use deploy::Installed;
 pub(crate) use invoke::Invoked;
 
 mod deploy;

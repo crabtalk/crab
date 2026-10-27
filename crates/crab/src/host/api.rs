@@ -139,8 +139,9 @@ async fn deploy(
         )
         .await?;
     Ok(Json(Deployed {
-        program: deployed.idl(&name),
+        program: deployed.program.idl(&name),
         breaks: breaks.iter().map(ToString::to_string).collect(),
+        migrations: deployed.migrations,
     }))
 }
 

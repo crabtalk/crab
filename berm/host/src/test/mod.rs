@@ -242,7 +242,8 @@ impl TestHost {
                 },
                 seed,
             )
-            .await?)
+            .await?
+            .program)
     }
 
     /// Run `tool` of `service` with no caller, as a wake does, public or not,

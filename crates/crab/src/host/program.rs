@@ -2,10 +2,9 @@
 
 use crate::host::Service;
 use axum::http::StatusCode;
-use berm::Program;
 use berm_api::{Break, Output, host::Deploy};
-use berm_host::{Denied, deny};
-use std::{collections::BTreeMap, sync::Arc};
+use berm_host::{Denied, Installed, deny};
+use std::collections::BTreeMap;
 
 impl Service {
     /// Make the tools of `image` reachable under `name`, answering with how it
@@ -21,11 +20,11 @@ impl Service {
         crons: Option<BTreeMap<String, String>>,
         size: u64,
         stopped: bool,
-    ) -> Result<(Arc<Program>, Vec<Break>), Denied> {
+    ) -> Result<(Installed, Vec<Break>), Denied> {
         validate(name)?;
         let replaced = self.get(name);
         let digest = self.images.put(&image).await?;
-        let program = self
+        let installed = self
             .host
             .deploy(
                 name,
@@ -41,7 +40,7 @@ impl Service {
             )
             .await?;
         let breaks = replaced
-            .map(|replaced| replaced.manifest().breaks(program.manifest()))
+            .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
             .unwrap_or_default();
         for broken in &breaks {
             tracing::warn!(name, "breaks callers: {broken}");
@@ -51,7 +50,7 @@ impl Service {
             tracing::warn!(name, "nothing here answers to {unresolved}");
         }
         let _ = self.changed.send(());
-        Ok((program, breaks))
+        Ok((installed, breaks))
     }
 
     /// Stop running a program and drop what it committed. `false` if it wasn't

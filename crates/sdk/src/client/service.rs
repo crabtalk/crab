@@ -4,8 +4,8 @@
 use crate::{
     client::{Client, Error},
     sandbox::service::{
-        Billing, Costed, DeployRequest, MeteredDay, Secret, SetSecret, Upload, UploadRequest,
-        Visibility,
+        Billing, Costed, DeployRequest, Deployment, MeteredDay, Secret, SetSecret, Upload,
+        UploadRequest, Visibility,
     },
 };
 use berm_api::{
@@ -69,6 +69,13 @@ impl Client {
     pub async fn deploy(&self, name: &str, deploy: &DeployRequest) -> Result<Deployed, Error> {
         let request = self.at(Method::PUT, &self.program(name)).json(deploy);
         self.json(request).await
+    }
+
+    /// `name`'s last 100 deploys on Cloud, newest first, refused and failed
+    /// ones included.
+    pub async fn deploys(&self, name: &str) -> Result<Vec<Deployment>, Error> {
+        let path = format!("{}/deploys", self.service(name)?);
+        self.json(self.at(Method::GET, &path)).await
     }
 
     /// Where to upload `seed` for a deploy of `name` on Cloud to name.

@@ -7,6 +7,7 @@ pub mod context;
 pub mod cost;
 pub mod cron;
 pub mod deploy;
+pub mod deploys;
 pub mod dev;
 pub mod idl;
 pub mod inspect;

@@ -1,5 +1,6 @@
 //! Service wire types.
 
+use crate::utils::text_enum;
 use berm_api::{
     Meter, Program,
     host::{self, Call, ServedDay},
@@ -167,20 +168,63 @@ pub struct ToolCosted {
     pub cost_micros: i64,
 }
 
-/// One deploy of a service that went live.
+/// One deploy of a service, refused and failed ones included.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Deployed {
-    pub version: String,
-    /// `sha256:` and the hex SHA-256 of the image.
-    pub digest: String,
+pub struct Deployment {
+    pub id: i64,
+    pub outcome: DeployOutcome,
+    /// The version it went live on; none for one that did not.
+    pub version: Option<String>,
+    /// `sha256:` and the hex SHA-256 of the image; none when the deploy ended
+    /// before its reference was resolved.
+    pub digest: Option<String>,
     /// What it was deployed from: a registry reference, or `sha256:` and an
     /// upload's SHA-256.
     pub reference: String,
+    /// Why it was refused or failed, as the deploy answered.
+    pub reason: Option<String>,
+    /// The migrations it applied, a kit's as `{kit}/{name}`.
+    pub migrations: Vec<String>,
+    /// Its database started from a seed.
+    pub seeded: bool,
+    /// The node it was placed on; none when it ended before placement.
+    pub node: Option<String>,
+    /// Its image can be deployed again: one from a registry, or an upload
+    /// kept on the node the service is placed on now.
+    pub redeployable: bool,
     /// Who deployed it, by handle, or by id when they have none.
     pub by: String,
     /// When, in epoch seconds.
     pub at: i64,
+}
+
+/// How a deploy ended.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeployOutcome {
+    /// What the service runs now.
+    Live,
+    /// Went live, and a later deploy replaced it.
+    Replaced,
+    /// Refused: the service runs what it ran before.
+    Refused,
+    /// Did not finish: Cloud, the registry or the node did not answer.
+    Failed,
+}
+
+text_enum!(DeployOutcome { Live => "live", Replaced => "replaced", Refused => "refused", Failed => "failed" });
+
+/// Deploy a past deploy's image again.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RedeployRequest {
+    /// Deploy even when it breaks a tool or event a caller used in the last
+    /// 30 days, or undoes a cron its owners set since the last deploy that set
+    /// them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
 }
 
 /// A call of one of an account's services, with what its meter costs.

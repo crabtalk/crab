@@ -16,6 +16,13 @@ use berm_api::{
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
+/// A deploy that went live.
+pub struct Installed {
+    pub program: Arc<Program>,
+    /// The migrations it applied, a kit's as `{kit}/{name}`.
+    pub migrations: Vec<String>,
+}
+
 impl<E: Env> Host<E> {
     /// Run the index entry `deploy` names as `service`. Refused when it
     /// needs a syscall this host does not serve, or, unless `force`, when it
@@ -36,7 +43,7 @@ impl<E: Env> Host<E> {
         service: &str,
         deploy: Deploy,
         seed: Option<&Path>,
-    ) -> Result<Arc<Program>, Denied> {
+    ) -> Result<Installed, Denied> {
         let Deploy {
             reference,
             digest,
@@ -116,6 +123,7 @@ impl<E: Env> Host<E> {
         }
         let mut limited: Option<(Arc<Database>, u64)> = None;
         let installed = async {
+            let mut migrations = Vec::new();
             if manifest.keeps_database() {
                 let database = self
                     .databases
@@ -126,7 +134,7 @@ impl<E: Env> Host<E> {
                     .await
                     .map_err(|e| deny(StatusCode::UNPROCESSABLE_ENTITY, format!("{e:#}")))?;
                 limited = Some((database.clone(), before));
-                database
+                migrations = database
                     .migrate(manifest.migrations())
                     .await
                     .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
@@ -157,7 +165,10 @@ impl<E: Env> Host<E> {
             )
             .await?;
             self.stops.mark(&key, stopped);
-            Ok(program)
+            Ok(Installed {
+                program,
+                migrations,
+            })
         }
         .await;
         if installed.is_err()
@@ -172,7 +183,7 @@ impl<E: Env> Host<E> {
         {
             tracing::error!(service, error = %e, "the refused seed stays");
         }
-        if let Ok(program) = &installed {
+        if let Ok(Installed { program, .. }) = &installed {
             self.waking.notify_one();
             // Stored bytes are otherwise sampled once a day, so a service
             // deployed or seeded after the day's sample would read as before.

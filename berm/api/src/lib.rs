@@ -106,6 +106,9 @@ pub struct Deployed {
     /// [`Manifest::breaks`] words it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<String>,
+    /// The migrations it applied, a kit's as `{kit}/{name}`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub migrations: Vec<String>,
 }
 
 /// A deployed program as anyone it is visible to sees it: its IDL and what it
