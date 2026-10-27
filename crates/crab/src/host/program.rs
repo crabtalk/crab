@@ -98,11 +98,20 @@ impl Service {
 /// A name has to survive being half of an MCP tool name. The dot is the one
 /// that matters: dispatch splits `{program}.{tool}` on the first one, so a
 /// program carrying a dot would eat its own tool.
+/// The segment under `/services` that deploys several services together.
+pub(crate) const DEPLOYS: &str = "deploys";
+
 fn validate(name: &str) -> Result<(), Denied> {
     if name.is_empty() {
         return Err(deny(
             StatusCode::BAD_REQUEST,
-            "a program name cannot be empty",
+            "a service name cannot be empty",
+        ));
+    }
+    if name == DEPLOYS {
+        return Err(deny(
+            StatusCode::BAD_REQUEST,
+            format!("{DEPLOYS} is where several services are deployed, not a service name"),
         ));
     }
     if !name
@@ -111,7 +120,7 @@ fn validate(name: &str) -> Result<(), Denied> {
     {
         return Err(deny(
             StatusCode::BAD_REQUEST,
-            format!("program name {name:?} is not lowercase letters, digits, `-` or `_`"),
+            format!("service name {name:?} is not lowercase letters, digits, `-` or `_`"),
         ));
     }
     Ok(())

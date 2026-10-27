@@ -1,4 +1,4 @@
-//! A host's programs: `/services/{owner}/{name}` on Cloud, `/programs/{name}`
+//! A host's services: `/services/{owner}/{name}` on Cloud, `/services/{name}`
 //! on a local host.
 
 use crate::{
@@ -20,26 +20,26 @@ impl Client {
     pub async fn list(&self) -> Result<Vec<Program>, Error> {
         let path = match &self.owner {
             Some(owner) => owner.services(),
-            None => "/programs".to_owned(),
+            None => "/services".to_owned(),
         };
         self.json(self.at(Method::GET, &path)).await
     }
 
     pub async fn inspect(&self, name: &str) -> Result<Program, Error> {
-        let path = format!("{}/idl", self.program(name));
+        let path = format!("{}/idl", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// How `name` runs: what its IDL leaves out, for its owners.
     pub async fn runtime(&self, name: &str) -> Result<Runtime, Error> {
-        let path = format!("{}/runtime", self.program(name));
+        let path = format!("{}/runtime", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// Deploy as `name` what `deploy` names: on a local host, an image kept
     /// through [`Client::keep_image`].
     pub async fn deploy(&self, name: &str, deploy: &DeployRequest) -> Result<Deployed, Error> {
-        let request = self.at(Method::PUT, &self.program(name)).json(deploy);
+        let request = self.at(Method::PUT, &self.path_of(name)).json(deploy);
         self.json(request).await
     }
 
@@ -51,18 +51,19 @@ impl Client {
     ) -> Result<BTreeMap<String, Deployed>, Error> {
         let path = match &self.owner {
             Some(owner) => format!("{}/deploys", owner.services()),
-            None => "/deploys".to_owned(),
+            None => "/services/deploys".to_owned(),
         };
         self.json(self.at(Method::POST, &path).json(set)).await
     }
 
     /// Keep `image` on a local host for a deploy to name, answering its
     /// digest.
-    pub async fn keep_image(&self, image: Vec<u8>) -> Result<String, Error> {
+    pub async fn keep_image(&self, name: &str, image: Vec<u8>) -> Result<String, Error> {
         if self.owner.is_some() {
             return Err(Error::Host("Cloud takes an image through its upload"));
         }
-        self.ok(self.at(Method::POST, "/images").body(image)).await
+        let path = format!("{}/image", self.path_of(name));
+        self.ok(self.at(Method::POST, &path).body(image)).await
     }
 
     /// `name`'s last 100 deploys on Cloud, newest first, refused and failed
@@ -75,14 +76,14 @@ impl Client {
     /// Where to upload `seed` for a deploy of `name` on Cloud to name.
     pub async fn seed(&self, name: &str, seed: &UploadRequest) -> Result<Upload, Error> {
         self.account()?;
-        let path = format!("{}/seed", self.program(name));
+        let path = format!("{}/seed", self.path_of(name));
         self.json(self.at(Method::POST, &path).json(seed)).await
     }
 
     /// Where to upload `image` for a deploy of `name` on Cloud to name.
     pub async fn image(&self, name: &str, image: &UploadRequest) -> Result<Upload, Error> {
         self.account()?;
-        let path = format!("{}/image", self.program(name));
+        let path = format!("{}/image", self.path_of(name));
         self.json(self.at(Method::POST, &path).json(image)).await
     }
 
@@ -111,46 +112,46 @@ impl Client {
                 "the local host has no accounts: call its services by name alone",
             ));
         }
-        let path = format!("{}/tools/{tool}", self.program(program));
+        let path = format!("{}/tools/{tool}", self.path_of(program));
         let request = self.as_caller(self.at(Method::POST, &path).body(arguments), caller)?;
         self.answered(request).await
     }
 
     /// What a call of each of `name`'s public tools is held to.
     pub async fn terms(&self, name: &str) -> Result<Terms, Error> {
-        let path = format!("{}/terms", self.program(name));
+        let path = format!("{}/terms", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// Set what one call of `tool` of `name` may use.
     pub async fn budget(&self, name: &str, tool: &str, budget: Budget) -> Result<(), Error> {
-        let path = format!("{}/tools/{tool}/budget", self.program(name));
+        let path = format!("{}/tools/{tool}/budget", self.path_of(name));
         self.ok(self.at(Method::PUT, &path).json(&budget)).await?;
         Ok(())
     }
 
     /// `name`'s meters over the last 30 days, a day each.
     pub async fn meters(&self, name: &str) -> Result<Vec<MeteredDay>, Error> {
-        let path = format!("{}/meters", self.program(name));
+        let path = format!("{}/meters", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// `name`'s cron tools, for its owners.
     pub async fn crons(&self, name: &str) -> Result<Crons, Error> {
-        let path = format!("{}/crons", self.program(name));
+        let path = format!("{}/crons", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// The wakes armed to call `name`'s tools that have not run, for its owners.
     pub async fn wakes(&self, name: &str) -> Result<Wakes, Error> {
-        let path = format!("{}/wakes", self.program(name));
+        let path = format!("{}/wakes", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// Set `name`'s cron tool `tool` to `cron`, from its next firing; `None`
     /// stops it.
     pub async fn set_cron(&self, name: &str, tool: &str, cron: Option<&str>) -> Result<(), Error> {
-        let path = format!("{}/tools/{tool}/cron", self.program(name));
+        let path = format!("{}/tools/{tool}/cron", self.path_of(name));
         let body = Cron {
             cron: cron.map(str::to_owned),
         };
@@ -161,7 +162,7 @@ impl Client {
     /// When `name`'s deprecated tool `tool` stops being served, in epoch
     /// seconds; `None` clears it.
     pub async fn sunset(&self, name: &str, tool: &str, sunset: Option<i64>) -> Result<(), Error> {
-        let path = format!("{}/tools/{tool}", self.program(name));
+        let path = format!("{}/tools/{tool}", self.path_of(name));
         let body = ToolUpdate { sunset };
         self.ok(self.at(Method::PATCH, &path).json(&body)).await?;
         Ok(())
@@ -203,20 +204,20 @@ impl Client {
 
     /// What `name`'s call `id` ran with. Only a call that failed keeps it.
     pub async fn call_input(&self, name: &str, id: u64) -> Result<CallInput, Error> {
-        let path = format!("{}/calls/{id}/input", self.program(name));
+        let path = format!("{}/calls/{id}/input", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 
     /// `name`'s call `id`'s tape, as berm encodes one. Only a call that failed
     /// keeps it.
     pub async fn call_tape(&self, name: &str, id: u64) -> Result<Vec<u8>, Error> {
-        let path = format!("{}/calls/{id}/tape", self.program(name));
+        let path = format!("{}/calls/{id}/tape", self.path_of(name));
         self.bytes(self.at(Method::GET, &path)).await
     }
 
     /// The image `name`'s call `id` ran. Only a call that failed names one.
     pub async fn call_image(&self, name: &str, id: u64) -> Result<Vec<u8>, Error> {
-        let path = format!("{}/calls/{id}/image", self.program(name));
+        let path = format!("{}/calls/{id}/image", self.path_of(name));
         self.bytes(self.at(Method::GET, &path)).await
     }
 
@@ -262,27 +263,27 @@ impl Client {
 
     /// Serve `name` again, stopped or deployed stopped.
     pub async fn start(&self, name: &str) -> Result<(), Error> {
-        let path = format!("{}/start", self.program(name));
+        let path = format!("{}/start", self.path_of(name));
         self.ok(self.at(Method::POST, &path)).await?;
         Ok(())
     }
 
     /// Stop serving `name`, keeping what it committed.
     pub async fn stop(&self, name: &str) -> Result<(), Error> {
-        let path = format!("{}/stop", self.program(name));
+        let path = format!("{}/stop", self.path_of(name));
         self.ok(self.at(Method::POST, &path)).await?;
         Ok(())
     }
 
     pub async fn undeploy(&self, name: &str) -> Result<(), Error> {
-        self.ok(self.at(Method::DELETE, &self.program(name)))
+        self.ok(self.at(Method::DELETE, &self.path_of(name)))
             .await?;
         Ok(())
     }
 
     /// `name`'s logs after `after`, oldest first, at most `limit`.
     pub async fn logs(&self, name: &str, after: u64, limit: u64) -> Result<Vec<Logged>, Error> {
-        let path = format!("{}/logs", self.program(name));
+        let path = format!("{}/logs", self.path_of(name));
         let request = self
             .at(Method::GET, &path)
             .query(&[("after", after), ("limit", limit)]);
@@ -290,7 +291,7 @@ impl Client {
     }
 
     fn secrets_path(&self, name: &str) -> String {
-        format!("{}/secrets", self.program(name))
+        format!("{}/secrets", self.path_of(name))
     }
 
     /// `name`'s path on Cloud, which alone serves it.
@@ -300,11 +301,11 @@ impl Client {
 
     /// The path of `name`. On Cloud, `owner/name` names another account's
     /// service, and a bare name the context's own.
-    fn program(&self, name: &str) -> String {
+    fn path_of(&self, name: &str) -> String {
         match &self.owner {
             Some(_) if name.contains('/') => format!("/services/{name}"),
             Some(owner) => format!("/services/{}/{name}", owner.name()),
-            None => format!("/programs/{name}"),
+            None => format!("/services/{name}"),
         }
     }
 

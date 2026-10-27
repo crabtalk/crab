@@ -125,7 +125,7 @@ fn kept(client: &Client, project: &Project, bytes: Vec<u8>) -> Result<String> {
             project.name()?
         );
     }
-    Ok(utils::wait(client.keep_image(bytes))?)
+    Ok(utils::wait(client.keep_image(project.name()?, bytes))?)
 }
 
 /// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image

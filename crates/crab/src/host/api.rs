@@ -4,7 +4,7 @@
 //! a UI, a CLI and `curl`, and a program is a resource. The MCP endpoint that
 //! agents reach sits on the same server at `/mcp`.
 
-use crate::host::{Service, mcp::Mcp};
+use crate::host::{Service, mcp::Mcp, program::DEPLOYS};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -24,7 +24,7 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, sync::Arc};
 
 impl Service {
-    /// The control API, at `/programs`, and MCP, at `/mcp`.
+    /// The control API, at `/services`, and MCP, at `/mcp`.
     pub fn router(self: Arc<Self>) -> Router {
         let service = self;
         // `route_service` rather than `nest_service`: MCP Streamable HTTP is one
@@ -42,6 +42,7 @@ impl Service {
             .merge(
                 Router::new()
                     .route("/", put(deploy).delete(undeploy))
+                    .route("/image", post(keep))
                     .route("/start", post(start))
                     .route("/stop", post(stop))
                     .route("/secrets", get(secrets))
@@ -51,11 +52,10 @@ impl Service {
             .route_layer(middleware::from_fn(named));
 
         Router::new()
-            .route("/programs", get(list))
-            .route("/images", post(keep))
-            .route("/deploys", post(deploy_set))
+            .route("/services", get(list))
+            .route(&format!("/services/{DEPLOYS}"), post(deploy_set))
             .with_state(service)
-            .nest("/programs/{name}", program)
+            .nest("/services/{name}", program)
             .route_service("/mcp", mcp)
     }
 }
@@ -96,7 +96,7 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// Deploy under `name` the image kept through `POST /images` that the body
+/// Deploy under `name` the image kept through `POST /services/{name}/image` that the body
 /// names by its digest. `PUT` because the name is the address and redeploying
 /// the same name replaces what is there.
 async fn deploy(
@@ -113,7 +113,7 @@ async fn deploy(
 }
 
 /// `deploy` of `name` as the host runs it, refused when it names a seed or an
-/// image not kept through `POST /images`.
+/// image not kept through `POST /services/{name}/image`.
 fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
     if deploy.seed.is_some() {
         return Err(deny(
@@ -125,7 +125,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
         return Err(deny(
             StatusCode::BAD_REQUEST,
             format!(
-                "{name}: the local host deploys an image kept through POST /images, by its digest"
+                "{name}: the local host deploys an image kept through POST /services/{name}/image, by its digest"
             ),
         ));
     }
@@ -147,7 +147,7 @@ async fn keep(State(service): State<Arc<Service>>, image: Bytes) -> Result<Strin
 }
 
 /// Deploy a set of programs together, each named by the digest of an image
-/// kept through `POST /images`.
+/// kept through `POST /services/{name}/image`.
 async fn deploy_set(
     State(service): State<Arc<Service>>,
     Json(set): Json<DeploySetRequest>,
