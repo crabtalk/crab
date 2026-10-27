@@ -2,7 +2,10 @@
 //! short code: pay for a purchase, set secrets of a service, or sign a device
 //! in as them.
 
-use crate::{account::org::PublicAccount, utils::text_enum};
+use crate::{
+    account::{billing::TrialOffer, org::PublicAccount},
+    utils::text_enum,
+};
 use berm_api::Credential;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -117,8 +120,8 @@ pub struct Request {
     /// The plan's monthly price in microdollars; none for credit, whose
     /// amount is chosen at checkout.
     pub price_micros: Option<i64>,
-    /// Days a `trial` purchase is free for, before the plan's price.
-    pub trial_days: Option<u32>,
+    /// The trial a `trial` purchase starts.
+    pub trial: Option<TrialOffer>,
     /// Paying ends the account's trial into the plan at once, charging the
     /// card the trial was started with; no Checkout follows.
     pub card_on_file: bool,

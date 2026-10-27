@@ -6,7 +6,7 @@ use crate::{
         auth::Client as Surface,
         billing::{
             CheckoutResponse, Credit, Invoice, PaymentMethod, Period, PortalFlow, PortalResponse,
-            RefillRequest, SubscribeResponse,
+            RefillRequest, SubscribeResponse, TrialOffer,
         },
     },
     client::{Client, Error},
@@ -57,6 +57,11 @@ impl Client {
             .at(Method::POST, &path)
             .query(&[("client", surface.as_ref()), ("plan", plan)]);
         self.json(req).await
+    }
+
+    /// The caller's free trial as it would start now. A person's only.
+    pub async fn trial_offer(&self) -> Result<TrialOffer, Error> {
+        self.json(self.at(Method::GET, "/user/billing/trial")).await
     }
 
     /// A Checkout URL starting the caller's free trial. A person's only.

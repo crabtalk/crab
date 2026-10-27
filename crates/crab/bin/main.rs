@@ -320,7 +320,7 @@ enum BillingCommand {
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Ask the person to start the free trial: a code whose page takes a card.
+    /// Ask the person to start the free trial: a code whose page starts it.
     Trial {
         /// What it is for, shown to the person who starts it.
         #[arg(long, default_value = "")]

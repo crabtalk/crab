@@ -183,6 +183,18 @@ pub struct CheckoutResponse {
     pub url: String,
 }
 
+/// The free trial as the account would start it now.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrialOffer {
+    /// Days before the first charge.
+    pub days: u32,
+    /// Starting it takes a card.
+    pub card: bool,
+    /// Why it takes one; `None` when it does not.
+    pub reason: Option<String>,
+}
+
 /// A plan subscribed: the Checkout URL to pay at, or `None` when the plan
 /// took effect at once, a trial ended and billed to the card on file.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
