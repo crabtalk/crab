@@ -3,4 +3,5 @@
 pub(crate) mod calls;
 pub(crate) mod logs;
 pub(crate) mod meter;
+pub(crate) mod records;
 pub(crate) mod usage;

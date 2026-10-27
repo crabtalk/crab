@@ -1,6 +1,6 @@
 //! What a host's daemons and peers send it, and what it answers with.
 
-use crate::{Meter, Output};
+use crate::{Logged, Meter, Output};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
 
@@ -697,6 +697,51 @@ pub struct ServiceCall {
     pub service: String,
     #[serde(flatten)]
     pub call: Call,
+}
+
+/// What a host is asked for of its written calls and logs: those past the
+/// cursors its fleet stored, which the host deletes before it answers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RecordsPage {
+    /// The last call id stored; `0` before any.
+    #[serde(default)]
+    pub calls: u64,
+    /// The last [`RecordedLog::id`] stored; `0` before any.
+    #[serde(default)]
+    pub logs: u64,
+    /// At most this many of each.
+    pub limit: u32,
+}
+
+/// A host's written calls and logs past a [`RecordsPage`]'s cursors, each
+/// oldest first.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Records {
+    pub calls: Vec<RecordedCall>,
+    pub logs: Vec<RecordedLog>,
+}
+
+/// One written call, with the calls it made.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordedCall {
+    pub scope: String,
+    /// The service's name in its scope.
+    pub service: String,
+    #[serde(flatten)]
+    pub call: Call,
+    pub nested: Vec<NestedCall>,
+}
+
+/// One written log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordedLog {
+    /// Its position among every log the host wrote; never reused.
+    pub id: u64,
+    pub scope: String,
+    /// The service's name in its scope.
+    pub service: String,
+    #[serde(flatten)]
+    pub log: Logged,
 }
 
 /// What a call that failed ran with, kept so it can be run again.

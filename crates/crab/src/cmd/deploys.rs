@@ -29,9 +29,6 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         if !deploy.migrations.is_empty() {
             println!("  migrated {}", deploy.migrations.join(", "));
         }
-        if !deploy.with.is_empty() {
-            println!("  with {}", deploy.with.join(", "));
-        }
         if deploy.seeded {
             println!("  seeded");
         }

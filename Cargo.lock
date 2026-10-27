@@ -377,6 +377,7 @@ dependencies = [
  "berm",
  "berm-api",
  "berm-build",
+ "berm-host",
  "berm-rusqlite",
  "chrono",
  "croner",

@@ -31,4 +31,5 @@ tracing.workspace = true
 test = ["dep:berm-build"]
 
 [dev-dependencies]
+berm-host = { workspace = true, features = ["test"] }
 toml.workspace = true

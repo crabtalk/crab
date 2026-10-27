@@ -254,7 +254,7 @@ impl<E: Env> Host<E> {
     }
 
     /// Load every service as `services` names it.
-    async fn reconcile(&self) {
+    pub(crate) async fn reconcile(&self) {
         let rows = match service::all(&self.store).await {
             Ok(rows) => rows,
             Err(e) => {
@@ -307,8 +307,10 @@ impl<E: Env> Host<E> {
                 }
             }
             usage::write(&self.store, local).await?;
-            calls::write(&self.store, self.calls.take(), (self.now)()).await?;
+            // Every log of a run taken is taken after it, and written before.
+            let ran = self.calls.take();
             logs::write(&self.store, self.logs.take_all(), (self.now)()).await?;
+            calls::write(&self.store, ran, (self.now)()).await?;
             meter::write(&self.store, self.meters.take()).await?;
         }
         for (peer, used) in remote {

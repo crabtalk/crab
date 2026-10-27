@@ -217,25 +217,10 @@ pub struct Deployment {
     pub redeployable: bool,
     /// The project it was deployed in.
     pub project: Option<String>,
-    /// The account's other services deployed with it in one project deploy,
-    /// by name.
-    pub with: Vec<String>,
     /// Who deployed it, by handle, or by id when they have none.
     pub by: String,
     /// When, in epoch seconds.
     pub at: i64,
-}
-
-/// One deploy of a project: its services deployed together, or one alone.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProjectDeploy {
-    /// Who deployed it, by handle, or by id when they have none.
-    pub by: String,
-    /// When, in epoch seconds.
-    pub at: i64,
-    /// Each service's deploy, by name.
-    pub services: Vec<Deployment>,
 }
 
 /// The public service of another account a service was deployed from: one

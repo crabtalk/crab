@@ -5,7 +5,7 @@ use crate::{
     Denied, Stored, deny,
     env::{Env, Images, Secrets},
     host::{self, Host},
-    record::{calls, logs, meter, usage},
+    record::{calls, logs, meter, records, usage},
     state::service,
     wake::{cron, table},
 };
@@ -307,6 +307,17 @@ impl<E: Env> Host<E> {
             wakes: table::armed(&self.store, scope, name, self.unsaved(service)).await?,
             held: self.holds.holds(scope),
         })
+    }
+
+    /// The written calls and logs past `page`'s cursors, oldest first, those
+    /// up to them deleted first.
+    ///
+    /// A call is answered only once every run with a smaller id is written,
+    /// and a log is deleted only with the call it was emitted in. A failed
+    /// call's input and tape stay.
+    pub async fn records(&self, page: wire::RecordsPage) -> anyhow::Result<wire::Records> {
+        let _reading = self.flushing.read().await;
+        records::page(&self.store, page, self.calls.floor()).await
     }
 
     /// `service`'s runs on `page`, newest first, and its `Link` header. At

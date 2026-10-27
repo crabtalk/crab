@@ -209,7 +209,7 @@ pub(crate) async fn stored(
                           WHERE scope = ?1 AND name = ?2)
                       + COALESCE((SELECT log_bytes FROM services
                                    WHERE scope = ?1 AND name = ?2), 0)
-                      + (SELECT COALESCE(SUM(LENGTH(tape)), 0) FROM service_calls
+                      + (SELECT COALESCE(SUM(LENGTH(tape)), 0) FROM service_replays
                           WHERE scope = ?1 AND name = ?2)",
                 params![scope, name],
                 |row| row.get(0),

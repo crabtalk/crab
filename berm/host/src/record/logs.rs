@@ -1,6 +1,7 @@
 //! What services emit: each log taken as it is emitted, whatever its call
 //! ends as, held in memory and written in batches to `service_logs` beside
-//! the call it was emitted in, kept [`usage::WINDOW`] days.
+//! the call it was emitted in, kept [`usage::WINDOW`] days or until its fleet
+//! stores it and the call it was emitted in.
 
 use crate::{
     env::Env,
@@ -12,7 +13,7 @@ use anyhow::Result;
 use berm::{Callsite, Log, Logged, Now, Syscall, syscall::emit};
 use berm_api::host as wire;
 use parking_lot::Mutex;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, Params, Row, Transaction, params};
 use std::{collections::HashMap, mem, sync::Weak};
 
 /// `berm.emit`: each log taken into `host`'s pending logs as it is emitted.
@@ -170,28 +171,38 @@ pub(crate) async fn write(store: &Store, logs: Vec<Emitted>, now: u64) -> Result
     store
         .run(move |conn| {
             let tx = conn.transaction()?;
-            let mut dropped: HashMap<(String, String), i64> = HashMap::new();
-            {
-                let mut statement = tx.prepare_cached(
-                    "DELETE FROM service_logs WHERE at < ?1
-                     RETURNING scope, name,
-                               LENGTH(CAST(topics AS BLOB)) + LENGTH(CAST(data AS BLOB))",
-                )?;
-                let mut rows = statement.query(params![since as i64])?;
-                while let Some(row) = rows.next()? {
-                    *dropped.entry((row.get(0)?, row.get(1)?)).or_default() +=
-                        row.get::<_, i64>(2)?;
-                }
-            }
-            for ((scope, name), bytes) in dropped {
-                tx.prepare_cached(
-                    "UPDATE services SET log_bytes = log_bytes - ?3 WHERE scope = ?1 AND name = ?2",
-                )?
-                .execute(params![scope, name, bytes])?;
-            }
+            delete(&tx, "at < ?1", params![since as i64])?;
             tx.commit()
         })
         .await
+}
+
+/// Delete the logs `matching`, a condition on `service_logs` with `params`
+/// bound to its placeholders, and their bytes from each service's
+/// `log_bytes`.
+pub(crate) fn delete(
+    tx: &Transaction,
+    matching: &str,
+    params: impl Params,
+) -> rusqlite::Result<()> {
+    let mut dropped: HashMap<(String, String), i64> = HashMap::new();
+    {
+        let mut statement = tx.prepare_cached(&format!(
+            "DELETE FROM service_logs WHERE {matching}
+             RETURNING scope, name, LENGTH(CAST(topics AS BLOB)) + LENGTH(CAST(data AS BLOB))"
+        ))?;
+        let mut rows = statement.query(params)?;
+        while let Some(row) = rows.next()? {
+            *dropped.entry((row.get(0)?, row.get(1)?)).or_default() += row.get::<_, i64>(2)?;
+        }
+    }
+    for ((scope, name), bytes) in dropped {
+        tx.prepare_cached(
+            "UPDATE services SET log_bytes = log_bytes - ?3 WHERE scope = ?1 AND name = ?2",
+        )?
+        .execute(params![scope, name, bytes])?;
+    }
+    Ok(())
 }
 
 /// `scope/name`'s logs on `page`, oldest first, as written and then in
@@ -230,20 +241,11 @@ pub(crate) async fn read(
                 .collect();
             let mut logs = conn
                 .prepare_cached(&format!(
-                    "SELECT seq, call, at, topics, data {MATCHING} ORDER BY seq LIMIT ?6"
+                    "SELECT {COLUMNS} {MATCHING} ORDER BY seq LIMIT ?6"
                 ))?
                 .query_map(
                     params![scope, name, page.after, page.topic, page.call, page.limit],
-                    |row| {
-                        let topics: String = row.get(3)?;
-                        Ok(Logged {
-                            seq: row.get::<_, i64>(0)? as u64,
-                            call: row.get::<_, Option<i64>>(1)?.map(|call| call as u64),
-                            at: row.get::<_, i64>(2)? as u64,
-                            topics: serde_json::from_str(&topics).unwrap_or_default(),
-                            data: row.get(4)?,
-                        })
-                    },
+                    logged,
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             let room = (page.limit as usize).saturating_sub(logs.len());
@@ -251,4 +253,19 @@ pub(crate) async fn read(
             Ok(logs)
         })
         .await
+}
+
+/// The columns [`logged`] reads, in order, of `service_logs`.
+pub(crate) const COLUMNS: &str = "seq, call, at, topics, data";
+
+/// A row of [`COLUMNS`] as a log.
+pub(crate) fn logged(row: &Row) -> rusqlite::Result<Logged> {
+    let topics: String = row.get(3)?;
+    Ok(Logged {
+        seq: row.get::<_, i64>(0)? as u64,
+        call: row.get::<_, Option<i64>>(1)?.map(|call| call as u64),
+        at: row.get::<_, i64>(2)? as u64,
+        topics: serde_json::from_str(&topics).unwrap_or_default(),
+        data: row.get(4)?,
+    })
 }
