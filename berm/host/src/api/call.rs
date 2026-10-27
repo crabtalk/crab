@@ -50,7 +50,14 @@ impl<E: Env> Host<E> {
         .await?
         .remove(name)
         .unwrap_or_default();
-        Ok(Listing { program, served })
+        let project = service::row(&self.store, scope, name)
+            .await?
+            .and_then(|row| row.project);
+        Ok(Listing {
+            program,
+            served,
+            project,
+        })
     }
 
     /// `service`'s runtime, for its owners, with what it declares that nothing
@@ -102,12 +109,14 @@ impl<E: Env> Host<E> {
             self.meters.days(i32::MIN),
         )
         .await?;
+        let mut projects = service::projects(&self.store, scope).await?;
         Ok(self
             .list(scope)
             .into_iter()
             .map(|(name, program)| Listing {
                 program: program.idl(&name),
                 served: served.remove(&name).unwrap_or_default(),
+                project: projects.remove(&name),
             })
             .collect())
     }

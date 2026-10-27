@@ -464,13 +464,17 @@ impl Page {
     }
 }
 
-/// `?service=&tool=&event=&q=&outcome=&since=&until=&before=&limit=` on a
-/// service's calls, or a scope's.
+/// `?service=&project=&tool=&event=&q=&outcome=&since=&until=&before=&limit=`
+/// on a service's calls, or a scope's.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
     /// Only calls of this service, on a scope's calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
+    /// Only calls of the services deployed in this project, on a scope's
+    /// calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
     /// Only calls of this tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,

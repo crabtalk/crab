@@ -120,6 +120,9 @@ pub struct Deployed {
 pub struct Listing {
     pub program: Program,
     pub served: host::Served,
+    /// The project it was last deployed in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// What a service's owner set for calling it, as the host answering holds it.

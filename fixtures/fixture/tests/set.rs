@@ -2,7 +2,7 @@
 //! switches, all switched or none.
 
 use anyhow::Result;
-use berm_api::host::DATABASE_SIZE;
+use berm_api::host::{CallPage, Caller, DATABASE_SIZE};
 use berm_host::test::{self, TestHost};
 
 #[tokio::test]
@@ -100,5 +100,72 @@ async fn a_service_of_another_project_is_refused() -> Result<()> {
         host.host().runtime("acct/hn").await?.project.as_deref(),
         Some("foo")
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_project_names_its_services_and_their_calls() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let image = test::build("berm-fixture")?;
+    host.deploy_set(
+        "p",
+        &[
+            ("acct/one", &image, DATABASE_SIZE),
+            ("acct/two", &image, DATABASE_SIZE),
+        ],
+    )
+    .await?;
+    host.deploy_set("q", &[("acct/three", &image, DATABASE_SIZE)])
+        .await?;
+    let caller = Caller {
+        id: "acct".to_owned(),
+        app: None,
+        user: None,
+        client: None,
+        agent: None,
+    };
+    for service in ["acct/one", "acct/two", "acct/three"] {
+        host.host()
+            .call(
+                service,
+                Some(&caller),
+                "echo",
+                br#"{"query":"hi"}"#.to_vec(),
+                false,
+            )
+            .await?;
+    }
+
+    let listed = host.host().listings("acct").await?;
+    let of = |name: &str| {
+        listed
+            .iter()
+            .find(|listing| listing.program.name == name)
+            .and_then(|listing| listing.project.clone())
+    };
+    assert_eq!(of("one").as_deref(), Some("p"));
+    assert_eq!(of("three").as_deref(), Some("q"));
+
+    let page = CallPage {
+        service: None,
+        project: Some("p".to_owned()),
+        tool: None,
+        event: None,
+        q: None,
+        outcome: None,
+        since: None,
+        until: None,
+        before: None,
+        limit: 10,
+    };
+    for written in [false, true] {
+        if written {
+            host.flush().await?;
+        }
+        let (calls, _) = host.host().scope_calls("acct", page.clone()).await?;
+        let mut services: Vec<&str> = calls.iter().map(|call| call.service.as_str()).collect();
+        services.sort();
+        assert_eq!(services, ["one", "two"], "written: {written}");
+    }
     Ok(())
 }

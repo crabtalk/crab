@@ -388,10 +388,13 @@ pub(crate) async fn input(
 }
 
 /// The calls a page names, of `service_calls c`, as `:scope`, `:name`,
-/// `:tool`, `:outcome`, `:since`, `:until`, `:before`, `:event` and `:q` bind
-/// them; each `NULL` names every call.
+/// `:project`, `:tool`, `:outcome`, `:since`, `:until`, `:before`, `:event`
+/// and `:q` bind them; each `NULL` names every call.
 const MATCHING: &str = "FROM service_calls c
                   WHERE c.scope = :scope AND (:name IS NULL OR c.name = :name)
+                    AND (:project IS NULL OR c.name IN (
+                        SELECT s.name FROM services s
+                         WHERE s.scope = c.scope AND s.project = :project))
                     AND (:tool IS NULL OR c.tool = :tool)
                     AND (:outcome IS NULL OR c.outcome = :outcome)
                     AND (:since IS NULL OR c.at >= :since)
@@ -431,20 +434,24 @@ pub(crate) async fn read(
                 ))?
                 .query_map(
                     named_params! {
-                        ":scope": scope, ":name": name, ":tool": page.tool,
-                        ":event": page.event, ":q": q, ":outcome": page.outcome,
-                        ":since": since, ":until": until, ":before": before,
-                        ":limit": page.limit,
+                        ":scope": scope, ":name": name, ":project": page.project,
+                        ":tool": page.tool, ":event": page.event, ":q": q,
+                        ":outcome": page.outcome, ":since": since, ":until": until,
+                        ":before": before, ":limit": page.limit,
                     },
                     |row| row.get::<_, i64>(0),
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
+            let projected = projected(conn, &scope, page.project.as_deref())?;
             let Unsaved { ran, emitted } = unsaved;
             let ran = ran
                 .into_iter()
                 .filter(|ran| {
-                    name.as_ref()
-                        .is_none_or(|name| host::split(&ran.service).1 == name)
+                    let ran_name = host::split(&ran.service).1;
+                    name.as_ref().is_none_or(|name| ran_name == name)
+                        && projected
+                            .as_ref()
+                            .is_none_or(|names| names.iter().any(|one| one == ran_name))
                         && ran.on(&page)
                 })
                 .collect();
@@ -522,8 +529,8 @@ pub(crate) async fn stats(
                 ))?
                 .query_map(
                     named_params! {
-                        ":scope": scope, ":name": name, ":tool": tool,
-                        ":event": page.event, ":q": q, ":outcome": outcome,
+                        ":scope": scope, ":name": name, ":project": page.project,
+                        ":tool": tool, ":event": page.event, ":q": q, ":outcome": outcome,
                         ":since": page.since.map(|since| since as i64),
                         ":until": page.until.map(|until| until as i64),
                         ":before": None::<i64>,
@@ -568,11 +575,16 @@ pub(crate) async fn stats(
                     *stats.services.entry(service).or_default() += calls as u64;
                 }
             }
+            let projected = projected(conn, &scope, page.project.as_deref())?;
             let Unsaved { ran, emitted } = unsaved;
             let ran = ran
                 .into_iter()
                 .filter(|ran| {
-                    page.since.is_none_or(|since| ran.at >= since)
+                    let ran_name = host::split(&ran.service).1;
+                    projected
+                        .as_ref()
+                        .is_none_or(|names| names.iter().any(|one| one == ran_name))
+                        && page.since.is_none_or(|since| ran.at >= since)
                         && page.until.is_none_or(|until| ran.at < until)
                 })
                 .collect();
@@ -617,6 +629,21 @@ pub(crate) async fn stats(
             Ok(stats)
         })
         .await
+}
+
+/// The names of `scope`'s services deployed in `project`, `None` without one.
+fn projected(
+    conn: &Connection,
+    scope: &str,
+    project: Option<&str>,
+) -> rusqlite::Result<Option<Vec<String>>> {
+    let Some(project) = project else {
+        return Ok(None);
+    };
+    conn.prepare_cached("SELECT name FROM services WHERE scope = ?1 AND project = ?2")?
+        .query_map(params![scope, project], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()
+        .map(Some)
 }
 
 /// A value SQLite answered, as text.

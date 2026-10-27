@@ -134,6 +134,8 @@ pub struct Service {
     pub program: Program,
     pub private: bool,
     pub served: host::Served,
+    /// The project it was last deployed in.
+    pub project: Option<String>,
 }
 
 /// Who a service answers.
@@ -186,6 +188,8 @@ pub struct ToolCosted {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deployment {
     pub id: i64,
+    /// The service it deployed, by its name in the account.
+    pub name: String,
     pub outcome: DeployOutcome,
     /// The version it went live on; none for one that did not.
     pub version: Option<String>,
@@ -215,6 +219,18 @@ pub struct Deployment {
     pub by: String,
     /// When, in epoch seconds.
     pub at: i64,
+}
+
+/// One deploy of a project: its services deployed together, or one alone.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectDeploy {
+    /// Who deployed it, by handle, or by id when they have none.
+    pub by: String,
+    /// When, in epoch seconds.
+    pub at: i64,
+    /// Each service's deploy, by name.
+    pub services: Vec<Deployment>,
 }
 
 /// How a deploy ended.

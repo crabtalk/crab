@@ -3,7 +3,7 @@
 use crate::{state::store::Store, wake::cron};
 use anyhow::Result;
 use rusqlite::{OptionalExtension, Transaction, params};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// One service, as a row.
 pub(crate) struct Row {
@@ -59,6 +59,21 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
                 },
             )
             .optional()
+        })
+        .await
+}
+
+/// The project each of `scope`'s services was last deployed in, by name; a
+/// service in none is left out.
+pub(crate) async fn projects(store: &Store, scope: &str) -> Result<HashMap<String, String>> {
+    let scope = scope.to_owned();
+    store
+        .read(move |conn| {
+            conn.prepare(
+                "SELECT name, project FROM services WHERE scope = ?1 AND project IS NOT NULL",
+            )?
+            .query_map(params![scope], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect()
         })
         .await
 }
