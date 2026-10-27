@@ -4,8 +4,8 @@
 use crate::{
     client::{Client, Error},
     sandbox::service::{
-        Billing, Costed, DeployRequest, Deployment, MeteredDay, Secret, SetSecret, Upload,
-        UploadRequest, Visibility,
+        Billing, Costed, DeployRequest, DeploySetRequest, Deployment, MeteredDay, Secret,
+        SetSecret, Upload, UploadRequest, Visibility,
     },
 };
 use berm_api::{
@@ -36,39 +36,33 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Deploy `image` as `name` on a local host, setting each cron tool's
-    /// expression when `crons` is given, holding its database to `size` bytes,
-    /// and installing it stopped when `stopped`.
-    pub async fn deploy_image(
-        &self,
-        name: &str,
-        image: Vec<u8>,
-        force: bool,
-        crons: Option<&BTreeMap<String, String>>,
-        size: u64,
-        stopped: bool,
-    ) -> Result<Deployed, Error> {
-        if self.owner.is_some() {
-            return Err(Error::Host("Cloud deploys from a registry, not from bytes"));
-        }
-        let mut request = self
-            .at(Method::PUT, &self.program(name))
-            .query(&[("force", force)])
-            .query(&[("size", size)])
-            .query(&[("stopped", stopped)]);
-        if let Some(crons) = crons {
-            let crons =
-                serde_json::to_string(crons).map_err(|_| Error::Host("crons do not serialize"))?;
-            request = request.query(&[("crons", crons)]);
-        }
-        let request = request.body(image);
-        self.json(request).await
-    }
-
-    /// Deploy as `name` on Cloud what `deploy` names.
+    /// Deploy as `name` what `deploy` names: on a local host, an image kept
+    /// through [`Client::keep_image`].
     pub async fn deploy(&self, name: &str, deploy: &DeployRequest) -> Result<Deployed, Error> {
         let request = self.at(Method::PUT, &self.program(name)).json(deploy);
         self.json(request).await
+    }
+
+    /// Deploy the services `set` names together: every one is checked before
+    /// any switches, and one refused refuses the set.
+    pub async fn deploy_set(
+        &self,
+        set: &DeploySetRequest,
+    ) -> Result<BTreeMap<String, Deployed>, Error> {
+        let path = match &self.owner {
+            Some(owner) => format!("{}/deploys", owner.services()),
+            None => "/deploys".to_owned(),
+        };
+        self.json(self.at(Method::POST, &path).json(set)).await
+    }
+
+    /// Keep `image` on a local host for a deploy to name, answering its
+    /// digest.
+    pub async fn keep_image(&self, image: Vec<u8>) -> Result<String, Error> {
+        if self.owner.is_some() {
+            return Err(Error::Host("Cloud takes an image through its upload"));
+        }
+        self.ok(self.at(Method::POST, "/images").body(image)).await
     }
 
     /// `name`'s last 100 deploys on Cloud, newest first, refused and failed

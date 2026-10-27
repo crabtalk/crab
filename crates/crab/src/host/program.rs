@@ -4,41 +4,19 @@ use crate::host::Service;
 use axum::http::StatusCode;
 use berm_api::{Break, Output, host::Deploy};
 use berm_host::{Denied, Installed, deny};
-use std::collections::BTreeMap;
 
 impl Service {
-    /// Make the tools of `image` reachable under `name`, answering with how it
-    /// breaks callers of the program it replaced. Refused as the host refuses
-    /// a deploy: unless `force`, a break of what a caller used or a cron its
-    /// owner set that `crons` undoes, or a `size` the host refuses. `stopped`
-    /// installs it to serve once started.
+    /// Make the tools of the image `deploy` names reachable under `name`,
+    /// answering with how it breaks callers of the program it replaced.
+    /// Refused as the host refuses a deploy.
     pub async fn deploy(
         &self,
         name: &str,
-        image: Vec<u8>,
-        force: bool,
-        crons: Option<BTreeMap<String, String>>,
-        size: u64,
-        stopped: bool,
+        deploy: Deploy,
     ) -> Result<(Installed, Vec<Break>), Denied> {
         validate(name)?;
         let replaced = self.get(name);
-        let digest = self.images.put(&image).await?;
-        let installed = self
-            .host
-            .deploy(
-                name,
-                Deploy {
-                    reference: digest.clone(),
-                    digest,
-                    force,
-                    crons,
-                    size,
-                    stopped,
-                },
-                None,
-            )
-            .await?;
+        let installed = self.host.deploy(name, deploy, None).await?;
         let breaks = replaced
             .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
             .unwrap_or_default();
@@ -51,6 +29,41 @@ impl Service {
         }
         let _ = self.changed.send(());
         Ok((installed, breaks))
+    }
+
+    /// Deploy `members`, each a name and the digest of an image kept in
+    /// `images`, together, as [`Host::deploy_set`] does, answering with how each
+    /// breaks callers of the program it replaced.
+    ///
+    /// [`Host::deploy_set`]: berm_host::Host::deploy_set
+    pub async fn deploy_set(
+        &self,
+        members: Vec<(String, Deploy)>,
+    ) -> Result<Vec<(String, Installed, Vec<Break>)>, Denied> {
+        let mut replaced = Vec::new();
+        for (name, _) in &members {
+            validate(name)?;
+            replaced.push((name.clone(), self.get(name)));
+        }
+        let installed = self.host.deploy_set(members).await?;
+        let _ = self.changed.send(());
+        Ok(installed
+            .into_iter()
+            .map(|(name, installed)| {
+                let breaks = replaced
+                    .iter()
+                    .find(|(one, _)| *one == name)
+                    .and_then(|(_, replaced)| replaced.as_ref())
+                    .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
+                    .unwrap_or_default();
+                (name, installed, breaks)
+            })
+            .collect())
+    }
+
+    /// Keep `image` for a deploy to name, answering its digest.
+    pub async fn keep(&self, image: &[u8]) -> Result<String, Denied> {
+        Ok(self.images.put(image).await?)
     }
 
     /// Stop running a program and drop what it committed. `false` if it wasn't

@@ -39,6 +39,19 @@ pub struct DeployRequest {
     /// started.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
+    /// The project it is deployed in: the workspace it came from. Absent, it
+    /// stays in the project it was in. Refused, unless `force`, when it is in
+    /// another project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+}
+
+/// A project's services deployed together, each by its name in the account:
+/// every one is checked before any switches, and one refused refuses them all.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploySetRequest {
+    pub services: BTreeMap<String, DeployRequest>,
 }
 
 /// A file to upload, a seed or an image: its SHA-256 in hex, and its size in
@@ -193,6 +206,11 @@ pub struct Deployment {
     /// Its image can be deployed again: one from a registry, or an upload
     /// kept on the node the service is placed on now.
     pub redeployable: bool,
+    /// The project it was deployed in.
+    pub project: Option<String>,
+    /// The account's other services deployed with it in one project deploy,
+    /// by name.
+    pub with: Vec<String>,
     /// Who deployed it, by handle, or by id when they have none.
     pub by: String,
     /// When, in epoch seconds.

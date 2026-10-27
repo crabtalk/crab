@@ -50,6 +50,7 @@ mod deploy;
 mod fetch;
 mod invoke;
 mod nest;
+mod set;
 mod storage;
 
 /// Every service, compiled and callable.

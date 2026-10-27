@@ -1,0 +1,2 @@
+CREATE TABLE words (word TEXT NOT NULL);
+INSERT INTO missing VALUES (1);

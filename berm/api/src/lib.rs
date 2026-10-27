@@ -96,6 +96,9 @@ pub struct Runtime {
     /// no wakes.
     #[serde(default)]
     pub stopped: bool,
+    /// The project it was last deployed in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// A deploy's answer.

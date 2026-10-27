@@ -8,7 +8,7 @@ use crate::host::{Service, mcp::Mcp};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
-    extract::{Path, Query, Request, State},
+    extract::{Path, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
@@ -16,12 +16,12 @@ use axum::{
 };
 use berm_api::{Deployed, Program as Wire, host};
 use berm_host::{Denied, Named, deny};
-use crabtalk_sdk::sandbox::service::{Secret, SetSecret};
+use crabtalk_sdk::sandbox::service::{DeployRequest, DeploySetRequest, Secret, SetSecret};
 use rmcp::transport::{
     StreamableHttpService, streamable_http_server::session::local::LocalSessionManager,
 };
 use serde::Deserialize;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 impl Service {
     /// The control API, at `/programs`, and MCP, at `/mcp`.
@@ -52,6 +52,8 @@ impl Service {
 
         Router::new()
             .route("/programs", get(list))
+            .route("/images", post(keep))
+            .route("/deploys", post(deploy_set))
             .with_state(service)
             .nest("/programs/{name}", program)
             .route_service("/mcp", mcp)
@@ -94,55 +96,82 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// `?force=true&crons={"tick":"*/5 * * * *"}&size=1073741824&stopped=true` on
-/// a deploy: whether to deploy over what it would break or undo, each cron tool's expression, as a JSON object, when the
-/// deploy sets them, the bytes its database may hold, and whether it installs
-/// stopped.
-#[derive(Deserialize)]
-struct Confirmed {
-    #[serde(default)]
-    force: bool,
-    crons: Option<String>,
-    #[serde(default = "host::database_size")]
-    size: u64,
-    #[serde(default)]
-    stopped: bool,
-}
-
-/// Deploy the image in the body under `name`. `PUT` because the name is the
-/// address and redeploying the same name replaces what is there.
+/// Deploy under `name` the image kept through `POST /images` that the body
+/// names by its digest. `PUT` because the name is the address and redeploying
+/// the same name replaces what is there.
 async fn deploy(
     State(service): State<Arc<Service>>,
     Extension(Named(name)): Extension<Named>,
-    Query(confirmed): Query<Confirmed>,
-    image: Bytes,
+    Json(deploy): Json<DeployRequest>,
 ) -> Result<Json<Deployed>, Denied> {
-    let crons = confirmed
-        .crons
-        .as_deref()
-        .map(serde_json::from_str)
-        .transpose()
-        .map_err(|e| {
-            deny(
-                StatusCode::BAD_REQUEST,
-                format!("`crons` is not a JSON object of tool to cron expression: {e}"),
-            )
-        })?;
-    let (deployed, breaks) = service
-        .deploy(
-            &name,
-            image.to_vec(),
-            confirmed.force,
-            crons,
-            confirmed.size,
-            confirmed.stopped,
-        )
-        .await?;
+    let (deployed, breaks) = service.deploy(&name, kept(&name, deploy)?).await?;
     Ok(Json(Deployed {
         program: deployed.program.idl(&name),
         breaks: breaks.iter().map(ToString::to_string).collect(),
         migrations: deployed.migrations,
     }))
+}
+
+/// `deploy` of `name` as the host runs it, refused when it names a seed or an
+/// image not kept through `POST /images`.
+fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
+    if deploy.seed.is_some() {
+        return Err(deny(
+            StatusCode::BAD_REQUEST,
+            "a seed starts a service on Cloud; the local host's own database is where one is made",
+        ));
+    }
+    if !deploy.reference.starts_with("sha256:") {
+        return Err(deny(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{name}: the local host deploys an image kept through POST /images, by its digest"
+            ),
+        ));
+    }
+    Ok(host::Deploy {
+        digest: deploy.reference.clone(),
+        reference: deploy.reference,
+        force: deploy.force,
+        crons: deploy.crons,
+        size: deploy.size,
+        stopped: deploy.stopped,
+        project: deploy.project,
+        exempt: Vec::new(),
+    })
+}
+
+/// Keep the image in the body for a deploy to name, answering its digest.
+async fn keep(State(service): State<Arc<Service>>, image: Bytes) -> Result<String, Denied> {
+    service.keep(&image).await
+}
+
+/// Deploy a set of programs together, each named by the digest of an image
+/// kept through `POST /images`.
+async fn deploy_set(
+    State(service): State<Arc<Service>>,
+    Json(set): Json<DeploySetRequest>,
+) -> Result<Json<BTreeMap<String, Deployed>>, Denied> {
+    let mut members = Vec::new();
+    for (name, deploy) in set.services {
+        let deploy = kept(&name, deploy)?;
+        members.push((name, deploy));
+    }
+    Ok(Json(
+        service
+            .deploy_set(members)
+            .await?
+            .into_iter()
+            .map(|(name, installed, breaks)| {
+                let deployed = Deployed {
+                    program: installed.program.idl(&name),
+                    breaks: breaks.iter().map(ToString::to_string).collect(),
+                    migrations: installed.migrations,
+                };
+                (name, deployed)
+            })
+            .collect(),
+    ))
 }
 
 async fn undeploy(

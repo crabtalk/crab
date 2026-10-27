@@ -364,6 +364,17 @@ impl Database {
     /// applied migrations are kept under more than one of its keys, are not
     /// the first of its sequence, unchanged, or when one fails.
     pub async fn migrate(&self, sequences: Vec<Sequence>) -> Result<Vec<String>> {
+        self.apply(sequences, true).await
+    }
+
+    /// [`Database::migrate`], rolled back: the names of the migrations it
+    /// would apply, refused as it would be.
+    pub async fn rehearse(&self, sequences: Vec<Sequence>) -> Result<Vec<String>> {
+        self.apply(sequences, false).await
+    }
+
+    /// Apply `sequences` in one transaction, committed when `commit`.
+    async fn apply(&self, sequences: Vec<Sequence>, commit: bool) -> Result<Vec<String>> {
         let _held = self.writing.clone().lock_owned().await;
         on(&self.jobs, move |conn| {
             let tx = conn.transaction()?;
@@ -431,7 +442,9 @@ impl Database {
                     ran.push(named(&next.name));
                 }
             }
-            tx.commit()?;
+            if commit {
+                tx.commit()?;
+            }
             Ok(ran)
         })
         .await

@@ -61,6 +61,9 @@ impl<E: Env> Host<E> {
         let scope = host::split(service).0;
         let deps = &program.manifest().deps;
         let granted = self.secrets.names(service).await.unwrap_or_default();
+        let project = service::row(&self.store, scope, host::split(service).1)
+            .await?
+            .and_then(|row| row.project);
         Ok(berm_api::Runtime {
             unresolved: Deps {
                 programs: deps
@@ -82,6 +85,7 @@ impl<E: Env> Host<E> {
                     .collect(),
             },
             stopped: self.stops.stopped(service),
+            project,
             ..program.runtime()
         })
     }

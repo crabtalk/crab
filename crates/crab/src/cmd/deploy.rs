@@ -6,17 +6,18 @@ use crate::{
     project, utils,
 };
 use anyhow::{Context, Result, bail};
-use berm_api::Manifest;
+use berm_api::{Deployed, Manifest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{DeployRequest, UploadRequest},
+    sandbox::service::{DeployRequest, DeploySetRequest, UploadRequest},
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
@@ -47,9 +48,9 @@ pub struct Deploy {
     pub pull: bool,
 }
 
-/// Deploy the services of the workspace `deploy.dir` is in that it selects,
-/// each as [`one`] does, stopping at the first that fails. `stopped` installs
-/// them to serve once started.
+/// Deploy the services of the workspace `deploy.dir` is in that it selects:
+/// one as [`one`] does, more than one together, every one checked before any
+/// switches. `stopped` installs them to serve once started.
 pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
     let Deploy {
         dir,
@@ -76,10 +77,55 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
     if client.base == dev::url("") {
         dev::up()?;
     }
+    // The project its services are deployed in: the workspace directory's
+    // name.
+    let in_project = workspace
+        .root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .with_context(|| format!("{} names no project", workspace.root.display()))?
+        .to_owned();
+    if let [dir] = workspace.services.as_slice() {
+        return one(client, dir, &in_project, image, force, pull, stopped);
+    }
+    let mut set = DeploySetRequest {
+        services: BTreeMap::new(),
+    };
     for dir in &workspace.services {
-        one(client, dir, image, force, pull, stopped)?;
+        let (project, bytes) = build(client, dir, false)?;
+        let name = project.name()?.to_owned();
+        let reference = match &client.owner {
+            None => kept(client, &project, bytes)?,
+            Some(_) => reference(client, &name, &project, None, bytes)?,
+        };
+        let request = request(
+            client,
+            dir,
+            &project,
+            reference,
+            &in_project,
+            force,
+            stopped,
+        )?;
+        set.services.insert(name, request);
+    }
+    let deployed = utils::wait(client.deploy_set(&set))?;
+    for (name, deployed) in &deployed {
+        report(client, name, deployed)?;
     }
     Ok(())
+}
+
+/// Keep `bytes`, `project`'s image, on the local host, answering the digest a
+/// deploy names it by; refused for a project naming a seed.
+fn kept(client: &Client, project: &Project, bytes: Vec<u8>) -> Result<String> {
+    if project.database.seed.is_some() {
+        bail!(
+            "{}: a seed starts a service on Cloud; the local host's own database is where one is made",
+            project.name()?
+        );
+    }
+    Ok(utils::wait(client.keep_image(bytes))?)
 }
 
 /// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
@@ -91,11 +137,27 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
 fn one(
     client: &Client,
     dir: &Path,
+    workspace: &str,
     image: Option<&str>,
     force: bool,
     pull: bool,
     stopped: bool,
 ) -> Result<()> {
+    let (project, bytes) = build(client, dir, pull)?;
+    let name = project.name()?;
+    let reference = match &client.owner {
+        None => kept(client, &project, bytes)?,
+        Some(_) => reference(client, name, &project, image, bytes)?,
+    };
+    let request = request(client, dir, &project, reference, workspace, force, stopped)?;
+    let deployed = utils::wait(client.deploy(name, &request))?;
+    report(client, name, &deployed)
+}
+
+/// Read and build the project in `dir`, refused when its `crab.toml` says
+/// `deploy = false`. With `pull`, the crons its owners set on the host are
+/// written into its `[crons]` first.
+fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> {
     let mut project = project::read(dir)?;
     if !project.deploy {
         bail!(
@@ -116,47 +178,62 @@ fn one(
     }
     let built = berm_build::build(dir, None, project::FILE)?;
     let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
+    Ok((project, bytes))
+}
+
+/// Where Cloud deploys `name` from: the image pushed to `image`, or
+/// `crab.toml`'s, tagged with the crate's version, or uploaded to Cloud when
+/// neither names a registry.
+fn reference(
+    client: &Client,
+    name: &str,
+    project: &Project,
+    image: Option<&str>,
+    bytes: Vec<u8>,
+) -> Result<String> {
+    match image.or(project.image.as_deref()) {
+        Some(image) => {
+            let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
+            push(&reference, &bytes)?;
+            Ok(reference)
+        }
+        None => send(client, name, bytes),
+    }
+}
+
+/// The deploy of `project`, in `dir`, from `reference`, in the project
+/// `workspace`; a service deployed to Cloud for the first time starts from
+/// `[database] seed`.
+fn request(
+    client: &Client,
+    dir: &Path,
+    project: &Project,
+    reference: String,
+    workspace: &str,
+    force: bool,
+    stopped: bool,
+) -> Result<DeployRequest> {
     let name = project.name()?;
-    let deployed = match &client.owner {
-        None if project.database.seed.is_some() => {
-            bail!(
-                "a seed starts a service on Cloud; the local host's own database is where one is made"
-            )
+    let seed = match &project.database.seed {
+        Some(seed) if client.owner.is_some() && first(client, name)? => {
+            Some(upload(client, name, &dir.join(seed))?)
         }
-        None => utils::wait(client.deploy_image(
-            name,
-            bytes,
-            force,
-            project.crons.as_ref(),
-            project.database.size(),
-            stopped,
-        ))?,
-        Some(_) => {
-            let reference = match image.or(project.image.as_deref()) {
-                Some(image) => {
-                    let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
-                    push(&reference, &bytes)?;
-                    reference
-                }
-                None => send(client, name, bytes)?,
-            };
-            let seed = match &project.database.seed {
-                Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
-                _ => None,
-            };
-            utils::wait(client.deploy(
-                name,
-                &DeployRequest {
-                    reference,
-                    force,
-                    crons: project.crons.clone(),
-                    size: project.database.size(),
-                    seed,
-                    stopped,
-                },
-            ))?
-        }
+        _ => None,
     };
+    Ok(DeployRequest {
+        reference,
+        force,
+        crons: project.crons.clone(),
+        size: project.database.size(),
+        seed,
+        stopped,
+        project: Some(workspace.to_owned()),
+    })
+}
+
+/// Show what `name` serves now that `deployed` installed it, how it breaks
+/// callers, and the secrets it needs that are not set.
+fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
     // The host compiled it to answer, so what comes back is what it will
     // serve — worth showing rather than saying "ok".
     let runtime = utils::wait(client.runtime(name))?;

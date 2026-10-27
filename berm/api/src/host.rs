@@ -75,6 +75,182 @@ pub struct Deploy {
     /// Install it stopped, to serve once started.
     #[serde(default)]
     pub stopped: bool,
+    /// The project it is deployed in: the workspace it came from. `None`
+    /// keeps the project it was in. Refused, unless `force`, when the service
+    /// is in another project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// Services of the same scope whose calls the breaks check leaves out:
+    /// services deployed with it whose new version no longer calls it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exempt: Vec<String>,
+}
+
+/// The days back a deploy's breaks check counts what callers used.
+pub const USED_DAYS: i32 = 30;
+
+/// What a deploy would do, checked without installing it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Checked {
+    /// The version it would go live on.
+    pub version: String,
+    /// The services it calls by name, as its manifest declares them.
+    pub calls: Vec<String>,
+    /// How it breaks what callers of the running version used in the last
+    /// [`USED_DAYS`] days, the callers `exempt` names left out.
+    pub breaks: Vec<Broken>,
+}
+
+/// A break of what callers used, and who used it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Broken {
+    /// The break, as [`Break`](crate::Break) words it.
+    pub broken: String,
+    pub by: Vec<LastUse>,
+}
+
+/// A caller of a broken tool or event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastUse {
+    pub source: Source,
+    /// A service by its name, the rest as the host names them.
+    pub caller: String,
+    /// The UTC day of its last call, `YYYY-MM-DD`.
+    pub last: String,
+}
+
+/// A deploy refused for what it breaks: the message the refusal carries.
+pub struct Breaking<'a>(pub &'a [Broken]);
+
+impl fmt::Display for Breaking<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "this deploy breaks what callers used in the last {USED_DAYS} days: "
+        )?;
+        for (i, broken) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str(" / ")?;
+            }
+            write!(f, "{} (used by ", broken.broken)?;
+            for (j, by) in broken.by.iter().enumerate() {
+                if j > 0 {
+                    f.write_str("; ")?;
+                }
+                write!(f, "{} {}, last {}", by.source, by.caller, by.last)?;
+            }
+            f.write_str(")")?;
+        }
+        f.write_str(". Deploy with `force` to override")
+    }
+}
+
+impl Broken {
+    /// `breaks` without the calls of the services `exempt` names, and without
+    /// a break no caller is left using.
+    pub fn exempted(breaks: Vec<Self>, exempt: &[String]) -> Vec<Self> {
+        breaks
+            .into_iter()
+            .filter_map(|mut broken| {
+                broken
+                    .by
+                    .retain(|by| !(by.source == Source::Service && exempt.contains(&by.caller)));
+                (!broken.by.is_empty()).then_some(broken)
+            })
+            .collect()
+    }
+}
+
+/// How a set of services deployed together switches, from each one's
+/// [`Checked`], by name.
+#[derive(Debug, Clone, Default)]
+pub struct Plan {
+    /// The order they switch in: a service after those it calls, and a caller
+    /// that stops calling a service before that service.
+    pub order: Vec<String>,
+    /// Each service's exempt callers: the others whose new version does not
+    /// call it.
+    pub exempt: BTreeMap<String, Vec<String>>,
+    /// What each one breaks, its exempt callers left out.
+    pub breaks: BTreeMap<String, Vec<Broken>>,
+}
+
+impl Plan {
+    pub fn new(checked: &BTreeMap<String, Checked>) -> Self {
+        let mut plan = Plan::default();
+        // `before[b]` holds the services that switch before `b`.
+        let mut before: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for (name, check) in checked {
+            let exempt: Vec<String> = checked
+                .iter()
+                .filter(|(other, checked)| *other != name && !checked.calls.contains(name))
+                .map(|(other, _)| other.clone())
+                .collect();
+            for by in check.breaks.iter().flat_map(|broken| &broken.by) {
+                if by.source == Source::Service && exempt.contains(&by.caller) {
+                    before.entry(name).or_default().push(&by.caller);
+                }
+            }
+            for callee in &check.calls {
+                if let Some((callee, _)) = checked.get_key_value(callee) {
+                    before.entry(name).or_default().push(callee);
+                }
+            }
+            plan.breaks.insert(
+                name.clone(),
+                Broken::exempted(check.breaks.clone(), &exempt),
+            );
+            plan.exempt.insert(name.clone(), exempt);
+        }
+        // Kahn's sort, by name among the ready; a cycle switches in name order.
+        let mut left: Vec<&str> = checked.keys().map(String::as_str).collect();
+        while !left.is_empty() {
+            let ready = left
+                .iter()
+                .position(|name| {
+                    before
+                        .get(name)
+                        .is_none_or(|first| first.iter().all(|first| !left.contains(first)))
+                })
+                .unwrap_or(0);
+            plan.order.push(left.remove(ready).to_owned());
+        }
+        plan
+    }
+}
+
+/// A set refused for what each of `refused`, by name, was refused for: the
+/// message the refusal carries.
+pub struct SetRefused<'a>(pub &'a BTreeMap<String, String>);
+
+impl fmt::Display for SetRefused<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the set is refused, and nothing in it switched: ")?;
+        for (i, (name, reason)) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str(" | ")?;
+            }
+            write!(f, "{name}: {reason}")?;
+        }
+        Ok(())
+    }
+}
+
+/// A set whose service `name` failed to switch for `reason`, the services
+/// switched before it put back: the message the failure carries.
+pub struct SetFailed<'a> {
+    pub name: &'a str,
+    pub reason: &'a str,
+}
+
+impl fmt::Display for SetFailed<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} failed to switch, and the set was put back on what it ran: {}",
+            self.name, self.reason
+        )
+    }
 }
 
 /// [`DATABASE_SIZE`], for `#[serde(default = "...")]`.

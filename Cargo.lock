@@ -314,6 +314,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-broken"
+version = "0.1.1"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
 name = "berm-build"
 version = "0.1.1"
 dependencies = [

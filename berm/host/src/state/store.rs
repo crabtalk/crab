@@ -55,6 +55,7 @@ const MIGRATIONS: &[&str] = &[
     // Meters are kept per tool; `tool` is '' for days metered before, and
     // for the bytes a service stores.
     include_str!("migrations/0031.sql"),
+    include_str!("migrations/0032.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.

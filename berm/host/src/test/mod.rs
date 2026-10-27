@@ -214,6 +214,37 @@ impl TestHost {
             .await
     }
 
+    /// Deploy each of `set`, a service, its image and the bytes its database
+    /// may hold, together in `project`, as [`Host::deploy_set`] does, every public tool
+    /// confirmed but none forced.
+    pub async fn deploy_set(
+        &self,
+        project: &str,
+        set: &[(&str, &[u8], u64)],
+    ) -> Result<Vec<String>> {
+        let mut members = Vec::new();
+        for (service, image, size) in set {
+            let digest = format!("sha256:{}", berm::digest(image));
+            let reference = format!("test/{service}");
+            self.images.0.lock().insert(digest.clone(), image.to_vec());
+            members.push((
+                (*service).to_owned(),
+                Deploy {
+                    reference,
+                    digest,
+                    force: false,
+                    crons: None,
+                    size: *size,
+                    stopped: false,
+                    project: Some(project.to_owned()),
+                    exempt: Vec::new(),
+                },
+            ));
+        }
+        let installed = self.host.deploy_set(members).await?;
+        Ok(installed.into_iter().map(|(service, _)| service).collect())
+    }
+
     async fn installed(
         &self,
         service: &str,
@@ -224,10 +255,7 @@ impl TestHost {
     ) -> Result<Arc<Program>> {
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
-        self.images
-            .0
-            .lock()
-            .insert(reference.clone(), image.to_vec());
+        self.images.0.lock().insert(digest.clone(), image.to_vec());
         Ok(self
             .host
             .deploy(
@@ -239,6 +267,8 @@ impl TestHost {
                     crons: None,
                     size,
                     stopped,
+                    project: None,
+                    exempt: Vec::new(),
                 },
                 seed,
             )
@@ -465,7 +495,7 @@ impl tower::Service<Request> for Arranged {
     }
 }
 
-/// The images the test deployed, by reference.
+/// The images the test deployed, by digest.
 #[derive(Clone, Default)]
 pub struct Given(Arc<Mutex<HashMap<String, Vec<u8>>>>);
 
