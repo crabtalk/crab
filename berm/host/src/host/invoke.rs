@@ -2,9 +2,9 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::Result;
-use berm::{Meter, Meters, Program, User, tape::Taping};
+use berm::{ByTool, Meter, Meters, Program, User, tape::Taping};
 use berm_api::{Output, host::NestedCall};
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 impl<E: Env> Host<E> {
     /// Run `tool` on `program` as the first link of a chain, as call `call`,
@@ -41,7 +41,13 @@ impl<E: Env> Host<E> {
         self.logs.ended(chain);
         let nested = self.calls.take_nested(call);
         let meters = meters.take();
-        let own = meters.get(&program.name).copied().unwrap_or_default();
+        let own = meters
+            .iter()
+            .filter(|((service, _), _)| *service == program.name)
+            .fold(Meter::default(), |mut own, (_, used)| {
+                own += *used;
+                own
+            });
         let meter = self.metered(meters);
         let outcome = outcome?;
         if matches!(outcome.result, Output::Failed(_)) {
@@ -63,13 +69,13 @@ impl<E: Env> Host<E> {
         })
     }
 
-    /// Count a chain's `meters` against the services this host runs, and
-    /// answer their sum over every service the chain reached.
-    pub(crate) fn metered(&self, meters: BTreeMap<Arc<str>, Meter>) -> Meter {
+    /// Count a chain's `meters` against the tools of the services this host
+    /// runs, and answer their sum over every service the chain reached.
+    pub(crate) fn metered(&self, meters: ByTool) -> Meter {
         let mut total = Meter::default();
-        for (service, used) in meters {
+        for ((service, tool), used) in meters {
             if self.berm.get(&service).is_some() {
-                self.meters.record(&service, used);
+                self.meters.record(&service, &tool, used);
             }
             total += used;
         }

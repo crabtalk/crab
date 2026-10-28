@@ -18,7 +18,7 @@ pub use api::{
 };
 pub use config::Config;
 pub use env::{Clock, Edges, Env, Images, Observe, Peers, Secrets, System};
-pub use host::Host;
+pub use host::{Host, Installed};
 pub use images::Stored;
 pub use state::store::Store;
 

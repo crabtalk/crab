@@ -5,8 +5,8 @@ use crate::{
     account::{
         auth::Client as Surface,
         billing::{
-            CheckoutResponse, Credit, Invoice, PaymentMethod, Period, PortalFlow, PortalResponse,
-            RefillRequest, SubscribeResponse,
+            Credit, Earnings, Invoice, PaymentMethod, Period, PortalFlow, RefillRequest,
+            StripeLink, SubscribeResponse, Verification,
         },
     },
     client::{Client, Error},
@@ -41,8 +41,28 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
+    /// What the account's priced tools earned, a UTC calendar month each,
+    /// newest first.
+    pub async fn earnings(&self) -> Result<Earnings, Error> {
+        let path = format!("{}/earnings", self.account()?.api());
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// A Stripe onboarding URL for the account's Connect account, which is
+    /// created on the first call. Accounts are US only.
+    pub async fn earnings_connect(&self) -> Result<StripeLink, Error> {
+        let path = format!("{}/earnings/connect", self.account()?.api());
+        self.json(self.at(Method::POST, &path)).await
+    }
+
+    /// A login URL to the account's Stripe Express dashboard.
+    pub async fn earnings_dashboard(&self) -> Result<StripeLink, Error> {
+        let path = format!("{}/earnings/dashboard", self.account()?.api());
+        self.json(self.at(Method::POST, &path)).await
+    }
+
     /// A Checkout URL buying credit, its amount chosen there.
-    pub async fn buy_credit(&self, surface: Surface) -> Result<CheckoutResponse, Error> {
+    pub async fn buy_credit(&self, surface: Surface) -> Result<StripeLink, Error> {
         let path = format!("{}/billing/credit", self.account()?.api());
         let req = self
             .at(Method::POST, &path)
@@ -50,7 +70,8 @@ impl Client {
         self.json(req).await
     }
 
-    /// Subscribe to `plan`: a Checkout URL, or none when a trial ended into it.
+    /// Subscribe to `plan`: a Checkout URL, or none when an active
+    /// subscription moved onto it in place.
     pub async fn checkout(&self, plan: &str, surface: Surface) -> Result<SubscribeResponse, Error> {
         let path = format!("{}/billing/checkout", self.account()?.api());
         let req = self
@@ -59,12 +80,17 @@ impl Client {
         self.json(req).await
     }
 
-    /// A Checkout URL starting the caller's free trial. A person's only.
-    pub async fn trial(&self, surface: Surface) -> Result<CheckoutResponse, Error> {
-        let req = self
-            .at(Method::POST, "/user/billing/trial")
-            .query(&[("client", surface.as_ref())]);
-        self.json(req).await
+    /// The caller's verification, and why it would fail now if unverified.
+    /// A person's only.
+    pub async fn verification(&self) -> Result<Verification, Error> {
+        self.json(self.at(Method::GET, "/user/billing/verification"))
+            .await
+    }
+
+    /// Verify the caller on GitHub. A person's only.
+    pub async fn verify(&self) -> Result<Verification, Error> {
+        self.json(self.at(Method::POST, "/user/billing/verification"))
+            .await
     }
 
     pub async fn set_refill(&self, body: &RefillRequest) -> Result<(), Error> {
@@ -90,7 +116,7 @@ impl Client {
         &self,
         surface: Surface,
         flow: Option<PortalFlow>,
-    ) -> Result<PortalResponse, Error> {
+    ) -> Result<StripeLink, Error> {
         let path = format!("{}/billing/portal", self.account()?.api());
         let mut req = self
             .at(Method::POST, &path)

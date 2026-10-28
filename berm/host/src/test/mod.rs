@@ -67,6 +67,38 @@ pub struct TestHost {
     secrets: Granted,
     clock: Manual,
     dir: PathBuf,
+    cpu: Duration,
+}
+
+/// A host over the state in `dir`, each call spending at most `cpu`.
+async fn opened(
+    dir: &Path,
+    cpu: Duration,
+    fetch: &Arranged,
+    images: &Given,
+    secrets: &Granted,
+    clock: &Manual,
+) -> Result<Host<Test>> {
+    let config = crate::Config {
+        databases: dir.join("databases"),
+        cpu,
+        ..crate::Config::default()
+    };
+    Host::open(
+        &dir.join("host.db"),
+        &config,
+        Edges {
+            fetch: fetch.clone(),
+            proxy: Some(fetch.clone()),
+            images: images.clone(),
+            peers: Nowhere,
+            secrets: secrets.clone(),
+            layers: Layers::new(tower::layer::util::Identity::new()),
+            observe: (),
+            clock: clock.clone(),
+        },
+    )
+    .await
 }
 
 /// How one call ended.
@@ -110,26 +142,7 @@ impl TestHost {
         std::fs::create_dir_all(&dir)?;
         let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
         let clock = Manual(Arc::new(AtomicU64::new(now)));
-        let config = crate::Config {
-            databases: dir.join("databases"),
-            cpu,
-            ..crate::Config::default()
-        };
-        let host = Host::open(
-            &dir.join("host.db"),
-            &config,
-            Edges {
-                fetch: fetch.clone(),
-                proxy: Some(fetch.clone()),
-                images: images.clone(),
-                peers: Nowhere,
-                secrets: secrets.clone(),
-                layers: Layers::new(tower::layer::util::Identity::new()),
-                observe: (),
-                clock: clock.clone(),
-            },
-        )
-        .await?;
+        let host = opened(&dir, cpu, &fetch, &images, &secrets, &clock).await?;
         Ok(Self {
             host,
             fetch,
@@ -137,7 +150,24 @@ impl TestHost {
             secrets,
             clock,
             dir,
+            cpu,
         })
+    }
+
+    /// Open the host again over the state it kept and load its services, as a
+    /// restart does: what it held in memory is gone.
+    pub async fn reopen(&mut self) -> Result<()> {
+        self.host = opened(
+            &self.dir,
+            self.cpu,
+            &self.fetch,
+            &self.images,
+            &self.secrets,
+            &self.clock,
+        )
+        .await?;
+        self.host.reconcile().await;
+        Ok(())
     }
 
     /// The host itself, for what this does not wrap.
@@ -214,6 +244,37 @@ impl TestHost {
             .await
     }
 
+    /// Deploy each of `set`, a service, its image and the bytes its database
+    /// may hold, together in `project`, as [`Host::deploy_set`] does, every public tool
+    /// confirmed but none forced.
+    pub async fn deploy_set(
+        &self,
+        project: &str,
+        set: &[(&str, &[u8], u64)],
+    ) -> Result<Vec<String>> {
+        let mut members = Vec::new();
+        for (service, image, size) in set {
+            let digest = format!("sha256:{}", berm::digest(image));
+            let reference = format!("test/{service}");
+            self.images.0.lock().insert(digest.clone(), image.to_vec());
+            members.push((
+                (*service).to_owned(),
+                Deploy {
+                    reference,
+                    digest,
+                    force: false,
+                    crons: None,
+                    size: *size,
+                    stopped: false,
+                    project: Some(project.to_owned()),
+                    exempt: Vec::new(),
+                },
+            ));
+        }
+        let installed = self.host.deploy_set(members).await?;
+        Ok(installed.into_iter().map(|(service, _)| service).collect())
+    }
+
     async fn installed(
         &self,
         service: &str,
@@ -224,10 +285,7 @@ impl TestHost {
     ) -> Result<Arc<Program>> {
         let digest = format!("sha256:{}", berm::digest(image));
         let reference = format!("test/{service}");
-        self.images
-            .0
-            .lock()
-            .insert(reference.clone(), image.to_vec());
+        self.images.0.lock().insert(digest.clone(), image.to_vec());
         Ok(self
             .host
             .deploy(
@@ -239,10 +297,13 @@ impl TestHost {
                     crons: None,
                     size,
                     stopped,
+                    project: None,
+                    exempt: Vec::new(),
                 },
                 seed,
             )
-            .await?)
+            .await?
+            .program)
     }
 
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
@@ -464,7 +525,7 @@ impl tower::Service<Request> for Arranged {
     }
 }
 
-/// The images the test deployed, by reference.
+/// The images the test deployed, by digest.
 #[derive(Clone, Default)]
 pub struct Given(Arc<Mutex<HashMap<String, Vec<u8>>>>);
 

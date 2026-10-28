@@ -248,7 +248,8 @@ impl Program {
         }
     }
 
-    /// How it runs, for its owners; `unresolved` is the host's to fill.
+    /// How it runs, for its owners; `unresolved` and `project` are the host's
+    /// to fill.
     pub fn runtime(&self) -> Runtime {
         Runtime {
             tools: self
@@ -261,7 +262,7 @@ impl Program {
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
             unresolved: Default::default(),
-            stopped: false,
+            project: None,
         }
     }
 
@@ -420,8 +421,19 @@ impl Program {
         };
 
         let budget = (self.budget)(&self.name, tool).unwrap_or(self.image.budget);
+        let largest = self.image.budget.memory;
+        let reserved = Held::new(
+            self.running.clone(),
+            self.pool.clone(),
+            self.image.reserve.clone(),
+            match budget.memory {
+                0 => largest,
+                memory => memory.min(largest),
+            },
+        )?;
         let mut at = Callsite {
             program: self.name.clone(),
+            tool: tool.into(),
             deps: self.deps.clone(),
             caller,
             user,
@@ -455,7 +467,9 @@ impl Program {
         let mark = journal.mark();
         let site = at.clone();
         let invocation = Invocation {
-            held: Held::new(self.running.clone(), self.pool.clone()),
+            cpu: Arc::new(AtomicU64::new(budget.cpu)),
+            limited: false,
+            held: reserved,
             at,
             now: self.now.clone(),
             issuer: self.issuer.clone(),
@@ -473,7 +487,7 @@ impl Program {
             }),
             false => self
                 .image
-                .call(symbol, invocation, budget.cpu)
+                .call(symbol, invocation)
                 .await
                 .with_context(|| format!("program trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
@@ -623,6 +637,10 @@ pub struct Invocation {
     pub(crate) outcome: Option<Result<Vec<u8>, String>>,
     /// Set by `berm.deny`.
     pub(crate) denied: bool,
+    /// Its budget of CPU, in microseconds.
+    pub(crate) cpu: Arc<AtomicU64>,
+    /// Set once `berm.limit` lowered its budget.
+    pub(crate) limited: bool,
     /// Its part of its program's [`Running`].
     pub(crate) held: Held,
     /// The tape it records or answers from; only a chain's first link has one.

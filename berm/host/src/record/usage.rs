@@ -5,13 +5,13 @@
 use crate::{host, state::store::Store};
 use anyhow::Result;
 use berm::Now;
-use berm_api::host::{Kind, Outcome, Source, Usage, Used};
+use berm_api::host::{self as wire, Kind, Outcome, Source, Usage, Used};
 use parking_lot::Mutex;
 use rusqlite::{OptionalExtension, params};
 use std::{collections::HashMap, mem, ops::Range};
 
 /// Days of usage a deploy and `/usage` look back over.
-pub(crate) const WINDOW: i32 = 30;
+pub(crate) const WINDOW: i32 = wire::USED_DAYS;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Key {

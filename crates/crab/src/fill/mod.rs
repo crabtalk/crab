@@ -8,7 +8,7 @@ use crate::utils;
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use berm_api::{Credential, CredentialSecret};
-use crabtalk_sdk::client::Client;
+use crabtalk_sdk::{client::Client, sandbox::service::Hosts};
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -44,14 +44,30 @@ struct Step {
     /// Each value the person enters at the provider, beside its label.
     copy: Vec<(String, String)>,
     fields: Vec<Field>,
+    /// The hosts its secrets are sent to, as typed: names apart by spaces or
+    /// commas.
+    hosts: String,
     saved: bool,
+}
+
+impl Step {
+    /// The hosts typed, each named once.
+    fn hosts(&self) -> Vec<String> {
+        let mut hosts: Vec<String> = Vec::new();
+        for host in self.hosts.split([' ', ',']).filter(|host| !host.is_empty()) {
+            if !hosts.iter().any(|one| one == host) {
+                hosts.push(host.to_owned());
+            }
+        }
+        hosts
+    }
 }
 
 /// One secret of a credential.
 struct Field {
     secret: CredentialSecret,
     typed: String,
-    /// Whether it is set on the host.
+    /// Whether it is set on the host and sent somewhere.
     set: bool,
     pattern: Option<Regex>,
 }
@@ -76,23 +92,32 @@ impl Field {
 }
 
 impl<'a> Form<'a> {
-    /// `credentials` of `service`, set on the host `client` talks to, which
-    /// `target` names for the person; `copy` holds the values their copy keys
-    /// take.
+    /// `credentials` of `service`, set on the host `client` talks to; `copy`
+    /// holds the values their copy keys take.
     pub fn new(
         client: &'a Client,
         service: &str,
-        target: String,
         credentials: Vec<(String, Credential)>,
         copy: &BTreeMap<String, String>,
     ) -> Result<Self> {
-        let set: Vec<String> = utils::wait(client.secrets(service))?
-            .into_iter()
-            .map(|secret| secret.name)
-            .collect();
+        let target = match &client.owner {
+            None => "the local host on this machine".to_owned(),
+            Some(owner) => format!("Cloud, the account {}", owner.name()),
+        };
+        let set = utils::wait(client.secrets(service))?;
         let steps = credentials
             .into_iter()
             .map(|(id, credential)| Step {
+                hosts: credential
+                    .secrets
+                    .iter()
+                    .find_map(|secret| {
+                        set.iter()
+                            .find(|one| one.name == secret.name && one.sent())
+                            .map(|one| &one.hosts)
+                    })
+                    .unwrap_or(&credential.hosts)
+                    .join(", "),
                 title: match credential.title.is_empty() {
                     true => id,
                     false => credential.title.clone(),
@@ -108,7 +133,7 @@ impl<'a> Form<'a> {
                     .into_iter()
                     .map(|secret| Field {
                         typed: String::new(),
-                        set: set.contains(&secret.name),
+                        set: set.iter().any(|one| one.name == secret.name && one.sent()),
                         pattern: secret.pattern.as_deref().and_then(|p| Regex::new(p).ok()),
                         secret,
                     })
@@ -162,7 +187,8 @@ impl<'a> Form<'a> {
     /// Act on `key`; `false` to leave.
     fn key(&mut self, key: KeyEvent) -> Result<bool> {
         let copies = self.steps[self.at].copy.len();
-        let rows = (copies + self.steps[self.at].fields.len()).max(1);
+        let fields = self.steps[self.at].fields.len();
+        let rows = copies + fields + 1;
         match key.code {
             KeyCode::Esc => return Ok(false),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -174,19 +200,24 @@ impl<'a> Form<'a> {
             KeyCode::Right => self.go((self.at + 1).min(self.steps.len() - 1)),
             KeyCode::Enter | KeyCode::Char('c') if self.focus < copies => self.copy(self.focus)?,
             KeyCode::Enter => self.save()?,
-            KeyCode::Char(c) if self.focus >= copies => {
-                if let Some(field) = self.steps[self.at].fields.get_mut(self.focus - copies) {
-                    field.typed.push(c);
-                }
-            }
+            KeyCode::Char(c) if self.focus >= copies => self.typed().push(c),
             KeyCode::Backspace if self.focus >= copies => {
-                if let Some(field) = self.steps[self.at].fields.get_mut(self.focus - copies) {
-                    field.typed.pop();
-                }
+                self.typed().pop();
             }
             _ => {}
         }
         Ok(true)
+    }
+
+    /// What the focused row holds as typed: a field's value, or the hosts
+    /// after the last field.
+    fn typed(&mut self) -> &mut String {
+        let step = &mut self.steps[self.at];
+        let row = self.focus - step.copy.len();
+        match step.fields.get_mut(row) {
+            Some(field) => &mut field.typed,
+            None => &mut step.hosts,
+        }
     }
 
     /// Show step `at`, focused on its first field.
@@ -207,7 +238,8 @@ impl<'a> Form<'a> {
         Ok(())
     }
 
-    /// Save the step on screen, then show the next one not saved.
+    /// Save the step on screen, then show the next one not saved: each value
+    /// typed, and the hosts on every secret of it.
     fn save(&mut self) -> Result<()> {
         let step = &self.steps[self.at];
         if step
@@ -221,22 +253,34 @@ impl<'a> Form<'a> {
             ));
             return Ok(());
         }
-        let typed: Vec<(String, String, bool)> = step
-            .fields
-            .iter()
-            .filter(|field| !field.typed.is_empty())
-            .map(|field| (field.secret.name.clone(), field.typed.clone(), field.set))
-            .collect();
-        if typed.is_empty() {
-            self.next();
+        let hosts = step.hosts();
+        if let Err(why) = Hosts::check(&hosts) {
+            self.said = Some((why, true));
             return Ok(());
         }
-        for (name, value, set) in &typed {
+        if hosts.is_empty() {
+            self.said = Some(("type the hosts its secrets are sent to".to_owned(), true));
+            return Ok(());
+        }
+        let fields: Vec<(String, String, bool)> = step
+            .fields
+            .iter()
+            .map(|field| (field.secret.name.clone(), field.typed.clone(), field.set))
+            .collect();
+        for (name, typed, set) in &fields {
             let written = (|| -> Result<()> {
-                if *set {
-                    utils::wait(self.client.delete_secret(&self.service, name))?;
+                match (typed.is_empty(), *set) {
+                    (true, _) => {
+                        utils::wait(self.client.put_secret_hosts(&self.service, name, &hosts))?
+                    }
+                    (false, true) => {
+                        utils::wait(self.client.delete_secret(&self.service, name))?;
+                        utils::wait(self.client.put_secret(&self.service, name, typed, &hosts))?;
+                    }
+                    (false, false) => {
+                        utils::wait(self.client.put_secret(&self.service, name, typed, &hosts))?
+                    }
                 }
-                utils::wait(self.client.put_secret(&self.service, name, value))?;
                 Ok(())
             })();
             if let Err(error) = written {
@@ -246,10 +290,8 @@ impl<'a> Form<'a> {
         }
         let step = &mut self.steps[self.at];
         for field in &mut step.fields {
-            if !field.typed.is_empty() {
-                field.set = true;
-                field.typed.clear();
-            }
+            field.set = true;
+            field.typed.clear();
         }
         step.saved = true;
         let title = step.title.clone();

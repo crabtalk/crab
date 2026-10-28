@@ -1,5 +1,6 @@
 pub mod app;
 pub mod billing;
+pub mod budget;
 pub mod build;
 pub mod call;
 pub mod calls;
@@ -7,7 +8,9 @@ pub mod context;
 pub mod cost;
 pub mod cron;
 pub mod deploy;
+pub mod deploys;
 pub mod dev;
+pub mod earnings;
 pub mod idl;
 pub mod inspect;
 pub mod invites;

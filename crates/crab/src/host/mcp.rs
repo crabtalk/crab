@@ -1,29 +1,25 @@
-//! One MCP endpoint over every deployed program.
+//! One MCP endpoint over every deployed program: `search`, `call`, and each
+//! program's README and IDL as a resource, as [`crabtalk_sdk::mcp`] lays them out. A
+//! call carries no caller, so only `#[tool(anonymous)]` tools are found or
+//! called.
 
 use crate::host::Service;
 use berm_api::Output;
+use crabtalk_sdk::mcp::{self, Found};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     model::{
-        CallToolRequestParams, CallToolResult, ContentBlock, Implementation, ListResourcesResult,
-        ListToolsResult, Meta, PaginatedRequestParams, ReadResourceRequestParams,
-        ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo, Tool,
-        ToolAnnotations,
+        CallToolRequestParams, CallToolResult, ContentBlock, Implementation,
+        ListResourceTemplatesResult, ListToolsResult, PaginatedRequestParams,
+        ReadResourceRequestParams, ReadResourceResult, ResourceContents, ResourceTemplate,
+        ServerCapabilities, ServerInfo, Tool, ToolAnnotations,
     },
-    service::{NotificationContext, RequestContext, RoleServer},
+    service::{RequestContext, RoleServer},
 };
 use std::sync::Arc;
 
-/// A server has one `instructions`, paid on every turn; each program's README
-/// is a resource the model reads when it needs it.
-const INSTRUCTIONS: &str = "Tools are named `{program}.{tool}`. Each program with a README \
-    publishes it as a `berm://{program}/readme` resource; read it before choosing among one \
-    program's tools.";
-
-const README_SCHEME: &str = "berm://";
-const README_PATH: &str = "/readme";
-/// The `_meta` key a listed tool carries its terms under.
-const TERMS: &str = "terms";
+/// The most programs a search answers.
+const FOUND: usize = 10;
 
 pub struct Mcp {
     service: Arc<Service>,
@@ -33,15 +29,67 @@ impl Mcp {
     pub fn new(service: Arc<Service>) -> Self {
         Self { service }
     }
+
+    /// The running programs with a tool that takes anonymous calls, each
+    /// with those tools, matching `query`'s words: best first, a word in the
+    /// name counting most, then in the description, then in a tool.
+    fn search(&self, query: &str) -> Vec<Found> {
+        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let count = |text: &str| {
+            let text = text.to_lowercase();
+            words
+                .iter()
+                .filter(|word| text.contains(word.as_str()))
+                .count()
+        };
+        let mut found: Vec<(usize, Found)> = self
+            .service
+            .list()
+            .iter()
+            .filter(|deployed| !self.service.host.stopped(&deployed.name))
+            .filter_map(|deployed| {
+                let manifest = deployed.manifest();
+                let tools: Vec<mcp::Tool> = manifest
+                    .tools
+                    .iter()
+                    .filter(|tool| tool.anonymous)
+                    .map(|tool| mcp::Tool {
+                        name: tool.name.clone(),
+                        description: tool.description.clone(),
+                        price: None,
+                    })
+                    .collect();
+                let score = 3 * count(&deployed.name)
+                    + 2 * count(&manifest.description)
+                    + tools
+                        .iter()
+                        .map(|tool| count(&format!("{} {}", tool.name, tool.description)))
+                        .sum::<usize>();
+                (score > 0 && !tools.is_empty()).then(|| {
+                    let found = Found {
+                        service: deployed.name.to_string(),
+                        description: manifest.description.clone(),
+                        tools,
+                    };
+                    (score, found)
+                })
+            })
+            .collect();
+        found
+            .sort_by(|(a, one), (b, other)| b.cmp(a).then_with(|| one.service.cmp(&other.service)));
+        found
+            .into_iter()
+            .take(FOUND)
+            .map(|(_, found)| found)
+            .collect()
+    }
 }
 
 impl ServerHandler for Mcp {
     fn get_info(&self) -> ServerInfo {
         let capabilities = ServerCapabilities::builder()
             .enable_tools()
-            .enable_tool_list_changed()
             .enable_resources()
-            .enable_resources_list_changed()
             .build();
 
         // Named here rather than from rmcp's build environment, which would
@@ -51,22 +99,7 @@ impl ServerHandler for Mcp {
                 env!("CARGO_PKG_NAME"),
                 env!("CARGO_PKG_VERSION"),
             ))
-            .with_instructions(INSTRUCTIONS)
-    }
-
-    /// Deploying changes the tool set under clients already holding a list, so
-    /// each session forwards that until its peer goes away.
-    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
-        let mut changed = self.service.subscribe();
-        let peer = context.peer.clone();
-        tokio::spawn(async move {
-            while changed.recv().await.is_ok() {
-                if peer.notify_tool_list_changed().await.is_err() {
-                    break;
-                }
-                let _ = peer.notify_resource_list_changed().await;
-            }
-        });
+            .with_instructions(mcp::INSTRUCTIONS)
     }
 
     async fn list_tools(
@@ -74,40 +107,18 @@ impl ServerHandler for Mcp {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        let tools = self
-            .service
-            .list()
-            .iter()
-            .filter(|deployed| !self.service.host.stopped(&deployed.name))
-            .flat_map(|deployed| {
-                let terms = self.service.host.terms(&deployed.name).unwrap_or_default();
-                deployed
-                    .manifest()
-                    .tools
-                    .iter()
-                    .filter(|tool| tool.anonymous)
-                    .map(move |tool| {
-                        let mut listed = Tool::new(
-                            format!("{}.{}", deployed.name, tool.name),
-                            tool.description.clone(),
-                            Arc::new(tool.parameters.as_object().cloned().unwrap_or_default()),
-                        );
-                        if let Some(returns) = tool.returns.as_ref().and_then(|v| v.as_object()) {
-                            listed = listed.with_raw_output_schema(Arc::new(returns.clone()));
-                        }
-                        if tool.query {
-                            listed = listed.annotate(ToolAnnotations::new().read_only(true));
-                        }
-                        if let Some(held) = terms.tools.get(&tool.name) {
-                            let mut meta = Meta::new();
-                            meta.insert(TERMS.into(), serde_json::json!(held));
-                            listed = listed.with_meta(meta);
-                        }
-                        listed
-                    })
-            })
-            .collect();
-        Ok(ListToolsResult::with_all_items(tools))
+        let search = Tool::new(
+            mcp::SEARCH,
+            mcp::SEARCH_DESCRIPTION,
+            Arc::new(mcp::search_schema()),
+        )
+        .annotate(ToolAnnotations::new().read_only(true));
+        let call = Tool::new(
+            mcp::CALL,
+            mcp::CALL_DESCRIPTION,
+            Arc::new(mcp::call_schema()),
+        );
+        Ok(ListToolsResult::with_all_items(vec![search, call]))
     }
 
     async fn call_tool(
@@ -115,52 +126,54 @@ impl ServerHandler for Mcp {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        let Some((program, tool)) = request.name.split_once('.') else {
-            return Err(McpError::invalid_params(
-                format!(
-                    "tool {:?} is not named `{{program}}.{{tool}}`",
-                    request.name
-                ),
-                None,
-            ));
+        let arguments = request.arguments.unwrap_or_default();
+        let field = |key: &str| {
+            arguments
+                .get(key)
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| McpError::invalid_params(format!("`{key}` is a string"), None))
         };
-
-        // A program reads its arguments as the JSON its manifest advertised a
-        // schema for, so the object goes across as it arrived.
-        let args = match &request.arguments {
-            Some(arguments) => serde_json::to_vec(arguments)
-                .map_err(|error| McpError::invalid_params(error.to_string(), None))?,
-            None => Vec::new(),
-        };
-
+        match request.name.as_ref() {
+            mcp::SEARCH => {
+                let found = serde_json::to_string(&self.search(field("query")?))
+                    .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+                return Ok(CallToolResult::success(vec![ContentBlock::text(found)]));
+            }
+            mcp::CALL => {}
+            name => {
+                return Err(McpError::invalid_params(
+                    format!("no tool named {name:?}"),
+                    None,
+                ));
+            }
+        }
+        let program = field("service")?;
+        let tool = field("tool")?;
+        if program.contains('/') {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "the local host has no accounts: name a service it runs",
+            )]));
+        }
         if !self
             .service
             .get(program)
             .is_some_and(|deployed| deployed.reached_anonymously(tool))
         {
-            return Err(McpError::invalid_params(
-                format!("{program} has no tool named {tool:?} that takes anonymous calls"),
-                None,
-            ));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "{program} has no tool named {tool:?} that takes anonymous calls"
+            ))]));
         }
 
-        // A tool listed with an output schema answers with structured content
-        // as well, which MCP requires of it.
-        let structured = self.service.get(program).is_some_and(|deployed| {
-            deployed
-                .manifest()
-                .tools
-                .iter()
-                .any(|spec| spec.name == tool && spec.returns.is_some())
-        });
+        // A program reads its arguments as the JSON its manifest advertised a
+        // schema for, so the object goes across as it arrived.
+        let input = arguments
+            .get("input")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let args = serde_json::to_vec(&input)
+            .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
 
         match self.service.call(program, tool, args).await {
-            Ok(Output::Done(result)) if structured => match serde_json::from_str(&result) {
-                Ok(value) => Ok(CallToolResult::structured(value)),
-                Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "{program}.{tool} declares a result schema and answered something that is not JSON: {error}"
-                ))])),
-            },
             Ok(Output::Done(result)) => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
@@ -169,30 +182,20 @@ impl ServerHandler for Mcp {
             Ok(Output::Failed(failure)) => {
                 Ok(CallToolResult::error(vec![ContentBlock::text(failure)]))
             }
-            Err(error) => Err(McpError::internal_error(format!("{error:#}"), None)),
+            Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                error.to_string(),
+            )])),
         }
     }
 
-    async fn list_resources(
+    async fn list_resource_templates(
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, McpError> {
-        let resources = self
-            .service
-            .list()
-            .iter()
-            .filter(|deployed| !deployed.manifest().readme.is_empty())
-            .map(|deployed| {
-                Resource::new(
-                    format!("{README_SCHEME}{}{README_PATH}", deployed.name),
-                    format!("{} README", deployed.name),
-                )
-                .with_description(format!("{}'s README.", deployed.name))
-                .with_mime_type("text/markdown")
-            })
-            .collect();
-        Ok(ListResourcesResult::with_all_items(resources))
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        let template = ResourceTemplate::new(mcp::TEMPLATE, "service")
+            .with_description(mcp::TEMPLATE_DESCRIPTION);
+        Ok(ListResourceTemplatesResult::with_all_items(vec![template]))
     }
 
     async fn read_resource(
@@ -200,20 +203,15 @@ impl ServerHandler for Mcp {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        let name = request
-            .uri
-            .strip_prefix(README_SCHEME)
-            .and_then(|rest| rest.strip_suffix(README_PATH))
-            .ok_or_else(|| McpError::resource_not_found(request.uri.clone(), None))?;
-
-        let deployed = self
-            .service
-            .get(name)
-            .ok_or_else(|| McpError::resource_not_found(request.uri.clone(), None))?;
-
-        Ok(ReadResourceResult::new(vec![ResourceContents::text(
-            deployed.manifest().readme.clone(),
-            request.uri,
-        )]))
+        let not_found = || McpError::resource_not_found(request.uri.clone(), None);
+        let name = mcp::service(&request.uri).ok_or_else(not_found)?;
+        let program = self.service.host.idl(name).map_err(|_| not_found())?;
+        let idl = serde_json::to_string(&program)
+            .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+        Ok(ReadResourceResult::new(vec![
+            ResourceContents::text(program.readme, request.uri.clone())
+                .with_mime_type("text/markdown"),
+            ResourceContents::text(idl, request.uri).with_mime_type("application/json"),
+        ]))
     }
 }

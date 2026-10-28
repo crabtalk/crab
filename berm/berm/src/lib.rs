@@ -43,7 +43,7 @@ pub use engine::{Config, Engine};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
-pub use meter::{Meters, Pool, Running};
+pub use meter::{ByTool, Meters, Pool, Running};
 pub use program::{Ended, Invocation, Link, Outcome, Program, Refused, chain, digest};
 use std::{
     collections::BTreeMap,
@@ -87,6 +87,8 @@ pub type Call = Arc<dyn Fn(Callsite, Vec<u8>) -> Reply + Send + Sync>;
 pub struct Callsite {
     /// What this program was deployed as.
     pub program: Arc<str>,
+    /// The tool this invocation runs.
+    pub tool: Arc<str>,
     /// What this program's manifest declares it reaches for.
     pub deps: Arc<Deps>,
     /// Who made this call: whoever the embedder named at the chain's first
@@ -130,11 +132,11 @@ pub struct Callsite {
 }
 
 impl Callsite {
-    /// Count `used` against this program in the chain, its rows against this
-    /// invocation's budget.
+    /// Count `used` against this program's tool in the chain, its rows
+    /// against this invocation's budget.
     pub fn meter(&self, used: Meter) {
         self.own.add(used);
-        self.meters.add(&self.program, used);
+        self.meters.add(&self.program, &self.tool, used);
     }
 
     /// Refused once this invocation has used its budget of rows.
@@ -148,9 +150,9 @@ impl Callsite {
         self.meters.cpu()
     }
 
-    /// Count `used` against `program`, run elsewhere for this chain.
-    pub fn meter_of(&self, program: &str, used: Meter) {
-        self.meters.add(program, used);
+    /// Count `used` against `program`'s `tool`, run elsewhere for this chain.
+    pub fn meter_of(&self, program: &str, tool: &str, used: Meter) {
+        self.meters.add(program, tool, used);
     }
 }
 

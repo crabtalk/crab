@@ -64,3 +64,11 @@ fn the_auth_kits_credentials_parse() {
     assert_eq!(deps.credential_of("GOOGLE_CLIENT_SECRET"), Some("google"));
     assert_eq!(deps.secrets.len(), 4);
 }
+
+#[test]
+fn a_programs_prices_are_read_and_a_kits_are_refused() {
+    let priced = read("name = \"app\"\n\n[prices]\nsearch = \"0.002\"\n").unwrap();
+    assert_eq!(priced.prices["search"], "0.002");
+    let kit = read("[prices]\nsearch = \"0.002\"\n").unwrap();
+    assert!(kit.check_kit().unwrap_err().to_string().contains("prices"));
+}

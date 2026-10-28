@@ -57,7 +57,7 @@ crab context ls
 crab context use default
 ```
 
-A program's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET` sets one, `crab secret ls NAME` lists them by name, `crab secret rm NAME SECRET` revokes one. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the program declares, with its guide, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
+A program's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET --host api.example.com` sets one, sent only to the hosts given, each named in full; `crab secret hosts NAME SECRET --host …` replaces a secret's hosts; `crab secret ls NAME` lists them by name with their hosts; `crab secret rm NAME SECRET` revokes one. A secret with no hosts is never sent. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the program declares, with its guide and the hosts its secrets go to, filled in from the `hosts` its `crab.toml` suggests, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
 
 A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud keeps it for that service alone. With `image`, or `--image`, it pushes the image there instead and Cloud deploys that reference: Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
 
@@ -69,15 +69,19 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
 
-`crab billing plan`, `trial` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
+`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login                     # --github for GitHub
 crab login --device
 crab status
 crab usage                     # the account's services and its plan this period
+crab earnings                  # what the account's priced tools earned, a month each, what is owed and the payouts
+crab earnings connect          # opens Stripe's onboarding of the account's payout account, a US one
+crab earnings dashboard        # opens the payout account's Stripe dashboard
 crab billing                   # plan, credit, refill, card
-crab billing plan pro --for "Pro, to run the crawler past the free plan"
+crab billing verify
+crab billing plan pro --for "Pro, to run the crawler past Hobby"
 crab request WDJB-MJHT --wait
 crab billing portal            # opens Stripe's portal in the browser
 crab key create ci --days 90

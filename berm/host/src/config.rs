@@ -13,6 +13,10 @@ pub struct Config {
     /// The largest linear memory one guest may grow to, in bytes.
     #[serde(default = "memory")]
     pub memory: usize,
+    /// Bytes the invocations running at once may reserve between them, each
+    /// its tool's budget of memory; `0` is no limit.
+    #[serde(default)]
+    pub reserved: u64,
     /// The most CPU time one invocation may spend, nested calls excluded, as a
     /// duration like `"50ms"`.
     #[serde(default = "cpu", with = "humantime_serde")]
@@ -45,6 +49,7 @@ impl Default for Config {
         Self {
             instances: instances(),
             memory: memory(),
+            reserved: 0,
             cpu: cpu(),
             rows: rows(),
             deadline: deadline(),

@@ -10,7 +10,8 @@
 //! the same payload without reading it to price a parse, `chatty` makes a
 //! hundred host calls to price one, `probe` allocates to show the heap arrives without
 //! a second entry into the guest, `spin` loops past the CPU time a call
-//! includes, and `boom` fails on purpose.
+//! includes, `lowered` lowers its memory budget before it loops, and `boom`
+//! fails on purpose.
 //! `tick` arms itself, to show a wake outliving the invocation that asked for
 //! it, `wait` makes one host call a host can make slow, `fetch` makes one
 //! HTTP request to a host its manifest declares, and `random` answers fresh
@@ -63,6 +64,16 @@ pub fn spin(rounds: u64) -> Result<u64> {
         acc = core::hint::black_box(acc.wrapping_mul(31).wrapping_add(round));
     }
     Ok(acc)
+}
+
+/// Lowers this call's memory budget to `memory` bytes, `0` keeping it, then
+/// loops `rounds` times, answering whether lowering it again was refused.
+#[tool(public)]
+pub fn lowered(memory: u64, rounds: u64) -> Result<bool> {
+    berm_lang::limit(0, 0, memory)?;
+    let refused = berm_lang::limit(0, 0, memory).is_err();
+    core::hint::black_box(spin(rounds)?);
+    Ok(refused)
 }
 
 /// Makes 100 host calls, to price one.

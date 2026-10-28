@@ -29,13 +29,11 @@ text_enum!(RequestKind { Payment => "payment", Secret => "secret", Login => "log
 pub enum Purchase {
     /// A paid plan's subscription.
     Plan,
-    /// The free trial of the plan that offers one.
-    Trial,
     /// Credit, in an amount chosen at checkout.
     Credit,
 }
 
-text_enum!(Purchase { Plan => "plan", Trial => "trial", Credit => "credit" });
+text_enum!(Purchase { Plan => "plan", Credit => "credit" });
 
 /// Where a request stands.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -44,7 +42,7 @@ text_enum!(Purchase { Plan => "plan", Trial => "trial", Credit => "credit" });
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
-    /// Paid, the trial started, the secrets set, or the sign-in approved.
+    /// Paid, the secrets set, or the sign-in approved.
     Completed,
     /// The person declined it.
     Declined,
@@ -112,22 +110,25 @@ pub struct Request {
     pub expires_at: i64,
     /// What a payment request buys.
     pub purchase: Option<Purchase>,
-    /// The plan a `plan` or `trial` purchase subscribes to.
+    /// The plan a `plan` purchase subscribes to.
     pub plan: Option<String>,
     /// The plan's monthly price in microdollars; none for credit, whose
     /// amount is chosen at checkout.
     pub price_micros: Option<i64>,
-    /// Days a `trial` purchase is free for, before the plan's price.
-    pub trial_days: Option<u32>,
-    /// Paying ends the account's trial into the plan at once, charging the
-    /// card the trial was started with; no Checkout follows.
-    pub card_on_file: bool,
     /// The service a secret request sets secrets of.
     pub service: Option<String>,
     /// What a secret request asks for, each set on its own. A secret in no
     /// credential is one of its own, by the secret's name, with no title.
     #[serde(default)]
     pub credentials: Vec<AskedCredential>,
+    /// The registered client a sign-in is for, by its name; none for a
+    /// device's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    /// Where a client's sign-in sends the person back to once approved or
+    /// declined, its code or error on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirect: Option<String>,
 }
 
 /// A credential a secret request asks for, as its service declared it when
@@ -144,6 +145,10 @@ pub struct AskedCredential {
     /// What the person enters at the provider, from the request's `copy`.
     #[serde(default)]
     pub copy: Vec<CopyValue>,
+    /// The hosts its secrets go to: those its set secrets go to, else those
+    /// its service suggests. The person confirms them on saving.
+    #[serde(default)]
+    pub hosts: Vec<String>,
     pub secrets: Vec<AskedSecret>,
     /// Set through this request. The request completes once every one is.
     #[serde(default)]
@@ -168,6 +173,7 @@ impl AskedCredential {
                     })
                 })
                 .collect(),
+            hosts: credential.hosts,
             secrets: credential
                 .secrets
                 .into_iter()
@@ -217,16 +223,19 @@ pub struct AskedSecret {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PayResponse {
-    /// Stripe Checkout, or none when a trial ended into the plan at once.
+    /// Stripe Checkout, or none when an active subscription moved onto the
+    /// plan in place.
     pub url: Option<String>,
 }
 
 /// One credential's values by secret name, at `PUT /requests/{code}/secrets`.
-/// A secret of it already set may be left out.
+/// A secret of it already set may be left out. `hosts` replaces the hosts of
+/// every secret of it, the ones left out included.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretValues {
     pub values: BTreeMap<String, String>,
+    pub hosts: Vec<String>,
 }
 
 /// A sign-in request a device made, at `POST /requests/login`: RFC 8628's

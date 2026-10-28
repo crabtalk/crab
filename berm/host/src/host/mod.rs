@@ -20,7 +20,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use berm::{
-    Berm, Engine, Now, Program, User,
+    Berm, Engine, Now, Pool, Program, User,
     database::{Database, Databases},
 };
 use berm_api::{
@@ -43,12 +43,14 @@ use tokio::{
     task, time,
 };
 
+pub use deploy::Installed;
 pub(crate) use invoke::Invoked;
 
 mod deploy;
 mod fetch;
 mod invoke;
 mod nest;
+mod set;
 mod storage;
 
 /// Every service, compiled and callable.
@@ -77,6 +79,8 @@ pub struct Inner<E: Env> {
     pub chains: usize,
     /// The memory each scope's services hold.
     pub(crate) pools: Arc<Pools>,
+    /// The memory budgets its invocations running now reserve.
+    pub(crate) reserve: Arc<Pool>,
     /// Wakes the timer.
     pub(crate) waking: Notify,
     /// Uses not yet written.
@@ -163,6 +167,7 @@ impl<E: Env> Host<E> {
             cache_dir: config.cache_dir.clone(),
             instances: config.instances,
             memory: config.memory,
+            reserved: config.reserved,
             cpu: config.cpu,
             rows: config.rows,
             deadline: config.deadline,
@@ -201,6 +206,7 @@ impl<E: Env> Host<E> {
                 gate: Semaphore::new(chains as usize),
                 chains: chains as usize,
                 pools,
+                reserve: engine.reserve.clone(),
                 waking: Notify::new(),
                 usage: Counts::new(now.clone()),
                 calls: ran,
@@ -220,6 +226,7 @@ impl<E: Env> Host<E> {
                 budget: Budget {
                     cpu: config.cpu.as_micros() as u64,
                     rows: config.rows,
+                    memory: config.memory as u64,
                 },
                 terms,
                 deploying: Mutex::default(),
@@ -247,7 +254,7 @@ impl<E: Env> Host<E> {
     }
 
     /// Load every service as `services` names it.
-    async fn reconcile(&self) {
+    pub(crate) async fn reconcile(&self) {
         let rows = match service::all(&self.store).await {
             Ok(rows) => rows,
             Err(e) => {
@@ -300,8 +307,10 @@ impl<E: Env> Host<E> {
                 }
             }
             usage::write(&self.store, local).await?;
-            calls::write(&self.store, self.calls.take(), (self.now)()).await?;
+            // Every log of a run taken is taken after it, and written before.
+            let ran = self.calls.take();
             logs::write(&self.store, self.logs.take_all(), (self.now)()).await?;
+            calls::write(&self.store, ran, (self.now)()).await?;
             meter::write(&self.store, self.meters.take()).await?;
         }
         for (peer, used) in remote {

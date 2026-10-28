@@ -32,6 +32,7 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
     }
     let page = CallPage {
         service: None,
+        project: None,
         tool: None,
         event: None,
         q: None,

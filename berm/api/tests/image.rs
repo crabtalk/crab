@@ -57,6 +57,7 @@ fn credentialed(name: &str, id: &str, secret: &str) -> Kit {
             title: id.to_owned(),
             guide: String::new(),
             copy: Default::default(),
+            hosts: Vec::new(),
             secrets: vec![CredentialSecret {
                 name: secret.to_owned(),
                 label: String::new(),

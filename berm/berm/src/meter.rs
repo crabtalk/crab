@@ -10,22 +10,24 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Instant,
 };
 
-/// One chain's meters, by program, shared by every invocation in it. Filled
-/// whether the chain returns, fails or traps.
+/// Meters by program and the tool of it that ran.
+pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
+
+/// One chain's meters, shared by every invocation in it. Filled whether the
+/// chain returns, fails or traps.
 #[derive(Debug, Default)]
-pub struct Meters(Mutex<BTreeMap<Arc<str>, Meter>>);
+pub struct Meters(Mutex<ByTool>);
 
 impl Meters {
-    pub(crate) fn add(&self, program: &str, used: Meter) {
-        let mut meters = self.0.lock();
-        match meters.get_mut(program) {
-            Some(meter) => *meter += used,
-            None => {
-                meters.insert(program.into(), used);
-            }
-        }
+    pub(crate) fn add(&self, program: &str, tool: &str, used: Meter) {
+        *self
+            .0
+            .lock()
+            .entry((program.into(), tool.into()))
+            .or_default() += used;
     }
 
     /// CPU microseconds over every program.
@@ -33,7 +35,7 @@ impl Meters {
         self.0.lock().values().map(|meter| meter.cpu).sum()
     }
 
-    pub fn take(&self) -> BTreeMap<Arc<str>, Meter> {
+    pub fn take(&self) -> ByTool {
         std::mem::take(&mut *self.0.lock())
     }
 }
@@ -111,7 +113,7 @@ impl Pool {
     }
 
     /// Take `bytes` more for an invocation, refused past its limit.
-    fn grow(&self, bytes: u64) -> Result<()> {
+    pub(crate) fn grow(&self, bytes: u64) -> Result<()> {
         let running = self.running.fetch_add(bytes, Ordering::Relaxed) + bytes;
         let held = running + self.loaded.load(Ordering::Relaxed);
         let limit = self.limit.load(Ordering::Relaxed);
@@ -124,28 +126,86 @@ impl Pool {
 }
 
 /// One invocation's part of its program's [`Running`] and of its [`Pool`],
-/// from when it is built until it is dropped. Its store's limiter, so the
-/// memory it holds is counted as it grows.
+/// and its budget of memory reserved from the engine's, from when it is built
+/// until it is dropped. Its store's limiter, so the memory it holds is counted
+/// as it grows and held to its budget.
 #[derive(Debug)]
 pub(crate) struct Held {
     running: Arc<Running>,
     pool: Arc<Pool>,
     memory: u64,
+    reserve: Arc<Pool>,
+    /// Bytes of linear memory it may grow to, reserved from `reserve`.
+    budget: u64,
+    /// When `budget` was last set.
+    since: Instant,
+    /// Byte-microseconds of budget held before `since`.
+    spent: u128,
 }
 
 impl Held {
-    pub(crate) fn new(running: Arc<Running>, pool: Arc<Pool>) -> Self {
+    /// Refused when `reserve` cannot spare `budget` bytes.
+    pub(crate) fn new(
+        running: Arc<Running>,
+        pool: Arc<Pool>,
+        reserve: Arc<Pool>,
+        budget: u64,
+    ) -> Result<Self> {
+        reserve
+            .grow(budget)
+            .map_err(|_| Refused("the host holds as much memory as it may; retry".to_owned()))?;
         running.calls.fetch_add(1, Ordering::Relaxed);
-        Self {
+        Ok(Self {
             running,
             pool,
             memory: 0,
+            reserve,
+            budget,
+            since: Instant::now(),
+            spent: 0,
+        })
+    }
+
+    /// Hold it to `budget` from now on, releasing the rest of its reservation.
+    /// Refused past its budget, and below the memory it holds already.
+    pub(crate) fn lower(&mut self, budget: u64) -> Result<()> {
+        if budget > self.budget {
+            bail!(Refused(format!(
+                "{budget} bytes of memory is past this call's budget of {}",
+                self.budget
+            )));
         }
+        if budget < self.memory {
+            bail!(Refused(format!(
+                "this call holds {} bytes of memory already",
+                self.memory
+            )));
+        }
+        self.spent = self.held_until_now();
+        self.since = Instant::now();
+        self.reserve
+            .running
+            .fetch_sub(self.budget - budget, Ordering::Relaxed);
+        self.budget = budget;
+        Ok(())
+    }
+
+    /// Its budget held over its wall-clock time so far, each budget for as
+    /// long as it was set, in MiB-microseconds.
+    pub(crate) fn held(&self) -> u64 {
+        (self.held_until_now() >> 20).min(u128::from(u64::MAX)) as u64
+    }
+
+    fn held_until_now(&self) -> u128 {
+        self.spent + u128::from(self.budget) * self.since.elapsed().as_micros()
     }
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
+        self.reserve
+            .running
+            .fetch_sub(self.budget, Ordering::Relaxed);
         self.running.calls.fetch_sub(1, Ordering::Relaxed);
         self.running
             .memory
@@ -165,6 +225,12 @@ impl wasmtime::ResourceLimiter for Held {
     ) -> wasmtime::Result<bool> {
         if maximum.is_some_and(|maximum| desired > maximum) {
             return Ok(false);
+        }
+        if desired as u64 > self.budget {
+            return Err(wasmtime::Error::msg(format!(
+                "growing to {desired} bytes of memory would pass this call's budget of {}",
+                self.budget
+            )));
         }
         let grown = (desired - current) as u64;
         self.pool
@@ -190,15 +256,25 @@ impl wasmtime::ResourceLimiter for Held {
 #[derive(Debug)]
 pub(crate) struct Own {
     used: Mutex<Meter>,
-    budget: u64,
+    budget: AtomicU64,
 }
 
 impl Own {
     pub(crate) fn new(budget: u64) -> Self {
         Self {
             used: Mutex::default(),
-            budget,
+            budget: AtomicU64::new(budget),
         }
+    }
+
+    /// Its budget of rows.
+    pub(crate) fn budget(&self) -> u64 {
+        self.budget.load(Ordering::Relaxed)
+    }
+
+    /// Hold it to `rows` from now on.
+    pub(crate) fn lower(&self, rows: u64) {
+        self.budget.fetch_min(rows, Ordering::Relaxed);
     }
 
     pub(crate) fn add(&self, used: Meter) {
@@ -212,12 +288,9 @@ impl Own {
     /// Refused once the budget is used.
     pub(crate) fn left(&self) -> Result<()> {
         let used = *self.used.lock();
-        if used.read + used.written >= self.budget {
-            return Err(Refused(format!(
-                "this call has used its budget of {} rows",
-                self.budget
-            ))
-            .into());
+        let budget = self.budget();
+        if used.read + used.written >= budget {
+            return Err(Refused(format!("this call has used its budget of {budget} rows")).into());
         }
         Ok(())
     }

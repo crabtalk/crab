@@ -87,6 +87,18 @@ pub fn refill(client: &Client, amount: u32, cap: u32) -> Result<()> {
     Ok(())
 }
 
+/// Verify the account on GitHub, and print when it was verified.
+pub fn verify(client: &Client, json: bool) -> Result<()> {
+    let verification = utils::wait(client.verify())?;
+    if json {
+        return utils::json(&verification);
+    }
+    if let Some(at) = verification.verified_at {
+        println!("verified {}", format::date(at));
+    }
+    Ok(())
+}
+
 pub fn invoices(client: &Client, json: bool) -> Result<()> {
     let invoices = utils::wait(client.invoices())?;
     if json {

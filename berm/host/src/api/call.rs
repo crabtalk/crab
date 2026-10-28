@@ -5,7 +5,7 @@ use crate::{
     Denied, Stored, deny,
     env::{Env, Images, Secrets},
     host::{self, Host},
-    record::{calls, logs, meter, usage},
+    record::{calls, logs, meter, records, usage},
     state::service,
     wake::{cron, table},
 };
@@ -15,7 +15,7 @@ use berm::{
     tape::{Recorder, Taping},
 };
 use berm_api::{
-    Deps, Listing, Logged, Output, Terms, ToolTerms,
+    Deps, Listing, Logged, Meter, Output, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
 };
 use std::{
@@ -50,7 +50,14 @@ impl<E: Env> Host<E> {
         .await?
         .remove(name)
         .unwrap_or_default();
-        Ok(Listing { program, served })
+        let row = service::row(&self.store, scope, name).await?;
+        Ok(Listing {
+            program,
+            served,
+            stopped: self.stops.stopped(service),
+            reference: row.as_ref().and_then(service::Row::registry),
+            project: row.and_then(|row| row.project),
+        })
     }
 
     /// `service`'s runtime, for its owners, with what it declares that nothing
@@ -61,6 +68,9 @@ impl<E: Env> Host<E> {
         let scope = host::split(service).0;
         let deps = &program.manifest().deps;
         let granted = self.secrets.names(service).await.unwrap_or_default();
+        let project = service::row(&self.store, scope, host::split(service).1)
+            .await?
+            .and_then(|row| row.project);
         Ok(berm_api::Runtime {
             unresolved: Deps {
                 programs: deps
@@ -81,7 +91,7 @@ impl<E: Env> Host<E> {
                     .cloned()
                     .collect(),
             },
-            stopped: self.stops.stopped(service),
+            project,
             ..program.runtime()
         })
     }
@@ -98,12 +108,19 @@ impl<E: Env> Host<E> {
             self.meters.days(i32::MIN),
         )
         .await?;
+        let mut rows = service::scoped(&self.store, scope).await?;
         Ok(self
             .list(scope)
             .into_iter()
-            .map(|(name, program)| Listing {
-                program: program.idl(&name),
-                served: served.remove(&name).unwrap_or_default(),
+            .map(|(name, program)| {
+                let row = rows.remove(&name);
+                Listing {
+                    program: program.idl(&name),
+                    served: served.remove(&name).unwrap_or_default(),
+                    stopped: self.stops.stopped(&program.name),
+                    reference: row.as_ref().and_then(service::Row::registry),
+                    project: row.and_then(|row| row.project),
+                }
             })
             .collect())
     }
@@ -143,12 +160,13 @@ impl<E: Env> Host<E> {
             || budget.rows == 0
             || budget.cpu > self.budget.cpu
             || budget.rows > self.budget.rows
+            || budget.memory > self.budget.memory
         {
             return Err(deny(
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "a budget is between 1 and {}µs of CPU, and 1 and {} rows",
-                    self.budget.cpu, self.budget.rows
+                    "a budget is between 1 and {}µs of CPU, 1 and {} rows, and at most {} bytes of memory",
+                    self.budget.cpu, self.budget.rows, self.budget.memory
                 ),
             ));
         }
@@ -292,6 +310,17 @@ impl<E: Env> Host<E> {
         })
     }
 
+    /// The written calls and logs past `page`'s cursors, oldest first, those
+    /// up to them deleted first.
+    ///
+    /// A call is answered only once every run with a smaller id is written,
+    /// and a log is deleted only with the call it was emitted in. A failed
+    /// call's input and tape stay.
+    pub async fn records(&self, page: wire::RecordsPage) -> anyhow::Result<wire::Records> {
+        let _reading = self.flushing.read().await;
+        records::page(&self.store, page, self.calls.floor()).await
+    }
+
     /// `service`'s runs on `page`, newest first, and its `Link` header. At
     /// most `page.limit`, held to [`MAX_PAGE`].
     pub async fn calls(
@@ -372,18 +401,6 @@ impl<E: Env> Host<E> {
             self.unsaved(service),
         )
         .await?)
-    }
-
-    /// What each of `service`'s tools used over its calls of the last 30
-    /// days, by tool, as their budgets count it.
-    pub async fn tool_usage(
-        &self,
-        service: &str,
-    ) -> Result<BTreeMap<String, wire::ToolUsage>, Denied> {
-        self.deployed(service)?;
-        let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
-        Ok(calls::tools(&self.store, scope, name).await?)
     }
 
     /// [`Host::call_stats`] of every service in `scope`, of `page.service`
@@ -566,10 +583,16 @@ impl<E: Env> Host<E> {
         Ok(Reply {
             result: outcome.result,
             denied: outcome.denied,
-            meters: used
-                .into_iter()
-                .map(|(service, used)| (service.to_string(), used))
-                .collect(),
+            meters: used.into_iter().fold(
+                BTreeMap::new(),
+                |mut meters: BTreeMap<String, BTreeMap<String, Meter>>, ((service, tool), used)| {
+                    meters
+                        .entry(service.to_string())
+                        .or_default()
+                        .insert(tool.to_string(), used);
+                    meters
+                },
+            ),
         })
     }
 

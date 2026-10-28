@@ -195,18 +195,15 @@ pub(crate) async fn crons(
     store
         .read(move |conn| {
             let caller = host::join(&scope, &name);
-            let mut statement = conn.prepare_cached(&format!(
-                "SELECT {COLUMNS}, w.slot, w.cron, w.due, w.failures
-                   FROM service_wakes w
-                   LEFT JOIN service_calls c ON c.id = (
-                        SELECT MAX(id) FROM service_calls
-                         WHERE scope = w.scope AND name = w.name AND tool = w.slot
-                           AND source = 'service' AND caller = ?3)
-                  WHERE w.scope = ?1 AND w.name = ?2 AND w.slot <> ''
-                  ORDER BY w.slot",
-                COLUMNS = calls::COLUMNS
-            ))?;
-            let rows = statement.query_map(params![scope, name, caller], |row| {
+            // The last run, as `calls::call` reads one.
+            let mut statement = conn.prepare_cached(
+                "SELECT last_call, last_at, slot, last_source, last_caller, last_outcome, last_ms,
+                        last_meter, last_logs, slot, cron, due, failures
+                   FROM service_wakes
+                  WHERE scope = ?1 AND name = ?2 AND slot <> ''
+                  ORDER BY slot",
+            )?;
+            let rows = statement.query_map(params![scope, name], |row| {
                 let last = match row.get::<_, Option<i64>>(0)? {
                     Some(_) => Some(calls::call(row)?),
                     None => None,

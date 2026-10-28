@@ -1,10 +1,7 @@
 use anyhow::Result;
-use berm_api::{
-    Budget,
-    host::{Caller, User},
-};
+use berm_api::host::{Caller, User};
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{cmd, context::Contexts, utils};
+use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
@@ -183,11 +180,21 @@ enum Command {
         #[arg(long)]
         month: Option<String>,
     },
+    /// What the account's priced tools earned on Cloud, a UTC month each:
+    /// revenue, the cut, compute and net, by service and tool; what is owed,
+    /// and the payouts.
+    Earnings {
+        #[command(subcommand)]
+        action: Option<EarningsCommand>,
+    },
     /// A program's cron tools: listed, set, stopped.
     #[command(subcommand)]
     Cron(CronCommand),
     /// The wakes armed to call a program's tools.
     Wakes { name: String },
+    /// A service's last 100 deploys on Cloud, newest first, refused and
+    /// failed ones included.
+    Deploys { name: String },
     /// Who a service answers on Cloud, or with an argument, set it.
     Visibility {
         name: String,
@@ -202,15 +209,21 @@ enum Command {
         /// `YYYY-MM-DD`.
         on: Option<String>,
     },
-    /// Set the most one call of a tool may use, from its next call.
+    /// Set the most one call of a tool may use, from its next call; with no
+    /// flags, what its runs of the last 30 days used and the memory budget
+    /// they fit.
     Budget {
         name: String,
         tool: String,
         /// CPU time, in microseconds.
-        #[arg(long)]
-        cpu: u64,
-        #[arg(long)]
-        rows: u64,
+        #[arg(long, requires = "rows")]
+        cpu: Option<u64>,
+        #[arg(long, requires = "cpu")]
+        rows: Option<u64>,
+        /// Linear memory, in MiB; omitted is the most the host lets a call
+        /// grow to.
+        #[arg(long, value_name = "MIB", requires = "cpu")]
+        memory: Option<u64>,
     },
     /// A program's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
@@ -268,10 +281,28 @@ enum CronCommand {
 
 #[derive(Subcommand)]
 enum SecretCommand {
-    /// Set a secret of a program, its value read from stdin. A set secret is
-    /// changed only by revoking it and setting it again.
-    Put { name: String, secret: String },
-    /// List a program's secrets, by name.
+    /// Set a secret of a program, its value read from stdin and sent only to
+    /// the hosts given, or to none. A set secret's value is changed only by
+    /// revoking it and setting it again.
+    Put {
+        name: String,
+        secret: String,
+        /// A host its value is sent to, named in full, such as
+        /// `api.stripe.com`. Repeat it for each host.
+        #[arg(long = "host")]
+        hosts: Vec<String>,
+    },
+    /// Send a secret of a program to these hosts alone, replacing those it
+    /// had.
+    Hosts {
+        name: String,
+        secret: String,
+        /// A host its value is sent to, named in full, such as
+        /// `api.stripe.com`. Repeat it for each host.
+        #[arg(long = "host", required = true)]
+        hosts: Vec<String>,
+    },
+    /// List a program's secrets, by name, with the hosts each is sent to.
     Ls { name: String },
     /// Revoke a secret of a program.
     Rm { name: String, secret: String },
@@ -304,21 +335,26 @@ enum SecretCommand {
 }
 
 #[derive(Subcommand)]
+enum EarningsCommand {
+    /// Open Stripe's onboarding for the account's payout account, a US one,
+    /// creating it the first time.
+    Connect,
+    /// Open the payout account's Stripe dashboard.
+    Dashboard,
+}
+
+#[derive(Subcommand)]
 enum BillingCommand {
     /// Ask a person to put the account on a plan: a code whose page they pay
-    /// at. From a trial, the plan starts as they confirm it.
+    /// at.
     Plan {
         slug: String,
         /// What it is for, shown to the person who pays.
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Ask the person to start the free trial: a code whose page takes a card.
-    Trial {
-        /// What it is for, shown to the person who starts it.
-        #[arg(long, default_value = "")]
-        r#for: String,
-    },
+    /// Verify the account on GitHub, which lets it deploy on Hobby.
+    Verify,
     /// Ask a person to buy credit: a code whose page takes the amount.
     Credit {
         /// What it is for, shown to the person who pays.
@@ -585,6 +621,13 @@ fn main() -> Result<ExitCode> {
             json,
         )?,
         Command::Cost { name, month } => cmd::cost::run(&client()?, name, month.as_deref(), json)?,
+        Command::Earnings { action: None } => cmd::earnings::run(&client()?, json)?,
+        Command::Earnings {
+            action: Some(EarningsCommand::Connect),
+        } => cmd::earnings::connect(&client()?)?,
+        Command::Earnings {
+            action: Some(EarningsCommand::Dashboard),
+        } => cmd::earnings::dashboard(&client()?)?,
         Command::Cron(CronCommand::Ls { name }) => cmd::cron::ls(&client()?, name, json)?,
         Command::Cron(CronCommand::Set { name, tool, cron }) => {
             cmd::cron::set(&client()?, name, tool, Some(cron))?
@@ -593,6 +636,7 @@ fn main() -> Result<ExitCode> {
             cmd::cron::set(&client()?, name, tool, None)?
         }
         Command::Wakes { name } => cmd::wakes::run(&client()?, name, json)?,
+        Command::Deploys { name } => cmd::deploys::run(&client()?, name, json)?,
         Command::Visibility { name, set } => cmd::visibility::run(
             &client()?,
             name,
@@ -602,9 +646,16 @@ fn main() -> Result<ExitCode> {
         Command::Sunset { name, tool, on } => {
             cmd::sunset::run(&client()?, name, tool, on.as_deref())?
         }
-        Command::Secret(SecretCommand::Put { name, secret }) => {
-            cmd::secret::put(&client()?, name, secret)?
-        }
+        Command::Secret(SecretCommand::Put {
+            name,
+            secret,
+            hosts,
+        }) => cmd::secret::put(&client()?, name, secret, hosts)?,
+        Command::Secret(SecretCommand::Hosts {
+            name,
+            secret,
+            hosts,
+        }) => cmd::secret::hosts(&client()?, name, secret, hosts)?,
         Command::Secret(SecretCommand::Ls { name }) => cmd::secret::ls(&client()?, name, json)?,
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?
@@ -623,17 +674,13 @@ fn main() -> Result<ExitCode> {
             tool,
             cpu,
             rows,
-        } => {
-            utils::wait(client()?.budget(
-                name,
-                tool,
-                Budget {
-                    cpu: *cpu,
-                    rows: *rows,
-                },
-            ))?;
-            eprintln!("{name}.{tool}: at most {cpu}µs of CPU and {rows} rows a call");
-        }
+            memory,
+        } => match (cpu, rows) {
+            (Some(cpu), Some(rows)) => {
+                cmd::budget::set(&client()?, name, tool, *cpu, *rows, *memory)?
+            }
+            _ => cmd::budget::show(&client()?, name, tool, json)?,
+        },
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {
             action: Some(action),
@@ -643,9 +690,7 @@ fn main() -> Result<ExitCode> {
                 BillingCommand::Plan { slug, r#for } => {
                     cmd::billing::ask(&client, Purchase::Plan, Some(slug), r#for, json)?
                 }
-                BillingCommand::Trial { r#for } => {
-                    cmd::billing::ask(&client, Purchase::Trial, None, r#for, json)?
-                }
+                BillingCommand::Verify => cmd::billing::verify(&client, json)?,
                 BillingCommand::Credit { r#for } => {
                     cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }

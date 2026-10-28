@@ -173,8 +173,28 @@ pub struct Credential {
     /// request gives each value, since they differ per product.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub copy: BTreeMap<String, String>,
+    /// The hosts its secrets are suggested to be sent to, each named in full.
+    /// A secret goes only to the hosts the person setting it confirms.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<String>,
     /// In the order the person sets them.
     pub secrets: Vec<CredentialSecret>,
+}
+
+impl Credential {
+    /// Whether `host` names one host in full, as a credential's suggested
+    /// hosts and a set secret's hosts do: lowercase ASCII letters, digits,
+    /// `-` and `.`, with no pattern, port or scheme.
+    pub fn host(host: &str) -> bool {
+        !host.is_empty()
+            && host.len() <= 253
+            && !host.starts_with(['.', '-'])
+            && !host.ends_with(['.', '-'])
+            && !host.contains("..")
+            && host
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
+    }
 }
 
 /// One secret of a [`Credential`].
@@ -247,6 +267,7 @@ impl Deps {
                     title: String::new(),
                     guide: String::new(),
                     copy: BTreeMap::new(),
+                    hosts: Vec::new(),
                     secrets: vec![CredentialSecret {
                         name: name.clone(),
                         label: String::new(),

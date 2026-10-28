@@ -1,5 +1,7 @@
 //! How `crab` writes numbers for a person to read.
 
+use crabtalk_sdk::system::meta;
+
 /// `4,865`, then `3.8M`, `1.2B` from a million up.
 pub fn count(n: u64) -> String {
     match n {
@@ -33,6 +35,11 @@ pub fn bytes(n: u64) -> String {
         0 => format!("{n} B"),
         _ => format!("{size:.1} {}", UNITS[unit]),
     }
+}
+
+/// MiB-microseconds of memory held, as GB-hours: `12.5 GB-h`.
+pub fn gb_hours(held: u64) -> String {
+    format!("{:.1} GB-h", held as f64 / meta::GB_HOUR as f64)
 }
 
 /// USD micros: to the cent from a cent up, `$2.41`; below a cent, to two

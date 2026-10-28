@@ -19,7 +19,10 @@ use crate::{
 };
 use anyhow::{Result, anyhow, bail};
 use ring::rand::{SecureRandom, SystemRandom};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, atomic::Ordering},
+};
 use wasmtime::Caller;
 
 pub mod after;
@@ -177,6 +180,15 @@ fn builtins() -> Table {
     );
 
     table.insert(
+        abi::HOST_LIMIT,
+        handler(|guest, ptr, len| {
+            let bytes = engine::read(guest, ptr, len)?;
+            let answer = limit(guest.data_mut(), &bytes);
+            Ok(stage(guest, answer))
+        }),
+    );
+
+    table.insert(
         abi::HOST_ARG_LEN,
         handler(|guest, _, _| Ok(guest.data().args.len() as u64)),
     );
@@ -282,6 +294,39 @@ fn builtins() -> Table {
     );
 
     table
+}
+
+/// Lower `invocation`'s budget to what `bytes` holds, as [`abi::HOST_LIMIT`]
+/// reads it.
+fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
+    let [cpu, rows, memory]: [u64; 3] = match bytes.len() {
+        24 => std::array::from_fn(|i| {
+            u64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().expect("eight bytes"))
+        }),
+        _ => return Err(Refused(String::from("a limit is three u64s")).into()),
+    };
+    if invocation.limited {
+        return Err(Refused(String::from("a call lowers its budget once")).into());
+    }
+    let own = invocation.at.own.clone();
+    let (held_cpu, held_rows) = (invocation.cpu.load(Ordering::Relaxed), own.budget());
+    if cpu > held_cpu || rows > held_rows {
+        return Err(Refused(format!(
+            "a call lowers its budget of {held_cpu}µs of CPU and {held_rows} rows, never raises it"
+        ))
+        .into());
+    }
+    if memory != 0 {
+        invocation.held.lower(memory)?;
+    }
+    if cpu != 0 {
+        invocation.cpu.store(cpu, Ordering::Relaxed);
+    }
+    if rows != 0 {
+        own.lower(rows);
+    }
+    invocation.limited = true;
+    Ok(Vec::new())
 }
 
 /// Have the rest of `invocation`'s chain run for `subject`, vouched for by its

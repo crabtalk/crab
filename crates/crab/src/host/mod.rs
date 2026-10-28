@@ -1,15 +1,13 @@
 //! The local host — deploys programs and serves their tools over MCP.
 //!
-//! A thin daemon over [`Host`], run by `crab dev`, with one flat namespace of programs. Every
-//! deployed program appears on one MCP endpoint, its tools namespaced
-//! `{program}.{tool}`.
+//! A thin daemon over [`Host`], run by `crab dev`, with one flat namespace of programs, every
+//! one reached through one MCP endpoint.
 
 use crate::host::secrets::Grants;
 use anyhow::{Context, Result};
 use berm::Program;
 use berm_host::{Config, Edges, Host, Layers, Stored, System};
 use std::{io::IsTerminal, path::PathBuf, sync::Arc, time::Duration};
-use tokio::sync::broadcast;
 
 pub use env::Local;
 pub use fetch::Fetch;
@@ -43,19 +41,12 @@ pub fn trace() {
         .init();
 }
 
-/// How many deploys may go unread by a session before it misses one. A missed
-/// notification costs a stale tool list until the next change, not a wrong one.
-const CHANGE_BACKLOG: usize = 16;
-
 pub struct Service {
     pub host: Host<Local>,
     /// Each service's secrets, which the host reads and the control API sets.
     pub secrets: Grants,
     /// Where uploaded images are kept for the host to pull.
     images: Stored,
-    /// Fires when the deployed set changes. Connected MCP sessions turn this
-    /// into `notifications/tools/list_changed`.
-    changed: broadcast::Sender<()>,
 }
 
 impl Service {
@@ -103,7 +94,6 @@ impl Service {
             host,
             secrets: grants,
             images,
-            changed: broadcast::channel(CHANGE_BACKLOG).0,
         }))
     }
 
@@ -121,9 +111,5 @@ impl Service {
 
     pub fn get(&self, name: &str) -> Option<Arc<Program>> {
         self.host.get(name)
-    }
-
-    pub fn subscribe(&self) -> broadcast::Receiver<()> {
-        self.changed.subscribe()
     }
 }

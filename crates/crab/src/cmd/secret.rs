@@ -9,29 +9,49 @@ use std::{
 };
 
 /// Set `name`'s secret `secret` to the value on stdin, its trailing newline
-/// dropped.
-pub fn put(client: &Client, name: &str, secret: &str) -> Result<()> {
+/// dropped, sent only to `hosts`.
+pub fn put(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Result<()> {
     let mut value = String::new();
     std::io::stdin()
         .read_to_string(&mut value)
         .context("reading the secret's value from stdin")?;
     let value = value.trim_end_matches(['\n', '\r']);
     if value.is_empty() {
-        bail!("no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret}`");
+        bail!(
+            "no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret} --host <host>`"
+        );
     }
-    utils::wait(client.put_secret(name, secret, value))?;
-    eprintln!("set {name} {secret}");
+    utils::wait(client.put_secret(name, secret, value, hosts))?;
+    match hosts.is_empty() {
+        true => eprintln!(
+            "set {name} {secret}, sent to no host: crab secret hosts {name} {secret} --host <host>"
+        ),
+        false => eprintln!("set {name} {secret}, sent to {}", hosts.join(", ")),
+    }
     Ok(())
 }
 
-/// Print `name`'s secrets, by name.
+/// Send `name`'s secret `secret` to `hosts` alone.
+pub fn hosts(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Result<()> {
+    utils::wait(client.put_secret_hosts(name, secret, hosts))?;
+    eprintln!("{name} {secret} is sent to {}", hosts.join(", "));
+    Ok(())
+}
+
+/// Print `name`'s secrets, by name, each beside the hosts it is sent to.
 pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
     let secrets = utils::wait(client.secrets(name))?;
     if json {
         return utils::json(&secrets);
     }
     for secret in &secrets {
-        println!("{}", secret.name);
+        match secret.sent() {
+            true => println!("{}  {}", secret.name, secret.hosts.join(", ")),
+            false => println!(
+                "{}  sent nowhere: crab secret hosts {name} {} --host <host>",
+                secret.name, secret.name
+            ),
+        }
     }
     Ok(())
 }
@@ -83,15 +103,11 @@ pub fn fill(client: &Client, name: &str, copies: &[(String, String)]) -> Result<
             "crab secret fill takes values typed at a terminal: ask the person to run `crab secret fill {name}` in theirs"
         );
     }
-    let target = match &client.owner {
-        None => "the local host on this machine".to_owned(),
-        Some(owner) => format!("Cloud, the account {}", owner.name()),
-    };
     let credentials = utils::wait(client.runtime(name))?.deps.grouped();
     if credentials.is_empty() {
         eprintln!("{name} declares no secrets");
         return Ok(());
     }
     let copy = copies.iter().cloned().collect();
-    Form::new(client, name, target, credentials, &copy)?.run()
+    Form::new(client, name, credentials, &copy)?.run()
 }

@@ -13,6 +13,7 @@ pub mod account;
 #[cfg(feature = "client")]
 pub mod client;
 pub mod error;
+pub mod mcp;
 pub mod sandbox;
 pub mod system;
 pub mod utils;

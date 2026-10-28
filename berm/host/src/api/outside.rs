@@ -213,6 +213,12 @@ impl<E: Env> Host<E> {
                 "the account holds as much memory as it may; retry",
             ));
         }
+        if self.reserve.full() {
+            return Err(deny(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the host holds as much memory as it may; retry",
+            ));
+        }
         let Ok(_slot) = self.gate.try_acquire() else {
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -270,7 +276,7 @@ impl<E: Env> Host<E> {
             sent: body.len() as u64,
             ..Meter::default()
         };
-        self.meters.record(&service, answer);
+        self.meters.record(&service, &tool, answer);
         invoked.meter += answer;
         let id = started.id;
         let outcome = Outcome::of(&invoked.result, invoked.denied);

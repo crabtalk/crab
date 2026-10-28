@@ -1,6 +1,7 @@
 //! Each run of a service this host runs: held in memory and written in batches
 //! to `service_calls` on the host the service runs on, kept [`usage::WINDOW`]
-//! days.
+//! days or until its fleet stores it. A failed run's input and tape are kept
+//! in `service_replays`, past its row.
 
 use crate::{
     host::{self, Invoked},
@@ -13,14 +14,13 @@ use berm_api::{
     Meter,
     host::{
         Bucket, Call, CallInput, CallPage, CallStats, NestedCall, Outcome, ServiceCall, Source,
-        Spread, ToolDay, ToolUsage,
     },
 };
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
 use std::{
     cmp::Reverse,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     mem,
     sync::{
         Arc,
@@ -37,10 +37,15 @@ pub(crate) struct Pending {
     pending: Mutex<Vec<Ran>>,
     /// The calls each run in flight made past its first, by its id.
     nested: Mutex<HashMap<u64, Vec<NestedCall>>>,
+    /// The ids of runs started and not yet held.
+    open: Open,
     /// The last id handed out.
     last: AtomicU64,
     now: Now,
 }
+
+/// The ids of runs started and not yet held, shared with each [`Started`].
+type Open = Arc<Mutex<BTreeSet<u64>>>;
 
 /// A run not yet written.
 #[derive(Clone)]
@@ -71,13 +76,19 @@ pub(crate) struct Unsaved {
     pub emitted: Vec<Emitted>,
 }
 
-/// A run being timed, from [`Pending::start`].
-#[derive(Clone, Copy)]
+/// A run being timed, from [`Pending::start`]; open until it drops.
 pub(crate) struct Started {
     /// The id its row takes.
     pub id: u64,
     at: u64,
     began: Instant,
+    open: Open,
+}
+
+impl Drop for Started {
+    fn drop(&mut self) {
+        self.open.lock().remove(&self.id);
+    }
 }
 
 impl Pending {
@@ -86,17 +97,34 @@ impl Pending {
         Self {
             pending: Mutex::default(),
             nested: Mutex::default(),
+            open: Open::default(),
             last: AtomicU64::new(last),
             now,
         }
     }
 
     pub(crate) fn start(&self) -> Started {
+        let mut open = self.open.lock();
+        let id = self.last.fetch_add(1, Ordering::Relaxed) + 1;
+        open.insert(id);
         Started {
-            id: self.last.fetch_add(1, Ordering::Relaxed) + 1,
+            id,
             at: (self.now)(),
             began: Instant::now(),
+            open: self.open.clone(),
         }
+    }
+
+    /// The smallest id a run not yet written may take: one started and not
+    /// held, one held, or the next handed out. Exact only while no runs are
+    /// being written.
+    pub(crate) fn floor(&self) -> u64 {
+        let (next, open) = {
+            let open = self.open.lock();
+            (self.last.load(Ordering::Relaxed) + 1, open.first().copied())
+        };
+        let held = self.pending.lock().iter().map(|ran| ran.id).min();
+        [open, held].into_iter().flatten().fold(next, u64::min)
     }
 
     /// Hold a run of `tool` on the service keyed `service`, begun at
@@ -211,36 +239,75 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 .input
                 .as_deref()
                 .map(|input| serde_json::to_string(input).expect("an input is JSON"));
-            tx.prepare_cached(
-                "INSERT INTO service_calls
-                        (id, scope, name, at, tool, source, caller, outcome, ms, meter, input, tape,
-                         cpu, read, written)
-                 SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11, ?12, ?13, ?14, ?15
-                  WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
-            )?
-            .execute(params![
-                scope,
-                name,
-                call.at as i64,
-                call.tool,
-                call.source,
-                call.caller,
-                call.outcome,
-                call.ms as i64,
-                meter,
-                call.id as i64,
-                input,
-                call.tape.as_deref(),
-                call.own.map(|own| own.cpu as i64),
-                call.own.map(|own| own.read as i64),
-                call.own.map(|own| own.written as i64)
-            ])?;
+            let inserted = tx
+                .prepare_cached(
+                    "INSERT INTO service_calls
+                            (id, scope, name, at, tool, source, caller, outcome, ms, meter,
+                             cpu, read, written)
+                     SELECT ?10, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?11, ?12, ?13
+                      WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
+                )?
+                .execute(params![
+                    scope,
+                    name,
+                    call.at as i64,
+                    call.tool,
+                    call.source,
+                    call.caller,
+                    call.outcome,
+                    call.ms as i64,
+                    meter,
+                    call.id as i64,
+                    call.own.map(|own| own.cpu as i64),
+                    call.own.map(|own| own.read as i64),
+                    call.own.map(|own| own.written as i64)
+                ])?;
+            if inserted == 0 {
+                return Ok(());
+            }
+            if input.is_some() || call.tape.is_some() {
+                tx.prepare_cached(
+                    "INSERT INTO service_replays (scope, name, call, at, input, tape)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                )?
+                .execute(params![
+                    scope,
+                    name,
+                    call.id as i64,
+                    call.at as i64,
+                    input,
+                    call.tape.as_deref()
+                ])?;
+            }
+            // A service's call of its own cron tool is that tool's last run.
+            if call.source == Source::Service && call.caller == call.service {
+                tx.prepare_cached(
+                    "UPDATE service_wakes
+                        SET last_call = ?4, last_at = ?5, last_source = ?6, last_caller = ?7,
+                            last_outcome = ?8, last_ms = ?9, last_meter = ?10,
+                            last_logs = (SELECT COUNT(*) FROM service_logs
+                                          WHERE scope = ?1 AND name = ?2 AND call = ?4)
+                      WHERE scope = ?1 AND name = ?2 AND slot = ?3 AND slot <> ''
+                        AND (last_call IS NULL OR last_call < ?4)",
+                )?
+                .execute(params![
+                    scope,
+                    name,
+                    call.tool,
+                    call.id as i64,
+                    call.at as i64,
+                    call.source,
+                    call.caller,
+                    call.outcome,
+                    call.ms as i64,
+                    meter
+                ])?;
+            }
             let mut nested = tx.prepare_cached(
                 "INSERT INTO service_nested_calls
                         (scope, name, call, id, parent, service, tool, at, ms, outcome, cpu, read,
                          written)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
-                  WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             )?;
             for made in call.nested.iter() {
                 nested.execute(params![
@@ -273,12 +340,23 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                 params![since as i64],
             )?;
             conn.execute(
-                "UPDATE service_calls SET tape = NULL
+                "DELETE FROM service_replays WHERE at < ?1",
+                params![since as i64],
+            )?;
+            conn.execute(
+                "UPDATE service_wakes
+                    SET last_call = NULL, last_at = NULL, last_source = NULL, last_caller = NULL,
+                        last_outcome = NULL, last_ms = NULL, last_meter = NULL, last_logs = NULL
+                  WHERE last_at < ?1",
+                params![since as i64],
+            )?;
+            conn.execute(
+                "UPDATE service_replays SET tape = NULL
                   WHERE rowid IN (
                         SELECT rowid FROM (
                                SELECT rowid, SUM(LENGTH(tape)) OVER (
-                                      PARTITION BY scope, name ORDER BY id DESC) AS kept
-                                 FROM service_calls WHERE tape IS NOT NULL)
+                                      PARTITION BY scope, name ORDER BY call DESC) AS kept
+                                 FROM service_replays WHERE tape IS NOT NULL)
                          WHERE kept > ?1)",
                 params![TAPES_MAX as i64],
             )?;
@@ -302,14 +380,28 @@ pub(crate) async fn tape(
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
-            conn.query_row(
-                "SELECT tape FROM service_calls WHERE scope = ?1 AND name = ?2 AND id = ?3",
-                params![scope, name, id as i64],
-                |row| row.get(0),
-            )
-            .optional()
+            let kept: Option<Option<Vec<u8>>> = conn
+                .query_row(
+                    "SELECT tape FROM service_replays WHERE scope = ?1 AND name = ?2 AND call = ?3",
+                    params![scope, name, id as i64],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match kept {
+                Some(tape) => Ok(Some(tape)),
+                None => Ok(written(conn, &scope, &name, id)?.then_some(None)),
+            }
         })
         .await
+}
+
+/// Whether `scope/name`'s run `id` is written.
+fn written(conn: &Connection, scope: &str, name: &str, id: u64) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM service_calls WHERE scope = ?1 AND name = ?2 AND id = ?3)",
+        params![scope, name, id as i64],
+        |row| row.get(0),
+    )
 }
 
 /// The calls `scope/name`'s run `id` made past its first, as written or in
@@ -327,38 +419,43 @@ pub(crate) async fn nested(
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
-            let ran: bool = conn.query_row(
-                "SELECT EXISTS (SELECT 1 FROM service_calls
-                                 WHERE scope = ?1 AND name = ?2 AND id = ?3)",
-                params![scope, name, id as i64],
-                |row| row.get(0),
-            )?;
-            if !ran {
+            if !written(conn, &scope, &name, id)? {
                 return Ok(None);
             }
-            let mut statement = conn.prepare_cached(
-                "SELECT id, parent, service, tool, at, ms, outcome, cpu, read, written
-                   FROM service_nested_calls
-                  WHERE scope = ?1 AND name = ?2 AND call = ?3
-                  ORDER BY id",
-            )?;
-            let rows = statement.query_map(params![scope, name, id as i64], |row| {
-                Ok(NestedCall {
-                    id: row.get(0)?,
-                    parent: row.get(1)?,
-                    service: row.get(2)?,
-                    tool: row.get(3)?,
-                    at: row.get::<_, i64>(4)? as u64,
-                    ms: row.get::<_, i64>(5)? as u64,
-                    outcome: row.get(6)?,
-                    cpu: row.get::<_, i64>(7)? as u64,
-                    read: row.get::<_, i64>(8)? as u64,
-                    written: row.get::<_, i64>(9)? as u64,
-                })
-            })?;
-            Ok(Some(rows.collect::<rusqlite::Result<Vec<_>>>()?))
+            made(conn, &scope, &name, id).map(Some)
         })
         .await
+}
+
+/// The calls `scope/name`'s written run `id` made past its first, in the
+/// order they began.
+pub(crate) fn made(
+    conn: &Connection,
+    scope: &str,
+    name: &str,
+    id: u64,
+) -> rusqlite::Result<Vec<NestedCall>> {
+    conn.prepare_cached(
+        "SELECT id, parent, service, tool, at, ms, outcome, cpu, read, written
+           FROM service_nested_calls
+          WHERE scope = ?1 AND name = ?2 AND call = ?3
+          ORDER BY id",
+    )?
+    .query_map(params![scope, name, id as i64], |row| {
+        Ok(NestedCall {
+            id: row.get(0)?,
+            parent: row.get(1)?,
+            service: row.get(2)?,
+            tool: row.get(3)?,
+            at: row.get::<_, i64>(4)? as u64,
+            ms: row.get::<_, i64>(5)? as u64,
+            outcome: row.get(6)?,
+            cpu: row.get::<_, i64>(7)? as u64,
+            read: row.get::<_, i64>(8)? as u64,
+            written: row.get::<_, i64>(9)? as u64,
+        })
+    })?
+    .collect()
 }
 
 /// What `scope/name`'s run `id` ran with, as written or in `unsaved`:
@@ -376,23 +473,30 @@ pub(crate) async fn input(
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
-            let input: Option<Option<String>> = conn
+            let kept: Option<Option<String>> = conn
                 .query_row(
-                    "SELECT input FROM service_calls WHERE scope = ?1 AND name = ?2 AND id = ?3",
+                    "SELECT input FROM service_replays WHERE scope = ?1 AND name = ?2 AND call = ?3",
                     params![scope, name, id as i64],
                     |row| row.get(0),
                 )
                 .optional()?;
+            let input = match kept {
+                Some(input) => Some(input),
+                None => written(conn, &scope, &name, id)?.then_some(None),
+            };
             Ok(input.map(|input| input.and_then(|input| serde_json::from_str(&input).ok())))
         })
         .await
 }
 
 /// The calls a page names, of `service_calls c`, as `:scope`, `:name`,
-/// `:tool`, `:outcome`, `:since`, `:until`, `:before`, `:event` and `:q` bind
-/// them; each `NULL` names every call.
+/// `:project`, `:tool`, `:outcome`, `:since`, `:until`, `:before`, `:event`
+/// and `:q` bind them; each `NULL` names every call.
 const MATCHING: &str = "FROM service_calls c
                   WHERE c.scope = :scope AND (:name IS NULL OR c.name = :name)
+                    AND (:project IS NULL OR c.name IN (
+                        SELECT s.name FROM services s
+                         WHERE s.scope = c.scope AND s.project = :project))
                     AND (:tool IS NULL OR c.tool = :tool)
                     AND (:outcome IS NULL OR c.outcome = :outcome)
                     AND (:since IS NULL OR c.at >= :since)
@@ -432,20 +536,24 @@ pub(crate) async fn read(
                 ))?
                 .query_map(
                     named_params! {
-                        ":scope": scope, ":name": name, ":tool": page.tool,
-                        ":event": page.event, ":q": q, ":outcome": page.outcome,
-                        ":since": since, ":until": until, ":before": before,
-                        ":limit": page.limit,
+                        ":scope": scope, ":name": name, ":project": page.project,
+                        ":tool": page.tool, ":event": page.event, ":q": q,
+                        ":outcome": page.outcome, ":since": since, ":until": until,
+                        ":before": before, ":limit": page.limit,
                     },
                     |row| row.get::<_, i64>(0),
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
+            let projected = projected(conn, &scope, page.project.as_deref())?;
             let Unsaved { ran, emitted } = unsaved;
             let ran = ran
                 .into_iter()
                 .filter(|ran| {
-                    name.as_ref()
-                        .is_none_or(|name| host::split(&ran.service).1 == name)
+                    let ran_name = host::split(&ran.service).1;
+                    name.as_ref().is_none_or(|name| ran_name == name)
+                        && projected
+                            .as_ref()
+                            .is_none_or(|names| names.iter().any(|one| one == ran_name))
                         && ran.on(&page)
                 })
                 .collect();
@@ -523,8 +631,8 @@ pub(crate) async fn stats(
                 ))?
                 .query_map(
                     named_params! {
-                        ":scope": scope, ":name": name, ":tool": tool,
-                        ":event": page.event, ":q": q, ":outcome": outcome,
+                        ":scope": scope, ":name": name, ":project": page.project,
+                        ":tool": tool, ":event": page.event, ":q": q, ":outcome": outcome,
                         ":since": page.since.map(|since| since as i64),
                         ":until": page.until.map(|until| until as i64),
                         ":before": None::<i64>,
@@ -569,11 +677,16 @@ pub(crate) async fn stats(
                     *stats.services.entry(service).or_default() += calls as u64;
                 }
             }
+            let projected = projected(conn, &scope, page.project.as_deref())?;
             let Unsaved { ran, emitted } = unsaved;
             let ran = ran
                 .into_iter()
                 .filter(|ran| {
-                    page.since.is_none_or(|since| ran.at >= since)
+                    let ran_name = host::split(&ran.service).1;
+                    projected
+                        .as_ref()
+                        .is_none_or(|names| names.iter().any(|one| one == ran_name))
+                        && page.since.is_none_or(|since| ran.at >= since)
                         && page.until.is_none_or(|until| ran.at < until)
                 })
                 .collect();
@@ -620,66 +733,19 @@ pub(crate) async fn stats(
         .await
 }
 
-/// What each tool of `scope/name` used over its calls written, by tool.
-pub(crate) async fn tools(
-    store: &Store,
+/// The names of `scope`'s services deployed in `project`, `None` without one.
+fn projected(
+    conn: &Connection,
     scope: &str,
-    name: &str,
-) -> Result<BTreeMap<String, ToolUsage>> {
-    let (scope, name) = (scope.to_owned(), name.to_owned());
-    store
-        .read(move |conn| {
-            #[derive(Default)]
-            struct Counted {
-                calls: u64,
-                meter: Meter,
-                cpu: BTreeMap<usize, u64>,
-                rows: BTreeMap<usize, u64>,
-                cpu_max: u64,
-                rows_max: u64,
-                days: BTreeMap<i32, u64>,
-            }
-            let mut tools: BTreeMap<String, Counted> = BTreeMap::new();
-            let mut statement = conn.prepare_cached(
-                "SELECT tool, meter, cpu, read + written, at / 86400000 FROM service_calls
-                  WHERE scope = ?1 AND name = ?2 AND meter IS NOT NULL",
-            )?;
-            let mut rows = statement.query(params![scope, name])?;
-            while let Some(row) = rows.next()? {
-                let counted = tools.entry(row.get(0)?).or_default();
-                counted.calls += 1;
-                *counted.days.entry(row.get(4)?).or_default() += 1;
-                if let Ok(meter) = serde_json::from_str::<Meter>(&row.get::<_, String>(1)?) {
-                    counted.meter += meter;
-                }
-                let own: Option<(i64, i64)> = row.get::<_, Option<i64>>(2)?.zip(row.get(3)?);
-                if let Some((cpu, used)) = own {
-                    let (cpu, used) = (cpu as u64, used as u64);
-                    *counted.cpu.entry(Spread::index(cpu)).or_default() += 1;
-                    *counted.rows.entry(Spread::index(used)).or_default() += 1;
-                    counted.cpu_max = counted.cpu_max.max(cpu);
-                    counted.rows_max = counted.rows_max.max(used);
-                }
-            }
-            Ok(tools
-                .into_iter()
-                .map(|(tool, counted)| {
-                    let usage = ToolUsage {
-                        calls: counted.calls,
-                        meter: counted.meter,
-                        cpu: Spread::of(&counted.cpu, counted.cpu_max),
-                        rows: Spread::of(&counted.rows, counted.rows_max),
-                        days: counted
-                            .days
-                            .into_iter()
-                            .map(|(day, calls)| ToolDay { day, calls })
-                            .collect(),
-                    };
-                    (tool, usage)
-                })
-                .collect())
-        })
-        .await
+    project: Option<&str>,
+) -> rusqlite::Result<Option<Vec<String>>> {
+    let Some(project) = project else {
+        return Ok(None);
+    };
+    conn.prepare_cached("SELECT name FROM services WHERE scope = ?1 AND project = ?2")?
+        .query_map(params![scope, project], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()
+        .map(Some)
 }
 
 /// A value SQLite answered, as text.
@@ -799,12 +865,13 @@ pub(crate) fn call(row: &Row) -> rusqlite::Result<Call> {
     })
 }
 
-/// The largest call id written, or 0.
+/// The largest call id ever written, deleted ones included, or 0.
 pub(crate) async fn newest(store: &Store) -> Result<u64> {
     store
         .read(|conn| {
             conn.query_row(
-                "SELECT COALESCE(MAX(id), 0) FROM service_calls",
+                "SELECT COALESCE(
+                        (SELECT seq FROM sqlite_sequence WHERE name = 'service_calls'), 0)",
                 [],
                 |row| row.get::<_, i64>(0),
             )

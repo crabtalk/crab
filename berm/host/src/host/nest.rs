@@ -139,8 +139,10 @@ pub(crate) fn calls<E: Env>(
                         denied,
                         meters,
                     } = host.peers.link(&peer, &service, &tool, args, link).await?;
-                    for (service, used) in meters {
-                        at.meter_of(&service, used);
+                    for (service, tools) in meters {
+                        for (tool, used) in tools {
+                            at.meter_of(&service, &tool, used);
+                        }
                     }
                     Ok(Ended { result, denied })
                 }))

@@ -14,6 +14,7 @@ The service uses this key to make Checkout and customer portal sessions for its 
 
 At https://dashboard.stripe.com/apikeys, create a restricted key with Write on Checkout Sessions, Customer portal and Customers, Read on Subscriptions and Prices, and None on everything else. Make it in test mode for development and in live mode for production: a test key starts with `rk_test_` and moves no money, a live key starts with `rk_live_` and charges real cards.
 """
+hosts = ["api.stripe.com"]
 secrets = [
     { name = "STRIPE_SECRET_KEY", label = "Restricted key", pattern = '^rk_(test|live)_' },
 ]

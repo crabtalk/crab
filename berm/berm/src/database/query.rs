@@ -1,6 +1,6 @@
 //! The program's statements against a connection.
 
-use crate::{Refused, syscall::sql::Statement};
+use crate::{Refused, bound::cpu, syscall::sql::Statement};
 use anyhow::{Context, Result, bail};
 use rusqlite::{
     Connection, Error, StatementStatus,
@@ -68,18 +68,20 @@ pub(crate) fn guard(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// What one statement answered: the reply's JSON, and the rows it read and
-/// wrote.
+/// What one statement answered: the reply's JSON, the rows it read and
+/// wrote, and the CPU time the thread running it spent, in microseconds.
 pub struct Answer {
     pub json: String,
     pub read: u64,
     pub written: u64,
+    pub cpu: u64,
 }
 
 /// Run one of the program's statements.
 pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> Result<Answer> {
     let params: Vec<serde_json::Value> =
         serde_json::from_str(&statement.params).context("the parameters are not a JSON array")?;
+    let start = cpu::now();
     GUEST.set(true);
     let ran = (|| {
         let mut prepared = conn
@@ -130,6 +132,7 @@ pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> 
             json: String::from_utf8(out)?,
             read,
             written,
+            cpu: cpu::now().saturating_sub(start) / 1_000,
         })
     })();
     GUEST.set(false);

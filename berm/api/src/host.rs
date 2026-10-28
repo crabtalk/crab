@@ -1,6 +1,6 @@
 //! What a host's daemons and peers send it, and what it answers with.
 
-use crate::{Meter, Output};
+use crate::{Logged, Meter, Output};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
 
@@ -75,6 +75,186 @@ pub struct Deploy {
     /// Install it stopped, to serve once started.
     #[serde(default)]
     pub stopped: bool,
+    /// The project it is deployed in: the workspace it came from. `None`
+    /// keeps the project it was in. Refused, unless `force`, when the service
+    /// is in another project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// Services of the same scope whose calls the breaks check leaves out:
+    /// services deployed with it whose new version no longer calls it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exempt: Vec<String>,
+}
+
+/// The days back a deploy's breaks check counts what callers used.
+pub const USED_DAYS: i32 = 30;
+
+/// What a deploy would do, checked without installing it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Checked {
+    /// The version it would go live on.
+    pub version: String,
+    /// The services it calls by name, as its manifest declares them.
+    pub calls: Vec<String>,
+    /// The migrations it would apply, a kit's as `{kit}/{name}`; none for a
+    /// service with no database yet.
+    #[serde(default)]
+    pub migrations: Vec<String>,
+    /// How it breaks what callers of the running version used in the last
+    /// [`USED_DAYS`] days, the callers `exempt` names left out.
+    pub breaks: Vec<Broken>,
+}
+
+/// A break of what callers used, and who used it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Broken {
+    /// The break, as [`Break`](crate::Break) words it.
+    pub broken: String,
+    pub by: Vec<LastUse>,
+}
+
+/// A caller of a broken tool or event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastUse {
+    pub source: Source,
+    /// A service by its name, the rest as the host names them.
+    pub caller: String,
+    /// The UTC day of its last call, `YYYY-MM-DD`.
+    pub last: String,
+}
+
+/// A deploy refused for what it breaks: the message the refusal carries.
+pub struct Breaking<'a>(pub &'a [Broken]);
+
+impl fmt::Display for Breaking<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "this deploy breaks what callers used in the last {USED_DAYS} days: "
+        )?;
+        for (i, broken) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str(" / ")?;
+            }
+            write!(f, "{} (used by ", broken.broken)?;
+            for (j, by) in broken.by.iter().enumerate() {
+                if j > 0 {
+                    f.write_str("; ")?;
+                }
+                write!(f, "{} {}, last {}", by.source, by.caller, by.last)?;
+            }
+            f.write_str(")")?;
+        }
+        f.write_str(". Deploy with `force` to override")
+    }
+}
+
+impl Broken {
+    /// `breaks` without the calls of the services `exempt` names, and without
+    /// a break no caller is left using.
+    pub fn exempted(breaks: Vec<Self>, exempt: &[String]) -> Vec<Self> {
+        breaks
+            .into_iter()
+            .filter_map(|mut broken| {
+                broken
+                    .by
+                    .retain(|by| !(by.source == Source::Service && exempt.contains(&by.caller)));
+                (!broken.by.is_empty()).then_some(broken)
+            })
+            .collect()
+    }
+}
+
+/// How a set of services deployed together switches, from each one's
+/// [`Checked`], by name.
+#[derive(Debug, Clone, Default)]
+pub struct Plan {
+    /// The order they switch in: a service after those it calls, and a caller
+    /// that stops calling a service before that service.
+    pub order: Vec<String>,
+    /// Each service's exempt callers: the others whose new version does not
+    /// call it.
+    pub exempt: BTreeMap<String, Vec<String>>,
+    /// What each one breaks, its exempt callers left out.
+    pub breaks: BTreeMap<String, Vec<Broken>>,
+}
+
+impl Plan {
+    pub fn new(checked: &BTreeMap<String, Checked>) -> Self {
+        let mut plan = Plan::default();
+        // `before[b]` holds the services that switch before `b`.
+        let mut before: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for (name, check) in checked {
+            let exempt: Vec<String> = checked
+                .iter()
+                .filter(|(other, checked)| *other != name && !checked.calls.contains(name))
+                .map(|(other, _)| other.clone())
+                .collect();
+            for by in check.breaks.iter().flat_map(|broken| &broken.by) {
+                if by.source == Source::Service && exempt.contains(&by.caller) {
+                    before.entry(name).or_default().push(&by.caller);
+                }
+            }
+            for callee in &check.calls {
+                if let Some((callee, _)) = checked.get_key_value(callee) {
+                    before.entry(name).or_default().push(callee);
+                }
+            }
+            plan.breaks.insert(
+                name.clone(),
+                Broken::exempted(check.breaks.clone(), &exempt),
+            );
+            plan.exempt.insert(name.clone(), exempt);
+        }
+        // Kahn's sort, by name among the ready; a cycle switches in name order.
+        let mut left: Vec<&str> = checked.keys().map(String::as_str).collect();
+        while !left.is_empty() {
+            let ready = left
+                .iter()
+                .position(|name| {
+                    before
+                        .get(name)
+                        .is_none_or(|first| first.iter().all(|first| !left.contains(first)))
+                })
+                .unwrap_or(0);
+            plan.order.push(left.remove(ready).to_owned());
+        }
+        plan
+    }
+}
+
+/// A set refused for what each of `refused`, by name, was refused for: the
+/// message the refusal carries.
+pub struct SetRefused<'a>(pub &'a BTreeMap<String, String>);
+
+impl fmt::Display for SetRefused<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the set is refused, and nothing in it switched: ")?;
+        for (i, (name, reason)) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str(" | ")?;
+            }
+            write!(f, "{name}: {reason}")?;
+        }
+        Ok(())
+    }
+}
+
+/// A set whose service `name` failed to switch for `reason`, the services
+/// switched before it put back: the message the failure carries.
+pub struct SetFailed<'a> {
+    pub name: &'a str,
+    pub reason: &'a str,
+}
+
+impl fmt::Display for SetFailed<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} failed to switch, and the set was put back on what it ran: {}",
+            self.name, self.reason
+        )
+    }
 }
 
 /// [`DATABASE_SIZE`], for `#[serde(default = "...")]`.
@@ -127,9 +307,10 @@ pub struct Reply {
     pub result: Output,
     /// The service refused its caller, through `berm.deny`.
     pub denied: bool,
-    /// What the call used, by each service it reached.
+    /// What the call used, by each service it reached and the tool of it
+    /// that ran.
     #[serde(default)]
-    pub meters: BTreeMap<String, Meter>,
+    pub meters: BTreeMap<String, BTreeMap<String, Meter>>,
 }
 
 /// What was used. Variants are in the order SQLite sorts their names.
@@ -287,13 +468,17 @@ impl Page {
     }
 }
 
-/// `?service=&tool=&event=&q=&outcome=&since=&until=&before=&limit=` on a
-/// service's calls, or a scope's.
+/// `?service=&project=&tool=&event=&q=&outcome=&since=&until=&before=&limit=`
+/// on a service's calls, or a scope's.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallPage {
     /// Only calls of this service, on a scope's calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
+    /// Only calls of the services deployed in this project, on a scope's
+    /// calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
     /// Only calls of this tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
@@ -504,103 +689,6 @@ impl CallStats {
     }
 }
 
-/// What one tool's calls of the last 30 days used.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolUsage {
-    /// Its calls the host ran, refused ones left out.
-    pub calls: u64,
-    /// Their meters summed, each over every service its call reached.
-    pub meter: Meter,
-    /// CPU microseconds each call's own invocation used, as its
-    /// [`Budget`](crate::Budget) counts it. Calls recorded before a host kept
-    /// it are not in it.
-    pub cpu: Spread,
-    /// Rows each call's own invocation read and wrote together, as `cpu`.
-    pub rows: Spread,
-    /// Each UTC day with a call, oldest first.
-    pub days: Vec<ToolDay>,
-}
-
-/// One UTC day of a tool's calls.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolDay {
-    /// Days since the Unix epoch.
-    pub day: i32,
-    pub calls: u64,
-}
-
-/// How one resource's use is spread over a tool's calls.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Spread {
-    /// The [`Share::upto`] of the share half the calls are in or below.
-    pub p50: u64,
-    /// The [`Share::upto`] of the share 95% of the calls are in or below.
-    pub p95: u64,
-    /// The most one call used.
-    pub max: u64,
-    /// Each share with a call, smallest first.
-    pub shares: Vec<Share>,
-}
-
-/// The calls that used at least the [`Share::upto`] of the share before, and
-/// less than this one's. Each share's bound is 2^(1/8) times the one before:
-/// [`Spread::bound`].
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Share {
-    pub upto: u64,
-    pub calls: u64,
-}
-
-impl Spread {
-    /// The index of the share `used` falls in: 0 for nothing, else one past
-    /// eight times its base-2 logarithm.
-    pub fn index(used: u64) -> usize {
-        if used == 0 {
-            return 0;
-        }
-        (8.0 * (used as f64).log2()).floor() as usize + 1
-    }
-
-    /// The exclusive upper bound of share `index`.
-    pub fn bound(index: usize) -> u64 {
-        if index == 0 {
-            return 1;
-        }
-        2f64.powf(index as f64 / 8.0).ceil() as u64
-    }
-
-    /// The spread of calls counted by share index, and the most one used.
-    pub fn of(counted: &BTreeMap<usize, u64>, max: u64) -> Self {
-        let total: u64 = counted.values().sum();
-        let at = |part: f64| {
-            let mut seen = 0;
-            for (&index, &calls) in counted {
-                seen += calls;
-                if seen as f64 >= part * total as f64 {
-                    return Self::bound(index).min(max.max(1));
-                }
-            }
-            max
-        };
-        Self {
-            p50: if total == 0 { 0 } else { at(0.5) },
-            p95: if total == 0 { 0 } else { at(0.95) },
-            max,
-            shares: counted
-                .iter()
-                .map(|(&index, &calls)| Share {
-                    upto: Self::bound(index),
-                    calls,
-                })
-                .collect(),
-        }
-    }
-}
-
 /// One run of one of a scope's services.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -609,6 +697,51 @@ pub struct ServiceCall {
     pub service: String,
     #[serde(flatten)]
     pub call: Call,
+}
+
+/// What a host is asked for of its written calls and logs: those past the
+/// cursors its fleet stored, which the host deletes before it answers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RecordsPage {
+    /// The last call id stored; `0` before any.
+    #[serde(default)]
+    pub calls: u64,
+    /// The last [`RecordedLog::id`] stored; `0` before any.
+    #[serde(default)]
+    pub logs: u64,
+    /// At most this many of each.
+    pub limit: u32,
+}
+
+/// A host's written calls and logs past a [`RecordsPage`]'s cursors, each
+/// oldest first.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Records {
+    pub calls: Vec<RecordedCall>,
+    pub logs: Vec<RecordedLog>,
+}
+
+/// One written call, with the calls it made.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordedCall {
+    pub scope: String,
+    /// The service's name in its scope.
+    pub service: String,
+    #[serde(flatten)]
+    pub call: Call,
+    pub nested: Vec<NestedCall>,
+}
+
+/// One written log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordedLog {
+    /// Its position among every log the host wrote; never reused.
+    pub id: u64,
+    pub scope: String,
+    /// The service's name in its scope.
+    pub service: String,
+    #[serde(flatten)]
+    pub log: Logged,
 }
 
 /// What a call that failed ran with, kept so it can be run again.
@@ -668,12 +801,16 @@ pub struct Count {
     pub per_second: f64,
 }
 
-/// One day of a service's meter.
+/// One day of a service's meter, of one of its tools.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metered {
     /// Days since the Unix epoch.
     pub day: i32,
+    /// The tool whose invocations these are. Empty for what the service
+    /// holds itself, `stored`, and for a day summed over its tools.
+    #[serde(default)]
+    pub tool: String,
     /// Chains whose first link the service was: a call from outside, a wake
     /// or a Stripe event.
     #[serde(default)]
@@ -685,9 +822,17 @@ pub struct Metered {
     pub cpu: u64,
     /// The largest linear memory one of them reached, in bytes.
     pub memory: u64,
+    /// Their budgets of memory, each held from its start to its return,
+    /// waiting included, in MiB-microseconds.
+    #[serde(default)]
+    pub held: u64,
     /// Rows read and written in the service's database and state.
     pub read: u64,
     pub written: u64,
+    /// CPU time the service's SQL statements spent on its database's threads,
+    /// in microseconds; not part of `cpu`.
+    #[serde(default)]
+    pub sql_cpu: u64,
     /// Bytes sent and received through `berm.http.proxy`.
     pub proxied: u64,
     /// Bytes of the logs those invocations emitted.
@@ -714,8 +859,10 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.calls += used.calls;
         self.cpu += used.cpu;
         self.memory = self.memory.max(used.memory);
+        self.held += used.held;
         self.read += used.read;
         self.written += used.written;
+        self.sql_cpu += used.sql_cpu;
         self.proxied += used.proxied;
         self.logged += used.logged;
         self.failed += used.failed;

@@ -7,7 +7,7 @@
 //! free until the reply resolves.
 
 use crate::{
-    Budget, Invocation, Meter,
+    Budget, Invocation, Meter, Pool,
     bound::{cpu::Clock, watchdog},
     syscall::{self, Door, Table},
     tape::{self, Answer},
@@ -49,6 +49,9 @@ pub struct Config {
     pub instances: u32,
     /// The largest linear memory one guest may grow to, in bytes.
     pub memory: usize,
+    /// Bytes the invocations running at once may reserve between them, each
+    /// its tool's budget of memory; `0` is no limit.
+    pub reserved: u64,
     /// The most CPU time one invocation may spend, nested calls excluded.
     pub cpu: Duration,
     /// The most rows one invocation may read and write together. A row
@@ -65,6 +68,7 @@ impl Default for Config {
             cache_dir: None,
             instances: 1_000,
             memory: 128 << 20,
+            reserved: 0,
             cpu: Duration::from_millis(100),
             rows: 1_000_000,
             deadline: watchdog::TIMEOUT,
@@ -78,6 +82,10 @@ impl Default for Config {
 #[derive(Clone)]
 pub struct Engine {
     wasmtime: wasmtime::Engine,
+    /// [`Config::memory`].
+    memory: usize,
+    /// What its invocations reserve, held to [`Config::reserved`].
+    pub reserve: Arc<Pool>,
     /// [`Config::cpu`].
     cpu: Duration,
     /// [`Config::rows`].
@@ -112,8 +120,12 @@ impl Engine {
         wasmtime.allocation_strategy(InstanceAllocationStrategy::Pooling(pool));
         let engine = wasmtime::Engine::new(&wasmtime)?;
         tick(&engine);
+        let reserve = Arc::new(Pool::default());
+        reserve.limit(config.reserved);
         Ok(Self {
             wasmtime: engine,
+            memory: config.memory,
+            reserve,
             cpu: config.cpu,
             rows: config.rows,
             deadline: config.deadline,
@@ -150,8 +162,10 @@ fn tick(engine: &wasmtime::Engine) {
 /// One compiled program, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
-    /// [`Config::cpu`] and [`Config::rows`].
+    /// [`Config::cpu`], [`Config::rows`] and [`Config::memory`].
     pub(crate) budget: Budget,
+    /// [`Engine::reserve`].
+    pub(crate) reserve: Arc<Pool>,
     /// Imports resolved once, at deploy. A guest reaching for something no
     /// syscall is registered for is refused by the deploy that introduced it,
     /// rather than trapping on a model's turn.
@@ -167,7 +181,9 @@ impl Image {
         let budget = Budget {
             cpu: engine.cpu.as_micros() as u64,
             rows: engine.rows,
+            memory: engine.memory as u64,
         };
+        let reserve = engine.reserve.clone();
         let engine = engine.wasmtime.clone();
         let module = Module::new(&engine, image)?;
 
@@ -227,6 +243,7 @@ impl Image {
             pre: linker.instantiate_pre(&module)?,
             engine,
             budget,
+            reserve,
         })
     }
 
@@ -236,20 +253,17 @@ impl Image {
         self.exports.iter().map(String::as_str).collect()
     }
 
-    /// Instantiate and run one tool, spending at most `cpu` microseconds of
-    /// CPU, and meter the CPU it spent and the linear memory it reached against
-    /// its program, trapped or not.
+    /// Instantiate and run one tool, spending at most its invocation's budget
+    /// of CPU, and meter the CPU it spent, the linear memory it reached and its
+    /// budget of memory over its wall-clock time against its program, trapped
+    /// or not.
     ///
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
     /// built for this call and dropped with it.
-    pub(crate) async fn call(
-        &self,
-        symbol: &str,
-        invocation: Invocation,
-        cpu: u64,
-    ) -> Result<Invocation> {
+    pub(crate) async fn call(&self, symbol: &str, invocation: Invocation) -> Result<Invocation> {
         let deadline = invocation.at.deadline;
+        let cpu = invocation.cpu.clone();
         let mut store = Store::new(&self.engine, invocation);
         store.limiter(|invocation| &mut invocation.held);
 
@@ -259,12 +273,12 @@ impl Image {
         let over = Arc::new(AtomicBool::new(false));
         store.set_epoch_deadline(1);
         store.epoch_deadline_callback({
-            let (clock, over) = (clock.clone(), over.clone());
+            let (clock, over, cpu) = (clock.clone(), over.clone(), cpu.clone());
             move |_| {
                 if Instant::now() >= deadline {
                     return Err(Trap::Interrupt.into());
                 }
-                if clock.spent() / 1_000 > cpu {
+                if clock.spent() / 1_000 > cpu.load(Ordering::Relaxed) {
                     over.store(true, Ordering::Relaxed);
                     return Err(Trap::Interrupt.into());
                 }
@@ -295,10 +309,14 @@ impl Image {
         store.data().at.meter(Meter {
             cpu: clock.spent() / 1_000,
             memory,
+            held: store.data().held.held(),
             ..Meter::default()
         });
         if over.load(Ordering::Relaxed) {
-            bail!("ran past its budget of {cpu}µs of CPU");
+            bail!(
+                "ran past its budget of {}µs of CPU",
+                cpu.load(Ordering::Relaxed)
+            );
         }
         instance?;
         called?;

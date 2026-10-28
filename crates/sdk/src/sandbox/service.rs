@@ -1,8 +1,9 @@
 //! Service wire types.
 
+use crate::{sandbox::price::Price, utils::text_enum};
 use berm_api::{
-    Program,
-    host::{self, Call, ToolUsage},
+    Credential, Meter, Program,
+    host::{self, Call, ServedDay},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -25,9 +26,11 @@ pub struct DeployRequest {
     pub crons: Option<BTreeMap<String, String>>,
     /// Bytes the service's database may hold, from
     /// [`MIN_DATABASE_SIZE`](berm_api::host::MIN_DATABASE_SIZE) to
-    /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE).
-    #[serde(default = "host::database_size")]
-    pub size: u64,
+    /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE). Absent, a
+    /// service keeps what it holds, and one deployed for the first time holds
+    /// [`DATABASE_SIZE`](berm_api::host::DATABASE_SIZE).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
     /// The SHA-256, in hex, of a seed uploaded through
     /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
     /// database starts as, held to the image's migrations. Refused when the
@@ -38,6 +41,79 @@ pub struct DeployRequest {
     /// started.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
+    /// The project it is deployed in: the workspace it came from. Absent, it
+    /// stays in the project it was in. Refused, unless `force`, when it is in
+    /// another project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// Each public tool's price a call, by name, in place of the prices the
+    /// service had: a deploy without them leaves it with none. Refused when
+    /// one names a tool that is not a public tool of the image.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prices: BTreeMap<String, Price>,
+}
+
+/// What calling a service is held to and costs: each public tool's terms, by
+/// name.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Terms {
+    pub tools: BTreeMap<String, ToolTerms>,
+}
+
+/// What one call of a tool is held to, and what it costs its caller.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolTerms {
+    #[serde(flatten)]
+    pub held: berm_api::ToolTerms,
+    /// Its price a call, set by the service's last deploy; none for a tool
+    /// that is free.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price: Option<Price>,
+    /// What its runs use; none below [`Estimate::TERMS`] runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<Estimate>,
+}
+
+/// What a tool's runs that ended `done` in the last 30 days used, from the
+/// call log: each run summed over every service it reached, and each measure's
+/// median and 99th percentile taken on its own.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Estimate {
+    /// Runs measured.
+    pub runs: u64,
+    /// Each measure's median.
+    pub typical: Measured,
+    /// Each measure's 99th percentile.
+    pub slow: Measured,
+}
+
+impl Estimate {
+    /// The fewest runs a service's terms publish an estimate from.
+    pub const TERMS: u64 = 20;
+}
+
+/// One measure of a run: wall time in milliseconds, CPU time in microseconds,
+/// rows read and written, and its cost at the fleet's rates as a decimal of
+/// USD micros.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Measured {
+    pub ms: u64,
+    pub cpu: u64,
+    pub read: u64,
+    pub written: u64,
+    pub cost_micros_decimal: String,
+}
+
+/// A project's services deployed together, each by its name in the account:
+/// every one is checked before any switches, and one refused refuses them all.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploySetRequest {
+    pub services: BTreeMap<String, DeployRequest>,
 }
 
 /// A file to upload, a seed or an image: its SHA-256 in hex, and its size in
@@ -76,10 +152,19 @@ pub struct MeteredDay {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Secret {
     pub name: String,
+    /// The hosts its value is sent to, each named in full. A secret with none
+    /// is never sent.
+    #[serde(default)]
+    pub hosts: Vec<String>,
     pub created_at: i64,
 }
 
 impl Secret {
+    /// Whether its value is sent anywhere: it has hosts.
+    pub fn sent(&self) -> bool {
+        !self.hosts.is_empty()
+    }
+
     /// The longest name a secret may have.
     pub const NAME_MAX: usize = 128;
 
@@ -100,6 +185,10 @@ impl Secret {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetSecret {
     pub value: String,
+    /// The hosts its value is sent to, as [`Hosts`] holds them; none sends it
+    /// nowhere.
+    #[serde(default)]
+    pub hosts: Vec<String>,
 }
 
 impl SetSecret {
@@ -111,6 +200,57 @@ impl SetSecret {
     pub fn valid(value: &str) -> bool {
         !value.is_empty() && value.len() <= Self::VALUE_MAX && !value.chars().any(char::is_control)
     }
+
+    /// Refused, with why, when it may not be set as secret `name`.
+    pub fn check(&self, name: &str) -> Result<(), String> {
+        if !Secret::valid(name) {
+            return Err(format!(
+                "a secret's name is up to {} ASCII letters, digits and `_`, not starting with a digit",
+                Secret::NAME_MAX
+            ));
+        }
+        if !Self::valid(&self.value) {
+            return Err(format!(
+                "{name}'s value is 1 to {} bytes on one line",
+                Self::VALUE_MAX
+            ));
+        }
+        Hosts::check(&self.hosts)
+    }
+}
+
+/// The body of `PUT …/secrets/{name}/hosts`: the hosts a secret's value is
+/// sent to, replacing those it had.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hosts {
+    pub hosts: Vec<String>,
+}
+
+impl Hosts {
+    /// The most hosts one secret is sent to.
+    pub const MAX: usize = 16;
+
+    /// Refused, with why, unless `hosts` holds at most [`Self::MAX`] distinct
+    /// hosts, each named in full.
+    pub fn check(hosts: &[String]) -> Result<(), String> {
+        if hosts.len() > Self::MAX {
+            return Err(format!("a secret is sent to at most {} hosts", Self::MAX));
+        }
+        if let Some(host) = hosts.iter().find(|host| !Credential::host(host)) {
+            return Err(format!(
+                "{host:?} is not a host named in full, as `api.example.com`: no scheme, port, path or `*`"
+            ));
+        }
+        if let Some((_, host)) = hosts
+            .iter()
+            .enumerate()
+            .find(|(at, host)| hosts[..*at].contains(host))
+        {
+            return Err(format!("{host} is given twice"));
+        }
+        Ok(())
+    }
 }
 
 /// One of an account's services, as its owners list them.
@@ -120,6 +260,26 @@ pub struct Service {
     pub program: Program,
     pub private: bool,
     pub served: host::Served,
+    /// The project it was last deployed in.
+    pub project: Option<String>,
+    /// The registry reference it runs, which another account can deploy as
+    /// its own; none for an uploaded image.
+    pub reference: Option<String>,
+    pub status: Status,
+}
+
+/// Whether a service is serving, and how its runs are ending.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Status {
+    /// Serving, its newest run done or none failed.
+    Running,
+    /// Stopped by its owners, or deployed stopped: it takes no calls and
+    /// fires no wakes.
+    Stopped,
+    /// Serving, and its runs have failed since the last one that was done.
+    Failing,
 }
 
 /// Who a service answers.
@@ -153,32 +313,102 @@ pub struct Costed {
     pub cost_micros_decimal: Option<String>,
 }
 
-/// What one tool's calls used, with what that use costs its service's owner.
+/// What one tool's invocations used over the last 30 days, as its service's
+/// meters count them, with what that use costs its service's owner.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCosted {
-    #[serde(flatten)]
-    pub usage: ToolUsage,
-    /// What the calls cost at the fleet's rates, summed, as a decimal of USD
-    /// micros: [`ToolUsage::meter`] with each call's overage, as [`Costed`]
-    /// prices one call.
-    pub cost_micros_decimal: String,
+    /// Its meters summed.
+    pub meter: Meter,
+    /// Each day it ran, oldest first.
+    pub days: Vec<ServedDay>,
+    /// What its meters cost at the fleet's rates, in USD micros: each day's
+    /// [`CostedDay::cost_micros`], summed.
+    pub cost_micros: i64,
+    /// What its runs use; none before one ended `done`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<Estimate>,
+    /// A memory budget that fits it, in MiB: 1.5× the most linear memory one
+    /// of its own invocations reached, rounded up; none before one ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fits_mib: Option<u64>,
 }
 
-/// One deploy of a service that went live.
+/// One deploy of a service, refused and failed ones included.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Deployed {
-    pub version: String,
-    /// `sha256:` and the hex SHA-256 of the image.
-    pub digest: String,
+pub struct Deployment {
+    pub id: i64,
+    /// The service it deployed, by its name in the account.
+    pub name: String,
+    pub outcome: DeployOutcome,
+    /// The version it went live on; none for one that did not.
+    pub version: Option<String>,
+    /// `sha256:` and the hex SHA-256 of the image; none when the deploy ended
+    /// before its reference was resolved.
+    pub digest: Option<String>,
     /// What it was deployed from: a registry reference, or `sha256:` and an
     /// upload's SHA-256.
     pub reference: String,
+    /// Why it was refused or failed, as the deploy answered.
+    pub reason: Option<String>,
+    /// The migrations it applied, a kit's as `{kit}/{name}`.
+    pub migrations: Vec<String>,
+    /// Its database started from a seed.
+    pub seeded: bool,
+    /// The node it was placed on; none when it ended before placement.
+    pub node: Option<String>,
+    /// Its image can be deployed again: one from a registry, or an upload
+    /// kept on the node the service is placed on now.
+    pub redeployable: bool,
+    /// The project it was deployed in.
+    pub project: Option<String>,
     /// Who deployed it, by handle, or by id when they have none.
     pub by: String,
     /// When, in epoch seconds.
     pub at: i64,
+}
+
+/// The public service of another account a service was deployed from: one
+/// running an image of the same registry repository.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Origin {
+    /// Its owner, by handle, or by id when they have none.
+    pub owner: String,
+    pub name: String,
+    /// The registry reference it runs now.
+    pub reference: String,
+    /// The version it runs now.
+    pub version: String,
+}
+
+/// How a deploy ended.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeployOutcome {
+    /// What the service runs now.
+    Live,
+    /// Went live, and a later deploy replaced it.
+    Replaced,
+    /// Refused: the service runs what it ran before.
+    Refused,
+    /// Did not finish: Cloud, the registry or the node did not answer.
+    Failed,
+}
+
+text_enum!(DeployOutcome { Live => "live", Replaced => "replaced", Refused => "refused", Failed => "failed" });
+
+/// Deploy a past deploy's image again.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RedeployRequest {
+    /// Deploy even when it breaks a tool or event a caller used in the last
+    /// 30 days, or undoes a cron its owners set since the last deploy that set
+    /// them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
 }
 
 /// A call of one of an account's services, with what its meter costs.

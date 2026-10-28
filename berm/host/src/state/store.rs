@@ -50,6 +50,14 @@ const MIGRATIONS: &[&str] = &[
     // A run's calls past its first, on the host it ran on: `call` is the
     // run's id, `id` and `parent` number the calls within it.
     include_str!("migrations/0028.sql"),
+    include_str!("migrations/0029.sql"),
+    include_str!("migrations/0030.sql"),
+    // Meters are kept per tool; `tool` is '' for days metered before, and
+    // for the bytes a service stores.
+    include_str!("migrations/0031.sql"),
+    include_str!("migrations/0032.sql"),
+    include_str!("migrations/0033.sql"),
+    include_str!("migrations/0034.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.

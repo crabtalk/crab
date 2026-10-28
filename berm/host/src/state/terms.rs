@@ -25,10 +25,11 @@ impl Terms {
         let rows = store
             .read(|conn| {
                 let mut statement =
-                    conn.prepare("SELECT scope, name, tool, cpu, rows FROM service_terms")?;
+                    conn.prepare("SELECT scope, name, tool, cpu, rows, memory FROM service_terms")?;
                 let rows = statement.query_map([], |row| {
                     let (scope, name): (String, String) = (row.get(0)?, row.get(1)?);
                     let (cpu, rows): (Option<i64>, Option<i64>) = (row.get(3)?, row.get(4)?);
+                    let memory: Option<i64> = row.get(5)?;
                     Ok((
                         host::join(&scope, &name),
                         row.get::<_, String>(2)?,
@@ -36,6 +37,7 @@ impl Terms {
                             budget: cpu.zip(rows).map(|(cpu, rows)| Budget {
                                 cpu: cpu as u64,
                                 rows: rows as u64,
+                                memory: memory.unwrap_or(0) as u64,
                             }),
                         },
                     ))
@@ -75,11 +77,18 @@ impl Terms {
             .run(move |conn| {
                 let [scope, name, tool] = row;
                 conn.execute(
-                    "INSERT INTO service_terms (scope, name, tool, cpu, rows)
-                     VALUES (?1, ?2, ?3, ?4, ?5)
+                    "INSERT INTO service_terms (scope, name, tool, cpu, rows, memory)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT (scope, name, tool) DO UPDATE
-                        SET cpu = excluded.cpu, rows = excluded.rows",
-                    params![scope, name, tool, budget.cpu as i64, budget.rows as i64],
+                        SET cpu = excluded.cpu, rows = excluded.rows, memory = excluded.memory",
+                    params![
+                        scope,
+                        name,
+                        tool,
+                        budget.cpu as i64,
+                        budget.rows as i64,
+                        budget.memory as i64
+                    ],
                 )?;
                 Ok(())
             })

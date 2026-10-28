@@ -77,14 +77,7 @@ fn describe(request: &Request) -> String {
         .map(|micros| format!("{} a month", format::usd(micros as f64)))
         .unwrap_or_default();
     match request.purchase {
-        Some(Purchase::Plan) if request.card_on_file => {
-            format!("{plan} at {monthly}, ending the trial and charging its card at once")
-        }
         Some(Purchase::Plan) => format!("{plan} at {monthly}"),
-        Some(Purchase::Trial) => format!(
-            "a {plan} trial, free for {} days, then {monthly}",
-            request.trial_days.unwrap_or_default()
-        ),
         Some(Purchase::Credit) => "credit, the amount chosen at checkout".to_owned(),
         None => String::new(),
     }

@@ -47,7 +47,7 @@ async fn a_stopped_wake_stays_and_fires_once_started() -> Result<()> {
 async fn a_stopped_service_takes_no_calls_until_started() -> Result<()> {
     let host = deployed(&["acct/fixture", "acct/inner"]).await?;
     assert!(host.host().stop("acct/inner").await?);
-    assert!(host.host().runtime("acct/inner").await?.stopped);
+    assert!(host.host().listing("acct/inner").await?.stopped);
 
     let refused = host
         .host()
@@ -70,7 +70,7 @@ async fn a_stopped_service_takes_no_calls_until_started() -> Result<()> {
     assert!(failure.contains("stopped"), "{failure}");
 
     assert!(host.host().start("acct/inner").await?);
-    assert!(!host.host().runtime("acct/inner").await?.stopped);
+    assert!(!host.host().listing("acct/inner").await?.stopped);
     assert!(
         host.host()
             .call(

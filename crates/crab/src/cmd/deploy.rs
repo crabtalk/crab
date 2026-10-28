@@ -3,22 +3,27 @@
 
 use crate::{
     cmd::{dev, inspect},
+    fill::Form,
     project, utils,
 };
-use anyhow::{Context, Result, bail};
-use berm_api::Manifest;
+use anyhow::{Context, Result, anyhow, bail};
+use berm_api::{Credential, Deployed, Manifest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{DeployRequest, UploadRequest},
+    sandbox::{
+        price::Price,
+        service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
+    },
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
-    io::Read,
+    io::{self, IsTerminal, Read},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -37,6 +42,10 @@ pub struct Deploy {
     /// `crab.toml`.
     #[arg(long)]
     pub image: Option<String>,
+    /// Push every service's image to this registry, in place of the one
+    /// its image names, as `localhost:5001`.
+    #[arg(long)]
+    pub registry: Option<String>,
     /// Deploy even when it breaks what callers used, or undoes a cron its
     /// owners set.
     #[arg(long)]
@@ -45,20 +54,31 @@ pub struct Deploy {
     /// deploying.
     #[arg(long, conflicts_with = "force")]
     pub pull: bool,
+    /// Deploy another account's public service, `owner/name`, as your own
+    /// `name`, from the registry image it runs; on Cloud.
+    #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "image", "registry", "pull"])]
+    pub from: Option<String>,
 }
 
 /// Deploy the services of the workspace `deploy.dir` is in that it selects,
-/// each as [`one`] does, stopping at the first that fails. `stopped` installs
-/// them to serve once started.
+/// more than one together, every one checked before any switches; with
+/// `pull`, one service's crons its owners set on the host are written into
+/// `crab.toml`'s `[crons]` first. `stopped` installs them to serve once
+/// started.
 pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
     let Deploy {
         dir,
         packages,
         image,
+        registry,
         force,
         pull,
+        from,
     } = deploy;
-    let (image, force, pull) = (image.as_deref(), *force, *pull);
+    if let Some(from) = from {
+        return copy(client, from, *force, stopped);
+    }
+    let (image, registry, force, pull) = (image.as_deref(), registry.as_deref(), *force, *pull);
     let workspace = Workspace::read(dir, project::FILE, packages)?;
     if workspace.services.is_empty() {
         bail!(
@@ -76,26 +96,120 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
     if client.base == dev::url("") {
         dev::up()?;
     }
+    // The project its services are deployed in: the workspace directory's
+    // name.
+    let in_project = workspace
+        .root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .with_context(|| format!("{} names no project", workspace.root.display()))?
+        .to_owned();
+    if let [dir] = workspace.services.as_slice() {
+        // On Cloud, the image is pushed to `image`, or `crab.toml`'s, tagged
+        // with the crate's version, or uploaded when neither names a registry.
+        let (project, bytes) = build(client, dir, pull)?;
+        let name = project.name()?;
+        let reference = reference(client, name, &project, image, registry, bytes)?;
+        let request = request(
+            client,
+            dir,
+            &project,
+            reference,
+            &in_project,
+            force,
+            stopped,
+        )?;
+        let deployed = utils::wait(client.deploy(name, &request))?;
+        return report(client, name, &deployed);
+    }
+    let mut set = DeploySetRequest {
+        services: BTreeMap::new(),
+    };
     for dir in &workspace.services {
-        one(client, dir, image, force, pull, stopped)?;
+        let (project, bytes) = build(client, dir, false)?;
+        let name = project.name()?.to_owned();
+        let reference = reference(client, &name, &project, None, registry, bytes)?;
+        let request = request(
+            client,
+            dir,
+            &project,
+            reference,
+            &in_project,
+            force,
+            stopped,
+        )?;
+        set.services.insert(name, request);
+    }
+    let deployed = utils::wait(client.deploy_set(&set))?;
+    for (name, deployed) in &deployed {
+        report(client, name, deployed)?;
     }
     Ok(())
 }
 
-/// Deploy the project in `dir` as its `crab.toml` names it. On Cloud, the image
-/// is pushed to `image`, or `crab.toml`'s, tagged with the crate's version, and
-/// deployed from there, or uploaded to Cloud when neither names a registry; a
-/// service deployed for the first time starts from
-/// `[database] seed`. With `pull`, the crons the service's owners set on the
-/// host are written into `crab.toml`'s `[crons]` first.
-fn one(
-    client: &Client,
-    dir: &Path,
-    image: Option<&str>,
-    force: bool,
-    pull: bool,
-    stopped: bool,
-) -> Result<()> {
+/// Deploy `from`, another account's public service as `owner/name`, as the
+/// context's own `name`, from the registry image it runs. A first deploy at a
+/// terminal goes in stopped, asks the person for each credential with a secret
+/// unset, and starts once every secret is set, unless `stopped`.
+fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
+    if client.owner.is_none() {
+        bail!("--from deploys from a registry, which only Cloud pulls");
+    }
+    let Some((_, name)) = from.split_once('/') else {
+        bail!("--from takes another account's service as owner/name, not {from:?}");
+    };
+    let listing = utils::wait(client.listing(from))?;
+    let Some(reference) = listing.reference else {
+        bail!("{from} runs an image uploaded to Cloud, which only its owner deploys");
+    };
+    let ask = first(client, name)? && io::stdin().is_terminal() && io::stdout().is_terminal();
+    let request = DeployRequest {
+        reference,
+        force,
+        crons: None,
+        size: None,
+        seed: None,
+        stopped: stopped || ask,
+        project: None,
+        prices: BTreeMap::new(),
+    };
+    let deployed = utils::wait(client.deploy(name, &request))?;
+    if ask {
+        let deps = utils::wait(client.runtime(name))?.deps;
+        let unset = |set: &[Secret]| -> Vec<(String, Credential)> {
+            deps.grouped()
+                .into_iter()
+                .filter(|(_, credential)| {
+                    credential
+                        .secrets
+                        .iter()
+                        .any(|secret| !set.iter().any(|one| one.name == secret.name && one.sent()))
+                })
+                .collect()
+        };
+        let asked = unset(&utils::wait(client.secrets(name))?);
+        if !asked.is_empty() {
+            Form::new(client, name, asked, &BTreeMap::new())?.run()?;
+        }
+        if !stopped {
+            match unset(&utils::wait(client.secrets(name))?).is_empty() {
+                true => {
+                    utils::wait(client.start(name))?;
+                    eprintln!("started {name}");
+                }
+                false => eprintln!(
+                    "{name} is stopped until its secrets are set: `crab secret fill {name}`, then `crab start {name}`"
+                ),
+            }
+        }
+    }
+    report(client, name, &deployed)
+}
+
+/// Read and build the project in `dir`, refused when its `crab.toml` says
+/// `deploy = false` or a price in `[prices]` is not one. With `pull`, the
+/// crons its owners set on the host are written into its `[crons]` first.
+fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> {
     let mut project = project::read(dir)?;
     if !project.deploy {
         bail!(
@@ -104,6 +218,7 @@ fn one(
             project::FILE
         );
     }
+    prices(&project)?;
     if pull {
         let live = utils::wait(client.crons(project.name()?))?;
         let crons = live
@@ -116,47 +231,87 @@ fn one(
     }
     let built = berm_build::build(dir, None, project::FILE)?;
     let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
+    Ok((project, bytes))
+}
+
+/// Where the host deploys `name` from: on Cloud, the image pushed to `image`,
+/// or `crab.toml`'s, tagged with the crate's version, on `registry` in place
+/// of its own when given; else uploaded to the host.
+fn reference(
+    client: &Client,
+    name: &str,
+    project: &Project,
+    image: Option<&str>,
+    registry: Option<&str>,
+    bytes: Vec<u8>,
+) -> Result<String> {
+    match image.or(project.image.as_deref()) {
+        Some(image) if client.owner.is_some() => {
+            let mut reference = Reference::from_str(&format!(
+                "{image}:{}",
+                Manifest::from_image(&bytes)?.version
+            ))?;
+            if let Some(registry) = registry {
+                reference.registry = registry.to_ascii_lowercase();
+            }
+            let reference = reference.to_string();
+            push(&reference, &bytes)?;
+            Ok(reference)
+        }
+        _ => send(client, name, bytes),
+    }
+}
+
+/// The deploy of `project`, in `dir`, from `reference`, in the project
+/// `workspace`; a service deployed to Cloud for the first time starts from
+/// `[database] seed`.
+fn request(
+    client: &Client,
+    dir: &Path,
+    project: &Project,
+    reference: String,
+    workspace: &str,
+    force: bool,
+    stopped: bool,
+) -> Result<DeployRequest> {
     let name = project.name()?;
-    let deployed = match &client.owner {
-        None if project.database.seed.is_some() => {
-            bail!(
-                "a seed starts a service on Cloud; the local host's own database is where one is made"
-            )
-        }
-        None => utils::wait(client.deploy_image(
-            name,
-            bytes,
-            force,
-            project.crons.as_ref(),
-            project.database.size(),
-            stopped,
-        ))?,
-        Some(_) => {
-            let reference = match image.or(project.image.as_deref()) {
-                Some(image) => {
-                    let reference = format!("{image}:{}", Manifest::from_image(&bytes)?.version);
-                    push(&reference, &bytes)?;
-                    reference
-                }
-                None => send(client, name, bytes)?,
-            };
-            let seed = match &project.database.seed {
-                Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
-                _ => None,
-            };
-            utils::wait(client.deploy(
-                name,
-                &DeployRequest {
-                    reference,
-                    force,
-                    crons: project.crons.clone(),
-                    size: project.database.size(),
-                    seed,
-                    stopped,
-                },
-            ))?
-        }
+    let seed = match &project.database.seed {
+        Some(_) if client.owner.is_none() => bail!(
+            "{name}: a seed starts a service on Cloud; the local host's own database is where one is made"
+        ),
+        Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
+        _ => None,
     };
+    Ok(DeployRequest {
+        reference,
+        force,
+        crons: project.crons.clone(),
+        size: Some(project.database.size()),
+        seed,
+        stopped,
+        project: Some(workspace.to_owned()),
+        prices: prices(project)?,
+    })
+}
+
+/// Each price `[prices]` in `project` sets, refused naming the tool of one
+/// that is not a price.
+fn prices(project: &Project) -> Result<BTreeMap<String, Price>> {
+    project
+        .prices
+        .iter()
+        .map(|(tool, price)| {
+            let price = price
+                .parse()
+                .map_err(|e| anyhow!("[prices] {tool} in {}: {e}", project::FILE))?;
+            Ok((tool.clone(), price))
+        })
+        .collect()
+}
+
+/// Show what `name` serves now that `deployed` installed it, how it breaks
+/// callers, and the secrets it needs that are not set.
+fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
     // The host compiled it to answer, so what comes back is what it will
     // serve — worth showing rather than saying "ok".
     let runtime = utils::wait(client.runtime(name))?;
@@ -173,7 +328,7 @@ fn one(
         .deps
         .secrets
         .iter()
-        .filter(|secret| !set.iter().any(|one| one.name == **secret))
+        .filter(|secret| !set.iter().any(|one| one.name == **secret && one.sent()))
         .collect();
     for secret in &unset {
         println!("  unset   secret {secret}");
@@ -223,8 +378,8 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
     Ok(sha256)
 }
 
-/// Upload `image` for `name`'s deploy unless Cloud holds it already, answering
-/// the digest the deploy names it by.
+/// Upload `image` for `name`'s deploy unless the host holds it already,
+/// answering the digest the deploy names it by.
 fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
     let sha256 = berm::digest(&image);
     let size = image.len() as u64;

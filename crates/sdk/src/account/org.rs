@@ -85,7 +85,8 @@ pub struct OrgPrivate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
     /// Stripe subscription status the client branches on: `active`/`trialing`
-    /// entitle the paid plan; `past_due` means a renewal failed and access is
+    /// entitle the paid plan, and `trialing` is held only by a trial started
+    /// before trials were removed; `past_due` means a renewal failed and access is
     /// paused (no grace) — prompt the user to update their card; `canceled`/
     /// `unpaid` mean the subscription ended — prompt resubscribe.
     pub status: SubscriptionStatus,
@@ -99,6 +100,10 @@ pub struct Subscription {
     /// paid for, so this is what says whether the account is renewing or running
     /// out. Access is unchanged until it passes.
     pub cancel_at: Option<i64>,
+    /// The plan slug it changes to at `current_period_end`, or `null` when no
+    /// change is scheduled.
+    #[serde(default)]
+    pub next_plan: Option<String>,
 }
 
 /// Which kind of account: a person or a shared org.

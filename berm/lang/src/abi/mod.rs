@@ -69,6 +69,8 @@ pub const HOST_VOUCH: u64 = hash("berm.vouch");
 pub const HOST_CLIENT: u64 = hash("berm.client");
 /// Mark this invocation's failure as refusing its caller.
 pub const HOST_DENY: u64 = hash("berm.deny");
+/// Lower this invocation's budget, once.
+pub const HOST_LIMIT: u64 = hash("berm.limit");
 
 /// Set on the length a syscall returns when the staged bytes are an error
 /// message rather than a result. A length never reaches this bit on its own,

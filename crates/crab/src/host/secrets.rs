@@ -1,9 +1,10 @@
 //! The secrets the local host substitutes into its services' requests, kept
 //! by service in `secrets.toml` under its root: `[service]` then
-//! `NAME = { value = "…", created_at = … }`.
+//! `NAME = { value = "…", hosts = ["…"], created_at = … }`.
 //!
 //! Only the host writes the file, readable by its owner alone. A secret
-//! reaches only a fetch whose host the service's manifest declares.
+//! reaches only a fetch to one of its hosts that the service's manifest
+//! declares.
 
 use anyhow::{Context, Result};
 use berm_host::Secrets;
@@ -27,6 +28,9 @@ pub const FILE: &str = "secrets.toml";
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Kept {
     pub value: String,
+    /// The hosts it is sent to; none for one set before hosts were kept.
+    #[serde(default)]
+    pub hosts: Vec<String>,
     /// When it was set, in Unix seconds.
     pub created_at: i64,
 }
@@ -78,23 +82,24 @@ impl Grants {
             .with_context(|| format!("cannot write {}", self.path.display()))
     }
 
-    /// `service`'s secrets, by name, each beside when it was set.
-    pub fn list(&self, service: &str) -> Result<Vec<(String, i64)>> {
+    /// `service`'s secrets, by name, each beside its hosts and when it was
+    /// set.
+    pub fn list(&self, service: &str) -> Result<Vec<(String, Vec<String>, i64)>> {
         self.with(|table| {
             table
                 .get(service)
                 .map(|kept| {
                     kept.iter()
-                        .map(|(name, one)| (name.clone(), one.created_at))
+                        .map(|(name, one)| (name.clone(), one.hosts.clone(), one.created_at))
                         .collect()
                 })
                 .unwrap_or_default()
         })
     }
 
-    /// Set `service`'s secret `name` to `value`; `false` when it is set
-    /// already.
-    pub fn set(&self, service: &str, name: &str, value: &str) -> Result<bool> {
+    /// Set `service`'s secret `name` to `value`, sent to `hosts`; `false`
+    /// when it is set already.
+    pub fn set(&self, service: &str, name: &str, value: &str, hosts: &[String]) -> Result<bool> {
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs() as i64);
@@ -107,9 +112,24 @@ impl Grants {
                 name.to_owned(),
                 Kept {
                     value: value.to_owned(),
+                    hosts: hosts.to_vec(),
                     created_at,
                 },
             );
+            Some(table.clone())
+        })?;
+        match table {
+            Some(table) => self.write(&table).map(|()| true),
+            None => Ok(false),
+        }
+    }
+
+    /// Send `service`'s secret `name` to `hosts` alone; `false` when it is
+    /// not set.
+    pub fn set_hosts(&self, service: &str, name: &str, hosts: &[String]) -> Result<bool> {
+        let table = self.with(|table| {
+            let one = table.get_mut(service)?.get_mut(name)?;
+            one.hosts = hosts.to_vec();
             Some(table.clone())
         })?;
         match table {
@@ -135,11 +155,12 @@ impl Grants {
 }
 
 impl Secrets for Grants {
-    async fn grant(&self, service: &str, secret: &str, _: &str) -> Result<Option<String>> {
+    async fn grant(&self, service: &str, secret: &str, host: &str) -> Result<Option<String>> {
         self.with(|table| {
             table
                 .get(service)
                 .and_then(|kept| kept.get(secret))
+                .filter(|one| one.hosts.iter().any(|to| to == host))
                 .map(|one| one.value.clone())
         })
     }
@@ -148,7 +169,8 @@ impl Secrets for Grants {
         Ok(self
             .list(service)?
             .into_iter()
-            .map(|(name, _)| name)
+            .filter(|(_, hosts, _)| !hosts.is_empty())
+            .map(|(name, _, _)| name)
             .collect())
     }
 }

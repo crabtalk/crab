@@ -92,10 +92,9 @@ pub struct Runtime {
     /// The part of `deps` this host answers to nothing for.
     #[serde(default, skip_serializing_if = "Deps::is_empty")]
     pub unresolved: Deps,
-    /// Stopped by its owners, or deployed stopped: it takes no calls and fires
-    /// no wakes.
-    #[serde(default)]
-    pub stopped: bool,
+    /// The project it was last deployed in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// A deploy's answer.
@@ -106,6 +105,9 @@ pub struct Deployed {
     /// [`Manifest::breaks`] words it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<String>,
+    /// The migrations it applied, a kit's as `{kit}/{name}`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub migrations: Vec<String>,
 }
 
 /// A deployed program as anyone it is visible to sees it: its IDL and what it
@@ -114,6 +116,17 @@ pub struct Deployed {
 pub struct Listing {
     pub program: Program,
     pub served: host::Served,
+    /// Stopped by its owners, or deployed stopped: it takes no calls and fires
+    /// no wakes.
+    #[serde(default)]
+    pub stopped: bool,
+    /// The project it was last deployed in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// The registry reference it runs, which another account can deploy as
+    /// its own; none for an uploaded image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
 }
 
 /// What a service's owner set for calling it, as the host answering holds it.
@@ -142,12 +155,17 @@ pub struct Cron {
 }
 
 /// The most one invocation may use: CPU time in microseconds, nested calls
-/// excluded, and rows read and written together.
+/// excluded, rows read and written together, and bytes of linear memory.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Budget {
     pub cpu: u64,
     pub rows: u64,
+    /// Held from the invocation's start to its return, and reserved from the
+    /// host's memory for that long; `0` is the most the host lets one guest
+    /// grow to.
+    #[serde(default)]
+    pub memory: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,8 +252,10 @@ pub const MAX_LOG: usize = 4096;
 /// What a call used of one program: its runs, the chains it was the first link
 /// of; its invocations, the CPU time they spent in microseconds, nested calls
 /// excluded, the largest linear memory one
-/// reached, in bytes, the rows they read and wrote, the bytes sent and
-/// received through the proxy, the bytes of the logs they emitted, and the
+/// reached, in bytes, their budgets of memory held over their wall-clock time
+/// in MiB-microseconds, the rows they read and wrote, the CPU time their SQL
+/// statements spent on the database's threads in microseconds, the bytes sent
+/// and received through the proxy, the bytes of the logs they emitted, and the
 /// bytes sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,8 +265,12 @@ pub struct Meter {
     pub calls: u64,
     pub cpu: u64,
     pub memory: u64,
+    #[serde(default)]
+    pub held: u64,
     pub read: u64,
     pub written: u64,
+    #[serde(default)]
+    pub sql_cpu: u64,
     pub proxied: u64,
     #[serde(default)]
     pub logged: u64,
@@ -263,8 +287,10 @@ impl std::ops::AddAssign for Meter {
         self.calls += other.calls;
         self.cpu += other.cpu;
         self.memory = self.memory.max(other.memory);
+        self.held += other.held;
         self.read += other.read;
         self.written += other.written;
+        self.sql_cpu += other.sql_cpu;
         self.proxied += other.proxied;
         self.logged += other.logged;
         self.failed += other.failed;

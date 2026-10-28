@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+/// The one account a local host answers for, in Cloud's paths.
+pub const LOCAL: &str = "local";
+
 /// An account on Cloud, by handle or id.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

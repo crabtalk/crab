@@ -8,6 +8,7 @@ use berm_host::test::{self, TestHost};
 fn page(service: Option<&str>, before: Option<u64>) -> CallPage {
     CallPage {
         service: service.map(str::to_owned),
+        project: None,
         tool: None,
         event: None,
         q: None,

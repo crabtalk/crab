@@ -1,9 +1,9 @@
 //! The `services` table and what a service's calls commit beside it.
 
-use crate::{state::store::Store, wake::cron};
+use crate::{images::Stored, state::store::Store, wake::cron};
 use anyhow::Result;
 use rusqlite::{OptionalExtension, Transaction, params};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// One service, as a row.
 pub(crate) struct Row {
@@ -13,6 +13,15 @@ pub(crate) struct Row {
     pub digest: String,
     /// Bytes its database may hold.
     pub size: u64,
+    /// The project it was last deployed in.
+    pub project: Option<String>,
+}
+
+impl Row {
+    /// The registry reference it runs, none for an uploaded image.
+    pub(crate) fn registry(&self) -> Option<String> {
+        (!Stored::uploaded(&self.reference, &self.digest)).then(|| self.reference.clone())
+    }
 }
 
 /// Every deployed service.
@@ -20,7 +29,7 @@ pub(crate) async fn all(store: &Store) -> Result<Vec<Row>> {
     store
         .read(|conn| {
             let mut statement =
-                conn.prepare("SELECT scope, name, reference, digest, size FROM services")?;
+                conn.prepare("SELECT scope, name, reference, digest, size, project FROM services")?;
             let rows = statement.query_map([], |row| {
                 Ok(Row {
                     scope: row.get(0)?,
@@ -28,6 +37,7 @@ pub(crate) async fn all(store: &Store) -> Result<Vec<Row>> {
                     reference: row.get(2)?,
                     digest: row.get(3)?,
                     size: row.get::<_, i64>(4)? as u64,
+                    project: row.get(5)?,
                 })
             })?;
             rows.collect()
@@ -41,7 +51,7 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
     store
         .read(move |conn| {
             conn.query_row(
-                "SELECT scope, name, reference, digest, size FROM services
+                "SELECT scope, name, reference, digest, size, project FROM services
                   WHERE scope = ?1 AND name = ?2",
                 params![scope, name],
                 |row| {
@@ -51,10 +61,37 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
                         reference: row.get(2)?,
                         digest: row.get(3)?,
                         size: row.get::<_, i64>(4)? as u64,
+                        project: row.get(5)?,
                     })
                 },
             )
             .optional()
+        })
+        .await
+}
+
+/// Every service in `scope`, by name.
+pub(crate) async fn scoped(store: &Store, scope: &str) -> Result<HashMap<String, Row>> {
+    let scope = scope.to_owned();
+    store
+        .read(move |conn| {
+            conn.prepare(
+                "SELECT scope, name, reference, digest, size, project FROM services WHERE scope = ?1",
+            )?
+            .query_map(params![scope], |row| {
+                Ok((
+                    row.get(1)?,
+                    Row {
+                        scope: row.get(0)?,
+                        name: row.get(1)?,
+                        reference: row.get(2)?,
+                        digest: row.get(3)?,
+                        size: row.get::<_, i64>(4)? as u64,
+                        project: row.get(5)?,
+                    },
+                ))
+            })?
+            .collect()
         })
         .await
 }
@@ -75,7 +112,8 @@ pub(crate) async fn commits(store: &Store, scope: &str, name: &str) -> Result<Op
 }
 
 /// Point `scope/name` at a new version, creating the service on its first
-/// deploy, and record the tools `deprecated` in it: each keeps the time it was
+/// deploy, in `project` when one is given and otherwise the project it was
+/// in, and record the tools `deprecated` in it: each keeps the time it was
 /// first deployed deprecated, `now` in epoch seconds for one deprecated by this
 /// deploy, and the rest are forgotten with their sunsets.
 #[allow(clippy::too_many_arguments)]
@@ -91,6 +129,7 @@ pub(crate) async fn install(
     cron_tools: Vec<String>,
     crons: Option<BTreeMap<String, String>>,
     stopped: bool,
+    project: Option<String>,
     now: i64,
 ) -> Result<()> {
     let row = [scope, name, reference, digest, version].map(str::to_owned);
@@ -102,12 +141,15 @@ pub(crate) async fn install(
             let [scope, name, reference, digest, version] = row;
             let tx = conn.transaction()?;
             tx.execute(
-                "INSERT INTO services (scope, name, reference, digest, version, size, stopped)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "INSERT INTO services
+                     (scope, name, reference, digest, version, size, stopped, project)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT (scope, name) DO UPDATE
                     SET reference = excluded.reference, digest = excluded.digest,
                         version = excluded.version, size = excluded.size,
-                        stopped = excluded.stopped, updated_at = unixepoch()",
+                        stopped = excluded.stopped,
+                        project = COALESCE(excluded.project, services.project),
+                        updated_at = unixepoch()",
                 params![
                     scope,
                     name,
@@ -115,7 +157,8 @@ pub(crate) async fn install(
                     digest,
                     version,
                     size as i64,
-                    stopped
+                    stopped,
+                    project
                 ],
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;

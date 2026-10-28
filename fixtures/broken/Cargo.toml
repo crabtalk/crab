@@ -1,0 +1,15 @@
+[package]
+name = "berm-broken"
+description = "The reference guest whose migration fails, what a deploy failing past its check is tested against"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+berm-lang.workspace = true

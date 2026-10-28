@@ -2,46 +2,24 @@
 
 use crate::host::Service;
 use axum::http::StatusCode;
-use berm::Program;
-use berm_api::{Break, Output, host::Deploy};
-use berm_host::{Denied, deny};
-use std::{collections::BTreeMap, sync::Arc};
+use berm_api::{Break, Manifest, Output, host::Deploy};
+use berm_host::{Denied, Images, Installed, deny};
+use crabtalk_sdk::sandbox::price;
 
 impl Service {
-    /// Make the tools of `image` reachable under `name`, answering with how it
-    /// breaks callers of the program it replaced. Refused as the host refuses
-    /// a deploy: unless `force`, a break of what a caller used or a cron its
-    /// owner set that `crons` undoes, or a `size` the host refuses. `stopped`
-    /// installs it to serve once started.
+    /// Make the tools of the image `deploy` names reachable under `name`,
+    /// answering with how it breaks callers of the program it replaced.
+    /// Refused as the host refuses a deploy.
     pub async fn deploy(
         &self,
         name: &str,
-        image: Vec<u8>,
-        force: bool,
-        crons: Option<BTreeMap<String, String>>,
-        size: u64,
-        stopped: bool,
-    ) -> Result<(Arc<Program>, Vec<Break>), Denied> {
+        deploy: Deploy,
+    ) -> Result<(Installed, Vec<Break>), Denied> {
         validate(name)?;
         let replaced = self.get(name);
-        let digest = self.images.put(&image).await?;
-        let program = self
-            .host
-            .deploy(
-                name,
-                Deploy {
-                    reference: digest.clone(),
-                    digest,
-                    force,
-                    crons,
-                    size,
-                    stopped,
-                },
-                None,
-            )
-            .await?;
+        let installed = self.host.deploy(name, deploy, None).await?;
         let breaks = replaced
-            .map(|replaced| replaced.manifest().breaks(program.manifest()))
+            .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
             .unwrap_or_default();
         for broken in &breaks {
             tracing::warn!(name, "breaks callers: {broken}");
@@ -50,30 +28,76 @@ impl Service {
         if !unresolved.is_empty() {
             tracing::warn!(name, "nothing here answers to {unresolved}");
         }
-        let _ = self.changed.send(());
-        Ok((program, breaks))
+        Ok((installed, breaks))
+    }
+
+    /// Deploy `members`, each a name and the digest of an image kept in
+    /// `images`, together, as [`Host::deploy_set`] does, answering with how each
+    /// breaks callers of the program it replaced.
+    ///
+    /// [`Host::deploy_set`]: berm_host::Host::deploy_set
+    pub async fn deploy_set(
+        &self,
+        members: Vec<(String, Deploy)>,
+    ) -> Result<Vec<(String, Installed, Vec<Break>)>, Denied> {
+        let mut replaced = Vec::new();
+        for (name, _) in &members {
+            validate(name)?;
+            replaced.push((name.clone(), self.get(name)));
+        }
+        let installed = self.host.deploy_set(members).await?;
+        Ok(installed
+            .into_iter()
+            .map(|(name, installed)| {
+                let breaks = replaced
+                    .iter()
+                    .find(|(one, _)| *one == name)
+                    .and_then(|(_, replaced)| replaced.as_ref())
+                    .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
+                    .unwrap_or_default();
+                (name, installed, breaks)
+            })
+            .collect())
+    }
+
+    /// Refused naming the first of `priced` that is not a public tool of the
+    /// kept image `digest` names.
+    pub async fn priced(&self, digest: &str, priced: &[String]) -> Result<(), Denied> {
+        if priced.is_empty() {
+            return Ok(());
+        }
+        let image = self
+            .images
+            .pull(digest, digest)
+            .await
+            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+        let manifest = Manifest::from_image(&image)
+            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+        price::check(&manifest, priced).map_err(|e| deny(StatusCode::BAD_REQUEST, e))
+    }
+
+    /// Keep `image` for a deploy to name, answering its digest.
+    pub async fn keep(&self, image: &[u8]) -> Result<String, Denied> {
+        Ok(self.images.put(image).await?)
+    }
+
+    /// Whether the image `digest` names is kept.
+    pub async fn holds(&self, digest: &str) -> bool {
+        self.images.holds(digest).await
     }
 
     /// Stop running a program and drop what it committed. `false` if it wasn't
     /// deployed.
     pub async fn undeploy(&self, name: &str) -> Result<bool, Denied> {
-        let removed = self.host.remove(name).await?;
-        if removed {
-            let _ = self.changed.send(());
-        }
-        Ok(removed)
+        Ok(self.host.remove(name).await?)
     }
 
     /// Start or stop a program. `false` if it wasn't deployed.
     pub async fn run(&self, name: &str, running: bool) -> Result<bool, Denied> {
-        let set = match running {
+        Ok(match running {
             true => self.host.start(name).await?,
             false => self.host.stop(name).await?,
-        };
-        if set {
-            let _ = self.changed.send(());
-        }
-        Ok(set)
+        })
     }
 
     /// Run one public tool with no caller.
@@ -83,14 +107,12 @@ impl Service {
     }
 }
 
-/// A name has to survive being half of an MCP tool name. The dot is the one
-/// that matters: dispatch splits `{program}.{tool}` on the first one, so a
-/// program carrying a dot would eat its own tool.
+/// A service name is lowercase letters, digits, `-` and `_`.
 fn validate(name: &str) -> Result<(), Denied> {
     if name.is_empty() {
         return Err(deny(
             StatusCode::BAD_REQUEST,
-            "a program name cannot be empty",
+            "a service name cannot be empty",
         ));
     }
     if !name
@@ -99,7 +121,7 @@ fn validate(name: &str) -> Result<(), Denied> {
     {
         return Err(deny(
             StatusCode::BAD_REQUEST,
-            format!("program name {name:?} is not lowercase letters, digits, `-` or `_`"),
+            format!("service name {name:?} is not lowercase letters, digits, `-` or `_`"),
         ));
     }
     Ok(())

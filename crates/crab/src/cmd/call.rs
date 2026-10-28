@@ -25,10 +25,11 @@ pub fn run(
     let (output, meter) = utils::wait(client.call(program, tool, arguments, caller))?;
     if let Some(meter) = meter {
         eprintln!(
-            "{}µs CPU, {} rows read, {} written, {} KiB memory, {} bytes proxied",
+            "{}µs CPU, {} rows read, {} written, {}µs SQL CPU, {} KiB memory, {} bytes proxied",
             meter.cpu,
             meter.read,
             meter.written,
+            meter.sql_cpu,
             meter.memory / 1024,
             meter.proxied
         );

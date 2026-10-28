@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 /// them are charged as overage.
 pub const INCLUDED_CPU: u64 = 100;
 
+/// MiB-microseconds of memory held in a GB-hour.
+pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
+
 /// What is deployed, served unauthenticated at `GET /meta/version`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +49,9 @@ pub struct Rates {
     pub overage: u64,
     pub read: u64,
     pub written: u64,
+    /// MiB-microseconds of a call's memory budget held, waiting included.
+    #[serde(default)]
+    pub held: u64,
     /// Bytes through `berm.http.proxy`; unset is free.
     pub proxied: Option<u64>,
 }
