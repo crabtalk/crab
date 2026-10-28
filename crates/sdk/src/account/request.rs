@@ -2,10 +2,7 @@
 //! short code: pay for a purchase, set secrets of a service, or sign a device
 //! in as them.
 
-use crate::{
-    account::{billing::TrialOffer, org::PublicAccount},
-    utils::text_enum,
-};
+use crate::{account::org::PublicAccount, utils::text_enum};
 use berm_api::Credential;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -32,13 +29,11 @@ text_enum!(RequestKind { Payment => "payment", Secret => "secret", Login => "log
 pub enum Purchase {
     /// A paid plan's subscription.
     Plan,
-    /// The free trial of the plan that offers one.
-    Trial,
     /// Credit, in an amount chosen at checkout.
     Credit,
 }
 
-text_enum!(Purchase { Plan => "plan", Trial => "trial", Credit => "credit" });
+text_enum!(Purchase { Plan => "plan", Credit => "credit" });
 
 /// Where a request stands.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -47,7 +42,7 @@ text_enum!(Purchase { Plan => "plan", Trial => "trial", Credit => "credit" });
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
-    /// Paid, the trial started, the secrets set, or the sign-in approved.
+    /// Paid, the secrets set, or the sign-in approved.
     Completed,
     /// The person declined it.
     Declined,
@@ -115,16 +110,11 @@ pub struct Request {
     pub expires_at: i64,
     /// What a payment request buys.
     pub purchase: Option<Purchase>,
-    /// The plan a `plan` or `trial` purchase subscribes to.
+    /// The plan a `plan` purchase subscribes to.
     pub plan: Option<String>,
     /// The plan's monthly price in microdollars; none for credit, whose
     /// amount is chosen at checkout.
     pub price_micros: Option<i64>,
-    /// The trial a `trial` purchase starts.
-    pub trial: Option<TrialOffer>,
-    /// Paying ends the account's trial into the plan at once, charging the
-    /// card the trial was started with; no Checkout follows.
-    pub card_on_file: bool,
     /// The service a secret request sets secrets of.
     pub service: Option<String>,
     /// What a secret request asks for, each set on its own. A secret in no
@@ -220,7 +210,8 @@ pub struct AskedSecret {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PayResponse {
-    /// Stripe Checkout, or none when a trial ended into the plan at once.
+    /// Stripe Checkout, or none when an active subscription moved onto the
+    /// plan in place.
     pub url: Option<String>,
 }
 

@@ -1,6 +1,6 @@
 //! Service wire types.
 
-use crate::utils::text_enum;
+use crate::{sandbox::price::Price, utils::text_enum};
 use berm_api::{
     Meter, Program,
     host::{self, Call, ServedDay},
@@ -46,6 +46,31 @@ pub struct DeployRequest {
     /// another project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// Each public tool's price a call, by name, in place of the prices the
+    /// service had: a deploy without them leaves it with none. Refused when
+    /// one names a tool that is not a public tool of the image.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prices: BTreeMap<String, Price>,
+}
+
+/// What calling a service is held to and costs: each public tool's terms, by
+/// name.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Terms {
+    pub tools: BTreeMap<String, ToolTerms>,
+}
+
+/// What one call of a tool is held to, and what it costs its caller.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolTerms {
+    #[serde(flatten)]
+    pub held: berm_api::ToolTerms,
+    /// Its price a call, set by the service's last deploy; none for a tool
+    /// that is free.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price: Option<Price>,
 }
 
 /// A project's services deployed together, each by its name in the account:

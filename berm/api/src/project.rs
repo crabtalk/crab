@@ -40,6 +40,10 @@ pub struct Project {
     /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
+    /// Each public tool's price a call on Cloud, by name, in USD as a decimal
+    /// string: `search = "0.002"`.
+    #[serde(default)]
+    pub prices: BTreeMap<String, String>,
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
@@ -151,6 +155,7 @@ impl Project {
             ("image", self.image.is_some()),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
+            ("prices", !self.prices.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),

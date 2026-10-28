@@ -6,14 +6,17 @@ use crate::{
     fill::Form,
     project, utils,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use berm_api::{Credential, Deployed, Manifest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
+    sandbox::{
+        price::Price,
+        service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
+    },
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
@@ -168,6 +171,7 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
         seed: None,
         stopped: stopped || ask,
         project: None,
+        prices: BTreeMap::new(),
     };
     let deployed = utils::wait(client.deploy(name, &request))?;
     if ask {
@@ -203,8 +207,8 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
 }
 
 /// Read and build the project in `dir`, refused when its `crab.toml` says
-/// `deploy = false`. With `pull`, the crons its owners set on the host are
-/// written into its `[crons]` first.
+/// `deploy = false` or a price in `[prices]` is not one. With `pull`, the
+/// crons its owners set on the host are written into its `[crons]` first.
 fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> {
     let mut project = project::read(dir)?;
     if !project.deploy {
@@ -214,6 +218,7 @@ fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> 
             project::FILE
         );
     }
+    prices(&project)?;
     if pull {
         let live = utils::wait(client.crons(project.name()?))?;
         let crons = live
@@ -285,7 +290,23 @@ fn request(
         seed,
         stopped,
         project: Some(workspace.to_owned()),
+        prices: prices(project)?,
     })
+}
+
+/// Each price `[prices]` in `project` sets, refused naming the tool of one
+/// that is not a price.
+fn prices(project: &Project) -> Result<BTreeMap<String, Price>> {
+    project
+        .prices
+        .iter()
+        .map(|(tool, price)| {
+            let price = price
+                .parse()
+                .map_err(|e| anyhow!("[prices] {tool} in {}: {e}", project::FILE))?;
+            Ok((tool.clone(), price))
+        })
+        .collect()
 }
 
 /// Show what `name` serves now that `deployed` installed it, how it breaks

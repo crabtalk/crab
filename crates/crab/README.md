@@ -69,15 +69,19 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
 
-`crab billing plan`, `trial` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
+`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login                     # --github for GitHub
 crab login --device
 crab status
 crab usage                     # the account's services and its plan this period
+crab earnings                  # what the account's priced tools earned, a month each, what is owed and the payouts
+crab earnings connect          # opens Stripe's onboarding of the account's payout account, a US one
+crab earnings dashboard        # opens the payout account's Stripe dashboard
 crab billing                   # plan, credit, refill, card
-crab billing plan pro --for "Pro, to run the crawler past the free plan"
+crab billing verify
+crab billing plan pro --for "Pro, to run the crawler past Hobby"
 crab request WDJB-MJHT --wait
 crab billing portal            # opens Stripe's portal in the browser
 crab key create ci --days 90

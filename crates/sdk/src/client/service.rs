@@ -5,11 +5,11 @@ use crate::{
     client::{Client, Error},
     sandbox::service::{
         Billing, Costed, DeployRequest, DeploySetRequest, Deployment, MeteredDay, Secret,
-        SetSecret, Upload, UploadRequest, Visibility,
+        SetSecret, Terms, Upload, UploadRequest, Visibility,
     },
 };
 use berm_api::{
-    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Program, Runtime, Terms,
+    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Program, Runtime,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Body, Method, RequestBuilder};
@@ -105,7 +105,7 @@ impl Client {
         self.answered(request).await
     }
 
-    /// What a call of each of `name`'s public tools is held to.
+    /// What a call of each of `name`'s public tools is held to and costs.
     pub async fn terms(&self, name: &str) -> Result<Terms, Error> {
         let path = format!("{}/terms", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await

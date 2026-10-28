@@ -58,6 +58,25 @@ pub struct Period {
     pub drawn: i64,
     /// Each share of an included amount reached, and running out of credit.
     pub warnings: Vec<Warning>,
+    /// What the account paid other accounts' tools' prices since `since`, by
+    /// tool, the most first.
+    #[serde(default)]
+    pub spent: Vec<Spent>,
+}
+
+/// What an account paid one tool's price.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Spent {
+    /// The service's owner, by handle, else by id.
+    pub owner: String,
+    pub service: String,
+    pub tool: String,
+    /// Calls charged; a call is charged from its start and returned when it
+    /// fails.
+    pub calls: u64,
+    /// In USD micros.
+    pub micros: i64,
 }
 
 /// A share of an included amount an account reached in a period.
@@ -177,26 +196,18 @@ pub struct Included {
     pub sent: u64,
 }
 
+/// A person's verification, which lets an account on Hobby deploy.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CheckoutResponse {
-    pub url: String,
-}
-
-/// The free trial as the account would start it now.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrialOffer {
-    /// Days before the first charge.
-    pub days: u32,
-    /// Starting it takes a card.
-    pub card: bool,
-    /// Why it takes one; `None` when it does not.
+pub struct Verification {
+    /// When it was verified, in Unix seconds; `None` until it is.
+    pub verified_at: Option<i64>,
+    /// Why verifying it now fails; `None` when verified or when it would pass.
     pub reason: Option<String>,
 }
 
-/// A plan subscribed: the Checkout URL to pay at, or `None` when the plan
-/// took effect at once, a trial ended and billed to the card on file.
+/// A plan subscribed: the Checkout URL to pay at, or `None` when an active
+/// subscription moved onto the plan in place.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscribeResponse {
@@ -215,6 +226,123 @@ pub struct Credit {
     pub refill_micros: i64,
 }
 
+/// What an account's priced tools earned, a UTC calendar month each, newest
+/// first, and what was paid out of it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Earnings {
+    pub months: Vec<EarnedMonth>,
+    /// Whether the account has a Stripe Connect account.
+    pub connected: bool,
+    /// Whether Stripe lets that account receive payouts.
+    pub payouts_enabled: bool,
+    /// What closed months netted, each counted from `0`, less every payout
+    /// and its fees, in USD micros.
+    pub owed: i64,
+    /// Newest first.
+    pub payouts: Vec<Payout>,
+}
+
+/// One transfer of earnings to the account's Stripe Connect account.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Payout {
+    /// `YYYY-MM`, the closed month it was made for.
+    pub month: String,
+    /// What was transferred, in USD micros.
+    pub amount: i64,
+    /// Connect's fees, taken from what was owed, in USD micros.
+    pub fees: i64,
+    pub status: PayoutStatus,
+    /// Unix seconds.
+    pub created_at: i64,
+}
+
+/// Where a [`Payout`] stands.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PayoutStatus {
+    /// Recorded, its transfer not yet made; retried until it is.
+    Pending,
+    /// Transferred.
+    Paid,
+}
+
+text_enum!(PayoutStatus {
+    Pending => "pending",
+    Paid => "paid",
+});
+
+/// A Stripe-hosted page to open.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StripeLink {
+    pub url: String,
+}
+
+/// One month of [`Earnings`]: the sum, and each tool's part of it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarnedMonth {
+    /// `YYYY-MM`.
+    pub month: String,
+    #[serde(flatten)]
+    pub earned: Earned,
+    /// By service then tool.
+    pub tools: Vec<EarnedTool>,
+}
+
+/// One tool's part of an [`EarnedMonth`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarnedTool {
+    pub service: String,
+    pub tool: String,
+    #[serde(flatten)]
+    pub earned: Earned,
+}
+
+/// What priced calls earned, in USD micros.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Earned {
+    /// Calls charged.
+    pub calls: u64,
+    /// Their prices, summed.
+    pub revenue: i64,
+    /// The platform's cut of `revenue`.
+    pub cut: i64,
+    /// What every priced call used, failed ones included, at the published
+    /// rates.
+    pub compute: i64,
+    /// `revenue` less `cut` and `compute`; below zero when compute is larger.
+    pub net: i64,
+}
+
+impl Earned {
+    pub fn new(calls: u64, revenue: i64, cut: i64, compute: i64) -> Self {
+        Self {
+            calls,
+            revenue,
+            cut,
+            compute,
+            net: revenue - cut - compute,
+        }
+    }
+}
+
+impl std::ops::AddAssign for Earned {
+    fn add_assign(&mut self, other: Self) {
+        *self = Self::new(
+            self.calls + other.calls,
+            self.revenue + other.revenue,
+            self.cut + other.cut,
+            self.compute + other.compute,
+        );
+    }
+}
+
 /// The body of `PUT …/billing/refill`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,12 +354,6 @@ pub struct RefillRequest {
     /// `cap_micros` is `0`.
     #[serde(default)]
     pub amount_micros: i64,
-}
-
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PortalResponse {
-    pub url: String,
 }
 
 /// Which single action the portal opens on.

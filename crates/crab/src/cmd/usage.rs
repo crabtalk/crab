@@ -188,6 +188,26 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
     for warning in &period.warnings {
         println!("  warned: {} at {}%", warning.unit, warning.threshold);
     }
+    if !period.spent.is_empty() {
+        println!();
+        let width = period
+            .spent
+            .iter()
+            .map(|spent| spent.owner.len() + spent.service.len() + spent.tool.len() + 2)
+            .max()
+            .unwrap_or(0)
+            .max(4);
+        println!("prices paid this period");
+        println!("  {:<width$}  {:>10}  {:>10}", "TOOL", "CALLS", "SPENT");
+        for spent in &period.spent {
+            println!(
+                "  {:<width$}  {:>10}  {:>10}",
+                format!("{}/{}.{}", spent.owner, spent.service, spent.tool),
+                format::count(spent.calls),
+                format::usd(spent.micros as f64)
+            );
+        }
+    }
     println!();
     let held = memory.loaded + memory.running;
     let limit = match memory.limit {

@@ -2,8 +2,11 @@
 
 use crate::{format, utils};
 use anyhow::Result;
-use berm_api::{Program, Runtime, Terms, ToolSpec};
-use crabtalk_sdk::client::{Client, Error};
+use berm_api::{Program, Runtime, ToolSpec};
+use crabtalk_sdk::{
+    client::{Client, Error},
+    sandbox::service::Terms,
+};
 use serde_json::Value;
 
 /// Print `name` as its caller sees it: the runtime too when the host answers
@@ -89,8 +92,8 @@ pub fn show(program: &Program, runtime: Option<&Runtime>, terms: &Terms) {
     }
 }
 
-/// Each of `tools`, with its marks, arguments, reply and what one call of it
-/// is held to.
+/// Each of `tools`, with its marks, arguments, reply, and what one call of it
+/// is held to and costs.
 fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
     for tool in tools {
         println!();
@@ -107,15 +110,19 @@ fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
             .collect();
         println!("  {}{marks}", tool.name);
         println!("    {}", tool.description);
-        if let Some(held) = terms.tools.get(&tool.name) {
-            let memory = match held.budget.memory {
+        if let Some(terms) = terms.tools.get(&tool.name) {
+            let budget = terms.held.budget;
+            let memory = match budget.memory {
                 0 => "the host's most".to_owned(),
                 bytes => format::bytes(bytes),
             };
             println!(
                 "    at most {}µs of CPU, {} rows and {memory} of memory a call",
-                held.budget.cpu, held.budget.rows
+                budget.cpu, budget.rows
             );
+            if let Some(price) = terms.price {
+                println!("    {price} per call");
+            }
         }
         for parameter in properties(&tool.parameters) {
             println!("    {parameter}");

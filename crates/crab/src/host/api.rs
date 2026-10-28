@@ -112,7 +112,10 @@ async fn deploy(
     Extension(Named(name)): Extension<Named>,
     Json(deploy): Json<DeployRequest>,
 ) -> Result<Json<Deployed>, Denied> {
-    let (deployed, breaks) = service.deploy(&name, kept(&name, deploy)?).await?;
+    let priced: Vec<String> = deploy.prices.keys().cloned().collect();
+    let deploy = kept(&name, deploy)?;
+    service.priced(&deploy.digest, &priced).await?;
+    let (deployed, breaks) = service.deploy(&name, deploy).await?;
     Ok(Json(Deployed {
         program: deployed.program.idl(&name),
         breaks: breaks.iter().map(ToString::to_string).collect(),
@@ -208,7 +211,12 @@ async fn deploy_set(
 ) -> Result<Json<BTreeMap<String, Deployed>>, Denied> {
     let mut members = Vec::new();
     for (name, deploy) in set.services {
+        let priced: Vec<String> = deploy.prices.keys().cloned().collect();
         let deploy = kept(&name, deploy)?;
+        service
+            .priced(&deploy.digest, &priced)
+            .await
+            .map_err(|Denied(status, reason)| deny(status, format!("{name}: {reason}")))?;
         members.push((name, deploy));
     }
     Ok(Json(

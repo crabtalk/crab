@@ -183,6 +183,13 @@ enum Command {
         #[arg(long)]
         month: Option<String>,
     },
+    /// What the account's priced tools earned on Cloud, a UTC month each:
+    /// revenue, the cut, compute and net, by service and tool; what is owed,
+    /// and the payouts.
+    Earnings {
+        #[command(subcommand)]
+        action: Option<EarningsCommand>,
+    },
     /// A program's cron tools: listed, set, stopped.
     #[command(subcommand)]
     Cron(CronCommand),
@@ -311,21 +318,26 @@ enum SecretCommand {
 }
 
 #[derive(Subcommand)]
+enum EarningsCommand {
+    /// Open Stripe's onboarding for the account's payout account, a US one,
+    /// creating it the first time.
+    Connect,
+    /// Open the payout account's Stripe dashboard.
+    Dashboard,
+}
+
+#[derive(Subcommand)]
 enum BillingCommand {
     /// Ask a person to put the account on a plan: a code whose page they pay
-    /// at. From a trial, the plan starts as they confirm it.
+    /// at.
     Plan {
         slug: String,
         /// What it is for, shown to the person who pays.
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Ask the person to start the free trial: a code whose page starts it.
-    Trial {
-        /// What it is for, shown to the person who starts it.
-        #[arg(long, default_value = "")]
-        r#for: String,
-    },
+    /// Verify the account on GitHub, which lets it deploy on Hobby.
+    Verify,
     /// Ask a person to buy credit: a code whose page takes the amount.
     Credit {
         /// What it is for, shown to the person who pays.
@@ -592,6 +604,13 @@ fn main() -> Result<ExitCode> {
             json,
         )?,
         Command::Cost { name, month } => cmd::cost::run(&client()?, name, month.as_deref(), json)?,
+        Command::Earnings { action: None } => cmd::earnings::run(&client()?, json)?,
+        Command::Earnings {
+            action: Some(EarningsCommand::Connect),
+        } => cmd::earnings::connect(&client()?)?,
+        Command::Earnings {
+            action: Some(EarningsCommand::Dashboard),
+        } => cmd::earnings::dashboard(&client()?)?,
         Command::Cron(CronCommand::Ls { name }) => cmd::cron::ls(&client()?, name, json)?,
         Command::Cron(CronCommand::Set { name, tool, cron }) => {
             cmd::cron::set(&client()?, name, tool, Some(cron))?
@@ -656,9 +675,7 @@ fn main() -> Result<ExitCode> {
                 BillingCommand::Plan { slug, r#for } => {
                     cmd::billing::ask(&client, Purchase::Plan, Some(slug), r#for, json)?
                 }
-                BillingCommand::Trial { r#for } => {
-                    cmd::billing::ask(&client, Purchase::Trial, None, r#for, json)?
-                }
+                BillingCommand::Verify => cmd::billing::verify(&client, json)?,
                 BillingCommand::Credit { r#for } => {
                     cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }
