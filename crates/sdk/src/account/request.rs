@@ -121,6 +121,14 @@ pub struct Request {
     /// credential is one of its own, by the secret's name, with no title.
     #[serde(default)]
     pub credentials: Vec<AskedCredential>,
+    /// The registered client a sign-in is for, by its name; none for a
+    /// device's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    /// Where a client's sign-in sends the person back to once approved or
+    /// declined, its code or error on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirect: Option<String>,
 }
 
 /// A credential a secret request asks for, as its service declared it when
