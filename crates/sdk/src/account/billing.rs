@@ -214,8 +214,7 @@ pub struct SubscribeResponse {
     pub url: Option<String>,
 }
 
-/// An account's credit, in USD micros. All of it was bought; it never
-/// expires.
+/// An account's credit, in USD micros. All of it was bought.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credit {
@@ -224,6 +223,47 @@ pub struct Credit {
     pub refill_cap_micros: i64,
     /// What one refill buys; `0` when never set.
     pub refill_micros: i64,
+}
+
+/// Where an account's credit came from and went.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CreditHistory {
+    /// A UTC calendar month each, newest first; only months credit moved in.
+    pub months: Vec<CreditMonth>,
+    /// The purchases and refills still holding credit, soonest to expire
+    /// first.
+    pub grants: Vec<Grant>,
+}
+
+/// One month of [`CreditHistory`], in USD micros, each figure positive.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditMonth {
+    /// `YYYY-MM`.
+    pub month: String,
+    /// Purchases and refills.
+    pub added: i64,
+    /// Use past the plan's included amounts.
+    pub overage: i64,
+    /// Other accounts' tools' prices, less what failed calls returned.
+    pub prices: i64,
+    pub expired: i64,
+    /// The balance when the month ended, or now for the current month.
+    pub balance: i64,
+}
+
+/// One purchase or refill's credit.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Grant {
+    pub id: i64,
+    /// What is left of it, in USD micros.
+    pub remaining: i64,
+    /// Unix seconds.
+    pub created_at: i64,
+    /// Unix seconds.
+    pub expires_at: i64,
 }
 
 /// What an account's priced tools earned, a UTC calendar month each, newest
