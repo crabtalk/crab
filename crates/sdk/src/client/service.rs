@@ -5,7 +5,7 @@ use crate::{
     client::{Client, Error},
     sandbox::service::{
         Billing, Costed, DeployRequest, DeploySetRequest, Deployment, MeteredDay, Secret,
-        SetSecret, Terms, Upload, UploadRequest, Visibility,
+        SetSecret, Terms, ToolCosted, Upload, UploadRequest, Visibility,
     },
 };
 use berm_api::{
@@ -108,6 +108,13 @@ impl Client {
     /// What a call of each of `name`'s public tools is held to and costs.
     pub async fn terms(&self, name: &str) -> Result<Terms, Error> {
         let path = format!("{}/terms", self.path_of(name));
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// What each of `name`'s tools used over the last 30 days, by tool, for
+    /// its owners. A tool not called is left out.
+    pub async fn tools(&self, name: &str) -> Result<BTreeMap<String, ToolCosted>, Error> {
+        let path = format!("{}/calls/tools", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
 

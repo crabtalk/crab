@@ -1,5 +1,6 @@
 pub mod app;
 pub mod billing;
+pub mod budget;
 pub mod build;
 pub mod call;
 pub mod calls;

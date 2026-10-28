@@ -1,10 +1,7 @@
 use anyhow::Result;
-use berm_api::{
-    Budget,
-    host::{Caller, User},
-};
+use berm_api::host::{Caller, User};
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
-use crab_agent::{cmd, context::Contexts, utils};
+use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
     client::{Client, Owner},
@@ -212,18 +209,20 @@ enum Command {
         /// `YYYY-MM-DD`.
         on: Option<String>,
     },
-    /// Set the most one call of a tool may use, from its next call.
+    /// Set the most one call of a tool may use, from its next call; with no
+    /// flags, what its runs of the last 30 days used and the memory budget
+    /// they fit.
     Budget {
         name: String,
         tool: String,
         /// CPU time, in microseconds.
-        #[arg(long)]
-        cpu: u64,
-        #[arg(long)]
-        rows: u64,
+        #[arg(long, requires = "rows")]
+        cpu: Option<u64>,
+        #[arg(long, requires = "cpu")]
+        rows: Option<u64>,
         /// Linear memory, in MiB; omitted is the most the host lets a call
         /// grow to.
-        #[arg(long, value_name = "MIB")]
+        #[arg(long, value_name = "MIB", requires = "cpu")]
         memory: Option<u64>,
     },
     /// A program's secrets on Cloud: set, listed by name, revoked.
@@ -651,21 +650,12 @@ fn main() -> Result<ExitCode> {
             cpu,
             rows,
             memory,
-        } => {
-            utils::wait(client()?.budget(
-                name,
-                tool,
-                Budget {
-                    cpu: *cpu,
-                    rows: *rows,
-                    memory: memory.map_or(0, |mib| mib << 20),
-                },
-            ))?;
-            let memory = memory.map_or("the host's most".to_owned(), |mib| format!("{mib} MiB"));
-            eprintln!(
-                "{name}.{tool}: at most {cpu}µs of CPU, {rows} rows and {memory} of memory a call"
-            );
-        }
+        } => match (cpu, rows) {
+            (Some(cpu), Some(rows)) => {
+                cmd::budget::set(&client()?, name, tool, *cpu, *rows, *memory)?
+            }
+            _ => cmd::budget::show(&client()?, name, tool, json)?,
+        },
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {
             action: Some(action),

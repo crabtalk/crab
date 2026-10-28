@@ -63,7 +63,7 @@ pub struct Terms {
 
 /// What one call of a tool is held to, and what it costs its caller.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolTerms {
     #[serde(flatten)]
     pub held: berm_api::ToolTerms,
@@ -71,6 +71,41 @@ pub struct ToolTerms {
     /// that is free.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price: Option<Price>,
+    /// What its runs use; none below [`Estimate::TERMS`] runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<Estimate>,
+}
+
+/// What a tool's runs that ended `done` in the last 30 days used, from the
+/// call log: each run summed over every service it reached, and each measure's
+/// median and 99th percentile taken on its own.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Estimate {
+    /// Runs measured.
+    pub runs: u64,
+    /// Each measure's median.
+    pub typical: Measured,
+    /// Each measure's 99th percentile.
+    pub slow: Measured,
+}
+
+impl Estimate {
+    /// The fewest runs a service's terms publish an estimate from.
+    pub const TERMS: u64 = 20;
+}
+
+/// One measure of a run: wall time in milliseconds, CPU time in microseconds,
+/// rows read and written, and its cost at the fleet's rates as a decimal of
+/// USD micros.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Measured {
+    pub ms: u64,
+    pub cpu: u64,
+    pub read: u64,
+    pub written: u64,
+    pub cost_micros_decimal: String,
 }
 
 /// A project's services deployed together, each by its name in the account:
@@ -211,6 +246,13 @@ pub struct ToolCosted {
     /// What its meters cost at the fleet's rates, in USD micros: each day's
     /// [`CostedDay::cost_micros`], summed.
     pub cost_micros: i64,
+    /// What its runs use; none before one ended `done`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<Estimate>,
+    /// A memory budget that fits it, in MiB: 1.5× the most linear memory one
+    /// of its own invocations reached, rounded up; none before one ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fits_mib: Option<u64>,
 }
 
 /// One deploy of a service, refused and failed ones included.
