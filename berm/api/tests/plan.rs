@@ -5,6 +5,7 @@ fn checked(calls: &[&str], breaks: Vec<Broken>) -> Checked {
     Checked {
         version: "0.1.0".to_owned(),
         calls: calls.iter().map(|call| (*call).to_owned()).collect(),
+        migrations: Vec::new(),
         breaks,
     }
 }
