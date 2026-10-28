@@ -126,6 +126,7 @@ fn step(form: &Form, frame: &mut Frame, area: Rect) {
             .iter()
             .map(|field| Constraint::Length(if field.off() { 3 } else { 2 })),
     );
+    rows.push(Constraint::Length(2));
     rows.push(Constraint::Length(1));
     let areas = Layout::vertical(rows).spacing(1).split(inner);
 
@@ -156,6 +157,13 @@ fn step(form: &Form, frame: &mut Frame, area: Rect) {
             frame.set_cursor_position((x.min(area.right().saturating_sub(1)), area.y + 1));
         }
     }
+    let area = areas[1 + copies + step.fields.len()];
+    let focused = form.focus == copies + step.fields.len();
+    frame.render_widget(Paragraph::new(hosts(step, focused)), area);
+    if focused {
+        let x = area.x + 2 + step.hosts.chars().count() as u16;
+        frame.set_cursor_position((x.min(area.right().saturating_sub(1)), area.y + 1));
+    }
     if let Some((said, wrong)) = &form.said {
         let style = match wrong {
             true => Style::default().fg(ACCENT),
@@ -182,6 +190,35 @@ fn shown(field: &Field) -> String {
         true => "•".repeat(field.typed.chars().count()),
         false => field.typed.clone(),
     }
+}
+
+/// The hosts the step's secrets are sent to, as typed.
+fn hosts(step: &Step, focused: bool) -> Text<'_> {
+    Text::from(vec![
+        Line::from(vec![
+            Span::styled("Hosts", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("  sent to these alone, apart by commas", dim()),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "› ",
+                if focused {
+                    Style::default().fg(ACCENT)
+                } else {
+                    dim()
+                },
+            ),
+            Span::raw(step.hosts.as_str()),
+            Span::styled(
+                if step.hosts.is_empty() {
+                    "none: such as api.example.com"
+                } else {
+                    ""
+                },
+                dim(),
+            ),
+        ]),
+    ])
 }
 
 /// A field: its label, the secret's name beside it when they differ, and

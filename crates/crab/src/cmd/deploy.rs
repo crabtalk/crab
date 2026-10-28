@@ -183,7 +183,7 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
                     credential
                         .secrets
                         .iter()
-                        .any(|secret| !set.iter().any(|one| one.name == secret.name))
+                        .any(|secret| !set.iter().any(|one| one.name == secret.name && one.sent()))
                 })
                 .collect()
         };
@@ -328,7 +328,7 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
         .deps
         .secrets
         .iter()
-        .filter(|secret| !set.iter().any(|one| one.name == **secret))
+        .filter(|secret| !set.iter().any(|one| one.name == **secret && one.sent()))
         .collect();
     for secret in &unset {
         println!("  unset   secret {secret}");

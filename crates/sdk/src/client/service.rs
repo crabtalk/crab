@@ -4,7 +4,7 @@
 use crate::{
     client::{Client, Error},
     sandbox::service::{
-        Billing, Costed, DeployRequest, DeploySetRequest, Deployment, MeteredDay, Secret,
+        Billing, Costed, DeployRequest, DeploySetRequest, Deployment, Hosts, MeteredDay, Secret,
         SetSecret, Terms, ToolCosted, Upload, UploadRequest, Visibility,
     },
 };
@@ -239,11 +239,33 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// Set `name`'s secret `secret` to `value`.
-    pub async fn put_secret(&self, name: &str, secret: &str, value: &str) -> Result<(), Error> {
+    /// Set `name`'s secret `secret` to `value`, sent only to `hosts`.
+    pub async fn put_secret(
+        &self,
+        name: &str,
+        secret: &str,
+        value: &str,
+        hosts: &[String],
+    ) -> Result<(), Error> {
         let path = format!("{}/{secret}", self.secrets_path(name));
         self.ok(self.at(Method::PUT, &path).json(&SetSecret {
             value: value.to_owned(),
+            hosts: hosts.to_vec(),
+        }))
+        .await?;
+        Ok(())
+    }
+
+    /// Send `name`'s secret `secret` only to `hosts` from now on.
+    pub async fn put_secret_hosts(
+        &self,
+        name: &str,
+        secret: &str,
+        hosts: &[String],
+    ) -> Result<(), Error> {
+        let path = format!("{}/{secret}/hosts", self.secrets_path(name));
+        self.ok(self.at(Method::PUT, &path).json(&Hosts {
+            hosts: hosts.to_vec(),
         }))
         .await?;
         Ok(())

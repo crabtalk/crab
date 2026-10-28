@@ -18,7 +18,9 @@ use berm_api::{Deployed, Program as Wire, host};
 use berm_host::{Denied, Named, deny};
 use crabtalk_sdk::{
     client::LOCAL,
-    sandbox::service::{DeployRequest, DeploySetRequest, Secret, SetSecret, Upload, UploadRequest},
+    sandbox::service::{
+        DeployRequest, DeploySetRequest, Hosts, Secret, SetSecret, Upload, UploadRequest,
+    },
 };
 use rmcp::transport::{
     StreamableHttpService, streamable_http_server::session::local::LocalSessionManager,
@@ -52,6 +54,7 @@ impl Service {
                     .route("/stop", post(stop))
                     .route("/secrets", get(secrets))
                     .route("/secrets/{secret}", put(set_secret).delete(revoke_secret))
+                    .route("/secrets/{secret}/hosts", put(set_secret_hosts))
                     .with_state(service.clone()),
             )
             .route_layer(middleware::from_fn(named));
@@ -286,13 +289,17 @@ async fn secrets(
     Ok(Json(
         listed
             .into_iter()
-            .map(|(name, created_at)| Secret { name, created_at })
+            .map(|(name, hosts, created_at)| Secret {
+                name,
+                hosts,
+                created_at,
+            })
             .collect(),
     ))
 }
 
-/// Set one of the program's secrets. A set secret is changed only by revoking
-/// it and setting it again.
+/// Set one of the program's secrets. A set secret's value is changed only by
+/// revoking it and setting it again.
 async fn set_secret(
     State(service): State<Arc<Service>>,
     Extension(Named(name)): Extension<Named>,
@@ -302,27 +309,11 @@ async fn set_secret(
     service
         .get(&name)
         .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such program"))?;
-    if !Secret::valid(&secret) {
-        return Err(deny(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "a secret's name is up to {} ASCII letters, digits and `_`, not starting with a digit",
-                Secret::NAME_MAX
-            ),
-        ));
-    }
-    if !SetSecret::valid(&body.value) {
-        return Err(deny(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "{secret}'s value is 1 to {} bytes on one line",
-                SetSecret::VALUE_MAX
-            ),
-        ));
-    }
+    body.check(&secret)
+        .map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
     match service
         .secrets
-        .set(&name, &secret, &body.value)
+        .set(&name, &secret, &body.value, &body.hosts)
         .map_err(internal)?
     {
         true => Ok(StatusCode::NO_CONTENT),
@@ -330,6 +321,24 @@ async fn set_secret(
             StatusCode::CONFLICT,
             format!("{secret} is set; revoke it to set it again"),
         )),
+    }
+}
+
+/// Send one of the program's secrets to these hosts alone.
+async fn set_secret_hosts(
+    State(service): State<Arc<Service>>,
+    Extension(Named(name)): Extension<Named>,
+    Path(SecretName { secret }): Path<SecretName>,
+    Json(body): Json<Hosts>,
+) -> Result<StatusCode, Denied> {
+    Hosts::check(&body.hosts).map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
+    match service
+        .secrets
+        .set_hosts(&name, &secret, &body.hosts)
+        .map_err(internal)?
+    {
+        true => Ok(StatusCode::NO_CONTENT),
+        false => Err(deny(StatusCode::NOT_FOUND, "no secret of that name")),
     }
 }
 

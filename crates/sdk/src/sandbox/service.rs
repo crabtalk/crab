@@ -2,7 +2,7 @@
 
 use crate::{sandbox::price::Price, utils::text_enum};
 use berm_api::{
-    Meter, Program,
+    Credential, Meter, Program,
     host::{self, Call, ServedDay},
 };
 use serde::{Deserialize, Serialize};
@@ -152,10 +152,19 @@ pub struct MeteredDay {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Secret {
     pub name: String,
+    /// The hosts its value is sent to, each named in full. A secret with none
+    /// is never sent.
+    #[serde(default)]
+    pub hosts: Vec<String>,
     pub created_at: i64,
 }
 
 impl Secret {
+    /// Whether its value is sent anywhere: it has hosts.
+    pub fn sent(&self) -> bool {
+        !self.hosts.is_empty()
+    }
+
     /// The longest name a secret may have.
     pub const NAME_MAX: usize = 128;
 
@@ -176,6 +185,10 @@ impl Secret {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetSecret {
     pub value: String,
+    /// The hosts its value is sent to, as [`Hosts`] holds them; none sends it
+    /// nowhere.
+    #[serde(default)]
+    pub hosts: Vec<String>,
 }
 
 impl SetSecret {
@@ -186,6 +199,57 @@ impl SetSecret {
     /// one line.
     pub fn valid(value: &str) -> bool {
         !value.is_empty() && value.len() <= Self::VALUE_MAX && !value.chars().any(char::is_control)
+    }
+
+    /// Refused, with why, when it may not be set as secret `name`.
+    pub fn check(&self, name: &str) -> Result<(), String> {
+        if !Secret::valid(name) {
+            return Err(format!(
+                "a secret's name is up to {} ASCII letters, digits and `_`, not starting with a digit",
+                Secret::NAME_MAX
+            ));
+        }
+        if !Self::valid(&self.value) {
+            return Err(format!(
+                "{name}'s value is 1 to {} bytes on one line",
+                Self::VALUE_MAX
+            ));
+        }
+        Hosts::check(&self.hosts)
+    }
+}
+
+/// The body of `PUT …/secrets/{name}/hosts`: the hosts a secret's value is
+/// sent to, replacing those it had.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Hosts {
+    pub hosts: Vec<String>,
+}
+
+impl Hosts {
+    /// The most hosts one secret is sent to.
+    pub const MAX: usize = 16;
+
+    /// Refused, with why, unless `hosts` holds at most [`Self::MAX`] distinct
+    /// hosts, each named in full.
+    pub fn check(hosts: &[String]) -> Result<(), String> {
+        if hosts.len() > Self::MAX {
+            return Err(format!("a secret is sent to at most {} hosts", Self::MAX));
+        }
+        if let Some(host) = hosts.iter().find(|host| !Credential::host(host)) {
+            return Err(format!(
+                "{host:?} is not a host named in full, as `api.example.com`: no scheme, port, path or `*`"
+            ));
+        }
+        if let Some((_, host)) = hosts
+            .iter()
+            .enumerate()
+            .find(|(at, host)| hosts[..*at].contains(host))
+        {
+            return Err(format!("{host} is given twice"));
+        }
+        Ok(())
     }
 }
 

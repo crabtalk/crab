@@ -21,6 +21,7 @@ guide = """
 4. Generate a client secret and copy it at once: GitHub shows it only once.
 """
 copy = { callback = "Authorization callback URL" }
+hosts = ["github.com"]
 secrets = [
     { name = "GITHUB_CLIENT_ID", label = "Client ID", masked = false },
     { name = "GITHUB_CLIENT_SECRET", label = "Client secret" },
@@ -35,6 +36,7 @@ guide = """
 4. Copy the client ID and client secret it shows.
 """
 copy = { callback = "Authorized redirect URI" }
+hosts = ["oauth2.googleapis.com"]
 secrets = [
     { name = "GOOGLE_CLIENT_ID", label = "Client ID", masked = false, pattern = '^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$' },
     { name = "GOOGLE_CLIENT_SECRET", label = "Client secret" },

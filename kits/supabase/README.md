@@ -18,7 +18,7 @@ The kit's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the prog
 "berm.http.fetch" = ["abcd.supabase.co"]
 ```
 
-Set the key as the program's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | crab secret put <program> SUPABASE_KEY`:
+Set the key as the program's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | crab secret put <program> SUPABASE_KEY --host <project>.supabase.co`:
 
 - the `anon` or publishable key reaches only what the project's Row Level Security policies allow;
 - the `service_role` or secret key bypasses Row Level Security, and reads and writes every table and bucket.

@@ -281,10 +281,28 @@ enum CronCommand {
 
 #[derive(Subcommand)]
 enum SecretCommand {
-    /// Set a secret of a program, its value read from stdin. A set secret is
-    /// changed only by revoking it and setting it again.
-    Put { name: String, secret: String },
-    /// List a program's secrets, by name.
+    /// Set a secret of a program, its value read from stdin and sent only to
+    /// the hosts given, or to none. A set secret's value is changed only by
+    /// revoking it and setting it again.
+    Put {
+        name: String,
+        secret: String,
+        /// A host its value is sent to, named in full, such as
+        /// `api.stripe.com`. Repeat it for each host.
+        #[arg(long = "host")]
+        hosts: Vec<String>,
+    },
+    /// Send a secret of a program to these hosts alone, replacing those it
+    /// had.
+    Hosts {
+        name: String,
+        secret: String,
+        /// A host its value is sent to, named in full, such as
+        /// `api.stripe.com`. Repeat it for each host.
+        #[arg(long = "host", required = true)]
+        hosts: Vec<String>,
+    },
+    /// List a program's secrets, by name, with the hosts each is sent to.
     Ls { name: String },
     /// Revoke a secret of a program.
     Rm { name: String, secret: String },
@@ -628,9 +646,16 @@ fn main() -> Result<ExitCode> {
         Command::Sunset { name, tool, on } => {
             cmd::sunset::run(&client()?, name, tool, on.as_deref())?
         }
-        Command::Secret(SecretCommand::Put { name, secret }) => {
-            cmd::secret::put(&client()?, name, secret)?
-        }
+        Command::Secret(SecretCommand::Put {
+            name,
+            secret,
+            hosts,
+        }) => cmd::secret::put(&client()?, name, secret, hosts)?,
+        Command::Secret(SecretCommand::Hosts {
+            name,
+            secret,
+            hosts,
+        }) => cmd::secret::hosts(&client()?, name, secret, hosts)?,
         Command::Secret(SecretCommand::Ls { name }) => cmd::secret::ls(&client()?, name, json)?,
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?

@@ -104,6 +104,14 @@ impl Project {
             }
             seen.push(&secret.name);
         }
+        for (id, credential) in &project.credentials {
+            if let Some(host) = credential.hosts.iter().find(|host| !Credential::host(host)) {
+                bail!(
+                    "{}: credentials.{id} suggests {host:?}, not a host named in full",
+                    path.display()
+                );
+            }
+        }
         Ok(project)
     }
 
