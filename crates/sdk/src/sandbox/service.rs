@@ -265,6 +265,21 @@ pub struct Service {
     /// The registry reference it runs, which another account can deploy as
     /// its own; none for an uploaded image.
     pub reference: Option<String>,
+    pub status: Status,
+}
+
+/// Whether a service is serving, and how its runs are ending.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Status {
+    /// Serving, its newest run done or none failed.
+    Running,
+    /// Stopped by its owners, or deployed stopped: it takes no calls and
+    /// fires no wakes.
+    Stopped,
+    /// Serving, and its runs have failed since the last one that was done.
+    Failing,
 }
 
 /// Who a service answers.

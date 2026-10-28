@@ -92,10 +92,6 @@ pub struct Runtime {
     /// The part of `deps` this host answers to nothing for.
     #[serde(default, skip_serializing_if = "Deps::is_empty")]
     pub unresolved: Deps,
-    /// Stopped by its owners, or deployed stopped: it takes no calls and fires
-    /// no wakes.
-    #[serde(default)]
-    pub stopped: bool,
     /// The project it was last deployed in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
@@ -120,6 +116,10 @@ pub struct Deployed {
 pub struct Listing {
     pub program: Program,
     pub served: host::Served,
+    /// Stopped by its owners, or deployed stopped: it takes no calls and fires
+    /// no wakes.
+    #[serde(default)]
+    pub stopped: bool,
     /// The project it was last deployed in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,

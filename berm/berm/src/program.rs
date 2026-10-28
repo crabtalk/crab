@@ -248,8 +248,8 @@ impl Program {
         }
     }
 
-    /// How it runs, for its owners; `unresolved`, `stopped` and `project` are
-    /// the host's to fill.
+    /// How it runs, for its owners; `unresolved` and `project` are the host's
+    /// to fill.
     pub fn runtime(&self) -> Runtime {
         Runtime {
             tools: self
@@ -262,7 +262,6 @@ impl Program {
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
             unresolved: Default::default(),
-            stopped: false,
             project: None,
         }
     }

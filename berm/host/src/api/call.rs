@@ -54,6 +54,7 @@ impl<E: Env> Host<E> {
         Ok(Listing {
             program,
             served,
+            stopped: self.stops.stopped(service),
             reference: row.as_ref().and_then(service::Row::registry),
             project: row.and_then(|row| row.project),
         })
@@ -90,7 +91,6 @@ impl<E: Env> Host<E> {
                     .cloned()
                     .collect(),
             },
-            stopped: self.stops.stopped(service),
             project,
             ..program.runtime()
         })
@@ -117,6 +117,7 @@ impl<E: Env> Host<E> {
                 Listing {
                     program: program.idl(&name),
                     served: served.remove(&name).unwrap_or_default(),
+                    stopped: self.stops.stopped(&program.name),
                     reference: row.as_ref().and_then(service::Row::registry),
                     project: row.and_then(|row| row.project),
                 }

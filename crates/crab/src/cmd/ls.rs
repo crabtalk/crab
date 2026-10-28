@@ -21,7 +21,7 @@ struct Listed {
 pub fn run(client: &Client, json: bool) -> Result<()> {
     let mut programs = Vec::new();
     for program in utils::wait(client.list())? {
-        let stopped = utils::wait(client.runtime(&program.name))?.stopped;
+        let stopped = utils::wait(client.listing(&program.name))?.stopped;
         programs.push(Listed { program, stopped });
     }
     if json {
