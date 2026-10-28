@@ -28,7 +28,6 @@ impl Service {
         if !unresolved.is_empty() {
             tracing::warn!(name, "nothing here answers to {unresolved}");
         }
-        let _ = self.changed.send(());
         Ok((installed, breaks))
     }
 
@@ -47,7 +46,6 @@ impl Service {
             replaced.push((name.clone(), self.get(name)));
         }
         let installed = self.host.deploy_set(members).await?;
-        let _ = self.changed.send(());
         Ok(installed
             .into_iter()
             .map(|(name, installed)| {
@@ -91,23 +89,15 @@ impl Service {
     /// Stop running a program and drop what it committed. `false` if it wasn't
     /// deployed.
     pub async fn undeploy(&self, name: &str) -> Result<bool, Denied> {
-        let removed = self.host.remove(name).await?;
-        if removed {
-            let _ = self.changed.send(());
-        }
-        Ok(removed)
+        Ok(self.host.remove(name).await?)
     }
 
     /// Start or stop a program. `false` if it wasn't deployed.
     pub async fn run(&self, name: &str, running: bool) -> Result<bool, Denied> {
-        let set = match running {
+        Ok(match running {
             true => self.host.start(name).await?,
             false => self.host.stop(name).await?,
-        };
-        if set {
-            let _ = self.changed.send(());
-        }
-        Ok(set)
+        })
     }
 
     /// Run one public tool with no caller.
@@ -117,9 +107,7 @@ impl Service {
     }
 }
 
-/// A name has to survive being half of an MCP tool name. The dot is the one
-/// that matters: dispatch splits `{program}.{tool}` on the first one, so a
-/// program carrying a dot would eat its own tool.
+/// A service name is lowercase letters, digits, `-` and `_`.
 fn validate(name: &str) -> Result<(), Denied> {
     if name.is_empty() {
         return Err(deny(
