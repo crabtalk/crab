@@ -41,10 +41,13 @@ The person you act for is not at your machine: never open a browser or wait on a
 - Sign in with `crab login --device`: it prints a link and a code, then waits until the person approves or declines, up to 30 minutes. Send them the link, or the code to enter at `crab.talk/device`; once they approve, you are signed in as them. Plain `crab login` opens a browser on your machine, which they cannot reach.
 - A deploy on Hobby is refused until the account is verified: run `crab billing verify`. When it prints a link, send it to the person: its page connects GitHub to their account and verifies it. Then run `crab request <code> --wait`; if it fails, the page said why, and Go is the way to deploy. To buy a plan or credit, run `crab billing plan <slug>` or `crab billing credit` with `--for` saying what it is for; the person reads it before paying. Send them the link it prints, with what it buys and its price, then run `crab request <code> --wait`. The code lasts 30 minutes; if it expires or they decline, ask before making another.
 - On Cloud, `crab deploy` and `crab push` wait for the person to approve the deploy: send them the link it prints as its last line, with what it deploys. They review it on that page, signed in, and approve or decline; the command then prints each service and its page, or fails. The link lasts 15 minutes, and a newer deploy of the same service replaces it. Pass `--yes` only when the person asked you to deploy without their review.
+- An API key calls another account's priced service only once an owner of its account grants it, and spends at most its daily budget on tool prices, $5 unless they set another. A call refused for either prints a link: send it to the person with what the service is for and its price, then run `crab request <code> --wait` and call again once they approve. To ask before calling, run `crab key ask --service <owner>/<name>` or `crab key ask --budget <usd>`, with `--context` saying what it is for.
 - A deploy that sets prices is refused until the account has a payout account that can receive payouts, a US one. Run `crab earnings connect` and send the person the link it prints; they finish Stripe's onboarding there, and the deploy goes through once Stripe enables payouts.
 - Never ask the person to paste a secret's value into the chat. For local development on the local host, ask them to run `crab --context default secret fill <service>` in their own terminal, with `--copy KEY=VALUE` for the values its credentials have them enter at the provider: it shows each credential's guide and sets what they type on the local host, where test keys belong. It refuses to run where stdin is not a terminal, so never run it yourself. On Cloud, once the service is deployed, ask for every secret it has unset in one request: `crab secret request <service>` with `--for` saying what they are for and `--copy KEY=VALUE` for each value its credentials have the person enter at the provider, such as `--copy callback=<URL>`. The guides to getting them come from the `[credentials]` of its `crab.toml` and its kits'; a service's own secret that needs steps is declared as a credential with a `guide` naming the provider, the steps in its dashboard, and the URL of the page, and `hosts` naming in full each host its secrets are sent to. The person confirms the hosts when they set the secrets, and a secret is sent to no other host, even one the manifest declares. `--credential <id>` asks again for one, as after rotating it. Send them the link it prints, then run `crab request <code> --wait`. They set them on that page, signed in; you see that they were set, never their values. A code sent to the wrong person, or asking for the wrong thing, is ended with `crab request <code> --expire` before you ask again; what was already saved stays set.
 
 ## Where the truth is
+
+- A refusal that names a code, as `Error: 402 [E0001]: …`, is explained by `crab explain E0001`: what it means, the corner cases and what to do. Run it before deciding anything or asking the person.
 
 Read these before writing code. Paths are relative to the crab repository.
 
@@ -54,9 +57,11 @@ Read these before writing code. Paths are relative to the crab repository.
 | Tools, `#[tool(...)]` and its `query`, `cron`, `stripe`; `[tools]` in `crab.toml` and its `access`, `title`, `price`, `catalog`; building with `crab build` | https://crab.talk/docs/development/writing, `berm/lang/README.md` |
 | Caller, user, database, HTTP, calls between services | https://crab.talk/docs/development/guest-api |
 | `crab.toml` keys, syscalls, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |
-| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/development/local |
-| Deploying to Cloud, images and registries | https://crab.talk/docs/development/deploy |
-| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/development/secrets |
+| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/guides/local |
+| Deploying to Cloud, images and registries | https://crab.talk/docs/guides/deploy |
+| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |
+| Declaring and using secrets in code | https://crab.talk/docs/development/secrets |
+| An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
 | A kit's API and setup | `kits/<kit>/README.md` |
 
 ## A local crab checkout

@@ -11,6 +11,7 @@ pub mod deploy;
 pub mod deploys;
 pub mod dev;
 pub mod earnings;
+pub mod explain;
 pub mod idl;
 pub mod inspect;
 pub mod invites;

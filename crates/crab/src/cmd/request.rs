@@ -63,6 +63,24 @@ fn describe(request: &Request) -> String {
         let services: Vec<&str> = request.deploys.keys().map(String::as_str).collect();
         return format!("approve deploying {}, signed in", services.join(", "));
     }
+    if let Some(access) = &request.access {
+        let mut asked: Vec<String> = access
+            .services
+            .iter()
+            .map(|granted| format!("call {}", granted.service))
+            .collect();
+        if let Some(budget) = access.budget {
+            asked.push(format!("spend {} a day", format::usd(budget as f64)));
+        }
+        return format!(
+            "let key {} {}, signed in",
+            access.label,
+            asked.join(" and ")
+        );
+    }
+    if request.kind == RequestKind::Grant {
+        return "let a key spend, signed in".to_owned();
+    }
     if request.kind == RequestKind::Secret {
         let asked: Vec<&str> = request
             .credentials

@@ -3,7 +3,7 @@ use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
-    client::{Client, Owner},
+    client::{Client, Error, Owner},
 };
 use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 
@@ -236,6 +236,8 @@ enum Command {
     Plans,
     /// What use past a plan's included amounts costs.
     Rates,
+    /// What an error code means and what to do about it, as `E0001`.
+    Explain { code: String },
     /// Name the hosts `crab` talks to, and pick one.
     #[command(subcommand)]
     Context(ContextCommand),
@@ -394,6 +396,29 @@ enum KeyCommand {
     },
     /// Revoke a key.
     Rm { id: String },
+    /// Replace a key's token, keeping its scope, budget, grants and expiry.
+    /// The new token is printed once; the old one stops working at once.
+    Roll { id: String },
+    /// Ask an owner of the account to let the key `crab` signs in with call
+    /// other accounts' priced services, or spend more a day. Prints the link
+    /// to send them.
+    Ask {
+        /// A priced service to call, `{owner}/{name}`.
+        #[arg(long = "service")]
+        services: Vec<String>,
+        /// USD a UTC day the key may spend on tool prices.
+        #[arg(long)]
+        budget: Option<u32>,
+        /// What it is for, shown to them.
+        #[arg(long, default_value = "")]
+        context: String,
+    },
+    /// Let a key call another account's priced service, `{owner}/{name}`.
+    Grant { id: String, service: String },
+    /// Stop a key calling another account's priced service.
+    Ungrant { id: String, service: String },
+    /// Set the USD a key may spend on tool prices in a UTC day.
+    Budget { id: String, usd: u32 },
 }
 
 #[derive(Arguments)]
@@ -518,7 +543,31 @@ enum ContextCommand {
     Rm { name: String },
 }
 
-fn main() -> Result<ExitCode> {
+fn main() -> ExitCode {
+    let e = match run() {
+        Ok(code) => return code,
+        Err(e) => e,
+    };
+    eprintln!("Error: {e:?}");
+    let refusal = e.chain().find_map(|cause| match cause.downcast_ref() {
+        Some(Error::Api {
+            explain, request, ..
+        }) => Some((explain, request)),
+        _ => None,
+    });
+    if let Some((_, Some(request))) = refusal {
+        eprintln!(
+            "\nSend {} to a person who can approve it; `crab request {} --wait` returns once they do.",
+            request.url, request.code
+        );
+    }
+    if let Some((Some(code), _)) = refusal {
+        eprintln!("\nFor more information about this error, try `crab explain {code}`.");
+    }
+    ExitCode::FAILURE
+}
+
+fn run() -> Result<ExitCode> {
     let args = Args::parse();
     let json = args.json || !std::io::stdout().is_terminal();
     let yes = args.yes;
@@ -706,6 +755,15 @@ fn main() -> Result<ExitCode> {
                     cmd::key::create(&client, label, *days, json)?
                 }
                 KeyCommand::Rm { id } => cmd::key::rm(&client, id, yes)?,
+                KeyCommand::Roll { id } => cmd::key::roll(&client, id, yes, json)?,
+                KeyCommand::Ask {
+                    services,
+                    budget,
+                    context,
+                } => cmd::key::ask(&client, services, *budget, context, json)?,
+                KeyCommand::Grant { id, service } => cmd::key::grant(&client, id, service)?,
+                KeyCommand::Ungrant { id, service } => cmd::key::ungrant(&client, id, service)?,
+                KeyCommand::Budget { id, usd } => cmd::key::budget(&client, id, *usd, json)?,
             }
         }
         Command::App(action) => {
@@ -771,6 +829,7 @@ fn main() -> Result<ExitCode> {
         } => cmd::invites::accept(&client()?, token)?,
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
+        Command::Explain { code } => cmd::explain::run(&client()?, code, json)?,
         Command::Upgrade => cmd::upgrade::run(yes)?,
         // The one command whose exit code carries the call's result.
         Command::Call(call) => return cmd::call::run(&client()?, call),

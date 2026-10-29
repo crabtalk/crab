@@ -1,6 +1,6 @@
 # crab
 
-The [local host](https://crab.talk/docs/development/local), and the command-line client for it and CrabTalk Cloud.
+The [local host](https://crab.talk/docs/guides/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
 crab dev -d
@@ -79,7 +79,7 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
 
-`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. When the check fails, it prints a link instead, `https://crab.talk/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
+`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. When the check fails, it prints a link instead, `https://crab.talk/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. A refusal from Cloud that names a code, as `Error: 402 [E0001]: …`, ends with `crab explain E0001`, which prints what it means and what to do about it; the same explanations are at `https://crab.talk/docs/errors/introduction`. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login                     # --github for GitHub
@@ -93,6 +93,7 @@ crab billing                   # plan, credit, refill, card
 crab billing verify
 crab billing plan pro --for "Pro, to run the crawler past Hobby"
 crab request WDJB-MJHT --wait
+crab explain E0001             # what an error's code means and what to do about it
 crab billing portal            # opens Stripe's portal in the browser
 crab key create ci --days 90
 crab app ls

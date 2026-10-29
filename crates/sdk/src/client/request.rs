@@ -73,6 +73,23 @@ impl Client {
         .await
     }
 
+    /// Ask an owner of the key's account to let this client's key call
+    /// `services`, each as `owner/name`, or spend `budget` USD micros a UTC
+    /// day.
+    pub async fn ask_grant(
+        &self,
+        services: Vec<String>,
+        budget: Option<i64>,
+        context: &str,
+    ) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Grant {
+            services,
+            budget,
+            context: context.to_owned(),
+        })
+        .await
+    }
+
     async fn ask(&self, body: &CreateRequest) -> Result<Request, Error> {
         self.json(self.at(Method::POST, "/requests").json(body))
             .await

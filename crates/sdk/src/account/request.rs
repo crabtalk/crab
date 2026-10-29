@@ -1,8 +1,11 @@
 //! `/requests` — what an account asks a person to do, handed to them as a
 //! short code: pay for a purchase, set secrets of a service, sign a device in
-//! as them, approve a deploy, or verify on GitHub.
+//! as them, approve a deploy, verify on GitHub, or let an API key spend.
 
-use crate::{account::org::PublicAccount, services::service::DeployRequest};
+use crate::{
+    account::{key::KeyService, org::PublicAccount},
+    services::service::DeployRequest,
+};
 use berm_api::{Credential, Deployed, Manifest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -23,6 +26,9 @@ pub enum RequestKind {
     Deploy,
     /// Verify the person on GitHub, which lets their account deploy on Hobby.
     Verify,
+    /// Let an API key call other accounts' priced services, or spend more in a
+    /// day.
+    Grant,
 }
 
 berm_api::text_enum!(RequestKind);
@@ -108,6 +114,18 @@ pub enum CreateRequest {
         #[serde(default)]
         context: String,
     },
+    /// Let the key making the request call `services`, each as `owner/name`,
+    /// or spend `budget` USD micros a UTC day, once an owner of its account
+    /// approves.
+    Grant {
+        #[serde(default)]
+        services: Vec<String>,
+        #[serde(default)]
+        budget: Option<i64>,
+        /// What it is for, in the asker's words, shown to the person.
+        #[serde(default)]
+        context: String,
+    },
 }
 
 /// A request, as the person who opens its code sees it.
@@ -166,6 +184,26 @@ pub struct Request {
     /// refused when approved until they verify.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unverified: bool,
+    /// What a grant request asks for its key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<Access>,
+}
+
+/// What a grant request asks for one API key, beside what the key holds now.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Access {
+    /// The key's label.
+    pub label: String,
+    pub hint: String,
+    /// The priced services it asks to call.
+    pub services: Vec<KeyService>,
+    /// The daily budget it asks for, in USD micros.
+    pub budget: Option<i64>,
+    /// Its daily budget now, in USD micros.
+    pub current: i64,
+    /// What it spent on tool prices today, UTC, in USD micros.
+    pub spent: i64,
 }
 
 /// A credential a secret request asks for, as its service declared it when

@@ -9,6 +9,17 @@ pub const INCLUDED_CPU: u64 = 100;
 /// MiB-microseconds of memory held in a GB-hour.
 pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
 
+/// `GET /meta/errors/{code}`: what an error code means and what to do about
+/// it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Explanation {
+    /// As `E0001`.
+    pub code: String,
+    /// Markdown: a summary line, then the rest.
+    pub text: String,
+}
+
 /// What is deployed, served unauthenticated at `GET /meta/version`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
