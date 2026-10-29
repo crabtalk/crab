@@ -102,6 +102,7 @@ impl<E: Env> Host<E> {
                     stopped: self.stops.stopped(&service),
                     project: row.project,
                     exempt: Vec::new(),
+                    vars: Default::default(),
                 });
             match self.deploy(&service, deploy, None).await {
                 Ok(one) => {

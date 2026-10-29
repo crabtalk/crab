@@ -51,6 +51,11 @@ pub struct DeployRequest {
     /// one names a tool that is not a public tool of the image.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub prices: BTreeMap<String, Price>,
+    /// The value its copy holds for each var it names, by name; a var it
+    /// leaves out keeps its value. Refused when one names a var its `[vars]`
+    /// does not declare, or a value past 4096 bytes.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }
 
 /// What calling a service is held to and costs: each public tool's terms, by

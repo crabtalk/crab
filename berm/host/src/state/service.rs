@@ -1,6 +1,10 @@
 //! The `services` table and what a service's calls commit beside it.
 
-use crate::{images::Stored, state::store::Store, wake::cron};
+use crate::{
+    images::Stored,
+    state::{self, store::Store},
+    wake::cron,
+};
 use anyhow::Result;
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::collections::{BTreeMap, HashMap};
@@ -130,6 +134,8 @@ pub(crate) async fn install(
     crons: Option<BTreeMap<String, String>>,
     stopped: bool,
     project: Option<String>,
+    declared_vars: Vec<String>,
+    vars: BTreeMap<String, String>,
     now: i64,
 ) -> Result<()> {
     let row = [scope, name, reference, digest, version].map(str::to_owned);
@@ -163,6 +169,7 @@ pub(crate) async fn install(
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;
             schedule(&tx, &scope, &name, &cron_tools, declared.as_deref())?;
+            state::vars::deploy(&tx, &scope, &name, &declared_vars, &vars)?;
             tx.commit()
         })
         .await

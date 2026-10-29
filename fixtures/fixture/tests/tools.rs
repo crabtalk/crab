@@ -23,6 +23,14 @@ fn probe_allocates() {
 }
 
 #[test]
+fn greet_answers_the_var_the_test_arranged() {
+    test::var("greeting", "yo");
+    let out = test::call(berm_fixture::berm_tool_greet, b"").unwrap();
+    assert_eq!(out, br#""yo""#);
+    test::forget();
+}
+
+#[test]
 fn nest_forwards_what_the_other_service_answered() {
     test::answer("inner", "echo", Ok(br#"{"query":"pong"}"#));
     let out = test::call(berm_fixture::berm_tool_nest, br#"{"query":"hi"}"#).unwrap();

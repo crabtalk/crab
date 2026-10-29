@@ -170,6 +170,36 @@ pub struct Deps {
     /// secret is in one credential at most.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub credentials: BTreeMap<String, Credential>,
+    /// Settings each deployed copy holds its own value of, read through
+    /// `berm.var`, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, Var>,
+}
+
+/// One var of `[vars]` in a service's `crab.toml`.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Var {
+    /// What `berm.var` answers for a copy that set no value.
+    #[serde(default)]
+    pub default: String,
+    /// What the deployer sets it to, shown where they set it.
+    #[serde(default)]
+    pub description: String,
+}
+
+impl Var {
+    /// The most vars one service declares.
+    pub const MAX: usize = 32;
+    /// The most bytes a value or a default holds.
+    pub const BYTES: usize = 4096;
+
+    /// Whether `name` names a var: 1 to 64 ASCII letters, digits and `_`.
+    pub fn name(name: &str) -> bool {
+        (1..=64).contains(&name.len())
+            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    }
 }
 
 /// Secrets a person gets together from one provider, such as a GitHub OAuth
@@ -233,8 +263,27 @@ fn masked() -> bool {
 }
 
 impl Deps {
+    /// Refuse setting `var` to `value`: a var `[vars]` does not declare, or
+    /// a value past [`Var::BYTES`].
+    pub fn settable(&self, var: &str, value: &str) -> Result<()> {
+        if !self.vars.contains_key(var) {
+            bail!("{var} is not declared in [vars]");
+        }
+        if value.len() > Var::BYTES {
+            bail!(
+                "a var holds at most {} bytes, and {var}'s value is {}",
+                Var::BYTES,
+                value.len()
+            );
+        }
+        Ok(())
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.calls.is_empty() && self.syscalls.is_empty() && self.secrets.is_empty()
+        self.calls.is_empty()
+            && self.syscalls.is_empty()
+            && self.secrets.is_empty()
+            && self.vars.is_empty()
     }
 
     /// Add what `other` reaches that this does not. Refused when both declare

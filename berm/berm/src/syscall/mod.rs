@@ -2,7 +2,7 @@
 //!
 //! A syscall is native host code behind a name. berm serves `berm.call`
 //! itself. The standard calls — [`store`], [`emit`], [`after`], [`http`],
-//! [`sql`] — are read and checked here and handed as typed values to closures
+//! [`sql`], [`var`] — are read and checked here and handed as typed values to closures
 //! the embedder registers; anything else is a [`crate::Syscall`] the embedder
 //! writes whole. All of them are reached through one table.
 
@@ -23,6 +23,7 @@ pub mod emit;
 pub mod http;
 pub mod sql;
 pub mod store;
+pub mod var;
 
 /// One of the ABI's own doors: request bytes at `(ptr, len)` in, a staged
 /// length out, answered before the guest resumes.

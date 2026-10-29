@@ -71,13 +71,14 @@ pub fn answer(service: &str, tool: &str, result: Result<&[u8], CallError>) {
     });
 }
 
-/// Drop every answer [`answer`] and response [`respond`] arranged, and every
-/// request [`fetched`] recorded.
+/// Drop every answer [`answer`], response [`respond`] and var [`var`]
+/// arranged, and every request [`fetched`] recorded.
 pub fn forget() {
     sys::with(|host| {
         host.answers.clear();
         host.responses.clear();
         host.fetched.clear();
+        host.vars.clear();
     });
 }
 
@@ -111,6 +112,17 @@ pub fn respond(method: &str, url: &str, status: u16, body: &[u8]) {
         host.responses.retain(|(m, u, ..)| m != method || u != url);
         host.responses
             .push((method.into(), url.into(), status, body.to_vec()));
+    });
+}
+
+/// Arrange what `berm_lang::var(name)` answers.
+///
+/// Vars persist until [`forget`]. A var nothing was arranged for panics
+/// naming it.
+pub fn var(name: &str, value: &str) {
+    sys::with(|host| {
+        host.vars.retain(|(held, _)| held != name);
+        host.vars.push((name.into(), value.into()));
     });
 }
 

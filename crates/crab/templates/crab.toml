@@ -28,6 +28,11 @@ access = "public"
 # [syscalls]
 # "berm.http.fetch" = ["example.com"]
 
+# Settings each deployed copy holds its own value of, read through
+# `berm_lang::var`.
+# [vars]
+# keywords = { default = "rust, wasm", description = "Words to watch" }
+
 # [database]
 # What its database may hold.
 # size = "1GiB"

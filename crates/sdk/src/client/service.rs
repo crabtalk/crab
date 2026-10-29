@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use berm_api::{
-    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Runtime, Service,
+    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Runtime, Service, Setting, VarValue,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Body, Method, RequestBuilder};
@@ -149,6 +149,23 @@ impl Client {
         let path = format!("{}/tools/{tool}/cron", self.path_of(name));
         let body = Cron {
             cron: cron.map(str::to_owned),
+        };
+        self.ok(self.at(Method::PUT, &path).json(&body)).await?;
+        Ok(())
+    }
+
+    /// Each var of `name`'s `[vars]`, with the value it holds, for its owners.
+    pub async fn vars(&self, name: &str) -> Result<Vec<Setting>, Error> {
+        let path = format!("{}/vars", self.path_of(name));
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// Set `name`'s var `var` to `value`, read from its next call; `None`
+    /// returns it to its default.
+    pub async fn set_var(&self, name: &str, var: &str, value: Option<&str>) -> Result<(), Error> {
+        let path = format!("{}/vars/{var}", self.path_of(name));
+        let body = VarValue {
+            value: value.map(str::to_owned),
         };
         self.ok(self.at(Method::PUT, &path).json(&body)).await?;
         Ok(())

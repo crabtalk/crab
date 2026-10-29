@@ -174,6 +174,9 @@ enum Command {
     /// A service's cron tools: listed, set, stopped.
     #[command(subcommand)]
     Cron(CronCommand),
+    /// A service's vars: listed, set, returned to their defaults.
+    #[command(subcommand)]
+    Var(VarCommand),
     /// The wakes armed to call a service's tools.
     Wakes { name: String },
     /// A service's last 100 deploys on Cloud, newest first, refused and
@@ -263,6 +266,20 @@ enum CronCommand {
     },
     /// Stop a cron tool's calls until it is set again.
     Stop { name: String, tool: String },
+}
+
+#[derive(Subcommand)]
+enum VarCommand {
+    /// List a service's vars, each with the value it holds or its default.
+    Ls { name: String },
+    /// Set a var, read from the service's next call.
+    Set {
+        name: String,
+        var: String,
+        value: String,
+    },
+    /// Return a var to its default.
+    Unset { name: String, var: String },
 }
 
 #[derive(Subcommand)]
@@ -672,6 +689,13 @@ fn run() -> Result<ExitCode> {
         }
         Command::Cron(CronCommand::Stop { name, tool }) => {
             cmd::cron::set(&client()?, name, tool, None)?
+        }
+        Command::Var(VarCommand::Ls { name }) => cmd::var::ls(&client()?, name, json)?,
+        Command::Var(VarCommand::Set { name, var, value }) => {
+            cmd::var::set(&client()?, name, var, Some(value))?
+        }
+        Command::Var(VarCommand::Unset { name, var }) => {
+            cmd::var::set(&client()?, name, var, None)?
         }
         Command::Wakes { name } => cmd::wakes::run(&client()?, name, json)?,
         Command::Deploys { name } => cmd::deploys::run(&client()?, name, json)?,

@@ -5,6 +5,9 @@ deploy = false
 calls = ["inner"]
 secrets = ["fixture"]
 
+[vars]
+greeting = { default = "hello", description = "What greet answers" }
+
 [syscalls]
 "berm.get" = []
 "berm.set" = []
@@ -37,6 +40,12 @@ access = "public"
 access = "public"
 
 [tools.random]
+access = "public"
+
+[tools.greet]
+access = "public"
+
+[tools.undeclared]
 access = "public"
 
 [tools.whoami]

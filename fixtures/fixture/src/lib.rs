@@ -117,6 +117,18 @@ pub fn random() -> Result<String> {
     Ok(hex::encode(bytes))
 }
 
+/// Answers its copy's `greeting` var.
+#[tool]
+pub fn greet() -> Result<String> {
+    Ok(berm_lang::var("greeting")?)
+}
+
+/// Reads a var `[vars]` does not declare.
+#[tool]
+pub fn undeclared() -> Result<String> {
+    Ok(berm_lang::var("missing")?)
+}
+
 /// Says who called: `outside NAME`, `service NAME`, or `none`, then
 /// ` user ISSUER SUBJECT` when the chain runs for a user.
 #[tool]

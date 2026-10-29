@@ -264,6 +264,7 @@ impl TestHost {
                     stopped: false,
                     project: Some(project.to_owned()),
                     exempt: Vec::new(),
+                    vars: Default::default(),
                 },
             ));
         }
@@ -295,6 +296,7 @@ impl TestHost {
                     stopped,
                     project: None,
                     exempt: Vec::new(),
+                    vars: Default::default(),
                 },
                 seed,
             )

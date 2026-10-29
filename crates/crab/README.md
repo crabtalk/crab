@@ -21,7 +21,7 @@ crab rm example
 `crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `crab.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
 
 ```toml
-# The service this service deploys as.
+# The name it deploys as.
 name = "example"
 # The public registry repository the image is published to, tagged with the
 # crate's version on each deploy. Without it, a deploy uploads the image to
@@ -41,6 +41,11 @@ catalog = "web.search"
 [crons]
 tick = "*/5 * * * *"
 
+# Settings each deployed copy holds its own value of, read through
+# `berm_lang::var`.
+[vars]
+keywords = { default = "rust, wasm", description = "Words to watch" }
+
 # What the service's database may hold: 1GiB when unset, from 64KiB to 10GiB.
 [database]
 size = "2GiB"
@@ -51,6 +56,8 @@ seed = "seed.sqlite"
 `access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, and `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml). A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title` and `catalog` into the image, and a deploy carries `price`.
 
 Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
+
+`berm_lang::var("keywords")` answers the value the deployed copy holds, or the var's `default` while it holds none, from the call after one is set; a var `[vars]` does not declare is refused. A service declares at most 32, each name letters, digits and `_`, each value at most 4096 bytes. `crab var ls NAME` lists a service's vars with their values, `crab var set NAME VAR VALUE` sets one, and `crab var unset NAME VAR` returns it to its default. A deploy's request sets the values it names and keeps the rest; a deploy whose `[vars]` drops a var drops its value. A kit declares no vars.
 
 ## Developing
 

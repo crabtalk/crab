@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 use berm_api::{
-    Budget, Cron, Listing, Runtime, Service, Terms,
+    Budget, Cron, Listing, Runtime, Service, Setting, Terms, VarValue,
     host::{
         CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
         Usage, Wakes,
@@ -64,6 +64,8 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         )
         .route("/tools/{tool}/budget", put(budget::<E>))
         .route("/tools/{tool}/cron", put(cron::<E>))
+        .route("/vars", get(vars::<E>))
+        .route("/vars/{var}", put(var::<E>))
         .route("/stripe", post(stripe::<E>))
         .with_state(host)
 }
@@ -282,6 +284,12 @@ struct Tool {
     tool: String,
 }
 
+/// The var a route names, among the daemon's own path parameters.
+#[derive(Deserialize)]
+struct Var {
+    var: String,
+}
+
 /// The call a path names, beside whatever names its service.
 #[derive(Deserialize)]
 struct CallId {
@@ -360,6 +368,23 @@ async fn budget<E: Env>(
 }
 
 /// Set a cron tool's expression, until a deploy's config sets another.
+async fn vars<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+) -> Result<Json<Vec<Setting>>, Denied> {
+    Ok(Json(host.vars(&service).await?))
+}
+
+async fn var<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(Var { var }): Path<Var>,
+    Json(VarValue { value }): Json<VarValue>,
+) -> Result<StatusCode, Denied> {
+    host.set_var(&service, &var, value).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn cron<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,

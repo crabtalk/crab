@@ -1,6 +1,6 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Access, Credential, DEFAULT_BUFFER, Deps, ToolRecord, ToolSpec, host};
+use crate::{Access, Credential, DEFAULT_BUFFER, Deps, ToolRecord, ToolSpec, Var, host};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use regex::Regex;
@@ -65,6 +65,9 @@ pub struct Project {
     /// the call alone.
     #[serde(default)]
     pub syscalls: BTreeMap<String, Vec<String>>,
+    /// Settings each deployed copy sets its own value of, by name.
+    #[serde(default)]
+    pub vars: BTreeMap<String, Var>,
     #[serde(default)]
     pub database: Database,
 }
@@ -147,6 +150,29 @@ impl Project {
                 }
             }
         }
+        if project.vars.len() > Var::MAX {
+            bail!(
+                "{} declares {} vars, past the {}",
+                path.display(),
+                project.vars.len(),
+                Var::MAX
+            );
+        }
+        for (name, var) in &project.vars {
+            if !Var::name(name) {
+                bail!(
+                    "{}: vars.{name} is not 1 to 64 ASCII letters, digits or `_`",
+                    path.display()
+                );
+            }
+            if var.default.len() > Var::BYTES {
+                bail!(
+                    "{}: vars.{name}'s default is past {} bytes",
+                    path.display(),
+                    Var::BYTES
+                );
+            }
+        }
         for (id, credential) in &project.credentials {
             for secret in &credential.secrets {
                 if let Some(pattern) = &secret.pattern
@@ -181,11 +207,14 @@ impl Project {
     }
 
     /// What it reaches for once it runs. One keeping a database calls
-    /// `berm.sql`.
+    /// `berm.sql`, and one declaring vars `berm.var`.
     pub fn deps(&self) -> Deps {
         let mut syscalls = self.syscalls.clone();
         if self.database.migrations.is_some() {
             syscalls.entry("berm.sql".to_owned()).or_default();
+        }
+        if !self.vars.is_empty() {
+            syscalls.entry("berm.var".to_owned()).or_default();
         }
         Deps {
             calls: self.calls.clone(),
@@ -202,6 +231,7 @@ impl Project {
                 .cloned()
                 .collect(),
             credentials: self.credentials.clone(),
+            vars: self.vars.clone(),
         }
     }
 
@@ -235,6 +265,7 @@ impl Project {
             ("crons", self.crons.is_some()),
             ("tools", !self.tools.is_empty()),
             ("buffer", self.buffer.is_some()),
+            ("vars", !self.vars.is_empty()),
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),
         ];

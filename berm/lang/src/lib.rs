@@ -53,6 +53,7 @@ pub use host::{args_len, now, random, trace};
 pub use schema::Schema;
 pub use sql::{rows, sql};
 pub use store::{get, get_json, set, set_json};
+pub use var::var;
 // Named as `::berm_lang::serde` by what the macros generate.
 pub use serde;
 pub use serde_json;
@@ -72,6 +73,7 @@ pub mod schema;
 mod sql;
 mod store;
 pub mod test;
+mod var;
 
 // `wasm.rs` makes real host calls; `stub.rs` is the host a test stands in for.
 #[cfg_attr(target_arch = "wasm32", path = "sys/wasm.rs")]

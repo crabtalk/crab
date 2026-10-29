@@ -34,5 +34,6 @@ pub mod stop;
 pub mod sunset;
 pub mod upgrade;
 pub mod usage;
+pub mod var;
 pub mod visibility;
 pub mod wakes;

@@ -18,12 +18,14 @@ pub(crate) mod sql;
 pub(crate) mod stop;
 pub(crate) mod store;
 pub(crate) mod terms;
+pub(crate) mod vars;
 
 /// `berm.get` and `berm.set` for `host`'s services, over the service's own
-/// database when it keeps one and over `service_state` otherwise.
+/// database when it keeps one and over `service_state` otherwise, and
+/// `berm.var` over `service_vars`.
 pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
-    let (reading, writing) = (host.clone(), host.clone());
-    syscall::store::services(
+    let (reading, writing, var) = (host.clone(), host.clone(), host.clone());
+    let mut syscalls = syscall::store::services(
         move |at: Callsite, key: String| {
             let host = host::alive(&reading);
             async move {
@@ -46,5 +48,14 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
                 Ok(true)
             }
         },
-    )
+    );
+    syscalls.push(syscall::var::services(move |at: Callsite, name: String| {
+        let host = host::alive(&var);
+        async move {
+            let host = host?;
+            let (scope, service) = host::split(&at.service);
+            vars::read(&host.store, scope, service, name).await
+        }
+    }));
+    syscalls
 }

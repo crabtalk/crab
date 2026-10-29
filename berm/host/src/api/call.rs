@@ -6,7 +6,7 @@ use crate::{
     env::{Env, Images, Secrets},
     host::{self, Host},
     record::{calls, logs, meter, records, usage},
-    state::service,
+    state::{service, vars},
     wake::{cron, table},
 };
 use axum::http::StatusCode;
@@ -15,7 +15,7 @@ use berm::{
     tape::{Recorder, Taping},
 };
 use berm_api::{
-    Deps, Listing, Logged, Meter, Output, Terms, ToolTerms,
+    Deps, Listing, Logged, Meter, Output, Setting, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
 };
 use std::{
@@ -83,6 +83,7 @@ impl<E: Env> Host<E> {
                     .collect(),
                 syscalls: Default::default(),
                 credentials: Default::default(),
+                vars: Default::default(),
                 secrets: deps
                     .secrets
                     .iter()
@@ -198,6 +199,51 @@ impl<E: Env> Host<E> {
             ));
         }
         self.waking.notify_one();
+        Ok(())
+    }
+
+    /// Each var of `service`'s `[vars]`, with the value it holds.
+    pub async fn vars(&self, service: &str) -> Result<Vec<Setting>, Denied> {
+        let deployed = self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let mut held = vars::list(&self.store, scope, name).await?;
+        Ok(deployed
+            .manifest
+            .deps
+            .vars
+            .iter()
+            .map(|(var, declared)| Setting {
+                name: var.clone(),
+                description: declared.description.clone(),
+                default: declared.default.clone(),
+                value: held.remove(var),
+            })
+            .collect())
+    }
+
+    /// Set `service`'s value of `var`, read from its next call; `None`
+    /// returns it to its default. Kept until a deploy sets another or its
+    /// `[vars]` drops the var.
+    pub async fn set_var(
+        &self,
+        service: &str,
+        var: &str,
+        value: Option<String>,
+    ) -> Result<(), Denied> {
+        let deployed = self.deployed(service)?;
+        let deps = &deployed.manifest.deps;
+        if !deps.vars.contains_key(var) {
+            return Err(deny(
+                StatusCode::NOT_FOUND,
+                format!("the service has no var named {var:?}"),
+            ));
+        }
+        if let Some(value) = &value {
+            deps.settable(var, value)
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+        }
+        let (scope, name) = host::split(service);
+        vars::set(&self.store, scope, name, var.to_owned(), value).await?;
         Ok(())
     }
 

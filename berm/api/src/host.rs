@@ -84,6 +84,11 @@ pub struct Deploy {
     /// services deployed with it whose new version no longer calls it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exempt: Vec<String>,
+    /// The value this copy holds for each var it names, as
+    /// [`Deps::settable`](crate::Deps::settable) holds it; a var it leaves
+    /// out keeps its value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }
 
 /// The days back a deploy's breaks check counts what callers used.

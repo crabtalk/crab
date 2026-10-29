@@ -146,6 +146,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
         stopped: deploy.stopped,
         project: deploy.project,
         exempt: Vec::new(),
+        vars: deploy.vars,
     })
 }
 

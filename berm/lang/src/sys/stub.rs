@@ -1,7 +1,7 @@
 //! What a host call does when there is no host.
 //!
 //! Off wasm, the argument blob, the trace, emitted logs, the failure channel,
-//! other services and HTTP are served from [`crate::test`]'s state. Any other
+//! other services, HTTP and vars are served from [`crate::test`]'s state. Any other
 //! syscall panics naming it.
 
 use crate::{abi, test::Fetched};
@@ -34,6 +34,8 @@ pub(crate) struct Host {
     pub responses: Vec<(String, String, u16, Vec<u8>)>,
     /// Each request sent, in order.
     pub fetched: Vec<Fetched>,
+    /// What a test has arranged each var to hold: the name and the value.
+    pub vars: Vec<(String, String)>,
 }
 
 impl Host {
@@ -48,6 +50,7 @@ impl Host {
             answers: Vec::new(),
             responses: Vec::new(),
             fetched: Vec::new(),
+            vars: Vec::new(),
         }
     }
 }
@@ -138,6 +141,29 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                     "nothing arranged for {service}.{tool}; call berm_lang::test::answer first"
                 ),
             }
+        }
+        abi::HOST_VAR => {
+            let request = bytes(a0, a1);
+            let Ok(fields) = abi::wire::fields(request) else {
+                no_host(number)
+            };
+            let name = match fields.as_slice() {
+                [name] => String::from_utf8_lossy(name).into_owned(),
+                _ => no_host(number),
+            };
+            let value = with(|host| {
+                host.vars
+                    .iter()
+                    .find(|(held, _)| *held == name)
+                    .map(|(_, value)| value.clone())
+            });
+            let Some(value) = value else {
+                panic!("nothing arranged for the var {name}; call berm_lang::test::var first")
+            };
+            with(|host| {
+                host.result = value.into_bytes();
+                host.result.len() as u64
+            })
         }
         abi::HOST_HTTP_FETCH | abi::HOST_HTTP_PROXY => {
             let request = bytes(a0, a1);

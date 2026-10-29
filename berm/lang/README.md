@@ -64,8 +64,8 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 ## Reaching a runtime
 
 Past its arguments, a service reaches who called, its own state, a database,
-logs, HTTP, other services, wakes and the clock, each through a syscall its host
-serves. [The Guest API](https://crab.talk/docs/development/guest-api) covers each.
+its vars, logs, HTTP, other services, wakes and the clock, each through a
+syscall its host serves. [The Guest API](https://crab.talk/docs/development/guest-api) covers each.
 
 ## License
 

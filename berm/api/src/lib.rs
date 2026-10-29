@@ -10,7 +10,7 @@ pub use compat::{Break, Surface};
 pub use image::Image;
 pub use manifest::{
     Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration, Reach,
-    Sequence, ServiceRecord, ToolRecord,
+    Sequence, ServiceRecord, ToolRecord, Var,
 };
 
 mod compat;
@@ -138,6 +138,25 @@ pub struct Cron {
     /// Five fields, minute to day of week, in UTC: `*/5 * * * *`. `None`
     /// stops its calls.
     pub cron: Option<String>,
+}
+
+/// One var of a service's `[vars]`, as its owners read it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Setting {
+    pub name: String,
+    pub description: String,
+    pub default: String,
+    /// What this copy holds; `None` reads `default`.
+    pub value: Option<String>,
+}
+
+/// A var's value, as its owners set it.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VarValue {
+    /// `None` returns it to its default.
+    pub value: Option<String>,
 }
 
 /// The most one invocation may use: CPU time in microseconds, nested calls

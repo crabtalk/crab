@@ -200,6 +200,7 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
         stopped: stopped || ask,
         project: None,
         prices: BTreeMap::new(),
+        vars: BTreeMap::new(),
     };
     let deployed = runtime::wait(client.deploy(name, &request))?;
     if ask {
@@ -322,6 +323,7 @@ fn request(
         stopped,
         project: Some(workspace.to_owned()),
         prices: project::prices(project)?,
+        vars: BTreeMap::new(),
     })
 }
 

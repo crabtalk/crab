@@ -57,8 +57,15 @@ impl<E: Env> Host<E> {
             stopped,
             project,
             exempt,
+            vars,
         } = deploy;
         let (image, manifest) = self.image(&reference, &digest, size).await?;
+        for (var, value) in &vars {
+            manifest
+                .deps
+                .settable(var, value)
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{service}: {e:#}")))?;
+        }
 
         // The row is read under the lock, so the breaks are against what the
         // service runs, and the row is written only once the image has
@@ -137,6 +144,8 @@ impl<E: Env> Host<E> {
                 crons,
                 stopped,
                 project,
+                manifest.deps.vars.keys().cloned().collect(),
+                vars,
                 (self.now)() as i64,
             )
             .await?;

@@ -147,6 +147,16 @@ pub const SQL: &str = "berm.sql";
 /// reply is JSON: `{"columns": [..], "rows": [[..]], "read": n, "written": n}`.
 pub const HOST_SQL: u64 = hash(SQL);
 
+/// The name a host registers to serve [`HOST_VAR`].
+pub const VAR: &str = "berm.var";
+
+/// Read one var of this service's `[vars]`. `(ptr, len) -> staged length`
+///
+/// The request's one field is the var's name; the reply is the value this
+/// deployed copy holds, or its default, as UTF-8. A var the manifest does not
+/// declare is refused.
+pub const HOST_VAR: u64 = hash(VAR);
+
 /// The name a host registers to serve [`HOST_GET`].
 pub const GET: &str = "berm.get";
 /// The name a host registers to serve [`HOST_SET`].
