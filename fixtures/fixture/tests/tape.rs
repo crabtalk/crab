@@ -3,8 +3,7 @@
 
 use anyhow::Result;
 use berm::{
-    Berm, Calls, Config, Engine, Output, chain, storage,
-    syscall::call::DEFAULT_CALL_DEPTH,
+    Berm, Calls, Config, Engine, Output, chain,
     tape::{Answer, Tape, Taping},
 };
 use berm_api::host::{CallPage, Caller, Outcome};
@@ -42,12 +41,7 @@ fn page() -> CallPage {
 /// nothing.
 async fn replay(image: &[u8], tool: &str, args: &str, tape: Tape) -> Result<Output> {
     let engine = Engine::new(&Config::default())?;
-    let berm = Berm::new(
-        &engine,
-        Calls::by_name(DEFAULT_CALL_DEPTH),
-        Vec::new(),
-        storage::Memory::new(),
-    );
+    let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), Vec::new());
     let program = berm.deploy("fixture", image)?;
     let outcome = program
         .call_as(
@@ -57,7 +51,7 @@ async fn replay(image: &[u8], tool: &str, args: &str, tape: Tape) -> Result<Outp
             tool,
             args,
             Arc::default(),
-            chain(),
+            chain::next(),
             Taping::Replay {
                 tape,
                 through: Vec::new(),
@@ -75,7 +69,7 @@ async fn a_failed_call_replays_to_the_same_failure() -> Result<()> {
     host.arrange("GET", URL, 503, "busy");
     let args = format!(r#"{{"url":"{URL}"}}"#);
     let (_, output) = host
-        .host()
+        .host
         .call(
             "acct/fixture",
             Some(&caller()),
@@ -88,8 +82,8 @@ async fn a_failed_call_replays_to_the_same_failure() -> Result<()> {
         panic!("{output:?}")
     };
 
-    let (calls, _) = host.host().calls("acct/fixture", page()).await?;
-    let tape = Tape::try_from(&host.host().call_tape("acct/fixture", calls[0].id).await?[..])?;
+    let (calls, _) = host.host.calls("acct/fixture", page()).await?;
+    let tape = Tape::try_from(&host.host.call_tape("acct/fixture", calls[0].id).await?[..])?;
     assert!(tape.complete);
     assert_eq!(tape.entries.len(), 2);
     assert!(matches!(tape.entries[1].answer, Answer::Done(ref bytes) if bytes.len() == 4));
@@ -114,12 +108,12 @@ async fn a_done_call_keeps_no_tape() -> Result<()> {
     let host = TestHost::open(0).await?;
     host.deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
-    host.host()
+    host.host
         .call("acct/fixture", Some(&caller()), "random", Vec::new(), false)
         .await?;
-    let (calls, _) = host.host().calls("acct/fixture", page()).await?;
+    let (calls, _) = host.host.calls("acct/fixture", page()).await?;
     assert!(
-        host.host()
+        host.host
             .call_tape("acct/fixture", calls[0].id)
             .await
             .is_err()
@@ -133,7 +127,7 @@ async fn a_trapped_call_is_recorded_as_failed_with_its_input_and_tape() -> Resul
     host.deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
     let trapped = host
-        .host()
+        .host
         .call(
             "acct/fixture",
             Some(&caller()),
@@ -143,10 +137,10 @@ async fn a_trapped_call_is_recorded_as_failed_with_its_input_and_tape() -> Resul
         )
         .await;
     assert!(trapped.is_err());
-    let (calls, _) = host.host().calls("acct/fixture", page()).await?;
+    let (calls, _) = host.host.calls("acct/fixture", page()).await?;
     assert_eq!(calls[0].outcome, Outcome::Failed);
-    let input = host.host().call_input("acct/fixture", calls[0].id).await?;
+    let input = host.host.call_input("acct/fixture", calls[0].id).await?;
     assert_eq!(input.tool, "spin");
-    host.host().call_tape("acct/fixture", calls[0].id).await?;
+    host.host.call_tape("acct/fixture", calls[0].id).await?;
     Ok(())
 }

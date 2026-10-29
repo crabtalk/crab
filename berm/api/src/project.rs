@@ -1,5 +1,4 @@
-//! A program's or a kit's project file, beside its `Cargo.toml`. Its name is
-//! its build tool's to choose.
+//! A program's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
 use crate::{Credential, DEFAULT_BUFFER, Deps, host};
 use anyhow::{Context, Result, bail};
@@ -10,6 +9,9 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+
+/// What the project file is called.
+pub const FILE: &str = "crab.toml";
 
 /// The project file. A program's names its service; a kit's declares only `id`,
 /// `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and

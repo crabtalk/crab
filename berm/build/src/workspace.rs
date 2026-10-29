@@ -2,7 +2,7 @@
 
 use crate::metadata::Metadata;
 use anyhow::{Result, bail};
-use berm_api::project::Project;
+use berm_api::project::{self, Project};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -23,9 +23,9 @@ impl Workspace {
     /// The workspace `dir` is in, with the services a command names as cargo
     /// names packages: those `named` by service name, anywhere in the
     /// workspace; else the package whose `Cargo.toml` is in `dir` when its
-    /// project file, `file`, names a service; else every member whose does and
-    /// does not say `deploy = false`.
-    pub fn read(dir: &Path, file: &str, named: &[String]) -> Result<Self> {
+    /// project file names a service; else every member whose does and does not
+    /// say `deploy = false`.
+    pub fn read(dir: &Path, named: &[String]) -> Result<Self> {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
         let metadata = Metadata::read(&cargo, dir)?;
         let mut services = Vec::new();
@@ -33,8 +33,8 @@ impl Workspace {
         let here = dir.canonicalize().ok();
         let mut found = Vec::new();
         for package in &metadata.packages {
-            let dir = package.dir();
-            let path = dir.join(file);
+            let dir = package.manifest_path.dir();
+            let path = dir.join(project::FILE);
             if !path.is_file() {
                 continue;
             }

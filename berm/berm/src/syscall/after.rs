@@ -51,7 +51,7 @@ where
 }
 
 fn read(request: &[u8]) -> Result<Wake> {
-    let fields = wire::fields(request)?;
+    let fields = abi::wire::fields(request)?;
     Ok(Wake {
         delay: wire::text(&fields, 0, "delay")?
             .parse()

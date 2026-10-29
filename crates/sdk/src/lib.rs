@@ -14,6 +14,5 @@ pub mod account;
 pub mod client;
 pub mod error;
 pub mod mcp;
-pub mod sandbox;
+pub mod services;
 pub mod system;
-pub mod utils;

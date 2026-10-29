@@ -17,9 +17,9 @@ async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> 
         .deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
     host.call("acct/fixture", "carry", b"{}").await?;
-    let memory = host.host().memory("acct");
+    let memory = host.host.memory("acct");
     assert_eq!(memory.limit, 0);
-    assert_eq!(memory.loaded, program.bytes());
+    assert_eq!(memory.loaded, program.bytes);
     assert_eq!(memory.running, 0);
     Ok(())
 }
@@ -30,16 +30,16 @@ async fn a_call_past_the_limit_fails() -> Result<()> {
     let program = host
         .deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
-    host.host()
-        .limit(HashMap::from([("acct".to_owned(), program.bytes() + PAGE)]));
+    host.host
+        .limit(HashMap::from([("acct".to_owned(), program.bytes + PAGE)]));
     let failed = match host.call("acct/fixture", "carry", b"{}").await {
         Ok(ran) => format!("{:?}", ran.result),
         Err(e) => format!("{e:#}"),
     };
     assert!(failed.contains("past its limit"), "{failed}");
-    assert_eq!(host.host().memory("acct").running, 0);
+    assert_eq!(host.host.memory("acct").running, 0);
 
-    host.host().limit(HashMap::new());
+    host.host.limit(HashMap::new());
     host.call("acct/fixture", "carry", b"{}").await?;
     Ok(())
 }
@@ -48,8 +48,8 @@ async fn a_call_past_the_limit_fails() -> Result<()> {
 async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
     let host = TestHost::open(0).await?;
     let image = test::build("berm-fixture")?;
-    let bytes = host.deploy("acct/fixture", &image).await?.bytes();
-    host.host()
+    let bytes = host.deploy("acct/fixture", &image).await?.bytes;
+    host.host
         .limit(HashMap::from([("acct".to_owned(), bytes + PAGE)]));
     host.deploy("acct/fixture", &image).await?;
     let Err(refused) = host.deploy("acct/inner", &image).await else {
@@ -59,7 +59,7 @@ async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
         format!("{refused:#}").contains("past its limit"),
         "{refused:#}"
     );
-    assert_eq!(host.host().memory("acct").loaded, bytes);
+    assert_eq!(host.host.memory("acct").loaded, bytes);
     host.deploy("other/fixture", &image).await?;
     Ok(())
 }
@@ -67,7 +67,7 @@ async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
 /// `budget` of memory on `tool`, the host's CPU and rows kept.
 async fn budget(host: &TestHost, tool: &str, memory: u64) -> Result<()> {
     let defaults = berm_host::Config::default();
-    host.host()
+    host.host
         .set_budget(
             "fixture",
             tool,

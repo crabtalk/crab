@@ -1,42 +1,26 @@
 //! berm — the runtime of programs.
 //!
-//! A program is one hash-pinned image. berm compiles it once, holds it by the
-//! name it answers to, and instantiates it per invocation: arguments are
-//! pulled in through syscalls, the result is handed back through one, and
-//! nothing survives the call.
+//! A program is one hash-pinned WebAssembly image, run under wasmtime. berm
+//! compiles it once, holds it by the name it answers to, and instantiates it
+//! per invocation; nothing survives the call. A program reaches the programs
+//! deployed beside it through `berm.call`, resolved by [`Calls::resolve`], and
+//! otherwise only the [`Syscall`]s the embedder passed in, built with
+//! [`syscall`]'s constructors; any other import traps. What `berm.set` and
+//! `berm.emit` write comes back from [`Program::call`] as [`Changes`] for the
+//! host to commit as one, and every invocation runs inside a [`Scope`] the host
+//! opens through [`Calls::enter`].
 //!
 //! ```ignore
-//! let calls = Calls::by_name(syscall::call::DEFAULT_CALL_DEPTH);
-//! let berm = Berm::new(&engine, calls, vec![], storage::Memory::new());
+//! let calls = Calls::by_name(Calls::DEFAULT_DEPTH);
+//! let berm = Berm::new(&engine, calls, vec![]);
 //! berm.deploy("example", &wasm)?;
 //! let outcome = berm.call(None, "example", "echo", br#"{"query":"hi"}"#.to_vec()).await?;
 //! ```
-//!
-//! An image is a WebAssembly module, run under wasmtime.
-//!
-//! What is deployed is reachable from any other program deployed beside it,
-//! through `berm.call`, which berm serves against the set it already holds.
-//! Which deployed program a call's target names is the embedder's
-//! [`Calls::resolve`].
-//!
-//! Everything else a program reaches is a [`Syscall`] the embedder passed in,
-//! and that list is the linker it is instantiated with: a call to anything else
-//! traps because nothing is registered for it, not because a check said no.
-//! The standard ones — `berm.get`/`berm.set`, `berm.emit`, `berm.call.after`,
-//! `berm.http.fetch` — are built with [`syscall`]'s
-//! constructors, which read and check the request and hand the work to the
-//! embedder's closures.
-//!
-//! What `berm.set` and `berm.emit` leave to berm is held in a journal and
-//! handed back from [`Program::call`] as [`Changes`], for the host to commit as
-//! one. Every invocation runs inside a [`Scope`] the host opens through
-//! [`Calls::enter`].
 
-// Reached by the host expansion, and re-exported for the reason `berm-lang`
-// re-exports serde: an embedder depends on this crate and nothing else, and
-// cannot pick a version the generated code disagrees with.
+// Named as `::berm::anyhow` by the `hosts` expansion.
 pub use anyhow;
 use anyhow::Result;
+pub use berm_abi as abi;
 pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine};
@@ -44,21 +28,21 @@ use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
 pub use meter::{ByTool, Meters, Pool, Running};
-pub use program::{Ended, Invocation, Link, Outcome, Program, Refused, chain, digest};
+pub use program::{Ended, Invocation, Link, Outcome, Program, Refused};
 use std::{
     collections::BTreeMap,
     pin::Pin,
     sync::{Arc, RwLock, Weak, atomic::AtomicU32},
     time::Instant,
 };
-pub use storage::{Records, Storage};
 pub use syscall::call::{
     Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Pooled, Ran, Reaching, Remote, Reported,
     Resolve, Scope,
 };
 
-pub mod abi;
 mod bound;
+pub mod chain;
+pub mod clock;
 #[cfg(feature = "sqlite")]
 pub mod database;
 mod engine;
@@ -67,7 +51,6 @@ mod meter;
 mod program;
 #[cfg(feature = "sqlite")]
 pub mod readers;
-pub mod storage;
 pub mod syscall;
 pub mod tape;
 pub mod wire;
@@ -129,6 +112,9 @@ pub struct Callsite {
     pub(crate) meters: Arc<Meters>,
     /// What this invocation used itself, its rows against its budget.
     pub(crate) own: Arc<Own>,
+    /// Its program's database, once [`Callsite::database`] resolved it.
+    #[cfg(feature = "sqlite")]
+    pub(crate) database: Arc<database::Kept>,
 }
 
 impl Callsite {
@@ -136,7 +122,8 @@ impl Callsite {
     /// against this invocation's budget.
     pub fn meter(&self, used: Meter) {
         self.own.add(used);
-        self.meters.add(&self.program, &self.tool, used);
+        self.meters
+            .add(self.program.clone(), self.tool.clone(), used);
     }
 
     /// Refused once this invocation has used its budget of rows.
@@ -152,7 +139,7 @@ impl Callsite {
 
     /// Count `used` against `program`'s `tool`, run elsewhere for this chain.
     pub fn meter_of(&self, program: &str, tool: &str, used: Meter) {
-        self.meters.add(program, tool, used);
+        self.meters.add(program.into(), tool.into(), used);
     }
 }
 
@@ -176,8 +163,8 @@ pub struct User {
 
 /// The programs a host is running.
 ///
-/// Held behind an `Arc`: the syscalls berm serves reach back into it,
-/// so it hands them a [`Weak`] of itself rather than a table copied per deploy.
+/// Held behind an `Arc`; the syscalls berm serves reach back into it through a
+/// [`Weak`] of itself.
 pub struct Berm {
     engine: Engine,
     /// Every deployed program, by the name it answers to. Never held across an
@@ -187,81 +174,38 @@ pub struct Berm {
     calls: Calls,
     /// What the embedder gives every program, beside what berm serves itself.
     syscalls: Vec<Syscall>,
-    /// Where this runtime's own records live. Held as the trait: berm decides
-    /// what is worth writing down, a host decides where it goes.
-    storage: Arc<dyn Storage>,
-    /// This runtime, as the syscalls berm serves hold it. `Weak`
-    /// because they are reachable *from* it — a deployed program owns the
-    /// linker that owns them — and an `Arc` would be a cycle that never drops.
+    /// This runtime, as the syscalls berm serves hold it. A deployed program
+    /// owns the linker that owns them, so an `Arc` here is a cycle that never
+    /// drops.
     me: Weak<Self>,
 }
 
 impl Berm {
-    /// A runtime with nothing deployed, giving every program `syscalls` and
-    /// writing what it must remember to `storage`.
-    ///
-    /// [`storage::Memory`] is the one to pass when nothing should outlive the
-    /// process.
-    pub fn new(
-        engine: &Engine,
-        calls: Calls,
-        syscalls: Vec<Syscall>,
-        storage: Arc<dyn Storage>,
-    ) -> Arc<Self> {
+    /// A runtime with nothing deployed, giving every program `syscalls`.
+    pub fn new(engine: &Engine, calls: Calls, syscalls: Vec<Syscall>) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             engine: engine.clone(),
             programs: RwLock::new(BTreeMap::new()),
             calls,
             syscalls,
-            storage,
             me: me.clone(),
         })
     }
 
-    /// Where this runtime's records live, for whatever else a host keeps
-    /// beside the images — the wakes it drives itself.
-    pub fn storage(&self) -> &Arc<dyn Storage> {
-        &self.storage
-    }
-
     /// Compile `image` and make its tools reachable as `name`.
     ///
-    /// Compiling here rather than on first call means a broken image is refused
-    /// by the deploy that introduced it, not on a model's turn. Written down
-    /// before it is published, so a tool that is served is one a restart brings
-    /// back. Refused when its pool's images, the one it replaces left out,
-    /// would hold more than the pool's limit.
+    /// Refused when the image does not compile, or when its pool's images, the
+    /// one it replaces left out, would hold more than the pool's limit.
     pub fn deploy(&self, name: &str, image: &[u8]) -> Result<Arc<Program>> {
         let program = self.load(name, image)?;
         program
             .pool
-            .fits(self.get(name).map_or(0, |replaced| replaced.bytes()))?;
-        self.storage.put(Records::Programs, name, image)?;
+            .fits(self.get(name).map_or(0, |replaced| replaced.bytes))?;
         self.programs
             .write()
             .expect("deployed programs")
             .insert(name.to_owned(), program.clone());
         Ok(program)
-    }
-
-    /// Bring back every image deployed before this process.
-    ///
-    /// One that will not load is reported and skipped: a single bad record is
-    /// not a reason to come up with none of them.
-    pub fn restore(&self) -> Result<()> {
-        for (name, image) in self.storage.list(Records::Programs)? {
-            match self.load(&name, &image) {
-                Ok(program) => {
-                    tracing::info!(name, digest = %program.digest, "restored");
-                    self.programs
-                        .write()
-                        .expect("deployed programs")
-                        .insert(name, program);
-                }
-                Err(error) => tracing::error!(name, "{error:#}"),
-            }
-        }
-        Ok(())
     }
 
     /// Whether a program deployed here can make the syscall `name`.
@@ -285,18 +229,12 @@ impl Berm {
     }
 
     /// Forget one and drop its image. `false` if nothing answered to that name.
-    pub fn remove(&self, name: &str) -> Result<bool> {
-        if self
-            .programs
+    pub fn remove(&self, name: &str) -> bool {
+        self.programs
             .write()
             .expect("deployed programs")
             .remove(name)
-            .is_none()
-        {
-            return Ok(false);
-        }
-        self.storage.remove(Records::Programs, name)?;
-        Ok(true)
+            .is_some()
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<Program>> {

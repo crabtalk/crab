@@ -9,4 +9,4 @@ mod reference;
 mod registry;
 
 pub use reference::Reference;
-pub use registry::{Access, MANIFEST, PROGRAM, Registry};
+pub use registry::{Access, Registry};

@@ -1,13 +1,13 @@
 //! `crab cron` — a service's cron tools: listed, set, stopped.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
-    let crons = utils::wait(client.crons(name))?;
+    let crons = runtime::wait(client.crons(name))?;
     if json {
-        return utils::json(&crons);
+        return terminal::json(&crons);
     }
     if crons.held {
         println!("held: its account is refused, so nothing fires");
@@ -25,7 +25,7 @@ pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
 
 /// Set `tool`'s expression to `cron`, or stop it on `None`.
 pub fn set(client: &Client, name: &str, tool: &str, cron: Option<&str>) -> Result<()> {
-    utils::wait(client.set_cron(name, tool, cron))?;
+    runtime::wait(client.set_cron(name, tool, cron))?;
     match cron {
         Some(cron) => eprintln!("{name}.{tool} fires at {cron}"),
         None => eprintln!("{name}.{tool} stopped"),

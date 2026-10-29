@@ -9,8 +9,12 @@
 
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
-use berm_lang::{CallError, Result, event, serde::Serialize};
+use alloc::{boxed::Box, collections::BTreeSet, format, string::String, vec::Vec};
+use berm_lang::{
+    CallError, Result, event,
+    http::{self, Response},
+    serde::Serialize,
+};
 
 pub mod rss;
 mod state;
@@ -46,7 +50,42 @@ pub struct Listed<T> {
     pub item: T,
 }
 
-/// A source: how it fetches and what it stores.
+/// One GET a source sends, with the other sources' of its round in one batch.
+pub struct Request {
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    /// Sent through the host's proxy, to a host the manifest declares under
+    /// `berm.http.proxy`.
+    pub proxied: bool,
+}
+
+impl Request {
+    /// A GET of `url` with no headers, not proxied.
+    pub fn get(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            headers: Vec::new(),
+            proxied: false,
+        }
+    }
+}
+
+/// The answers to a round's requests, each in its place: a response with a
+/// 2xx status, or why there was none.
+pub type Answers = Vec<Result<Response, String>>;
+
+/// What a source read from a feed's answer.
+pub enum Read<T> {
+    /// The items the feed shows.
+    Listed(Vec<Listed<T>>),
+    /// Requests sent in the next round, then handed their answers.
+    More(
+        Vec<Request>,
+        Box<dyn FnOnce(Answers) -> Result<Read<T>, String>>,
+    ),
+}
+
+/// A source: what it requests and what it stores.
 pub trait Source {
     const SCHEDULE: Schedule;
     type Item;
@@ -56,8 +95,11 @@ pub trait Source {
     /// A thread as stored and answered.
     type Reply: Serialize;
 
-    /// The items `feed` shows now.
-    fn fetch(feed: &Feed) -> Result<Vec<Listed<Self::Item>>, String>;
+    /// The request for what `feed` shows now.
+    fn request(feed: &Feed) -> Result<Request, String>;
+
+    /// What `feed` shows, read from the answer to its request.
+    fn parse(feed: &Feed, response: Response) -> Result<Read<Self::Item>, String>;
 
     /// `item`, new to `feed`, as stored.
     fn post(feed: &Feed, item: Self::Item) -> Self::Post;
@@ -65,8 +107,12 @@ pub trait Source {
     /// Whether the threads of the items `feed` shows are fetched.
     fn watches(feed: &Feed) -> bool;
 
-    /// The thread under `watch` and its comment count.
-    fn thread(watch: &Watch) -> Result<(u64, Self::Thread), String>;
+    /// The request for the thread under `watch`.
+    fn request_thread(watch: &Watch) -> Result<Request, String>;
+
+    /// The thread under `watch` and its comment count, read from the answer to
+    /// its request.
+    fn parse_thread(watch: &Watch, response: Response) -> Result<(u64, Self::Thread), String>;
 
     /// `thread`, as stored.
     fn reply(watch: &Watch, thread: Self::Thread) -> Self::Reply;
@@ -102,16 +148,26 @@ pub fn tick<S: Source>() -> Result<()> {
     let now = berm_lang::now();
     let mut stored = 0;
     let State { feeds, watched, .. } = &mut state;
+    let mut watching: BTreeSet<String> = watched.iter().map(|watch| watch.id.clone()).collect();
 
     feeds.sort_by_key(|feed| feed.fetched);
-    let due = feeds
+    let mut due: Vec<&mut Feed> = feeds
         .iter_mut()
         .filter(|feed| feed.fetched == 0 || now.saturating_sub(feed.fetched) >= schedule.refetch)
-        .take(schedule.feeds);
-    for feed in due {
+        .take(schedule.feeds)
+        .collect();
+    for feed in &mut due {
         feed.fetched = now;
-        match S::fetch(feed) {
-            Ok(listed) => stored += posts::<S>(feed, listed, watched, now)?,
+    }
+    let answers = send(due.iter().map(|feed| S::request(feed)).collect());
+    let reads = due
+        .iter()
+        .zip(answers)
+        .map(|(feed, answer)| answer.and_then(|response| S::parse(feed, response)))
+        .collect();
+    for (feed, read) in due.into_iter().zip(settle(reads)) {
+        match read {
+            Ok(listed) => stored += posts::<S>(feed, listed, watched, &mut watching, now)?,
             Err(error) => {
                 berm_lang::emit!(FetchFailed {
                     of: feed.key.clone(),
@@ -123,16 +179,18 @@ pub fn tick<S: Source>() -> Result<()> {
 
     watched.retain(|watch| now.saturating_sub(watch.posted) < schedule.window);
     watched.sort_by_key(|watch| watch.warmed);
-    let due = watched
+    let due: Vec<&mut Watch> = watched
         .iter_mut()
         .filter(|watch| watch.warmed == 0 || now.saturating_sub(watch.warmed) >= schedule.rewarm)
-        .take(schedule.threads);
-    for watch in due {
+        .take(schedule.threads)
+        .collect();
+    let answers = send(due.iter().map(|watch| S::request_thread(watch)).collect());
+    for (watch, answer) in due.into_iter().zip(answers) {
         if stored >= BUDGET {
             break;
         }
         watch.warmed = now;
-        match S::thread(watch) {
+        match answer.and_then(|response| S::parse_thread(watch, response)) {
             Ok((count, _)) if count == watch.comments => {}
             Ok((count, thread)) => {
                 watch.comments = count;
@@ -153,21 +211,24 @@ pub fn tick<S: Source>() -> Result<()> {
 
 /// Store the items in `listed` new to `feed`, or the records whose values
 /// changed as of `now`, watch them when `S` watches `feed`, and log what it
-/// found. Answers the bytes stored.
+/// found. `watching` holds the id of each of `watched`. Answers the bytes
+/// stored.
 fn posts<S: Source>(
     feed: &mut Feed,
     listed: Vec<Listed<S::Item>>,
     watched: &mut Vec<Watch>,
+    watching: &mut BTreeSet<String>,
     now: u64,
 ) -> Result<usize, CallError> {
     let watches = S::watches(feed);
     let mut newest = feed.watermark;
-    let (mut stored, mut new, count) = (0, 0, listed.len() as u64);
+    let shown = listed.len() as u64;
+    let mut kept: Vec<(String, u64, S::Post)> = Vec::with_capacity(listed.len());
     for Listed { id, posted, item } in listed {
         newest = newest.max(posted.unwrap_or_default());
-        let shown = posted.is_some_and(|posted| posted < feed.watermark);
+        let before = posted.is_some_and(|posted| posted < feed.watermark);
         let posted = posted.unwrap_or(now);
-        if watches && !watched.iter().any(|watch| watch.id == id) {
+        if watches && watching.insert(id.clone()) {
             watched.push(Watch {
                 id: id.clone(),
                 feed: feed.key.clone(),
@@ -176,21 +237,126 @@ fn posts<S: Source>(
                 comments: 0,
             });
         }
-        let written = match feed.kind {
-            Kind::Chronological if shown => 0,
-            Kind::Chronological | Kind::Unordered => {
-                store::item(&id, &feed.key, posted, &S::post(feed, item))?
-            }
-            Kind::Records => store::record(&id, &feed.key, now, &S::post(feed, item))?,
-        };
-        stored += written;
-        new += u64::from(written > 0);
+        if feed.kind == Kind::Chronological && before {
+            continue;
+        }
+        let post = S::post(feed, item);
+        kept.push((id, posted, post));
     }
+    let (new, stored) = match feed.kind {
+        Kind::Chronological | Kind::Unordered => {
+            let items: Vec<_> = kept
+                .iter()
+                .map(|(id, posted, post)| (id.as_str(), *posted, post))
+                .collect();
+            store::add_items(&feed.key, &items)?
+        }
+        Kind::Records => {
+            let records: Vec<_> = kept
+                .iter()
+                .map(|(id, _, post)| (id.as_str(), post))
+                .collect();
+            store::add_records(&feed.key, now, &records)?
+        }
+    };
     feed.watermark = newest;
     berm_lang::emit!(Fetched {
         feed: feed.key.clone(),
-        shown: count,
+        shown,
         new,
     })?;
     Ok(stored)
+}
+
+/// Each of `reads` with its follow-up rounds sent, every read's requests of a
+/// round in one batch, until each is the items it lists or why not.
+fn settle<T>(reads: Vec<Result<Read<T>, String>>) -> Vec<Result<Vec<Listed<T>>, String>> {
+    let mut settled: Vec<Option<Result<Vec<Listed<T>>, String>>> =
+        reads.iter().map(|_| None).collect();
+    let mut round: Vec<(usize, Result<Read<T>, String>)> = reads.into_iter().enumerate().collect();
+    while !round.is_empty() {
+        let mut asked = Vec::new();
+        let mut pending = Vec::new();
+        for (at, read) in round {
+            match read {
+                Ok(Read::Listed(listed)) => settled[at] = Some(Ok(listed)),
+                Err(error) => settled[at] = Some(Err(error)),
+                Ok(Read::More(requests, then)) => {
+                    pending.push((at, requests.len(), then));
+                    asked.extend(requests.into_iter().map(Ok));
+                }
+            }
+        }
+        let mut answers = send(asked).into_iter();
+        round = pending
+            .into_iter()
+            .map(|(at, count, then)| (at, then(answers.by_ref().take(count).collect())))
+            .collect();
+    }
+    settled.into_iter().flatten().collect()
+}
+
+/// Send `requests`, the plain ones in one `berm.http.fetch_all` and the
+/// proxied ones in one `berm.http.proxy_all`, and answer each in its place. A
+/// request a source could not build answers why.
+fn send(requests: Vec<Result<Request, String>>) -> Answers {
+    let mut answers: Vec<Option<Result<Response, String>>> = requests
+        .iter()
+        .map(|request| request.as_ref().err().map(|error| Err(error.clone())))
+        .collect();
+    for proxied in [false, true] {
+        let batch: Vec<(usize, &Request)> = requests
+            .iter()
+            .enumerate()
+            .filter_map(|(at, request)| Some((at, request.as_ref().ok()?)))
+            .filter(|(_, request)| request.proxied == proxied)
+            .collect();
+        if batch.is_empty() {
+            continue;
+        }
+        let headers: Vec<Vec<(&str, &str)>> = batch
+            .iter()
+            .map(|(_, request)| {
+                request
+                    .headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str()))
+                    .collect()
+            })
+            .collect();
+        let sent: Vec<http::Request<'_>> = batch
+            .iter()
+            .zip(&headers)
+            .map(|((_, request), headers)| http::Request {
+                method: "GET",
+                url: &request.url,
+                headers,
+                body: b"",
+                timeout: None,
+                limit: None,
+            })
+            .collect();
+        let answered = match proxied {
+            false => http::fetch_all(&sent),
+            true => http::proxy_all(&sent),
+        };
+        match answered {
+            Ok(answered) => {
+                for ((at, request), answer) in batch.iter().zip(answered) {
+                    let url = &request.url;
+                    answers[*at] = Some(match answer {
+                        Ok(response) if response.is_success() => Ok(response),
+                        Ok(response) => Err(format!("{url}: status {}", response.status)),
+                        Err(error) => Err(format!("{url}: {}", error.message())),
+                    });
+                }
+            }
+            Err(error) => {
+                for (at, request) in &batch {
+                    answers[*at] = Some(Err(format!("{}: {}", request.url, error.message())));
+                }
+            }
+        }
+    }
+    answers.into_iter().flatten().collect()
 }

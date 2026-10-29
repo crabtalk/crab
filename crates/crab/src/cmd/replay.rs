@@ -1,13 +1,14 @@
 //! `crab replay` — run a call that failed again: from its tape, or against
 //! another host's state.
 
-use crate::{cmd::call, utils};
+use crate::{cmd::call, runtime};
 use anyhow::{Result, bail};
 use berm::{
-    Berm, Calls, Config, Engine, Output, User, abi, chain, digest, storage,
-    syscall::{call::DEFAULT_CALL_DEPTH, emit},
+    Berm, Calls, Config, Engine, Output, User, abi, chain,
+    syscall::emit,
     tape::{Tape, Taping},
 };
+use berm_api::digest;
 use crabtalk_sdk::client::Client;
 use std::{process::ExitCode, sync::Arc};
 
@@ -18,10 +19,10 @@ const FAILED: u8 = 2;
 /// image it ran, its arguments and caller, each syscall answered from its
 /// tape. Its logs are printed here.
 pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
-    let input = utils::wait(from.call_input(program, id))?;
-    let tape = Tape::try_from(&utils::wait(from.call_tape(program, id))?[..])?;
-    let bytes = utils::wait(from.call_image(program, id))?;
-    if input.digest.strip_prefix("sha256:") != Some(digest(&bytes).as_str()) {
+    let input = runtime::wait(from.call_input(program, id))?;
+    let tape = Tape::try_from(&runtime::wait(from.call_tape(program, id))?[..])?;
+    let bytes = runtime::wait(from.call_image(program, id))?;
+    if input.digest != digest::of(&bytes) {
         bail!(
             "the host served an image of another digest than {}",
             input.digest
@@ -36,15 +37,10 @@ pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
         eprintln!("{} {}", log.topics.join(" "), log.data);
         Ok(true)
     });
-    let berm = Berm::new(
-        &engine,
-        Calls::by_name(DEFAULT_CALL_DEPTH),
-        vec![logs],
-        storage::Memory::new(),
-    );
+    let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), vec![logs]);
     let deployed = berm.deploy(program, &bytes)?;
     let caller = input.caller.as_ref();
-    let replayed = utils::wait(
+    let replayed = runtime::wait(
         deployed.call_as(
             caller
                 .filter(|caller| !caller.anonymous())
@@ -61,7 +57,7 @@ pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
             &input.tool,
             input.args.into_bytes(),
             Arc::default(),
-            chain(),
+            chain::next(),
             Taping::Replay {
                 tape,
                 through: vec![abi::EMIT.to_owned()],
@@ -93,16 +89,16 @@ pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
 /// Run `program`'s call `id`, as `from` recorded it, on `on`: its tool, its
 /// arguments and its caller, against `on`'s own state.
 pub fn on(from: &Client, on: &Client, program: &str, id: u64) -> Result<ExitCode> {
-    let input = utils::wait(from.call_input(program, id))?;
-    let running = utils::wait(on.inspect(program))?.digest;
-    if input.digest.strip_prefix("sha256:") != Some(running.trim_start_matches("sha256:")) {
+    let input = runtime::wait(from.call_input(program, id))?;
+    let running = runtime::wait(on.inspect(program))?.digest;
+    let running = digest::prefixed(running.trim_start_matches(digest::PREFIX));
+    if input.digest != running {
         eprintln!(
-            "the call ran {}; {program} here runs sha256:{}",
-            input.digest,
-            running.trim_start_matches("sha256:")
+            "the call ran {}; {program} here runs {running}",
+            input.digest
         );
     }
-    call::run(
+    call::tool(
         on,
         program,
         &input.tool,

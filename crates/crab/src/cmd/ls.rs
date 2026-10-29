@@ -1,6 +1,6 @@
 //! `crab ls` — what is deployed.
 
-use crate::utils;
+use crate::{runtime, terminal};
 use anyhow::Result;
 use berm_api::Program;
 use crabtalk_sdk::client::Client;
@@ -20,12 +20,12 @@ struct Listed {
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
     let mut programs = Vec::new();
-    for program in utils::wait(client.list())? {
-        let stopped = utils::wait(client.listing(&program.name))?.stopped;
+    for program in runtime::wait(client.list())? {
+        let stopped = runtime::wait(client.listing(&program.name))?.stopped;
         programs.push(Listed { program, stopped });
     }
     if json {
-        return utils::json(&programs);
+        return terminal::json(&programs);
     }
     if programs.is_empty() {
         println!("no programs deployed");

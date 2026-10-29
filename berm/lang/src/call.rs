@@ -1,15 +1,12 @@
 //! Calling a tool on another program.
 //!
-//! The target is named at the call, not at build time, so one image works
-//! against whatever it was deployed beside — the same way a container reaches
-//! another by name rather than by having been linked to it. What is deployed is
+//! The target is named at the call. What is deployed beside the program is
 //! reachable; a name that is not answers [`CallError::Refused`].
-//!
-//! Whether a host serves this at all is its own decision. berm itself runs one
-//! program and registers nothing for it, so under a plain [`berm::Berm`] the
-//! call traps as an unknown host call.
 
-use crate::abi::{self, host, wire};
+use crate::{
+    abi::{self, wire},
+    host,
+};
 use alloc::string::{String, ToString};
 
 pub use host::CallError;
@@ -36,15 +33,10 @@ pub fn call(program: &str, tool: &str, args: &str) -> Result<String, CallError> 
 /// berm_lang::after(300, "weather", "poll", "{}")?;
 /// ```
 ///
-/// One wake per program: arming again drops whatever this one had pending, so
-/// a program holds exactly one and cannot fan out. A program wanting several
-/// keeps them in its own keys and arms for the earliest.
-///
-/// The invocation it starts carries nothing from this one — guest memory does
-/// not cross — so what the woken tool needs goes in [`crate::set`], and how
-/// late it actually ran is [`crate::now`] against what it expected. Nothing
-/// holds its result: a failure there is logged by the host and reaches no one,
-/// which is why the program and tool are checked here instead.
+/// One wake per program: arming again drops whatever this one had pending. The
+/// invocation it starts carries nothing from this one; what the woken tool
+/// needs goes in [`crate::set`]. Its failure is logged by the host and reaches
+/// no one; the program and tool are checked when it is armed.
 pub fn after(delay: u64, program: &str, tool: &str, args: &str) -> Result<(), CallError> {
     let request = wire::request(&[
         delay.to_string().as_bytes(),
@@ -68,7 +60,7 @@ pub enum Caller {
 /// Who made this call, as the host says. `None` when the host started it on
 /// this program's own behalf: a wake.
 ///
-/// Set by the host, never by the caller, so it can be checked:
+/// Set by the host, never by the caller:
 ///
 /// ```ignore
 /// if berm_lang::caller()? != Some(Caller::Program("lake".into())) {
@@ -79,7 +71,7 @@ pub fn caller() -> Result<Option<Caller>, CallError> {
     let reply = host::call(abi::HOST_CALLER, &[])?;
     let unreadable =
         || CallError::Failed(String::from("host framed a reply this guest cannot read"));
-    let fields = wire::fields(&reply).ok_or_else(unreadable)?;
+    let fields = wire::fields(&reply).map_err(|_| unreadable())?;
     match fields.as_slice() {
         [] => Ok(None),
         [kind, name] => {
@@ -112,7 +104,7 @@ pub fn user() -> Result<Option<User>, CallError> {
     let reply = host::call(abi::HOST_USER, &[])?;
     let unreadable =
         || CallError::Failed(String::from("host framed a reply this guest cannot read"));
-    match wire::fields(&reply).ok_or_else(unreadable)?.as_slice() {
+    match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
         [] => Ok(None),
         [issuer, subject] => Ok(Some(User {
             issuer: String::from_utf8_lossy(issuer).into_owned(),
@@ -140,9 +132,7 @@ pub fn vouch(subject: &str) -> Result<(), CallError> {
 
 /// Lower this call's budget for this call alone, once, from now on: `cpu` in
 /// microseconds, `rows` read and written together, `memory` in bytes, `0`
-/// keeping each. Memory is billed at the budget it holds, so a tool that can
-/// tell from its arguments how much it needs lowers it before it does the
-/// work:
+/// keeping each. Memory is billed at the budget it holds:
 ///
 /// ```ignore
 /// berm_lang::limit(0, 0, 4 << 20)?;
@@ -170,7 +160,7 @@ pub fn client() -> Result<Option<String>, CallError> {
     let reply = host::call(abi::HOST_CLIENT, &[])?;
     let unreadable =
         || CallError::Failed(String::from("host framed a reply this guest cannot read"));
-    match wire::fields(&reply).ok_or_else(unreadable)?.as_slice() {
+    match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
         [] => Ok(None),
         [key] => Ok(Some(String::from_utf8_lossy(key).into_owned())),
         _ => Err(unreadable()),
@@ -178,8 +168,8 @@ pub fn client() -> Result<Option<String>, CallError> {
 }
 
 /// Refuse this call's caller with `message`: the tool fails, and the host
-/// counts the call as denied rather than failed.
+/// counts the call as denied.
 pub fn deny(message: &str) -> crate::Error {
-    crate::abi::deny();
+    host::deny();
     message.into()
 }

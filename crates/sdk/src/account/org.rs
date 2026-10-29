@@ -1,9 +1,6 @@
 //! Organization and membership wire types.
 
-use crate::{
-    account::{auth::Client, billing::SubscriptionStatus},
-    utils::text_enum,
-};
+use crate::account::{auth::Client, billing::SubscriptionStatus};
 use serde::{Deserialize, Serialize};
 
 /// What a member may do in an org. An owner administers it — members, teams,
@@ -16,7 +13,7 @@ pub enum Role {
     #[default]
     Member,
 }
-text_enum!(Role { Owner => "owner", Member => "member" });
+berm_api::text_enum!(Role);
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,10 +33,7 @@ pub struct Org {
     /// from the OAuth provider for a person and by `PATCH /orgs/{org}` for a
     /// shared org, so it is `None` until someone picks one.
     pub avatar: Option<String>,
-    /// What the caller may do here. Every org screen branches on it — the
-    /// handle field, the invite form, delete — so it rides the
-    /// org rather than being read back out of the roster, which the screens
-    /// that need it otherwise have no reason to load.
+    /// What the caller may do here.
     pub role: Role,
     pub created_at: i64,
     pub updated_at: i64,
@@ -115,7 +109,7 @@ pub enum Kind {
     Org,
 }
 
-text_enum!(Kind { User => "user", Org => "org" });
+berm_api::text_enum!(Kind);
 
 /// An account as anyone may see it — a person or an org. Identity only: nothing about what funds it, who is in it, or what it
 /// holds. This is what `GET /orgs/{org}` answers without a session, so knowing a

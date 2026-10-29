@@ -10,7 +10,7 @@ use crate::{
         },
     },
     client::{Client, Error},
-    sandbox::service::CostedDay,
+    services::service::CostedDay,
 };
 use berm_api::host::Memory;
 use reqwest::Method;
@@ -64,9 +64,7 @@ impl Client {
     /// A Checkout URL buying credit, its amount chosen there.
     pub async fn buy_credit(&self, surface: Surface) -> Result<StripeLink, Error> {
         let path = format!("{}/billing/credit", self.account()?.api());
-        let req = self
-            .at(Method::POST, &path)
-            .query(&[("client", surface.as_ref())]);
+        let req = self.at(Method::POST, &path).query(&[("client", surface)]);
         self.json(req).await
     }
 
@@ -76,7 +74,8 @@ impl Client {
         let path = format!("{}/billing/checkout", self.account()?.api());
         let req = self
             .at(Method::POST, &path)
-            .query(&[("client", surface.as_ref()), ("plan", plan)]);
+            .query(&[("client", surface)])
+            .query(&[("plan", plan)]);
         self.json(req).await
     }
 
@@ -118,11 +117,9 @@ impl Client {
         flow: Option<PortalFlow>,
     ) -> Result<StripeLink, Error> {
         let path = format!("{}/billing/portal", self.account()?.api());
-        let mut req = self
-            .at(Method::POST, &path)
-            .query(&[("client", surface.as_ref())]);
+        let mut req = self.at(Method::POST, &path).query(&[("client", surface)]);
         if let Some(flow) = flow {
-            req = req.query(&[("flow", flow.as_str())]);
+            req = req.query(&[("flow", flow)]);
         }
         self.json(req).await
     }

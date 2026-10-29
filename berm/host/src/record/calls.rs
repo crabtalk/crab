@@ -5,19 +5,24 @@
 
 use crate::{
     host::{self, Invoked},
-    record::{logs::Emitted, usage},
+    record::{
+        flight::{Flight, Table, Taken, Unflushed},
+        logs::Emitted,
+        usage,
+    },
     state::store::Store,
 };
 use anyhow::Result;
 use berm::{Now, tape::Tape};
 use berm_api::{
-    Meter,
+    Meter, digest,
     host::{
-        Bucket, Call, CallInput, CallPage, CallStats, NestedCall, Outcome, ServiceCall, Source,
+        Bucket, Call, CallInput, CallPage, CallStats, Caller, NestedCall, Outcome, ServiceCall,
+        Source,
     },
 };
 use parking_lot::Mutex;
-use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
+use rusqlite::{Connection, OptionalExtension, Row, ToSql, named_params, params};
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -35,6 +40,7 @@ const TAPES_MAX: usize = 64 << 20;
 /// Runs not yet written, each with the key of the service it ran.
 pub(crate) struct Pending {
     pending: Mutex<Vec<Ran>>,
+    flight: Mutex<Flight<Ran>>,
     /// The calls each run in flight made past its first, by its id.
     nested: Mutex<HashMap<u64, Vec<NestedCall>>>,
     /// The ids of runs started and not yet held.
@@ -70,8 +76,24 @@ pub(crate) struct Ran {
     nested: Arc<[NestedCall]>,
 }
 
-/// A service's runs and logs not yet written.
+/// A service's runs and logs not yet written, as a read took them.
 pub(crate) struct Unsaved {
+    pub ran: Unflushed<Ran>,
+    pub emitted: Unflushed<Emitted>,
+}
+
+impl Unsaved {
+    /// Those `conn`'s read transaction does not see written.
+    pub(crate) fn resolve(self, conn: &Connection) -> rusqlite::Result<Unwritten> {
+        Ok(Unwritten {
+            ran: self.ran.resolve(conn)?,
+            emitted: self.emitted.resolve(conn)?,
+        })
+    }
+}
+
+/// A service's runs and logs a read transaction does not see written.
+pub(crate) struct Unwritten {
     pub ran: Vec<Ran>,
     pub emitted: Vec<Emitted>,
 }
@@ -92,10 +114,12 @@ impl Drop for Started {
 }
 
 impl Pending {
-    /// Handing out ids after `last`, the largest written.
-    pub(crate) fn new(now: Now, last: u64) -> Self {
+    /// Handing out ids after `last`, the largest written, and holding runs
+    /// after `flushed`, the last generation written.
+    pub(crate) fn new(now: Now, last: u64, flushed: u64) -> Self {
         Self {
             pending: Mutex::default(),
+            flight: Mutex::new(Flight::new(Table::Calls, flushed)),
             nested: Mutex::default(),
             open: Open::default(),
             last: AtomicU64::new(last),
@@ -116,14 +140,18 @@ impl Pending {
     }
 
     /// The smallest id a run not yet written may take: one started and not
-    /// held, one held, or the next handed out. Exact only while no runs are
-    /// being written.
+    /// held, one held or in flight, or the next handed out. Runs in flight
+    /// keep it down until they land, written or not.
     pub(crate) fn floor(&self) -> u64 {
         let (next, open) = {
             let open = self.open.lock();
             (self.last.load(Ordering::Relaxed) + 1, open.first().copied())
         };
-        let held = self.pending.lock().iter().map(|ran| ran.id).min();
+        let held = {
+            let pending = self.pending.lock();
+            let flight = self.flight.lock();
+            pending.iter().chain(flight.taken()).map(|ran| ran.id).min()
+        };
         [open, held].into_iter().flatten().fold(next, u64::min)
     }
 
@@ -170,28 +198,32 @@ impl Pending {
         self.nested.lock().remove(&call).unwrap_or_default().into()
     }
 
-    pub(crate) fn take(&self) -> Vec<Ran> {
-        mem::take(&mut *self.pending.lock())
+    /// Take what is pending, held in flight until [`Pending::land`].
+    pub(crate) fn take(&self) -> Taken<Ran> {
+        let mut pending = self.pending.lock();
+        self.flight.lock().take(mem::take(&mut *pending))
+    }
+
+    /// Drop what generation `generation` took.
+    pub(crate) fn land(&self, generation: u64) {
+        let _pending = self.pending.lock();
+        self.flight.lock().land(generation);
     }
 
     /// The runs of the service keyed `service` not yet written.
-    pub(crate) fn unsaved(&self, service: &str) -> Vec<Ran> {
-        self.pending
-            .lock()
-            .iter()
-            .filter(|ran| ran.service == service)
-            .cloned()
-            .collect()
+    pub(crate) fn unsaved(&self, service: &str) -> Unflushed<Ran> {
+        self.unsaved_of(|ran| ran.service == service)
     }
 
     /// The runs of `scope`'s services not yet written.
-    pub(crate) fn unsaved_in(&self, scope: &str) -> Vec<Ran> {
-        self.pending
-            .lock()
-            .iter()
-            .filter(|ran| host::split(&ran.service).0 == scope)
-            .cloned()
-            .collect()
+    pub(crate) fn unsaved_in(&self, scope: &str) -> Unflushed<Ran> {
+        self.unsaved_of(|ran| host::split(&ran.service).0 == scope)
+    }
+
+    fn unsaved_of(&self, of: impl Fn(&Ran) -> bool) -> Unflushed<Ran> {
+        let pending = self.pending.lock();
+        let ran = pending.iter().filter(|ran| of(ran)).cloned().collect();
+        self.flight.lock().unflushed(of, ran)
     }
 }
 
@@ -224,12 +256,35 @@ impl Ran {
     }
 }
 
+/// What a run of `tool` of the image `digest` names ran with, `args` read as
+/// UTF-8 with invalid bytes replaced.
+pub(crate) fn ran_with(
+    tool: &str,
+    args: Vec<u8>,
+    caller: Option<Caller>,
+    digest: &str,
+) -> CallInput {
+    CallInput {
+        tool: tool.to_owned(),
+        args: String::from_utf8(args)
+            .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()),
+        caller,
+        digest: digest::prefixed(digest),
+    }
+}
+
 /// Add `ran`, and drop what is older than [`usage::WINDOW`] days before `now`.
 /// Runs of a service this host does not run are dropped.
-pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> {
+pub(crate) async fn write(store: &Store, ran: Taken<Ran>, now: u64) -> Result<()> {
     let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
-    store
-        .each(ran, |tx, call| {
+    let taped: BTreeSet<String> = ran
+        .rows
+        .iter()
+        .filter(|ran| ran.tape.is_some())
+        .map(|ran| ran.service.clone())
+        .collect();
+    ran.write(store, |tx, ran| {
+        ran.iter().try_for_each(|call| {
             let (scope, name) = host::split(&call.service);
             let meter = call
                 .meter
@@ -278,6 +333,13 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
                     input,
                     call.tape.as_deref()
                 ])?;
+                if let Some(tape) = &call.tape {
+                    tx.prepare_cached(
+                        "UPDATE services SET tape_bytes = tape_bytes + ?3
+                          WHERE scope = ?1 AND name = ?2",
+                    )?
+                    .execute(params![scope, name, tape.len() as i64])?;
+                }
             }
             // A service's call of its own cron tool is that tool's last run.
             if call.source == Source::Service && call.caller == call.service {
@@ -328,39 +390,77 @@ pub(crate) async fn write(store: &Store, ran: Vec<Ran>, now: u64) -> Result<()> 
             }
             Ok(())
         })
-        .await?;
+    })
+    .await?;
     store
         .run(move |conn| {
-            conn.execute(
+            let tx = conn.transaction()?;
+            tx.execute(
                 "DELETE FROM service_calls WHERE at < ?1",
                 params![since as i64],
             )?;
-            conn.execute(
+            tx.execute(
                 "DELETE FROM service_nested_calls WHERE at < ?1",
                 params![since as i64],
             )?;
-            conn.execute(
-                "DELETE FROM service_replays WHERE at < ?1",
-                params![since as i64],
-            )?;
-            conn.execute(
+            let mut dropped: HashMap<(String, String), i64> = HashMap::new();
+            {
+                let mut statement = tx.prepare_cached(
+                    "DELETE FROM service_replays WHERE at < ?1
+                     RETURNING scope, name, COALESCE(LENGTH(tape), 0)",
+                )?;
+                let mut rows = statement.query(params![since as i64])?;
+                while let Some(row) = rows.next()? {
+                    *dropped.entry((row.get(0)?, row.get(1)?)).or_default() +=
+                        row.get::<_, i64>(2)?;
+                }
+            }
+            for ((scope, name), bytes) in dropped {
+                tx.prepare_cached(
+                    "UPDATE services SET tape_bytes = tape_bytes - ?3
+                      WHERE scope = ?1 AND name = ?2",
+                )?
+                .execute(params![scope, name, bytes])?;
+            }
+            tx.execute(
                 "UPDATE service_wakes
                     SET last_call = NULL, last_at = NULL, last_source = NULL, last_caller = NULL,
                         last_outcome = NULL, last_ms = NULL, last_meter = NULL, last_logs = NULL
                   WHERE last_at < ?1",
                 params![since as i64],
             )?;
-            conn.execute(
-                "UPDATE service_replays SET tape = NULL
-                  WHERE rowid IN (
-                        SELECT rowid FROM (
-                               SELECT rowid, SUM(LENGTH(tape)) OVER (
-                                      PARTITION BY scope, name ORDER BY call DESC) AS kept
-                                 FROM service_replays WHERE tape IS NOT NULL)
-                         WHERE kept > ?1)",
-                params![TAPES_MAX as i64],
-            )?;
-            Ok(())
+            for service in &taped {
+                let (scope, name) = host::split(service);
+                let over: bool = tx
+                    .prepare_cached(
+                        "SELECT tape_bytes > ?3 FROM services WHERE scope = ?1 AND name = ?2",
+                    )?
+                    .query_row(params![scope, name, TAPES_MAX as i64], |row| row.get(0))
+                    .optional()?
+                    .unwrap_or(false);
+                if !over {
+                    continue;
+                }
+                tx.prepare_cached(
+                    "UPDATE service_replays SET tape = NULL
+                      WHERE rowid IN (
+                            SELECT rowid FROM (
+                                   SELECT rowid, SUM(LENGTH(tape)) OVER (
+                                          ORDER BY call DESC) AS kept
+                                     FROM service_replays
+                                    WHERE scope = ?1 AND name = ?2 AND tape IS NOT NULL)
+                             WHERE kept > ?3)",
+                )?
+                .execute(params![scope, name, TAPES_MAX as i64])?;
+                tx.prepare_cached(
+                    "UPDATE services SET tape_bytes = (
+                            SELECT COALESCE(SUM(LENGTH(tape)), 0) FROM service_replays
+                             WHERE scope = ?1 AND name = ?2)
+                      WHERE scope = ?1 AND name = ?2",
+                )?
+                .execute(params![scope, name])?;
+            }
+            tx.commit()
         })
         .await
 }
@@ -372,14 +472,14 @@ pub(crate) async fn tape(
     scope: &str,
     name: &str,
     id: u64,
-    unsaved: Vec<Ran>,
+    unsaved: Unflushed<Ran>,
 ) -> Result<Option<Option<Vec<u8>>>> {
-    if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
-        return Ok(Some(ran.tape.map(|tape| tape.to_vec())));
-    }
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
+            if let Some(ran) = unsaved.resolve(conn)?.into_iter().find(|ran| ran.id == id) {
+                return Ok(Some(ran.tape.map(|tape| tape.to_vec())));
+            }
             let kept: Option<Option<Vec<u8>>> = conn
                 .query_row(
                     "SELECT tape FROM service_replays WHERE scope = ?1 AND name = ?2 AND call = ?3",
@@ -411,14 +511,14 @@ pub(crate) async fn nested(
     scope: &str,
     name: &str,
     id: u64,
-    unsaved: Vec<Ran>,
+    unsaved: Unflushed<Ran>,
 ) -> Result<Option<Vec<NestedCall>>> {
-    if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
-        return Ok(Some(ran.nested.to_vec()));
-    }
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
+            if let Some(ran) = unsaved.resolve(conn)?.into_iter().find(|ran| ran.id == id) {
+                return Ok(Some(ran.nested.to_vec()));
+            }
             if !written(conn, &scope, &name, id)? {
                 return Ok(None);
             }
@@ -465,14 +565,14 @@ pub(crate) async fn input(
     scope: &str,
     name: &str,
     id: u64,
-    unsaved: Vec<Ran>,
+    unsaved: Unflushed<Ran>,
 ) -> Result<Option<Option<CallInput>>> {
-    if let Some(ran) = unsaved.into_iter().find(|ran| ran.id == id) {
-        return Ok(Some(ran.input.map(Arc::unwrap_or_clone)));
-    }
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
+            if let Some(ran) = unsaved.resolve(conn)?.into_iter().find(|ran| ran.id == id) {
+                return Ok(Some(ran.input.map(Arc::unwrap_or_clone)));
+            }
             let kept: Option<Option<String>> = conn
                 .query_row(
                     "SELECT input FROM service_replays WHERE scope = ?1 AND name = ?2 AND call = ?3",
@@ -489,27 +589,96 @@ pub(crate) async fn input(
         .await
 }
 
-/// The calls a page names, of `service_calls c`, as `:scope`, `:name`,
-/// `:project`, `:tool`, `:outcome`, `:since`, `:until`, `:before`, `:event`
-/// and `:q` bind them; each `NULL` names every call.
-const MATCHING: &str = "FROM service_calls c
-                  WHERE c.scope = :scope AND (:name IS NULL OR c.name = :name)
-                    AND (:project IS NULL OR c.name IN (
-                        SELECT s.name FROM services s
-                         WHERE s.scope = c.scope AND s.project = :project))
-                    AND (:tool IS NULL OR c.tool = :tool)
-                    AND (:outcome IS NULL OR c.outcome = :outcome)
-                    AND (:since IS NULL OR c.at >= :since)
-                    AND (:until IS NULL OR c.at < :until)
-                    AND (:before IS NULL OR c.id < :before)
-                    AND (:event IS NULL OR EXISTS (
-                        SELECT 1 FROM service_logs l, json_each(l.topics) t
-                         WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
-                           AND t.value = :event))
-                    AND (:q IS NULL OR EXISTS (
-                        SELECT 1 FROM service_logs l
-                         WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
-                           AND (instr(lower(l.data), :q) > 0 OR instr(lower(l.topics), :q) > 0)))";
+/// What a page narrows `scope`'s calls to; each `None` names every call.
+#[derive(Clone, Copy)]
+struct Filters<'a> {
+    scope: &'a str,
+    name: Option<&'a str>,
+    project: Option<&'a str>,
+    tool: Option<&'a str>,
+    outcome: Option<Outcome>,
+    since: Option<u64>,
+    until: Option<u64>,
+    before: Option<u64>,
+    event: Option<&'a str>,
+    q: Option<&'a str>,
+}
+
+/// SQL naming calls, and what each of its placeholders binds.
+struct Matching<'a> {
+    sql: String,
+    bound: Vec<(&'static str, Box<dyn ToSql + 'a>)>,
+}
+
+impl Matching<'_> {
+    /// Its placeholders' values, as a statement takes them.
+    fn params(&self) -> Vec<(&'static str, &dyn ToSql)> {
+        self.bound
+            .iter()
+            .map(|(placeholder, value)| (*placeholder, value.as_ref() as &dyn ToSql))
+            .collect()
+    }
+}
+
+impl<'a> Filters<'a> {
+    /// The calls it names, as `FROM service_calls c WHERE …` holding only the
+    /// filters it sets.
+    fn matching(self) -> Matching<'a> {
+        let mut sql = "FROM service_calls c WHERE c.scope = :scope".to_owned();
+        let mut bound: Vec<(&'static str, Box<dyn ToSql + 'a>)> =
+            vec![(":scope", Box::new(self.scope))];
+        let mut and = |condition: &str, placeholder: &'static str, value: Box<dyn ToSql + 'a>| {
+            sql.push_str(" AND ");
+            sql.push_str(condition);
+            bound.push((placeholder, value));
+        };
+        if let Some(name) = self.name {
+            and("c.name = :name", ":name", Box::new(name));
+        }
+        if let Some(project) = self.project {
+            and(
+                "c.name IN (SELECT s.name FROM services s
+                             WHERE s.scope = c.scope AND s.project = :project)",
+                ":project",
+                Box::new(project),
+            );
+        }
+        if let Some(tool) = self.tool {
+            and("c.tool = :tool", ":tool", Box::new(tool));
+        }
+        if let Some(outcome) = self.outcome {
+            and("c.outcome = :outcome", ":outcome", Box::new(outcome));
+        }
+        if let Some(since) = self.since {
+            and("c.at >= :since", ":since", Box::new(since as i64));
+        }
+        if let Some(until) = self.until {
+            and("c.at < :until", ":until", Box::new(until as i64));
+        }
+        if let Some(before) = self.before {
+            and("c.id < :before", ":before", Box::new(before as i64));
+        }
+        if let Some(event) = self.event {
+            and(
+                "EXISTS (SELECT 1 FROM service_logs l, json_each(l.topics) t
+                          WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
+                            AND t.value = :event)",
+                ":event",
+                Box::new(event),
+            );
+        }
+        if let Some(q) = self.q {
+            and(
+                "EXISTS (SELECT 1 FROM service_logs l
+                          WHERE l.scope = c.scope AND l.name = c.name AND l.call = c.id
+                            AND (instr(lower(l.data), :q) > 0 OR instr(lower(l.topics), :q) > 0))",
+                ":q",
+                Box::new(q),
+            );
+        }
+        Matching { sql, bound }
+    }
+}
 
 /// The runs on `page` of `scope/name`, or of every service in `scope`
 /// without a `name`, newest first, as written and in `unsaved`. A service
@@ -524,28 +693,32 @@ pub(crate) async fn read(
     let (scope, name) = (scope.to_owned(), name.map(str::to_owned));
     store
         .read(move |conn| {
-            let since = page.since.map(|since| since as i64);
-            let until = page.until.map(|until| until as i64);
-            let before = page.before.map(|before| before as i64);
             let q = page.q.as_deref().map(str::to_ascii_lowercase);
             // The written calls a page can hold: runs not yet written only
             // push them further down.
+            let mut matching = Filters {
+                scope: &scope,
+                name: name.as_deref(),
+                project: page.project.as_deref(),
+                tool: page.tool.as_deref(),
+                outcome: page.outcome,
+                since: page.since,
+                until: page.until,
+                before: page.before,
+                event: page.event.as_deref(),
+                q: q.as_deref(),
+            }
+            .matching();
+            matching.bound.push((":limit", Box::new(page.limit)));
             let written = conn
                 .prepare_cached(&format!(
-                    "SELECT c.id {MATCHING} ORDER BY c.id DESC LIMIT :limit"
+                    "SELECT c.id {} ORDER BY c.id DESC LIMIT :limit",
+                    matching.sql
                 ))?
-                .query_map(
-                    named_params! {
-                        ":scope": scope, ":name": name, ":project": page.project,
-                        ":tool": page.tool, ":event": page.event, ":q": q,
-                        ":outcome": page.outcome, ":since": since, ":until": until,
-                        ":before": before, ":limit": page.limit,
-                    },
-                    |row| row.get::<_, i64>(0),
-                )?
+                .query_map(matching.params().as_slice(), |row| row.get::<_, i64>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             let projected = projected(conn, &scope, page.project.as_deref())?;
-            let Unsaved { ran, emitted } = unsaved;
+            let Unwritten { ran, emitted } = unsaved.resolve(conn)?;
             let ran = ran
                 .into_iter()
                 .filter(|ran| {
@@ -626,25 +799,30 @@ pub(crate) async fn stats(
                          tool: Option<&str>,
                          outcome: Option<Outcome>|
              -> rusqlite::Result<Vec<(String, Outcome, i64)>> {
+                let matching = Filters {
+                    scope: &scope,
+                    name,
+                    project: page.project.as_deref(),
+                    tool,
+                    outcome,
+                    since: page.since,
+                    until: page.until,
+                    before: None,
+                    event: page.event.as_deref(),
+                    q: q.as_deref(),
+                }
+                .matching();
                 conn.prepare_cached(&format!(
-                    "SELECT {group}, c.outcome, COUNT(*) {MATCHING} GROUP BY 1, 2"
+                    "SELECT {group}, c.outcome, COUNT(*) {} GROUP BY 1, 2",
+                    matching.sql
                 ))?
-                .query_map(
-                    named_params! {
-                        ":scope": scope, ":name": name, ":project": page.project,
-                        ":tool": tool, ":event": page.event, ":q": q, ":outcome": outcome,
-                        ":since": page.since.map(|since| since as i64),
-                        ":until": page.until.map(|until| until as i64),
-                        ":before": None::<i64>,
-                    },
-                    |row| {
-                        Ok((
-                            row.get::<_, rusqlite::types::Value>(0).map(text)?,
-                            row.get(1)?,
-                            row.get(2)?,
-                        ))
-                    },
-                )?
+                .query_map(matching.params().as_slice(), |row| {
+                    Ok((
+                        row.get::<_, rusqlite::types::Value>(0).map(text)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                    ))
+                })?
                 .collect()
             };
             // A scope's calls are narrowed to `page.service` but by the services facet.
@@ -678,7 +856,7 @@ pub(crate) async fn stats(
                 }
             }
             let projected = projected(conn, &scope, page.project.as_deref())?;
-            let Unsaved { ran, emitted } = unsaved;
+            let Unwritten { ran, emitted } = unsaved.resolve(conn)?;
             let ran = ran
                 .into_iter()
                 .filter(|ran| {
@@ -819,7 +997,7 @@ pub(crate) fn last(
     conn: &Connection,
     scope: &str,
     written: Option<Call>,
-    unsaved: &Unsaved,
+    unsaved: &Unwritten,
     tool: &str,
     caller: &str,
 ) -> rusqlite::Result<Option<Call>> {

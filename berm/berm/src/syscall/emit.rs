@@ -26,7 +26,7 @@ where
                     return Err(Refused("a query cannot emit logs".to_owned()).into());
                 }
                 at.rows_left()?;
-                let fields = wire::fields(&request)?;
+                let fields = abi::wire::fields(&request)?;
                 let data = wire::text(&fields, 0, "data")?.to_owned();
                 let topics: Vec<String> = (1..fields.len())
                     .map(|index| Ok(wire::text(&fields, index, "topic")?.to_owned()))

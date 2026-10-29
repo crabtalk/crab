@@ -1,5 +1,6 @@
 //! `berm.http.fetch` and `berm.http.proxy` — one HTTP request, to a host the
-//! program's manifest declares under the syscall it makes.
+//! program's manifest declares under the syscall it makes — and their batch
+//! forms `berm.http.fetch_all` and `berm.http.proxy_all`.
 //!
 //! berm checks the request against the asking program's [`crate::Deps`] and
 //! substitutes every `{secret:NAME}` in a header value and in the body.
@@ -98,34 +99,63 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
+    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, send, secret)
+}
+
+/// Serve `berm.http.proxy_all`: [`fetch_all`], each request to a host the
+/// manifest declares under `berm.http.proxy`, where `send` goes through the
+/// host's proxy.
+pub fn proxy_all<S, Sent, R, Found>(send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
+    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, send, secret)
+}
+
+/// The batch syscall `name`, each request allowed under `syscall`.
+fn serve_all<S, Sent, R, Found>(
+    name: &'static str,
+    syscall: &'static str,
+    send: S,
+    secret: R,
+) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
     let (send, secret) = (Arc::new(send), Arc::new(secret));
     Syscall {
-        name: abi::HTTP_FETCH_ALL.to_owned(),
+        name: name.to_owned(),
         call: Arc::new(move |at: Callsite, batch: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let requests = wire::fields(&batch)?;
+                let requests = abi::wire::fields(&batch)?;
                 let answers = future::join_all(
                     requests
                         .iter()
-                        .map(|request| answer(&at, abi::HTTP_FETCH, request, &*send, &*secret)),
+                        .map(|request| answer(&at, syscall, request, &*send, &*secret)),
                 )
                 .await;
                 let framed: Vec<Vec<u8>> = answers
                     .iter()
                     .map(|answered| match answered {
-                        Ok(response) => [wire::frame(&[b"ok"]), write(response)].concat(),
+                        Ok(response) => [abi::wire::request(&[b"ok"]), write(response)].concat(),
                         Err(error) => {
                             let kind: &[u8] = match error.downcast_ref::<Refused>() {
                                 Some(_) => b"refused",
                                 None => b"failed",
                             };
-                            wire::frame(&[kind, format!("{error:#}").as_bytes()])
+                            abi::wire::request(&[kind, format!("{error:#}").as_bytes()])
                         }
                     })
                     .collect();
                 let fields: Vec<&[u8]> = framed.iter().map(Vec::as_slice).collect();
-                Ok(wire::frame(&fields))
+                Ok(abi::wire::request(&fields))
             })
         }),
     }
@@ -251,7 +281,7 @@ fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
 /// `request` off the wire, refused unless the asking program declares its host
 /// under `syscall`.
 fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
-    let fields = wire::fields(request)?;
+    let fields = abi::wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?;
     let Some(body) = fields.get(2) else {
@@ -315,5 +345,5 @@ fn write(response: &Response) -> Vec<u8> {
         fields.push(name.as_bytes());
         fields.push(value.as_bytes());
     }
-    wire::frame(&fields)
+    abi::wire::request(&fields)
 }

@@ -8,9 +8,8 @@ use std::{fs, path::Path};
 /// one this binary was released as.
 const SDK: &str = env!("CARGO_PKG_VERSION");
 
-/// Each template beside the path it is written to. A crate name is a valid
-/// Rust identifier, so the placeholders are too — which is what keeps these
-/// files parsing as the languages they are.
+/// Each template beside the path it is written to. Each placeholder is a valid
+/// Rust identifier, and each file parses as the language it is.
 const FILES: [(&str, &str); 4] = [
     ("Cargo.toml", include_str!("../../templates/manifest.toml")),
     (project::FILE, include_str!("../../templates/crab.toml")),
@@ -49,8 +48,7 @@ pub fn run(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// A program name is a crate name, and cargo's rules are the ones that bite —
-/// better here than three lines into a build.
+/// A program name is a crate name, held to cargo's rules.
 fn check(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("a program needs a name");

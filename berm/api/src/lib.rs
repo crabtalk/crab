@@ -1,7 +1,7 @@
 //! What a program says it is, and what the local host's control API speaks.
 //!
-//! Here rather than in the service so a client can read an image and talk to
-//! the API without linking a compiler.
+//! Links no compiler: a client reads an image and talks to the API with this
+//! crate alone.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -14,31 +14,14 @@ pub use manifest::{
 };
 
 mod compat;
+pub mod digest;
 pub mod host;
 mod image;
 mod manifest;
 pub mod project;
 #[cfg(feature = "rusqlite")]
 mod sql;
-
-/// The ABI this host speaks. A program built against a different one is
-/// refused rather than dispatched into a syscall its author did not
-/// mean.
-pub const ABI_VERSION: u32 = 5;
-
-/// The section of what the compiler wrote of a program. A wasm custom
-/// section, which is what `#[link_section]` emits on `wasm32`. It holds JSON
-/// records back to back, in the order the linker joined them: one
-/// `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one
-/// `{"event": …}` per `#[event]`.
-pub const ABI_SECTION: &str = ".berm.abi";
-
-/// The section the build appends for the program: one [`ProgramRecord`].
-pub const PROGRAM_SECTION: &str = ".berm.program";
-
-/// The section the build appends for the program's kits: a JSON array of
-/// [`Kit`], by name.
-pub const KITS_SECTION: &str = ".berm.kits";
+pub mod text;
 
 /// The most bytes a call's arguments, and a tool's result, may hold, when a
 /// program's `crab.toml` sets no `buffer`.

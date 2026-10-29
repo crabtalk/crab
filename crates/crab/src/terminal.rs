@@ -1,37 +1,11 @@
-//! Running the SDK's async calls from `crab`'s synchronous commands, and what
-//! every command shares about talking to the person at the terminal.
+//! What every command shares about talking to the person at the terminal.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use serde::Serialize;
 use std::{
-    env,
-    future::Future,
-    io::{BufRead, IsTerminal, Write},
-    path::PathBuf,
+    io::{self, BufRead, IsTerminal, Write},
     process::Command,
-    sync::LazyLock,
 };
-use tokio::runtime::{Builder, Runtime};
-
-/// One runtime for the process, on every core for the local host's calls.
-/// `crab` stays synchronous because `berm-oci` uses blocking `reqwest`, which
-/// panics inside a runtime.
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("a runtime builds")
-});
-
-/// `$HOME`.
-pub fn home() -> Result<PathBuf> {
-    Ok(PathBuf::from(env::var("HOME").context("HOME is not set")?))
-}
-
-/// Run `future` to completion.
-pub fn wait<F: Future>(future: F) -> F::Output {
-    RUNTIME.block_on(future)
-}
 
 /// Print `value` as one line of JSON.
 pub fn json<T: Serialize>(value: &T) -> Result<()> {
@@ -40,18 +14,18 @@ pub fn json<T: Serialize>(value: &T) -> Result<()> {
 }
 
 /// Go on with `what` only when `yes` is set or the person at the terminal
-/// says so. Without a terminal it refuses rather than waits.
+/// says so. Without a terminal it refuses.
 pub fn confirm(yes: bool, what: &str) -> Result<()> {
     if yes {
         return Ok(());
     }
-    if !std::io::stdin().is_terminal() {
+    if !io::stdin().is_terminal() {
         bail!("{what} needs `--yes` without a terminal");
     }
     eprint!("{what}? [y/N] ");
-    std::io::stderr().flush()?;
+    io::stderr().flush()?;
     let mut answer = String::new();
-    std::io::stdin().lock().read_line(&mut answer)?;
+    io::stdin().lock().read_line(&mut answer)?;
     match answer.trim() {
         "y" | "Y" | "yes" => Ok(()),
         _ => bail!("cancelled"),

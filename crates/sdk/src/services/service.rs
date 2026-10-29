@@ -1,6 +1,6 @@
 //! Service wire types.
 
-use crate::{sandbox::price::Price, utils::text_enum};
+use crate::services::price::Price;
 use berm_api::{
     Credential, Meter, Program,
     host::{self, Call, ServedDay},
@@ -398,7 +398,7 @@ pub enum DeployOutcome {
     Failed,
 }
 
-text_enum!(DeployOutcome { Live => "live", Replaced => "replaced", Refused => "refused", Failed => "failed" });
+berm_api::text_enum!(DeployOutcome);
 
 /// Deploy a past deploy's image again.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

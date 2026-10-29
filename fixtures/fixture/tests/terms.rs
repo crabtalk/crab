@@ -9,7 +9,7 @@ async fn a_budget_is_published_in_the_terms() -> Result<()> {
     let host = TestHost::open(0).await?;
     host.deploy("fixture", &test::build("berm-fixture")?)
         .await?;
-    let host = host.host();
+    let host = &host.host;
 
     assert_eq!(host.terms("fixture")?.tools["echo"].budget, host.budget);
 

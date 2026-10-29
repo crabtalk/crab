@@ -6,18 +6,18 @@
 use crate::host::secrets::Grants;
 use anyhow::{Context, Result};
 use berm::Program;
-use berm_host::{Config, Edges, Host, Layers, Stored, System};
+use berm_host::{Alone, Config, Edges, Host, Layers, Stored, System};
 use std::{io::IsTerminal, path::PathBuf, sync::Arc, time::Duration};
 
+pub use dev::{Dev, Status};
 pub use env::Local;
 pub use fetch::Fetch;
-pub use peers::Alone;
 
 mod api;
+mod dev;
 mod env;
 mod fetch;
 mod mcp;
-mod peers;
 mod program;
 pub mod secrets;
 
@@ -65,6 +65,11 @@ impl Service {
     ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
         let grants = Grants::open(secrets);
+        let fetch = Fetch::new(None)?;
+        let proxy = match proxy {
+            Some(proxy) => Fetch::new(Some(proxy))?,
+            None => fetch.clone(),
+        };
         let config = Config {
             depth,
             cpu,
@@ -77,8 +82,8 @@ impl Service {
             &root.join("host.db"),
             &config,
             Edges {
-                fetch: Fetch::new(None)?,
-                proxy: Some(Fetch::new(proxy)?),
+                fetch,
+                proxy: Some(proxy),
                 images: images.clone(),
                 peers: Alone,
                 secrets: grants.clone(),

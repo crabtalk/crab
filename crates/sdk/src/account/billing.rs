@@ -1,6 +1,6 @@
 //! Billing, plan-catalog, and invoice wire types.
 
-use crate::{account::org::Kind, utils::text_enum};
+use crate::account::org::Kind;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -15,12 +15,10 @@ pub struct PublicPlan {
     /// Identifier used in `POST /orgs/{org}/billing/checkout?plan=<slug>`.
     pub slug: String,
     /// Which kind of account this plan is for, or `null` for either. Checkout
-    /// answers `400` on a mismatch, so a client partitions its pricing page on
-    /// this rather than discovering it at the buy button.
+    /// answers `400` on a mismatch.
     pub kind: Option<Kind>,
     /// Monthly gross price in microdollars — what the customer is charged.
-    /// `null` is a plan that is not sold, which is the whole signal for a
-    /// granted rung.
+    /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,
     /// What the plan includes each billing period.
     pub included: Included,
@@ -104,16 +102,7 @@ pub enum Unit {
     Credit,
 }
 
-text_enum!(Unit {
-    Runs => "runs",
-    Cpu => "cpu",
-    Read => "read",
-    Written => "written",
-    Held => "held",
-    Stored => "stored",
-    Sent => "sent",
-    Credit => "credit",
-});
+berm_api::text_enum!(Unit);
 
 /// A Stripe subscription's status, as Stripe spells it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -130,16 +119,7 @@ pub enum SubscriptionStatus {
     Paused,
 }
 
-text_enum!(SubscriptionStatus {
-    Incomplete => "incomplete",
-    IncompleteExpired => "incomplete_expired",
-    Trialing => "trialing",
-    Active => "active",
-    PastDue => "past_due",
-    Canceled => "canceled",
-    Unpaid => "unpaid",
-    Paused => "paused",
-});
+berm_api::text_enum!(SubscriptionStatus);
 
 impl SubscriptionStatus {
     /// Whether the subscription never leaves this status, and so can no longer
@@ -161,13 +141,7 @@ pub enum InvoiceStatus {
     Void,
 }
 
-text_enum!(InvoiceStatus {
-    Draft => "draft",
-    Open => "open",
-    Paid => "paid",
-    Uncollectible => "uncollectible",
-    Void => "void",
-});
+berm_api::text_enum!(InvoiceStatus);
 
 /// What a plan includes each billing period, summed over the account's
 /// services.
@@ -309,10 +283,7 @@ pub enum PayoutStatus {
     Paid,
 }
 
-text_enum!(PayoutStatus {
-    Pending => "pending",
-    Paid => "paid",
-});
+berm_api::text_enum!(PayoutStatus);
 
 /// A Stripe-hosted page to open.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -413,14 +384,7 @@ pub enum PortalFlow {
     SubscriptionCancel,
 }
 
-impl PortalFlow {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::PaymentMethodUpdate => "payment_method_update",
-            Self::SubscriptionCancel => "subscription_cancel",
-        }
-    }
-}
+berm_api::text_enum!(PortalFlow);
 
 /// The card a customer's subscription charges.
 ///
@@ -440,10 +404,8 @@ pub struct PaymentMethod {
     pub exp_year: i64,
 }
 
-/// One row of a customer's invoice history. Shape mirrors the Stripe invoice
-/// object; we surface only what a "download my invoices" list needs and lean
-/// on Stripe's generated `invoice_pdf` rather than rendering documents
-/// ourselves.
+/// One row of a customer's invoice history, a subset of the Stripe invoice
+/// object. The document is Stripe's generated `invoice_pdf`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Invoice {

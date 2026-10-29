@@ -5,7 +5,10 @@
 //! A header value or the body may carry `{secret:NAME}` for a secret the
 //! manifest declares. The host substitutes it, and this program never holds the value.
 
-use crate::abi::{self, host, host::CallError, wire};
+use crate::{
+    abi::{self, wire},
+    host::{self, CallError},
+};
 use alloc::{string::String, vec::Vec};
 use serde::de::DeserializeOwned;
 
@@ -53,26 +56,7 @@ pub fn fetch(
     headers: &[(&str, &str)],
     body: &[u8],
 ) -> Result<Response, CallError> {
-    send(abi::HOST_HTTP_FETCH, method, url, headers, body, None)
-}
-
-/// [`fetch`], given up when nothing answered within `timeout` milliseconds,
-/// or at the call's deadline when that comes first.
-pub fn fetch_within(
-    timeout: u64,
-    method: &str,
-    url: &str,
-    headers: &[(&str, &str)],
-    body: &[u8],
-) -> Result<Response, CallError> {
-    send(
-        abi::HOST_HTTP_FETCH,
-        method,
-        url,
-        headers,
-        body,
-        Some(timeout),
-    )
+    send(abi::HOST_HTTP_FETCH, method, url, headers, body)
 }
 
 /// [`fetch`], through the host's proxy. The host meters the bytes sent and
@@ -83,7 +67,7 @@ pub fn proxy(
     headers: &[(&str, &str)],
     body: &[u8],
 ) -> Result<Response, CallError> {
-    send(abi::HOST_HTTP_PROXY, method, url, headers, body, None)
+    send(abi::HOST_HTTP_PROXY, method, url, headers, body)
 }
 
 /// One request of a batch [`fetch_all`] sends.
@@ -103,17 +87,31 @@ pub struct Request<'a> {
 /// `berm.http.fetch` and given up at its own timeout or the call's deadline,
 /// and answer each in its place: a [`Response`], or why nothing was.
 pub fn fetch_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
+    send_all(abi::HOST_HTTP_FETCH_ALL, requests)
+}
+
+/// [`fetch_all`], through the host's proxy, each request to a host the
+/// manifest declares under `berm.http.proxy`. The host meters the bytes sent
+/// and received against this program as `proxied`.
+pub fn proxy_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
+    send_all(abi::HOST_HTTP_PROXY_ALL, requests)
+}
+
+fn send_all(
+    number: u64,
+    requests: &[Request<'_>],
+) -> Result<Vec<Result<Response, CallError>>, CallError> {
     let framed: Vec<Vec<u8>> = requests.iter().map(frame).collect();
     let fields: Vec<&[u8]> = framed.iter().map(Vec::as_slice).collect();
-    let reply = host::call(abi::HOST_HTTP_FETCH_ALL, &wire::request(&fields))?;
-    let answers = wire::fields(&reply).ok_or_else(unreadable)?;
+    let reply = host::call(number, &wire::request(&fields))?;
+    let answers = wire::fields(&reply).map_err(|_| unreadable())?;
     if answers.len() != requests.len() {
         return Err(unreadable());
     }
     answers
         .into_iter()
         .map(|answer| {
-            let fields = wire::fields(answer).ok_or_else(unreadable)?;
+            let fields = wire::fields(answer).map_err(|_| unreadable())?;
             let (kind, rest) = fields.split_first().ok_or_else(unreadable)?;
             let why =
                 || String::from_utf8_lossy(rest.first().copied().unwrap_or_default()).into_owned();
@@ -133,18 +131,17 @@ fn send(
     url: &str,
     headers: &[(&str, &str)],
     body: &[u8],
-    timeout: Option<u64>,
 ) -> Result<Response, CallError> {
     let request = frame(&Request {
         method,
         url,
         headers,
         body,
-        timeout,
+        timeout: None,
         limit: None,
     });
     let reply = host::call(number, &request)?;
-    response(&wire::fields(&reply).ok_or_else(unreadable)?)
+    response(&wire::fields(&reply).map_err(|_| unreadable())?)
 }
 
 /// `request` as [`abi::HOST_HTTP_FETCH`] frames it.

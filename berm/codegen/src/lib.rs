@@ -4,16 +4,32 @@
 //! anywhere in the program's crate.
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemFn, parse_macro_input};
+use syn::{DeriveInput, Expr, ExprLit, ItemFn, Lit, parse_macro_input};
 
 mod declare;
 mod schema;
 mod syscalls;
 mod tool;
-mod utils;
 
-/// The custom section `#[tool]` and `#[event]` write their records to.
-const ABI_SECTION: &str = ".berm.abi";
+/// A doc comment, joined into one line.
+fn docs(attrs: &[syn::Attribute]) -> String {
+    let mut description = String::new();
+    for attribute in attrs {
+        if attribute.path().is_ident("doc")
+            && let syn::Meta::NameValue(pair) = &attribute.meta
+            && let Expr::Lit(ExprLit {
+                lit: Lit::Str(line),
+                ..
+            }) = &pair.value
+        {
+            if !description.is_empty() {
+                description.push(' ');
+            }
+            description.push_str(line.value().trim());
+        }
+    }
+    description.trim().to_owned()
+}
 
 /// Declare the syscalls a program may call, emitting a stub for each.
 ///
@@ -84,28 +100,20 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// properties of its arguments, each a `Schema` type, and a parameter's doc
 /// comment is its description. It returns `berm_lang::Result<T>`: `T` is its
 /// reply, written as JSON, and `()` replies nothing. It is exported as
-/// `berm_tool_<name>`.
-///
-/// **A tool is internal unless marked `public`.** An internal tool is only
-/// called by the host, for the program's own wakes, crons and Stripe events. A
-/// `public` tool can be called by any account the host authenticates and any
-/// program allowed to reach this one, with arguments the caller chooses.
-/// `berm_lang::caller()` says who called. `callers(services)` limits a public
-/// tool to programs, `callers(accounts)` to callers from outside. `anonymous`
-/// lets a call from outside with no caller reach a public tool. `query` marks
-/// it read-only: the host refuses its writes, logs and wakes. `#[deprecated]`
-/// on a tool marks it so in the manifest.
-///
-/// `cron` marks a tool its host calls when the cron expression its deploy or
-/// its owner sets fires. A cron tool takes no parameters and is not `public`.
-///
-/// `stripe` marks the tool its host calls with each Stripe event its daemon
-/// takes for the program: the event object is the argument object, so the
-/// tool's parameters are the event's fields it reads. A program has at most
-/// one, and it is not `public`.
-///
-/// Its record names the package it is compiled in. An image holding a tool of
-/// a package other than the program's is refused.
+/// `berm_tool_<name>`. **A tool is internal unless marked `public`**: an
+/// internal tool is only called by the host, for the program's own wakes,
+/// crons and Stripe events; a `public` one by any account the host
+/// authenticates and any program allowed to reach this one, with arguments the
+/// caller chooses. `callers(services)` limits a public tool to programs,
+/// `callers(accounts)` to callers from outside, and `anonymous` lets a call
+/// from outside with no caller reach it. `query` marks it read-only: the host
+/// refuses its writes, logs and wakes. `cron` marks a tool its host calls when
+/// the cron expression its deploy or its owner sets fires; it takes no
+/// parameters. `stripe` marks the one tool its host calls with each Stripe
+/// event its daemon takes for the program, the event object as the argument
+/// object. Neither a cron nor a stripe tool is `public`. `#[deprecated]` marks
+/// a tool so in the manifest. An image holding a tool of a package other than
+/// the program's is refused.
 #[proc_macro_attribute]
 pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {
     let mut options = tool::Options::default();

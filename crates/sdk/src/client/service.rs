@@ -3,7 +3,7 @@
 
 use crate::{
     client::{Client, Error},
-    sandbox::service::{
+    services::service::{
         Billing, Costed, DeployRequest, DeploySetRequest, Deployment, Hosts, MeteredDay, Secret,
         SetSecret, Terms, ToolCosted, Upload, UploadRequest, Visibility,
     },

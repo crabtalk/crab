@@ -5,9 +5,6 @@
 use berm_build::Workspace;
 use std::{fs, path::Path};
 
-/// What the programs and kits here call their project file.
-const FILE: &str = "crab.toml";
-
 /// Write `text` to `path` under `root`, creating its directories.
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
@@ -38,11 +35,11 @@ fn a_service_saying_deploy_false_is_left_out_unless_named() {
     service(&root, "shown", "name = \"shown\"\n");
     service(&root, "held", "name = \"held\"\ndeploy = false\n");
 
-    let workspace = Workspace::read(&root, FILE, &[]).unwrap();
+    let workspace = Workspace::read(&root, &[]).unwrap();
     assert_eq!(workspace.services, [root.join("shown")]);
     assert_eq!(workspace.skipped, ["held"]);
 
-    let named = Workspace::read(&root.join("held"), FILE, &[]).unwrap();
+    let named = Workspace::read(&root.join("held"), &[]).unwrap();
     assert_eq!(named.services, [root.join("held")]);
     assert!(named.skipped.is_empty());
 }
@@ -62,7 +59,7 @@ fn named_services_are_picked_from_anywhere_in_the_workspace() {
 
     let named = |names: &[&str]| {
         let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
-        Workspace::read(&root.join("one"), FILE, &names)
+        Workspace::read(&root.join("one"), &names)
     };
     assert_eq!(named(&["two"]).unwrap().services, [root.join("two")]);
     let mut both = named(&["held", "two"]).unwrap().services;

@@ -4,16 +4,16 @@
 use crate::{
     cmd::{dev, inspect},
     fill::Form,
-    project, utils,
+    project, runtime,
 };
 use anyhow::{Context, Result, anyhow, bail};
-use berm_api::{Credential, Deployed, Manifest, project::Project};
+use berm_api::{Credential, Deployed, Manifest, digest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::{
+    services::{
         price::Price,
         service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
     },
@@ -79,7 +79,7 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
         return copy(client, from, *force, stopped);
     }
     let (image, registry, force, pull) = (image.as_deref(), registry.as_deref(), *force, *pull);
-    let workspace = Workspace::read(dir, project::FILE, packages)?;
+    let workspace = Workspace::read(dir, packages)?;
     if workspace.services.is_empty() {
         bail!(
             "no {} in the workspace at {} names a service to deploy",
@@ -119,7 +119,7 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
             force,
             stopped,
         )?;
-        let deployed = utils::wait(client.deploy(name, &request))?;
+        let deployed = runtime::wait(client.deploy(name, &request))?;
         return report(client, name, &deployed);
     }
     let mut set = DeploySetRequest {
@@ -140,7 +140,7 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
         )?;
         set.services.insert(name, request);
     }
-    let deployed = utils::wait(client.deploy_set(&set))?;
+    let deployed = runtime::wait(client.deploy_set(&set))?;
     for (name, deployed) in &deployed {
         report(client, name, deployed)?;
     }
@@ -158,11 +158,16 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
     let Some((_, name)) = from.split_once('/') else {
         bail!("--from takes another account's service as owner/name, not {from:?}");
     };
-    let listing = utils::wait(client.listing(from))?;
+    let (listing, fresh) = runtime::wait(async {
+        tokio::try_join!(
+            async { Ok(client.listing(from).await?) },
+            first(client, name)
+        )
+    })?;
     let Some(reference) = listing.reference else {
         bail!("{from} runs an image uploaded to Cloud, which only its owner deploys");
     };
-    let ask = first(client, name)? && io::stdin().is_terminal() && io::stdout().is_terminal();
+    let ask = fresh && io::stdin().is_terminal() && io::stdout().is_terminal();
     let request = DeployRequest {
         reference,
         force,
@@ -173,9 +178,11 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
         project: None,
         prices: BTreeMap::new(),
     };
-    let deployed = utils::wait(client.deploy(name, &request))?;
+    let deployed = runtime::wait(client.deploy(name, &request))?;
     if ask {
-        let deps = utils::wait(client.runtime(name))?.deps;
+        let (running, set) =
+            runtime::wait(async { tokio::try_join!(client.runtime(name), client.secrets(name)) })?;
+        let deps = running.deps;
         let unset = |set: &[Secret]| -> Vec<(String, Credential)> {
             deps.grouped()
                 .into_iter()
@@ -187,14 +194,14 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
                 })
                 .collect()
         };
-        let asked = unset(&utils::wait(client.secrets(name))?);
+        let asked = unset(&set);
         if !asked.is_empty() {
             Form::new(client, name, asked, &BTreeMap::new())?.run()?;
         }
         if !stopped {
-            match unset(&utils::wait(client.secrets(name))?).is_empty() {
+            match unset(&runtime::wait(client.secrets(name))?).is_empty() {
                 true => {
-                    utils::wait(client.start(name))?;
+                    runtime::wait(client.start(name))?;
                     eprintln!("started {name}");
                 }
                 false => eprintln!(
@@ -214,13 +221,13 @@ fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> 
     if !project.deploy {
         bail!(
             "{}'s {} says deploy = false",
-            project.name.as_deref().unwrap_or("this program"),
+            project.name.as_deref().unwrap_or("this service"),
             project::FILE
         );
     }
     prices(&project)?;
     if pull {
-        let live = utils::wait(client.crons(project.name()?))?;
+        let live = runtime::wait(client.crons(project.name()?))?;
         let crons = live
             .crons
             .into_iter()
@@ -229,7 +236,7 @@ fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> 
         project::write_crons(dir, &crons)?;
         project = project::read(dir)?;
     }
-    let built = berm_build::build(dir, None, project::FILE)?;
+    let built = berm_build::build(dir, None)?;
     let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
     Ok((project, bytes))
 }
@@ -249,7 +256,7 @@ fn reference(
         Some(image) if client.owner.is_some() => {
             let mut reference = Reference::from_str(&format!(
                 "{image}:{}",
-                Manifest::from_image(&bytes)?.version
+                Manifest::try_from(bytes.as_slice())?.version
             ))?;
             if let Some(registry) = registry {
                 reference.registry = registry.to_ascii_lowercase();
@@ -279,7 +286,9 @@ fn request(
         Some(_) if client.owner.is_none() => bail!(
             "{name}: a seed starts a service on Cloud; the local host's own database is where one is made"
         ),
-        Some(seed) if first(client, name)? => Some(upload(client, name, &dir.join(seed))?),
+        Some(seed) if runtime::wait(first(client, name))? => {
+            Some(upload(client, name, &dir.join(seed))?)
+        }
         _ => None,
     };
     Ok(DeployRequest {
@@ -313,18 +322,19 @@ fn prices(project: &Project) -> Result<BTreeMap<String, Price>> {
 /// callers, and the secrets it needs that are not set.
 fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
     // The host compiled it to answer, so what comes back is what it will
-    // serve — worth showing rather than saying "ok".
-    let runtime = utils::wait(client.runtime(name))?;
-    inspect::show(
-        &deployed.program,
-        Some(&runtime),
-        &utils::wait(client.terms(name))?,
-    );
+    // serve.
+    let (running, terms, set) = runtime::wait(async {
+        tokio::try_join!(
+            client.runtime(name),
+            client.terms(name),
+            client.secrets(name)
+        )
+    })?;
+    inspect::show(&deployed.program, Some(&running), &terms);
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }
-    let set = utils::wait(client.secrets(name))?;
-    let unset: Vec<&String> = runtime
+    let unset: Vec<&String> = running
         .deps
         .secrets
         .iter()
@@ -343,8 +353,8 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
 }
 
 /// Whether `name` is not deployed yet.
-fn first(client: &Client, name: &str) -> Result<bool> {
-    match utils::wait(client.runtime(name)) {
+async fn first(client: &Client, name: &str) -> Result<bool> {
+    match client.runtime(name).await {
         Ok(_) => Ok(false),
         Err(Error::Api { status: 404, .. }) => Ok(true),
         Err(e) => Err(e.into()),
@@ -370,10 +380,10 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
         sha256: sha256.clone(),
         size,
     };
-    if let Some(url) = utils::wait(client.seed(name, &request))?.upload {
+    if let Some(url) = runtime::wait(client.seed(name, &request))?.upload {
         eprintln!("uploading the seed, {size} bytes");
-        let file = utils::wait(AsyncFile::open(&copy))?;
-        utils::wait(client.upload(&url, file, size))?;
+        let file = runtime::wait(AsyncFile::open(&copy))?;
+        runtime::wait(client.upload(&url, file, size))?;
     }
     Ok(sha256)
 }
@@ -381,17 +391,17 @@ fn upload(client: &Client, name: &str, seed: &Path) -> Result<String> {
 /// Upload `image` for `name`'s deploy unless the host holds it already,
 /// answering the digest the deploy names it by.
 fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
-    let sha256 = berm::digest(&image);
+    let sha256 = digest::hex(&image);
     let size = image.len() as u64;
     let request = UploadRequest {
         sha256: sha256.clone(),
         size,
     };
-    if let Some(url) = utils::wait(client.image(name, &request))?.upload {
+    if let Some(url) = runtime::wait(client.image(name, &request))?.upload {
         eprintln!("uploading the image, {size} bytes");
-        utils::wait(client.upload(&url, image, size))?;
+        runtime::wait(client.upload(&url, image, size))?;
     }
-    Ok(format!("sha256:{sha256}"))
+    Ok(digest::prefixed(&sha256))
 }
 
 /// The SHA-256 of the file at `path`, in hex, and its size.

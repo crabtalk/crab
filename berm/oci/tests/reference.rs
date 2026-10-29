@@ -76,8 +76,8 @@ fn what_is_parsed_prints_back_unchanged() {
     ] {
         assert_eq!(parse(text).to_string(), text);
     }
-    // The rewrites: an absent tag is filled in rather than left off, and a
-    // name is folded rather than refused.
+    // The rewrites: an absent tag is filled in, and a name is folded to
+    // lowercase.
     assert_eq!(
         parse("ghcr.io/crabtalk/crabtalk/pkg").to_string(),
         "ghcr.io/crabtalk/crabtalk/pkg:latest"
@@ -112,8 +112,7 @@ fn a_tag_keeps_its_case() {
     );
 }
 
-/// `..` is refused because the grammar has no way to spell it, not by a check
-/// for `..`.
+/// `..` is refused by the grammar, with no check for `..`.
 #[test]
 fn a_name_cannot_climb_out_of_a_directory() {
     refuse("evil.com/../../etc/cron.d/x:v1");

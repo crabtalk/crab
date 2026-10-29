@@ -8,11 +8,15 @@
 //! with a `crab.toml` beside its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
 //! cargo's own `.wasm` is left as cargo wrote it.
 
-use crate::{artifact::Artifact, metadata::Metadata};
+use crate::{
+    artifact::Artifact,
+    metadata::{ManifestPath, Metadata},
+};
 use anyhow::{Context, Result, bail};
+use berm_abi::{KITS_SECTION, PROGRAM_SECTION};
 use berm_api::{
-    Database, Image, KITS_SECTION, Kit, Manifest, Migration, PROGRAM_SECTION, ProgramRecord,
-    project::Project,
+    Database, Image, Kit, Manifest, Migration, ProgramRecord,
+    project::{self, Project},
 };
 use std::{
     env, fs,
@@ -36,15 +40,14 @@ const OUT: &str = "berm";
 
 /// Build the program `package` of the workspace `dir` is in, or, without
 /// one, the program whose `Cargo.toml` is in `dir`, and answer the path of
-/// its finished image. `file` names the project file beside the program's
-/// `Cargo.toml` and each kit's.
+/// its finished image.
 ///
 /// One build at a time across processes, on a lock in the target directory.
-pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
+pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let metadata = Metadata::read(&cargo, dir)?;
     let program = metadata.package(dir, package)?;
-    let project = Project::read(&program.dir().join(file))?;
+    let project = Project::read(&program.manifest_path.dir().join(project::FILE))?;
     project.name()?;
     if !program
         .targets
@@ -64,7 +67,7 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
         repository: program.repository.clone().unwrap_or_default(),
         readme: match &program.readme {
             Some(readme) => {
-                let path = program.dir().join(readme);
+                let path = program.manifest_path.dir().join(readme);
                 fs::read_to_string(&path)
                     .with_context(|| format!("cannot read {}", path.display()))?
             }
@@ -72,7 +75,7 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
         },
         buffer: project.buffer(),
         deps: project.deps(),
-        database: migrations(program.dir(), &project)?,
+        database: migrations(program.manifest_path.dir(), &project)?,
     };
 
     let out = metadata.target_directory.join(OUT);
@@ -99,11 +102,12 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
         })
         .with_context(|| format!("cargo built no image of {}", program.name))?;
     let bytes = fs::read(built).with_context(|| format!("cannot read {}", built.display()))?;
-    let kits = kits(&artifacts, &program.manifest_path, &guest, file)?;
+    let kits = kits(&artifacts, &program.manifest_path, &guest)?;
 
     let bytes = Image(&bytes).with_section(PROGRAM_SECTION, &serde_json::to_vec(&record)?)?;
     let bytes = Image(&bytes).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;
-    Manifest::from_image(&bytes).with_context(|| format!("{} is not a program", program.name))?;
+    Manifest::try_from(bytes.as_slice())
+        .with_context(|| format!("{} is not a program", program.name))?;
 
     let file = built
         .file_name()
@@ -118,15 +122,15 @@ pub fn build(dir: &Path, package: Option<&str>, file: &str) -> Result<PathBuf> {
 /// The record of each kit among `artifacts` compiled into `guest`, the
 /// target directory of [`TARGET`], other than the program at `program`, by
 /// name. Refused when a kit is there at two versions.
-fn kits(artifacts: &[Artifact], program: &Path, guest: &Path, file: &str) -> Result<Vec<Kit>> {
+fn kits(artifacts: &[Artifact], program: &ManifestPath, guest: &Path) -> Result<Vec<Kit>> {
     let mut kits: Vec<(&Artifact, String, String)> = Vec::new();
     for artifact in artifacts {
-        if artifact.manifest_path == program
+        if &artifact.manifest_path == program
             || !artifact
                 .filenames
                 .iter()
                 .any(|file| file.starts_with(guest))
-            || !artifact.dir().join(file).is_file()
+            || !artifact.manifest_path.dir().join(project::FILE).is_file()
             || kits
                 .iter()
                 .any(|(seen, ..)| seen.package_id == artifact.package_id)
@@ -147,12 +151,12 @@ fn kits(artifacts: &[Artifact], program: &Path, guest: &Path, file: &str) -> Res
     }
     kits.into_iter()
         .map(|(artifact, name, version)| {
-            let project = Project::read(&artifact.dir().join(file))?;
+            let project = Project::read(&artifact.manifest_path.dir().join(project::FILE))?;
             project
                 .check_kit()
                 .with_context(|| format!("the kit {name}"))?;
             Ok(Kit {
-                database: migrations(artifact.dir(), &project)?,
+                database: migrations(artifact.manifest_path.dir(), &project)?,
                 deps: project.deps(),
                 id: project.id.clone(),
                 formerly: project.formerly.clone(),

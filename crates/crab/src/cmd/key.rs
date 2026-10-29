@@ -1,6 +1,6 @@
 //! `crab key` — the account's API keys, which deploy from CI.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{
     account::key::{CreateKeyRequest, Scope},
@@ -8,9 +8,9 @@ use crabtalk_sdk::{
 };
 
 pub fn ls(client: &Client, json: bool) -> Result<()> {
-    let keys = utils::wait(client.keys())?;
+    let keys = runtime::wait(client.keys())?;
     if json {
-        return utils::json(&keys);
+        return terminal::json(&keys);
     }
     for key in &keys {
         let state = match (key.revoked_at, key.expires_at) {
@@ -30,13 +30,13 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
 /// token is printed once.
 pub fn create(client: &Client, label: &str, days: Option<u32>, json: bool) -> Result<()> {
     let expires_at = days.map(|days| chrono::Utc::now().timestamp() + i64::from(days) * 86_400);
-    let created = utils::wait(client.create_key(&CreateKeyRequest {
+    let created = runtime::wait(client.create_key(&CreateKeyRequest {
         label: label.to_owned(),
         scope: vec![Scope::Deploy],
         expires_at,
     }))?;
     if json {
-        return utils::json(&created);
+        return terminal::json(&created);
     }
     println!("{}", created.token);
     eprintln!("key {} made; the token above is shown once", created.key.id);
@@ -44,8 +44,8 @@ pub fn create(client: &Client, label: &str, days: Option<u32>, json: bool) -> Re
 }
 
 pub fn rm(client: &Client, id: &str, yes: bool) -> Result<()> {
-    utils::confirm(yes, &format!("revoke key {id}"))?;
-    utils::wait(client.delete_key(id))?;
+    terminal::confirm(yes, &format!("revoke key {id}"))?;
+    runtime::wait(client.delete_key(id))?;
     eprintln!("revoked {id}");
     Ok(())
 }

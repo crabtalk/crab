@@ -1,21 +1,13 @@
 //! What a guest can reach.
 //!
-//! A syscall is native host code behind a name, the way a precompile is
-//! native code behind an address. berm serves [`call`] itself, resolving
-//! against the set it already holds.
-//!
-//! The standard calls — [`store`], [`emit`], [`after`], [`http`], [`sql`] —
-//! are berm's to read and check, and a host's to carry out: each module turns
-//! the request into a typed value and hands it to closures the embedder
-//! registers with it.
-//! Anything else is a [`crate::Syscall`] the embedder writes whole.
-//!
-//! Every one of them, berm's own included, is reached through the one table
-//! below.
+//! A syscall is native host code behind a name. berm serves `berm.call`
+//! itself. The standard calls — [`store`], [`emit`], [`after`], [`http`],
+//! [`sql`] — are read and checked here and handed as typed values to closures
+//! the embedder registers; anything else is a [`crate::Syscall`] the embedder
+//! writes whole. All of them are reached through one table.
 
 use crate::{
-    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine,
-    tape::Answer, wire,
+    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine, tape::Answer,
 };
 use anyhow::{Result, anyhow, bail};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -26,7 +18,7 @@ use std::{
 use wasmtime::Caller;
 
 pub mod after;
-pub mod call;
+pub(crate) mod call;
 pub mod emit;
 pub mod http;
 pub mod sql;
@@ -35,9 +27,7 @@ pub mod store;
 /// One of the ABI's own doors: request bytes at `(ptr, len)` in, a staged
 /// length out, answered before the guest resumes.
 ///
-/// One signature for all of them, so the engine registers a table rather than
-/// a list of shapes. A call that takes no arguments is handed a pair it
-/// ignores.
+/// A call that takes no arguments is handed a pair it ignores.
 pub(crate) type Handler =
     Arc<dyn Fn(&mut Caller<'_, Invocation>, u64, u64) -> Result<u64> + Send + Sync>;
 
@@ -56,10 +46,7 @@ pub(crate) type Table = HashMap<u64, Door>;
 /// Assemble what a program is instantiated with: the ABI's own doors, then
 /// whatever the embedder registered.
 ///
-/// A name already spoken for is refused rather than replaced. An embedder
-/// cannot check for a collision itself without knowing every name berm
-/// reserves, and a silent replacement would send a guest's calls somewhere its
-/// author never named.
+/// A name already spoken for, berm's own included, is refused.
 pub(crate) fn table(syscalls: &[Syscall]) -> Result<Table> {
     let mut table = builtins();
     for syscall in syscalls {
@@ -90,11 +77,8 @@ pub(crate) fn request(
 
 /// Leave a syscall's bytes for the guest to pull, and answer with their length.
 ///
-/// Failure rides on the same return value: the [`abi::ERROR`] bit says the
-/// staged bytes are a message. One that fails therefore costs the guest
-/// nothing extra to find out about, and an empty result cannot be mistaken for
-/// one. A [`Refused`] additionally sets [`abi::REFUSED`], which is how a guest
-/// tells "it ran and said no" from "it never ran".
+/// The [`abi::ERROR`] bit says the staged bytes are a failure message. A
+/// [`Refused`] also sets [`abi::REFUSED`]: the call never ran.
 pub(crate) fn stage(guest: &mut Caller<'_, Invocation>, answer: Result<Vec<u8>>) -> u64 {
     let (staged, outcome) = match answer {
         Ok(result) => (result, 0),
@@ -132,8 +116,8 @@ fn builtins() -> Table {
         abi::HOST_CALLER,
         handler(|guest, _, _| {
             let reply = match &guest.data().at.caller {
-                Some(Asking::Outside(name)) => wire::frame(&[b"outside", name.as_bytes()]),
-                Some(Asking::Program(name)) => wire::frame(&[b"program", name.as_bytes()]),
+                Some(Asking::Outside(name)) => abi::wire::request(&[b"outside", name.as_bytes()]),
+                Some(Asking::Program(name)) => abi::wire::request(&[b"program", name.as_bytes()]),
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -144,7 +128,9 @@ fn builtins() -> Table {
         abi::HOST_USER,
         handler(|guest, _, _| {
             let reply = match &guest.data().at.user {
-                Some(user) => wire::frame(&[user.issuer.as_bytes(), user.subject.as_bytes()]),
+                Some(user) => {
+                    abi::wire::request(&[user.issuer.as_bytes(), user.subject.as_bytes()])
+                }
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -164,7 +150,7 @@ fn builtins() -> Table {
         abi::HOST_CLIENT,
         handler(|guest, _, _| {
             let reply = match &guest.data().at.client {
-                Some(client) => wire::frame(&[client.as_bytes()]),
+                Some(client) => abi::wire::request(&[client.as_bytes()]),
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -193,9 +179,8 @@ fn builtins() -> Table {
         handler(|guest, _, _| Ok(guest.data().args.len() as u64)),
     );
 
-    // Answers with the blob's full length rather than what fit, so a guest with
-    // too small a buffer can tell it was truncated instead of acting on half a
-    // request.
+    // Answers with the blob's full length, which exceeds `capacity` when the
+    // copy was truncated.
     table.insert(
         abi::HOST_ARG_READ,
         handler(|guest, ptr, capacity| {
@@ -208,9 +193,7 @@ fn builtins() -> Table {
         }),
     );
 
-    // The other half of every syscall. A program given none never stages
-    // anything, so this is registered unconditionally and has nothing to hand
-    // over.
+    // Registered for every program, including one given no syscalls.
     table.insert(
         abi::HOST_RESULT_READ,
         handler(|guest, ptr, capacity| {

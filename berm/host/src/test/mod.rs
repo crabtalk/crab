@@ -2,7 +2,7 @@
 //! against edges the test holds. Fetches answer what the test arranged, images
 //! are bytes it handed in, there are no peers, secrets are what it granted,
 //! each service signs with a key generated on first use, and the clock stands
-//! where it set it. Wakes are fired by the test, not a timer.
+//! where it set it. Wakes are fired by the test.
 //!
 //! ```ignore
 //! let host = TestHost::open(0).await?;
@@ -17,7 +17,7 @@ pub use berm::User;
 
 use crate::{
     api::outside::Layers,
-    env::{Clock, Edges},
+    env::{Alone, Clock, Edges},
     host::{self, Host},
     state::service,
     wake::table,
@@ -32,7 +32,7 @@ use berm::{
     tape::Taping,
 };
 use berm_api::{
-    Logged, Output,
+    Logged, Output, digest,
     host::{DATABASE_SIZE, Deploy, Page},
 };
 use parking_lot::Mutex;
@@ -48,11 +48,11 @@ use std::{
     task::{self, Poll},
     time::Duration,
 };
+use tokio::sync::MutexGuard;
 
 mod clock;
 mod env;
 mod images;
-mod peers;
 mod secrets;
 
 /// The edges of a [`TestHost`].
@@ -61,7 +61,8 @@ pub struct Test;
 
 /// A host whose state lives in a directory of its own, removed when it drops.
 pub struct TestHost {
-    host: Host<Test>,
+    /// The host itself, for what this does not wrap.
+    pub host: Host<Test>,
     fetch: Arranged,
     images: Given,
     secrets: Granted,
@@ -91,7 +92,7 @@ async fn opened(
             fetch: fetch.clone(),
             proxy: Some(fetch.clone()),
             images: images.clone(),
-            peers: Nowhere,
+            peers: Alone,
             secrets: secrets.clone(),
             layers: Layers::new(tower::layer::util::Identity::new()),
             observe: (),
@@ -106,7 +107,7 @@ async fn opened(
 pub struct Ran {
     /// What the tool answered, or the failure it reported.
     pub result: Output,
-    /// `result` is [`Output::Failed`] because the tool refused its caller.
+    /// The tool refused its caller; `result` is then [`Output::Failed`].
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,
@@ -168,11 +169,6 @@ impl TestHost {
         .await?;
         self.host.reconcile().await;
         Ok(())
-    }
-
-    /// The host itself, for what this does not wrap.
-    pub fn host(&self) -> &Host<Test> {
-        &self.host
     }
 
     /// Answer `method` on `url` with `status` and `body`, from now on.
@@ -254,7 +250,7 @@ impl TestHost {
     ) -> Result<Vec<String>> {
         let mut members = Vec::new();
         for (service, image, size) in set {
-            let digest = format!("sha256:{}", berm::digest(image));
+            let digest = digest::of(image);
             let reference = format!("test/{service}");
             self.images.0.lock().insert(digest.clone(), image.to_vec());
             members.push((
@@ -283,7 +279,7 @@ impl TestHost {
         size: u64,
         stopped: bool,
     ) -> Result<Arc<Program>> {
-        let digest = format!("sha256:{}", berm::digest(image));
+        let digest = digest::of(image);
         let reference = format!("test/{service}");
         self.images.0.lock().insert(digest.clone(), image.to_vec());
         Ok(self
@@ -323,6 +319,26 @@ impl TestHost {
         self.run(service, tool, args, Some(user)).await
     }
 
+    /// [`TestHost::call`] with `args` as JSON, answering its result as JSON:
+    /// null when it is empty. Refused when the tool did not finish.
+    pub async fn call_json(
+        &self,
+        service: &str,
+        tool: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let ran = self
+            .call(service, tool, &serde_json::to_vec(&args)?)
+            .await?;
+        let Output::Done(result) = ran.result else {
+            bail!("{tool} runs: {:?}", ran.result);
+        };
+        Ok(match result.as_str() {
+            "" => serde_json::Value::Null,
+            result => serde_json::from_str(result)?,
+        })
+    }
+
     async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
         let program = self
             .host
@@ -351,6 +367,11 @@ impl TestHost {
     /// Write the calls and logs held in memory, as the host's timer does.
     pub async fn flush(&self) -> Result<()> {
         self.host.flush().await
+    }
+
+    /// While held, a flush that wrote what it took keeps it in memory too.
+    pub async fn landing(&self) -> MutexGuard<'_, ()> {
+        self.host.landing.lock().await
     }
 
     /// Every pending wake beside when it is due, in milliseconds since the
@@ -471,13 +492,10 @@ impl Drop for TestHost {
     }
 }
 
-/// What the test programs this builds call their project file.
-const FIXTURE_FILE: &str = "crab.toml";
-
 /// Build the program `package` of the workspace the current directory is in
 /// as `crab build` does, and answer its finished image.
 pub fn build(package: &str) -> Result<Vec<u8>> {
-    let image = berm_build::build(&std::env::current_dir()?, Some(package), FIXTURE_FILE)?;
+    let image = berm_build::build(&std::env::current_dir()?, Some(package))?;
     std::fs::read(&image).with_context(|| format!("reading {}", image.display()))
 }
 
@@ -528,9 +546,6 @@ impl tower::Service<Request> for Arranged {
 /// The images the test deployed, by digest.
 #[derive(Clone, Default)]
 pub struct Given(Arc<Mutex<HashMap<String, Vec<u8>>>>);
-
-/// No peers: every service is deployed here or nowhere.
-pub struct Nowhere;
 
 /// The secrets the test granted, by service, secret and host.
 #[derive(Clone, Default)]

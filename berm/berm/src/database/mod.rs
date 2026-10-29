@@ -18,11 +18,11 @@ pub use query::Answer;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     collections::HashMap,
-    fs,
+    fmt, fs,
     future::Future,
     io::ErrorKind,
     path::{Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::{Arc, OnceLock, atomic::AtomicU64, mpsc},
     thread,
     time::Duration,
 };
@@ -50,6 +50,10 @@ const REKEY: &str = "
     INSERT INTO _berm_migrations (kit, name, sql, applied_at)
         SELECT '', name, sql, applied_at FROM _berm_migrations_unkeyed ORDER BY rowid;
     DROP TABLE _berm_migrations_unkeyed;";
+
+/// What [`Callsite::database`] keeps for an invocation: `None` for a program
+/// keeping no database.
+pub(crate) type Kept = OnceLock<Option<Arc<Database>>>;
 
 /// Work for the writer's thread, on the one connection that writes.
 type Job = Box<dyn FnOnce(&mut Connection) + Send>;
@@ -168,7 +172,7 @@ impl Databases {
                 }
             }
             drop(open);
-            if program.manifest().keeps_database() {
+            if program.manifest.keeps_database() {
                 taking = self
                     .get(&program.name)
                     .map(|database| Some(database).filter(|database| !database.holds(at.chain)));
@@ -196,6 +200,26 @@ impl Databases {
     }
 }
 
+impl Callsite {
+    /// The database of the program at this site, as `resolve` answers it on
+    /// the invocation's first ask and kept for the rest of the invocation. An
+    /// `Err` is not kept.
+    pub fn database(
+        &self,
+        resolve: impl FnOnce() -> Option<Result<Arc<Database>>>,
+    ) -> Option<Result<Arc<Database>>> {
+        if let Some(kept) = self.database.get() {
+            return kept.clone().map(Ok);
+        }
+        let resolved = match resolve() {
+            Some(Err(error)) => return Some(Err(error)),
+            Some(Ok(database)) => Some(database),
+            None => None,
+        };
+        self.database.get_or_init(|| resolved).clone().map(Ok)
+    }
+}
+
 /// Delete `path`, when there is one.
 fn remove(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
@@ -216,7 +240,17 @@ pub struct Database {
     writer: thread::JoinHandle<()>,
     /// Held by the call writing or a migration.
     writing: Arc<Mutex<()>>,
+    /// The chain holding the writer, [`lock::FREE`] for none.
+    holder: AtomicU64,
     graph: Arc<parking_lot::Mutex<Graph>>,
+}
+
+impl fmt::Debug for Database {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Database")
+            .field("name", &self.name)
+            .finish()
+    }
 }
 
 impl Database {
@@ -257,6 +291,7 @@ impl Database {
             jobs,
             writer,
             writing: Arc::new(Mutex::new(())),
+            holder: AtomicU64::new(lock::FREE),
             graph,
         })
     }

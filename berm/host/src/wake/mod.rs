@@ -5,6 +5,7 @@
 use crate::{
     env::{Env, Peers},
     host::{self, Host, Inner, Invoked},
+    record::calls,
 };
 use anyhow::{Result, bail};
 use berm::{
@@ -14,7 +15,7 @@ use berm::{
 };
 use berm_api::{
     Output,
-    host::{CallInput, Kind, Link, Outcome, Reply, Source},
+    host::{Kind, Link, Outcome, Reply, Source},
 };
 use std::{sync::Weak, time::Duration};
 
@@ -49,7 +50,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
             let own = wake.program == name;
             let wakeable = match target {
                 Some(target) => target
-                    .manifest()
+                    .manifest
                     .tools
                     .iter()
                     .any(|spec| spec.name == wake.tool && (own || spec.public)),
@@ -166,12 +167,6 @@ impl<E: Env> Host<E> {
             let _slot = self.gate.acquire().await?;
             let started = self.calls.start();
             let recorder = Recorder::default();
-            let input = CallInput {
-                tool: wake.tool.clone(),
-                args: wake.args.clone(),
-                caller: None,
-                digest: format!("sha256:{}", target.digest),
-            };
             let invoked = self
                 .invoke(
                     &target,
@@ -204,7 +199,14 @@ impl<E: Env> Host<E> {
                 &from,
                 outcome,
                 invoked.as_ref().ok(),
-                Some(input),
+                (outcome == Outcome::Failed).then(|| {
+                    calls::ran_with(
+                        &wake.tool,
+                        wake.args.clone().into_bytes(),
+                        None,
+                        &target.digest,
+                    )
+                }),
                 (outcome == Outcome::Failed)
                     .then(|| recorder.tape())
                     .as_ref(),

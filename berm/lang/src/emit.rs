@@ -3,7 +3,10 @@
 //! A host keeps each log beside the call it was emitted in, whatever that call
 //! ends as.
 
-use crate::abi::{self, host, host::CallError, wire};
+use crate::{
+    abi::{self, wire},
+    host::{self, CallError},
+};
 use alloc::vec::Vec;
 
 /// Emit `data` under `topics`, which a reader filters by.

@@ -1,12 +1,8 @@
 //! What a host call does when there is no host.
 //!
-//! Off wasm this crate is an ordinary library, so a program author can build
-//! and unit test their handlers natively rather than cross-compiling to see
-//! anything at all. The calls a test can reasonably answer — the argument blob,
-//! the trace, emitted logs, the failure channel, other programs and HTTP —
-//! are served from [`crate::test`]'s state.
-//! Anything else panics naming the syscall, because a test that reached a
-//! real syscall should say so rather than read a plausible zero.
+//! Off wasm, the argument blob, the trace, emitted logs, the failure channel,
+//! other programs and HTTP are served from [`crate::test`]'s state. Any other
+//! syscall panics naming it.
 
 use crate::{abi, test::Fetched};
 use std::{
@@ -28,13 +24,10 @@ pub(crate) struct Host {
     /// What the tool answered with, whichever door it used.
     pub done: Option<Vec<u8>>,
     pub failure: Option<String>,
-    /// What the last syscall call answered with. Staged exactly as a
-    /// real host stages it, so the pull in [`crate::abi::host::call`] is the
-    /// same code under a test as in a guest.
+    /// What the last syscall answered with, staged as a real host stages it.
     pub result: Vec<u8>,
     /// What a test has arranged another program to answer: the program, the
-    /// tool, the outcome bits, and the bytes. A short list rather than a map
-    /// because a program calls a handful of things, not a thousand.
+    /// tool, the outcome bits, and the bytes.
     pub answers: Vec<(String, String, u64, Vec<u8>)>,
     /// What a test has arranged a request to answer: the method, the URL,
     /// the status, and the body.
@@ -88,7 +81,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
         }
         abi::HOST_EMIT => {
             let request = bytes(a0, a1);
-            let Some(fields) = abi::wire::fields(request) else {
+            let Ok(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
             let mut fields = fields
@@ -116,12 +109,10 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             unsafe { core::ptr::copy_nonoverlapping(host.result.as_ptr(), a0 as *mut u8, taken) };
             host.result.len() as u64
         }),
-        // Another program, if the test arranged what it answers. The request is
-        // decoded here rather than matched whole so a test names the program and
-        // the tool, not a byte sequence.
+        // Another program, if the test arranged what it answers.
         abi::HOST_CALL => {
             let request = bytes(a0, a1);
-            let Some(fields) = abi::wire::fields(request) else {
+            let Ok(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
             let (program, tool) = match fields.as_slice() {
@@ -158,9 +149,9 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                 host.result.len() as u64
             })
         }
-        abi::HOST_HTTP_FETCH_ALL => {
+        abi::HOST_HTTP_FETCH_ALL | abi::HOST_HTTP_PROXY_ALL => {
             let batch = bytes(a0, a1);
-            let Some(requests) = abi::wire::fields(batch) else {
+            let Ok(requests) = abi::wire::fields(batch) else {
                 no_host(number)
             };
             let answers: Vec<Vec<u8>> = requests
@@ -185,7 +176,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
 /// The status and body arranged for one framed HTTP request, kept as
 /// fetched; `None` when it is not framed as one.
 fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
-    let fields = abi::wire::fields(request)?;
+    let fields = abi::wire::fields(request).ok()?;
     let [method, url, body, _timeout, limit, headers @ ..] = fields.as_slice() else {
         return None;
     };

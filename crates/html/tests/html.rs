@@ -46,3 +46,29 @@ fn unknown_entity_is_kept_as_written() {
     assert_eq!(crab_html::unescape("?a=1&utm=x;&amp;b"), "?a=1&utm=x;&b");
     assert_eq!(crab_html::text("x &bogus; y"), "x &bogus; y");
 }
+
+#[test]
+fn head_answers_what_title_and_meta_answer() {
+    let page = concat!(
+        r#"<META NAME="description" content="  "><Title>A &amp; B</TITLE>"#,
+        r#"<meta content="<meta name='og:title' content='inner'>" property="og:title">"#,
+        r#"<body><meta name="Description" content="Late"></body>"#,
+    );
+    let properties = ["og:title", "description", "og:image"];
+    let head = crab_html::head(page, &properties);
+    assert_eq!(head.title, crab_html::title(page));
+    assert_eq!(head.title.as_deref(), Some("A & B"));
+    let metas: Vec<Option<String>> = properties
+        .iter()
+        .map(|property| crab_html::meta(page, property))
+        .collect();
+    assert_eq!(head.metas, metas);
+    assert_eq!(
+        head.metas,
+        [
+            Some(String::from("<meta name='og:title' content='inner'>")),
+            Some(String::from("Late")),
+            None,
+        ]
+    );
+}

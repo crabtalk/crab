@@ -3,7 +3,7 @@
 
 use crate::{
     context::{self, Context, Contexts},
-    utils,
+    runtime, terminal,
 };
 use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::{
@@ -34,7 +34,7 @@ pub fn run(name: &str, host: &str, github: bool, device: bool) -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0").context("listening for the sign-in")?;
     let port = listener.local_addr()?.port();
     let provider = if github { "github" } else { "google" };
-    if !utils::open(&format!(
+    if !terminal::open(&format!(
         "{host}/auth/{provider}?client=terminal&port={port}"
     )) {
         eprintln!("no browser opened here");
@@ -58,7 +58,7 @@ pub fn run(name: &str, host: &str, github: bool, device: bool) -> Result<()> {
 /// prints, at its `/device` page, and use the session as context `name`.
 fn device(name: &str, host: &str) -> Result<()> {
     let client = Client::new(host);
-    let asked = utils::wait(client.ask_login())?;
+    let asked = runtime::wait(client.ask_login())?;
     println!("{}", asked.verification_uri_complete);
     eprintln!(
         "sign crab in: open the link, or enter {} at {}, within {} minutes",
@@ -69,7 +69,7 @@ fn device(name: &str, host: &str) -> Result<()> {
     let mut interval = Duration::from_secs(asked.interval);
     let token = loop {
         thread::sleep(interval);
-        match utils::wait(client.login_token(&asked.device_code)) {
+        match runtime::wait(client.login_token(&asked.device_code)) {
             Ok(signed) => break signed.token,
             Err(Error::Api { status: 429, .. }) => interval += Duration::from_secs(5),
             Err(Error::Api {
@@ -89,7 +89,7 @@ fn device(name: &str, host: &str) -> Result<()> {
 
 /// Keep `token` as context `name` on `host`, and use it from now on.
 fn keep(name: &str, host: &str, token: String) -> Result<()> {
-    let me = utils::wait(Client::new(host).token(&token).me())?;
+    let me = runtime::wait(Client::new(host).token(&token).me())?;
     let who = me.user.handle.unwrap_or(me.user.id);
     let mut contexts = Contexts::load()?;
     contexts.contexts.insert(

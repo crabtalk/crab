@@ -6,7 +6,8 @@
 //! statements are refused. Under a `query`, a statement that writes is refused.
 
 use crate::{
-    abi::{self, host, host::CallError, wire},
+    abi::{self, wire},
+    host::{self, CallError},
     json,
 };
 use alloc::{string::String, vec::Vec};

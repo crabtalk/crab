@@ -6,7 +6,6 @@
 //! guest builds `[path]` and the host reads `fields[0]`, in different crates,
 //! kept in step by memory. Here they come from one grammar.
 
-use crate::utils;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -125,7 +124,7 @@ impl Parse for Module {
         }
 
         Ok(Self {
-            docs: utils::docs(&attrs),
+            docs: crate::docs(&attrs),
             name,
             calls,
         })
@@ -167,7 +166,7 @@ impl Parse for Call {
         input.parse::<Token![;]>()?;
 
         Ok(Self {
-            docs: utils::docs(&attrs),
+            docs: crate::docs(&attrs),
             name,
             params,
             tail,
@@ -189,8 +188,7 @@ impl Parse for Param {
 
 impl Parse for Reply {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        // A tuple carries names so the generated struct has fields rather than
-        // `.0` and `.1`, which say nothing at the call site.
+        // A tuple's names become the generated struct's fields.
         if input.peek(token::Paren) {
             let inner;
             syn::parenthesized!(inner in input);
@@ -365,7 +363,7 @@ impl Declaration {
             Reply::Nothing => (
                 quote!(),
                 quote!(()),
-                quote!(::berm_lang::abi::host::call(#konst, &request).map(|_| ())),
+                quote!(::berm_lang::host::call(#konst, &request).map(|_| ())),
             ),
             // Staged raw: one blob needs no framing to be told apart from the
             // rest of itself, and `fs::read` would pay four bytes per file for
@@ -373,7 +371,7 @@ impl Declaration {
             Reply::One(Ty::Bytes) => (
                 quote!(),
                 quote!(::alloc::vec::Vec<u8>),
-                quote!(::berm_lang::abi::host::call(#konst, &request)),
+                quote!(::berm_lang::host::call(#konst, &request)),
             ),
             Reply::One(ty) => {
                 let owned = ty.owned();
@@ -382,7 +380,7 @@ impl Declaration {
                     quote!(),
                     owned,
                     quote! {
-                        let reply = ::berm_lang::abi::host::call(#konst, &request)?;
+                        let reply = ::berm_lang::host::call(#konst, &request)?;
                         ::core::result::Result::Ok(#decode)
                     },
                 )
@@ -407,8 +405,8 @@ impl Declaration {
                     },
                     quote!(#ty),
                     quote! {
-                        let reply = ::berm_lang::abi::host::call(#konst, &request)?;
-                        let ::core::option::Option::Some(parts) =
+                        let reply = ::berm_lang::host::call(#konst, &request)?;
+                        let ::core::result::Result::Ok(parts) =
                             ::berm_lang::abi::wire::fields(&reply)
                         else {
                             return ::core::result::Result::Err(
@@ -448,10 +446,8 @@ impl Declaration {
 
     /// The constructor a host serves a name with.
     ///
-    /// It takes the implementation and returns the registrable `Syscall`, so
-    /// the fields the guest built are read back by generated code rather than
-    /// by an index written out per call — which is where a syscall
-    /// actually goes wrong.
+    /// It takes the implementation and returns the registrable `Syscall`; the
+    /// fields the guest built are read back by generated code.
     fn host(&self, module: &Module, call: &Call) -> TokenStream {
         let wire = format!("{}.{}.{}", self.namespace, module.name, call.name);
         let ident = &call.name;
@@ -599,7 +595,7 @@ impl Declaration {
                     quote! {
                         let reply = served?;
                         #(#staged)*
-                        ::core::result::Result::Ok(::berm::wire::frame(&[#(#borrowed),*]))
+                        ::core::result::Result::Ok(::berm::abi::wire::request(&[#(#borrowed),*]))
                     },
                 )
             }
@@ -623,7 +619,7 @@ impl Declaration {
                     call: ::std::sync::Arc::new(
                         move |at: ::berm::Callsite, request: ::std::vec::Vec<u8>| -> ::berm::Reply {
                             let decoded = (|| -> ::berm::anyhow::Result<_> {
-                                let fields = ::berm::wire::fields(&request)?;
+                                let fields = ::berm::abi::wire::fields(&request)?;
                                 #arity
                                 #(#reads)*
                                 #pairs

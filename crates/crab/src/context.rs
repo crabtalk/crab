@@ -1,13 +1,12 @@
 //! Where `crab` sends its calls: a named host, and for Cloud, the token and
 //! the account it deploys under. Kept in `~/.crab/contexts.toml`.
 
-use crate::utils;
 use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::client::{Client, Owner};
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{collections::BTreeMap, env, fs, path::PathBuf};
 
 /// The context that is always there: the local host on this machine.
 pub const DEFAULT: &str = "default";
@@ -86,8 +85,13 @@ impl Contexts {
     }
 }
 
+/// `~/.crab`, where `crab` keeps its contexts and the local host's root.
+pub fn dir() -> Result<PathBuf> {
+    Ok(PathBuf::from(env::var("HOME").context("HOME is not set")?).join(".crab"))
+}
+
 fn path() -> Result<PathBuf> {
-    Ok(utils::home()?.join(".crab").join(FILE))
+    Ok(dir()?.join(FILE))
 }
 
 impl From<Context> for Client {

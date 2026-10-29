@@ -1,7 +1,7 @@
 //! One compiled program, and the state of one invocation of it.
 
 use crate::{
-    Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi,
+    Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi, chain,
     engine::{Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Pool, Running},
@@ -12,7 +12,7 @@ use crate::{
     tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Callers, Manifest, Output, Runtime, host};
+use berm_api::{Callers, Manifest, Output, Runtime, digest, host};
 use std::{
     collections::BTreeMap,
     error, fmt,
@@ -22,33 +22,24 @@ use std::{
     },
     time::{Duration, Instant},
 };
-
-/// The last [`Callsite::chain`] handed out.
-static CHAINS: AtomicU64 = AtomicU64::new(0);
-
-/// A [`Callsite::chain`] no chain in this process has had, for
-/// [`Program::call_as`].
-pub fn chain() -> u64 {
-    CHAINS.fetch_add(1, Ordering::Relaxed) + 1
-}
+use wasmtime::{Memory, ModuleExport};
 
 /// One compiled program: an image, its tools, and the syscalls it was linked
-/// against. Compilation is paid once; every invocation gets a fresh instance so
-/// no guest state crosses between calls.
+/// against. Compilation is paid once; every invocation gets a fresh instance,
+/// and no guest state crosses between calls.
 pub struct Program {
-    /// What this program was deployed as, as every syscall reports it. An
-    /// `Arc` because it is cloned into each invocation.
+    /// What this program was deployed as, as every syscall reports it.
     pub name: Arc<str>,
-    /// sha256 of the image. Redeploying different bytes under the same name is
-    /// a different program, and this is what says so.
+    /// sha256 of the image; different bytes deployed under one name differ here.
     pub digest: String,
     image: Image,
+    /// Bytes its image and its compiled code take.
+    pub bytes: u64,
     /// Read from the image at load, without running anything.
-    manifest: Manifest,
+    pub manifest: Manifest,
     /// The manifest's deps, as every invocation's [`Callsite`] carries them.
     deps: Arc<Deps>,
-    /// Each tool beside the symbol it is exported as, resolved once so a call
-    /// spends no allocation rebuilding the name, and whether it is a query.
+    /// Each tool beside its export, resolved once, and whether it is a query.
     tools: BTreeMap<String, Tool>,
     /// What each invocation runs inside.
     enter: Enter,
@@ -71,13 +62,13 @@ pub struct Program {
 }
 
 struct Tool {
-    symbol: String,
+    export: ModuleExport,
     query: bool,
 }
 
 impl Drop for Program {
     fn drop(&mut self) {
-        self.pool.unload(self.image.bytes);
+        self.pool.unload(self.bytes);
     }
 }
 
@@ -92,26 +83,19 @@ impl Program {
         syscalls: &[Syscall],
         calls: &Calls,
     ) -> Result<Self> {
-        let compiled = Image::compile(engine, image, syscall::table(syscalls)?)
+        let (compiled, bytes) = Image::compile(engine, image, syscall::table(syscalls)?)
             .context("failed to compile program")?;
 
-        let manifest = Manifest::from_image(image)?;
+        let manifest = Manifest::try_from(image)?;
         let tools: BTreeMap<String, Tool> = compiled
             .exports()
-            .into_iter()
-            .filter_map(|export| {
-                let name = export.strip_prefix(abi::TOOL_PREFIX)?;
+            .filter_map(|(symbol, export)| {
+                let name = symbol.strip_prefix(abi::TOOL_PREFIX)?;
                 let query = manifest
                     .tools
                     .iter()
                     .any(|spec| spec.name == name && spec.query);
-                Some((
-                    name.to_owned(),
-                    Tool {
-                        symbol: export.to_owned(),
-                        query,
-                    },
-                ))
+                Some((name.to_owned(), Tool { export, query }))
             })
             .collect();
         if tools.is_empty() {
@@ -121,10 +105,6 @@ impl Program {
             bail!("program declares more than one stripe tool");
         }
 
-        // A program that advertises a tool it does not export would fail at
-        // dispatch, on a model's turn, as a missing symbol. The export table
-        // and the manifest are both in hand here, so disagreement is caught
-        // before the program is ever offered.
         for tool in &manifest.tools {
             if !tools.contains_key(&tool.name) {
                 bail!(
@@ -151,12 +131,13 @@ impl Program {
 
         let name: Arc<str> = name.into();
         let pool = (calls.pool)(&name);
-        pool.load(compiled.bytes);
+        pool.load(bytes);
         Ok(Self {
             issuer: (calls.named)(&name).into(),
             name,
-            digest: digest(image),
+            digest: digest::hex(image),
             image: compiled,
+            bytes,
             deps: Arc::new(manifest.deps.clone()),
             manifest,
             tools,
@@ -207,16 +188,6 @@ impl Program {
             .tools
             .iter()
             .any(|spec| spec.name == tool && spec.callers != Some(Callers::Services))
-    }
-
-    /// Bytes its image and its compiled code take.
-    pub fn bytes(&self) -> u64 {
-        self.image.bytes
-    }
-
-    /// What the program says it is: ABI version, tools, and README.
-    pub fn manifest(&self) -> &Manifest {
-        &self.manifest
     }
 
     /// Its IDL, deployed as `name`: the JSON a host serves for it.
@@ -273,8 +244,7 @@ impl Program {
     ///
     /// `caller` is who is calling, as the embedder names them; a syscall reads
     /// it off its [`Callsite`] as [`Caller::Outside`]. Any tool may be called
-    /// this way: which tools an outside caller reaches is the embedder's to
-    /// decide.
+    /// this way; the embedder decides which tools an outside caller reaches.
     pub async fn call(
         &self,
         caller: Option<Arc<str>>,
@@ -288,7 +258,7 @@ impl Program {
             tool,
             args,
             Arc::default(),
-            chain(),
+            chain::next(),
             Taping::Off,
         )
         .await
@@ -296,7 +266,7 @@ impl Program {
 
     /// [`Program::call`] on behalf of `user` and `client`, which every call in
     /// the chain reads off its [`Callsite`], metered in `meters`. `chain`, from
-    /// [`chain`], is the chain's [`Callsite::chain`].
+    /// [`chain::next`], is the chain's [`Callsite::chain`].
     #[allow(clippy::too_many_arguments)]
     pub async fn call_as(
         &self,
@@ -369,7 +339,7 @@ impl Program {
                 depth,
                 query,
                 deadline,
-                chain(),
+                chain::next(),
                 journal.clone(),
                 meters,
                 stack,
@@ -413,7 +383,7 @@ impl Program {
     ) -> Result<Ended> {
         let (at_ms, began) = ((self.now)(), Instant::now());
         let Some(Tool {
-            symbol,
+            export,
             query: declared,
         }) = self.tools.get(tool)
         else {
@@ -421,16 +391,6 @@ impl Program {
         };
 
         let budget = (self.budget)(&self.name, tool).unwrap_or(self.image.budget);
-        let largest = self.image.budget.memory;
-        let reserved = Held::new(
-            self.running.clone(),
-            self.pool.clone(),
-            self.image.reserve.clone(),
-            match budget.memory {
-                0 => largest,
-                memory => memory.min(largest),
-            },
-        )?;
         let mut at = Callsite {
             program: self.name.clone(),
             tool: tool.into(),
@@ -452,6 +412,8 @@ impl Program {
             journal: journal.clone(),
             meters,
             own: Arc::new(Own::new(budget.rows)),
+            #[cfg(feature = "sqlite")]
+            database: Arc::default(),
         };
         at.meter(Meter {
             runs: u64::from(depth == 1),
@@ -459,6 +421,17 @@ impl Program {
             ..Meter::default()
         });
         let scope = (self.enter)(self, &at).await?;
+        // A refusal drops the scope, which undoes what it holds.
+        let largest = self.image.budget.memory;
+        let reserved = Held::new(
+            self.running.clone(),
+            self.pool.clone(),
+            self.image.reserve.clone(),
+            match budget.memory {
+                0 => largest,
+                memory => memory.min(largest),
+            },
+        )?;
         let own = scope.own();
         if own {
             at.journal = Arc::new(Journal::default());
@@ -478,6 +451,7 @@ impl Program {
             outcome: None,
             denied: false,
             tape,
+            memory: None,
         };
         let buffer = self.manifest.buffer;
         let ended = match invocation.args.len() > buffer {
@@ -487,7 +461,7 @@ impl Program {
             }),
             false => self
                 .image
-                .call(symbol, invocation)
+                .call(export, invocation)
                 .await
                 .with_context(|| format!("program trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
@@ -600,40 +574,28 @@ pub struct Ended {
 /// What one chain answered with, and what it left for the host to commit.
 #[derive(Debug)]
 pub struct Outcome {
-    /// [`Output::Failed`] is the program's own reported failure, which is a
-    /// tool result rather than an error.
+    /// [`Output::Failed`] is the program's own reported failure.
     pub result: Output,
-    /// `result` is [`Output::Failed`] because the program refused its caller,
-    /// through `berm.deny`.
+    /// The program refused its caller through `berm.deny`; `result` is then
+    /// [`Output::Failed`].
     pub denied: bool,
     /// Empty when `result` is [`Output::Failed`].
     pub changes: Changes,
 }
 
-/// sha256 of `image`, in lowercase hex: what [`Program::digest`] holds.
-pub fn digest(image: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(image))
-}
-
-/// Guest state for one invocation. Memory is per-invocation; anything a
-/// program needs to survive belongs in a storage program, not here.
+/// Guest state for one invocation. Memory is per-invocation.
 pub struct Invocation {
-    /// The program this invocation is of, and the chain it sits in. Built
-    /// once with the invocation, so a syscall costs no lookup.
+    /// The program this invocation is of, and the chain it sits in.
     pub(crate) at: Callsite,
     /// What `berm.now` answers.
     pub(crate) now: Now,
     /// Its program's [`Program::issuer`].
     pub(crate) issuer: Arc<str>,
     pub(crate) args: Vec<u8>,
-    /// The last syscall's reply, waiting for the guest to pull it. Staged
-    /// rather than pushed because its size is not known until the work is
-    /// done, and doing the work twice to measure it is not an option.
+    /// The last syscall's reply, waiting for the guest to pull it.
     pub(crate) staged: Vec<u8>,
     /// What the tool answered with, once it has. `Err` is the program's own
-    /// reported failure, which is how a tool that failed is told apart from one
-    /// that returned the word "error".
+    /// reported failure.
     pub(crate) outcome: Option<Result<Vec<u8>, String>>,
     /// Set by `berm.deny`.
     pub(crate) denied: bool,
@@ -645,6 +607,8 @@ pub struct Invocation {
     pub(crate) held: Held,
     /// The tape it records or answers from; only a chain's first link has one.
     pub(crate) tape: Option<Deck>,
+    /// Its instance's linear memory, once instantiated.
+    pub(crate) memory: Option<Memory>,
 }
 
 /// A syscall's answer when it refused the call and nothing ran.

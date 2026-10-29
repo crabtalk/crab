@@ -1,5 +1,4 @@
 use anyhow::Result;
-use berm_api::host::{Caller, User};
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
@@ -12,7 +11,7 @@ use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 #[command(
     name = "crab",
     version,
-    about = "Run the local host, deploy and inspect programs on it or Cloud, and run a Cloud account"
+    about = "Run the local host, deploy and inspect services on it or Cloud, and run a Cloud account"
 )]
 struct Args {
     /// The context to talk to, in place of the one in use.
@@ -72,7 +71,7 @@ enum Command {
     },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
-    /// Run the local host: deploy programs to it and serve their tools over
+    /// Run the local host: deploy services to it and serve their tools over
     /// HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`.
     #[command(args_conflicts_with_subcommands = true)]
     Dev {
@@ -84,11 +83,11 @@ enum Command {
         #[arg(short, long)]
         detach: bool,
     },
-    /// Scaffold a program crate.
+    /// Scaffold a service crate.
     New { name: String },
-    /// List deployed programs.
+    /// List deployed services.
     Ls,
-    /// Build the program in a directory and print the path of its image.
+    /// Build the service in a directory and print the path of its image.
     Build {
         #[arg(default_value = ".")]
         dir: PathBuf,
@@ -99,67 +98,50 @@ enum Command {
     Deploy(cmd::deploy::Deploy),
     /// `crab deploy`, installing each stopped, to serve once started.
     Push(cmd::deploy::Deploy),
-    /// Serve stopped programs again: those named, or the services `crab
-    /// deploy` would deploy here.
+    /// Serve stopped services again: those named, or those `crab deploy`
+    /// would deploy here.
     Start { names: Vec<String> },
-    /// Stop serving programs, keeping what they committed: those named, or the
-    /// services `crab deploy` would deploy here.
+    /// Stop serving services, keeping what they committed: those named, or
+    /// those `crab deploy` would deploy here.
     Stop { names: Vec<String> },
-    /// Call one of a program's tools.
-    Call {
-        /// The service: a name on the context's account, or `owner/name` on
-        /// Cloud for another account's public service.
-        program: String,
-        tool: String,
-        /// The argument object. Read from stdin when omitted.
-        arguments: Option<String>,
-        /// On the local host, the caller the program is told called it.
-        #[arg(long)]
-        caller: Option<String>,
-        /// On the local host, the end user's issuer the program is told it is called for.
-        #[arg(long, requires = "user", requires = "caller")]
-        issuer: Option<String>,
-        /// On the local host, the end user's subject the program is told it is called
-        /// for.
-        #[arg(long, requires = "issuer")]
-        user: Option<String>,
-    },
+    /// Call one of a service's tools.
+    Call(cmd::call::Call),
     /// Run a call that failed again, read from the context in use: here, the
     /// image it ran answered from its tape, or with `--on` on that context's
     /// host, against its state.
     Replay {
-        program: String,
+        service: String,
         /// The call's id, as `crab calls` lists it.
         id: u64,
         /// The context to run it on, against that host's state.
         #[arg(long)]
         on: Option<String>,
     },
-    /// Show a program's README, tools and their arguments.
+    /// Show a service's README, tools and their arguments.
     Inspect {
         /// The service: a name on the context's account, or `owner/name` on
         /// Cloud for another account's public service.
         name: String,
     },
-    /// Write a deployed program's IDL, which `declare_program!` reads.
+    /// Write a deployed service's IDL, which `declare_program!` reads.
     Idl {
         name: String,
         /// Where to write `{name}.json`.
         #[arg(long, default_value = "idls")]
         out: PathBuf,
     },
-    /// Remove programs and what they committed: those named, or the services
-    /// `crab deploy` would deploy here.
+    /// Remove services and what they committed: those named, or those `crab
+    /// deploy` would deploy here.
     Rm { names: Vec<String> },
-    /// Print what a program emitted, oldest first.
+    /// Print what a service emitted, oldest first.
     Logs {
         name: String,
         /// Only logs after this sequence number.
         #[arg(long, default_value_t = 0)]
         after: u64,
     },
-    /// What a program used over the last 30 days, a day each; with no
-    /// program, what the account's services used and how much of its plan.
+    /// What a service used over the last 30 days, a day each; with no
+    /// service, what the account's services used and how much of its plan.
     Usage { name: Option<String> },
     /// A service's calls over the last 30 days, newest first, on Cloud.
     Calls {
@@ -187,10 +169,10 @@ enum Command {
         #[command(subcommand)]
         action: Option<EarningsCommand>,
     },
-    /// A program's cron tools: listed, set, stopped.
+    /// A service's cron tools: listed, set, stopped.
     #[command(subcommand)]
     Cron(CronCommand),
-    /// The wakes armed to call a program's tools.
+    /// The wakes armed to call a service's tools.
     Wakes { name: String },
     /// A service's last 100 deploys on Cloud, newest first, refused and
     /// failed ones included.
@@ -225,7 +207,7 @@ enum Command {
         #[arg(long, value_name = "MIB", requires = "cpu")]
         memory: Option<u64>,
     },
-    /// A program's secrets on Cloud: set, listed by name, revoked.
+    /// A service's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
     Secret(SecretCommand),
     /// The account's plan, credit and payments; with no subcommand, where it
@@ -267,7 +249,7 @@ enum Shown {
 
 #[derive(Subcommand)]
 enum CronCommand {
-    /// List a program's cron tools, each with its expression and next run.
+    /// List a service's cron tools, each with its expression and next run.
     Ls { name: String },
     /// Set a cron tool's expression, five fields in UTC, from its next firing.
     Set {
@@ -281,7 +263,7 @@ enum CronCommand {
 
 #[derive(Subcommand)]
 enum SecretCommand {
-    /// Set a secret of a program, its value read from stdin and sent only to
+    /// Set a secret of a service, its value read from stdin and sent only to
     /// the hosts given, or to none. A set secret's value is changed only by
     /// revoking it and setting it again.
     Put {
@@ -292,7 +274,7 @@ enum SecretCommand {
         #[arg(long = "host")]
         hosts: Vec<String>,
     },
-    /// Send a secret of a program to these hosts alone, replacing those it
+    /// Send a secret of a service to these hosts alone, replacing those it
     /// had.
     Hosts {
         name: String,
@@ -302,13 +284,13 @@ enum SecretCommand {
         #[arg(long = "host", required = true)]
         hosts: Vec<String>,
     },
-    /// List a program's secrets, by name, with the hosts each is sent to.
+    /// List a service's secrets, by name, with the hosts each is sent to.
     Ls { name: String },
-    /// Revoke a secret of a program.
+    /// Revoke a secret of a service.
     Rm { name: String, secret: String },
-    /// Set a program's credentials at this terminal, typed by the person
-    /// here: in the workspace's secrets.toml against the local host, on the
-    /// account against Cloud. Refused when not run at a terminal.
+    /// Set a service's credentials at this terminal, typed by the person
+    /// here: in `secrets.toml` under the local host's root against the local
+    /// host, on the account against Cloud. Refused when not run at a terminal.
     Fill {
         name: String,
         /// A value the credentials have the person enter at the provider,
@@ -316,7 +298,7 @@ enum SecretCommand {
         #[arg(long = "copy", value_parser = cmd::secret::copy)]
         copies: Vec<(String, String)>,
     },
-    /// Ask a person to set a program's unset secrets, or one credential's: a
+    /// Ask a person to set a service's unset secrets, or one credential's: a
     /// code whose page they set them at, signed in, so no value passes
     /// through here.
     Request {
@@ -668,7 +650,7 @@ fn main() -> Result<ExitCode> {
             credential,
             copies,
             r#for,
-        }) => cmd::secret::ask(&client()?, name, credential.as_deref(), copies, r#for, json)?,
+        }) => cmd::secret::request(&client()?, name, credential.as_deref(), copies, r#for, json)?,
         Command::Budget {
             name,
             tool,
@@ -783,41 +765,15 @@ fn main() -> Result<ExitCode> {
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
         Command::Upgrade => cmd::upgrade::run(yes)?,
-        // The one command whose exit code carries a result rather than a
-        // verdict on berm.
-        Command::Call {
-            program,
-            tool,
-            arguments,
-            caller,
-            issuer,
-            user,
-        } => {
-            let caller = caller.as_ref().map(|id| Caller {
-                id: id.clone(),
-                app: None,
-                user: issuer
-                    .clone()
-                    .zip(user.clone())
-                    .map(|(issuer, subject)| User { issuer, subject }),
-                client: None,
-                agent: None,
-            });
-            return cmd::call::run(
-                &client()?,
-                program,
-                tool,
-                arguments.as_deref(),
-                caller.as_ref(),
-            );
-        }
-        Command::Replay { program, id, on } => {
+        // The one command whose exit code carries the call's result.
+        Command::Call(call) => return cmd::call::run(&client()?, call),
+        Command::Replay { service, id, on } => {
             return match on {
                 Some(on) => {
                     let on = Client::from(Contexts::load()?.get(Some(on))?);
-                    cmd::replay::on(&client()?, &on, program, *id)
+                    cmd::replay::on(&client()?, &on, service, *id)
                 }
-                None => cmd::replay::tape(&client()?, program, *id),
+                None => cmd::replay::tape(&client()?, service, *id),
             };
         }
     }

@@ -363,23 +363,7 @@ impl Outcome {
     }
 }
 
-impl fmt::Display for Kind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.serialize(f)
-    }
-}
-
-impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.serialize(f)
-    }
-}
-
-impl fmt::Display for Outcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.serialize(f)
-    }
-}
+crate::text_enum!(Kind, Source, Outcome);
 
 /// Uses of a service counted on another host, for the host it runs on.
 #[derive(Debug, Clone, Serialize, Deserialize)]

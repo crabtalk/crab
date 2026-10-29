@@ -1,10 +1,8 @@
 //! What a manifest is read from: an image's `.berm.abi`, `.berm.program` and
 //! `.berm.kits` sections, and what it refuses.
 
-use berm_api::{
-    ABI_SECTION, ABI_VERSION, Credential, CredentialSecret, Deps, Image, KITS_SECTION, Kit,
-    Manifest, PROGRAM_SECTION, ProgramRecord,
-};
+use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, PROGRAM_SECTION};
+use berm_api::{Credential, CredentialSecret, Deps, Image, Kit, Manifest, ProgramRecord};
 
 /// A wasm module holding one custom section, `padding`, empty.
 const EMPTY: &[u8] = b"\0asm\x01\0\0\0\0\x08\x07padding";
@@ -102,7 +100,7 @@ fn a_section_is_appended_once() {
 fn the_manifest_joins_the_three_sections() {
     let abi = tool("b", "demo") + &tool("a", "demo");
     let manifest =
-        Manifest::from_image(&image(&abi, Some(&program()), &[kit("k1"), kit("k2")])).unwrap();
+        Manifest::try_from(&*image(&abi, Some(&program()), &[kit("k1"), kit("k2")])).unwrap();
     assert_eq!(manifest.name, "demo");
     assert_eq!(manifest.buffer, 1024);
     let tools: Vec<&str> = manifest
@@ -117,7 +115,7 @@ fn the_manifest_joins_the_three_sections() {
 
 #[test]
 fn the_manifest_reads_back_from_its_json() {
-    let manifest = Manifest::from_image(&image(&tool("a", "demo"), Some(&program()), &[])).unwrap();
+    let manifest = Manifest::try_from(&*image(&tool("a", "demo"), Some(&program()), &[])).unwrap();
     let json = serde_json::to_string(&manifest).unwrap();
     let read: Manifest = json.parse().unwrap();
     assert_eq!(read.tools.len(), 1);
@@ -126,20 +124,20 @@ fn the_manifest_reads_back_from_its_json() {
 
 #[test]
 fn an_image_without_its_program_section_is_refused() {
-    let error = Manifest::from_image(&image(&tool("a", "demo"), None, &[])).unwrap_err();
+    let error = Manifest::try_from(&*image(&tool("a", "demo"), None, &[])).unwrap_err();
     assert!(error.to_string().contains(PROGRAM_SECTION), "{error}");
 }
 
 #[test]
 fn a_tool_compiled_in_another_crate_is_refused() {
     let abi = tool("a", "demo") + &tool("b", "some-kit");
-    let error = Manifest::from_image(&image(&abi, Some(&program()), &[])).unwrap_err();
+    let error = Manifest::try_from(&*image(&abi, Some(&program()), &[])).unwrap_err();
     assert!(error.to_string().contains("some-kit"), "{error}");
 }
 
 #[test]
 fn a_kit_named_twice_is_refused() {
-    let error = Manifest::from_image(&image(
+    let error = Manifest::try_from(&*image(
         &tool("a", "demo"),
         Some(&program()),
         &[kit("k"), kit("k")],
@@ -151,19 +149,19 @@ fn a_kit_named_twice_is_refused() {
 #[test]
 fn an_image_of_another_abi_is_refused() {
     let old = r#"{"abi_version":4,"tools":[]}"#;
-    let error = Manifest::from_image(&image(old, Some(&program()), &[])).unwrap_err();
+    let error = Manifest::try_from(&*image(old, Some(&program()), &[])).unwrap_err();
     assert!(error.to_string().contains("ABI version 4"), "{error}");
 }
 
 #[test]
 fn an_image_with_no_tools_is_refused() {
-    let error = Manifest::from_image(&image("", Some(&program()), &[])).unwrap_err();
+    let error = Manifest::try_from(&*image("", Some(&program()), &[])).unwrap_err();
     assert!(error.to_string().contains("no tools"), "{error}");
 }
 
 #[test]
 fn a_kits_credentials_reach_the_manifest() {
-    let manifest = Manifest::from_image(&image(
+    let manifest = Manifest::try_from(&*image(
         &tool("a", "demo"),
         Some(&program()),
         &[credentialed("k", "github", "GITHUB_CLIENT_ID")],
@@ -183,7 +181,7 @@ fn a_kits_credentials_reach_the_manifest() {
 
 #[test]
 fn a_credential_declared_by_two_kits_is_refused() {
-    let error = Manifest::from_image(&image(
+    let error = Manifest::try_from(&*image(
         &tool("a", "demo"),
         Some(&program()),
         &[
@@ -200,7 +198,7 @@ fn a_credential_declared_by_two_kits_is_refused() {
 
 #[test]
 fn a_secret_in_two_credentials_is_refused() {
-    let error = Manifest::from_image(&image(
+    let error = Manifest::try_from(&*image(
         &tool("a", "demo"),
         Some(&program()),
         &[

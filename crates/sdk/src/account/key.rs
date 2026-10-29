@@ -1,6 +1,5 @@
 //! API-key wire types.
 
-use crate::utils::text_enum;
 use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -24,7 +23,7 @@ pub enum Scope {
     Deploy,
 }
 
-text_enum!(Scope { Deploy => "deploy" });
+berm_api::text_enum!(Scope);
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

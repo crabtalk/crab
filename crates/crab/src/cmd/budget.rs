@@ -1,9 +1,9 @@
 //! `crab budget` — the most one call of a tool may use, and what its runs used.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use berm_api::Budget;
-use crabtalk_sdk::{client::Client, sandbox::service::Measured};
+use crabtalk_sdk::{client::Client, services::service::Measured};
 
 /// Set `name`'s `tool` to at most `cpu` microseconds, `rows` rows and
 /// `memory` MiB a call; `None` memory is the host's most.
@@ -15,7 +15,7 @@ pub fn set(
     rows: u64,
     memory: Option<u64>,
 ) -> Result<()> {
-    utils::wait(client.budget(
+    runtime::wait(client.budget(
         name,
         tool,
         Budget {
@@ -32,15 +32,15 @@ pub fn set(
 /// What `name`'s `tool` used over the last 30 days, its budget when it is
 /// public, and the memory budget its runs fit.
 pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
-    let mut tools = utils::wait(client.tools(name))?;
+    let mut tools = runtime::wait(client.tools(name))?;
     let Some(used) = tools.remove(tool) else {
         println!("{name}.{tool} was not called in the last 30 days");
         return Ok(());
     };
     if json {
-        return utils::json(&used);
+        return terminal::json(&used);
     }
-    let terms = utils::wait(client.terms(name))?;
+    let terms = runtime::wait(client.terms(name))?;
     println!("{name}.{tool}");
     if let Some(terms) = terms.tools.get(tool) {
         let budget = terms.held.budget;

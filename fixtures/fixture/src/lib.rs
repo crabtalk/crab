@@ -1,34 +1,11 @@
 //! The reference guest: the smallest real program, and what berm is measured
 //! and tested against.
 //!
-//! This file is what an author actually writes. The exports, the manifest
-//! records, the dispatch, and the panic handler come from the SDK, and its
-//! `crab.toml` declares what it reaches for.
-//!
-//! Each tool prices or proves one thing, which is why they are not useful on
-//! their own: `echo` reads its arguments and answers them back, `carry` takes
-//! the same payload without reading it to price a parse, `chatty` makes a
-//! hundred host calls to price one, `probe` allocates to show the heap arrives without
-//! a second entry into the guest, `spin` loops past the CPU time a call
-//! includes, `lowered` lowers its memory budget before it loops, and `boom`
-//! fails on purpose.
-//! `tick` arms itself, to show a wake outliving the invocation that asked for
-//! it, `wait` makes one host call a host can make slow, `fetch` makes one
-//! HTTP request to a host its manifest declares, and `random` answers fresh
-//! random bytes. `note` writes and emits, and
-//! `relay` calls `note` on `inner`, to show what a failed call takes with it.
-//! `seen` takes the `Noted` events of whatever is deployed as `fixture`, read
-//! through `declare_program!(fixture)`, the fixture's own IDL in `idls/`, and
-//! `ask` calls `peek` and `echo` on `fixture` through it, and `vouched` vouches
-//! for a user before calling `whoami` on it. `peek`
-//! is a query: it reads `note`, tries to write, emit, arm a wake and call
-//! `note` on `inner`, and answers what each was told.
-//! `berm/berm/examples/measure.rs` and `load.rs` read the numbers off them,
-//! and `tests/tools.rs` is the only exercise the SDK's host-side `test::call`
-//! gets.
+//! Each tool prices or proves one thing. `berm/berm/examples/measure.rs` and
+//! `load.rs` read the numbers off them, and `tests/tools.rs` is the only
+//! exercise the SDK's host-side `test::call` gets.
 
-// `no_std` is the guest's shape. Off a guest target this is an ordinary
-// library, so `cargo test` runs the tools below natively.
+// Off a guest target `cargo test` runs the tools below natively.
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 extern crate alloc;
@@ -217,10 +194,8 @@ pub fn flaky(url: String) -> Result<()> {
     .into())
 }
 
-/// Calls `echo` on whatever is deployed as `inner`, to prove a program can
-/// reach a program. Says which kind of failure came back, because telling
-/// "it ran and said no" from "it was never there" is the point of the
-/// second bit on the wire.
+/// Calls `echo` on whatever is deployed as `inner`, and says which kind of
+/// failure came back.
 #[tool(public)]
 pub fn nest(query: String, page: Option<u32>) -> Result<Echo> {
     let args = berm_lang::json::to(&Echo { query, page })?;

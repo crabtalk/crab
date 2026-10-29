@@ -2,7 +2,7 @@
 //! short code: pay for a purchase, set secrets of a service, or sign a device
 //! in as them.
 
-use crate::{account::org::PublicAccount, utils::text_enum};
+use crate::account::org::PublicAccount;
 use berm_api::Credential;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -20,7 +20,7 @@ pub enum RequestKind {
     Login,
 }
 
-text_enum!(RequestKind { Payment => "payment", Secret => "secret", Login => "login" });
+berm_api::text_enum!(RequestKind);
 
 /// What a payment request buys.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -33,7 +33,7 @@ pub enum Purchase {
     Credit,
 }
 
-text_enum!(Purchase { Plan => "plan", Credit => "credit" });
+berm_api::text_enum!(Purchase);
 
 /// Where a request stands.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -50,12 +50,7 @@ pub enum RequestStatus {
     Expired,
 }
 
-text_enum!(RequestStatus {
-    Pending => "pending",
-    Completed => "completed",
-    Declined => "declined",
-    Expired => "expired"
-});
+berm_api::text_enum!(RequestStatus);
 
 /// What to ask a person, at `POST /requests`, for the account `account` names
 /// by handle or id.

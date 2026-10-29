@@ -15,7 +15,7 @@ async fn deployed() -> Result<TestHost> {
 async fn the_manifest_carries_the_kit_and_its_declarations() -> Result<()> {
     let host = TestHost::open(0).await?;
     let program = host.deploy("keeper", &test::build("berm-keeper")?).await?;
-    let manifest = program.manifest();
+    let manifest = &program.manifest;
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "berm-kit");
     assert!(manifest.deps.secrets.contains(&"kit".to_owned()));

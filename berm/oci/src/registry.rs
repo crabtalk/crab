@@ -2,20 +2,19 @@
 
 use crate::Reference;
 use anyhow::{Context, Result, bail};
-use berm_api::Manifest;
+use berm_api::{Manifest, digest};
 use reqwest::{
     Method, StatusCode,
     blocking::{Client, RequestBuilder, Response},
     header::{ACCEPT, CONTENT_TYPE, LOCATION, WWW_AUTHENTICATE},
 };
 use serde_json::{Map, Value, json};
-use sha2::{Digest, Sha256};
 use std::env;
 
 /// The layer, and what the whole artifact is typed as.
-pub const PROGRAM: &str = "application/vnd.berm.program.v1";
+const PROGRAM: &str = "application/vnd.berm.program.v1";
 /// The config blob: what the program says it is.
-pub const MANIFEST: &str = "application/vnd.berm.manifest.v1+json";
+const MANIFEST: &str = "application/vnd.berm.manifest.v1+json";
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 /// Accepted only to be refused by name: a registry handed one of these back as
 /// its own error otherwise, which read as a berm bug.
@@ -121,7 +120,7 @@ impl Registry {
     /// Upload the image, its manifest as the config blob, and the artifact
     /// manifest naming both. Returns the image's digest, which is the layer's.
     pub fn push(&self, reference: &str, program: &[u8]) -> Result<String> {
-        let manifest = serde_json::to_vec(&Manifest::from_image(program)?)?;
+        let manifest = serde_json::to_vec(&Manifest::try_from(program)?)?;
         let image = self.upload(program)?;
         let config = self.upload(&manifest)?;
 
@@ -161,7 +160,7 @@ impl Registry {
             .context("cannot read the blob")?
             .to_vec();
 
-        let got = digest(&bytes);
+        let got = digest::of(&bytes);
         if got != want {
             bail!("blob does not match its digest: {want} advertised, {got} received");
         }
@@ -170,7 +169,7 @@ impl Registry {
 
     /// One blob, uploaded monolithically: ask where to put it, then put it.
     fn upload(&self, bytes: &[u8]) -> Result<String> {
-        let digest = digest(bytes);
+        let digest = digest::of(bytes);
         let uploads = format!("{}/v2/{}/blobs/uploads/", self.base, self.repository);
         let opened = send(self.request(Method::POST, uploads))?;
 
@@ -215,8 +214,8 @@ impl Registry {
         let realm = field(&challenge, "realm")
             .context("registry asked for a token without saying where from")?;
 
-        // Built rather than encoded: a scope is `repository:org/name:pull`,
-        // and every character in it is one a query value may carry as itself.
+        // Not percent-encoded: every character of a scope
+        // (`repository:org/name:pull`) is one a query value carries as itself.
         let service = field(&challenge, "service").unwrap_or_default();
         let mut request = self
             .http
@@ -252,8 +251,8 @@ impl Registry {
     }
 }
 
-/// Turn a refusal into what the registry said, rather than a status code the
-/// operator then has to go and look up.
+/// Turn a refusal into the registry's own message, or its status when it gave
+/// none.
 fn send(request: RequestBuilder) -> Result<Response> {
     let response = request.send().context("cannot reach the registry")?;
     if response.status().is_success() {
@@ -278,9 +277,7 @@ fn send(request: RequestBuilder) -> Result<Response> {
 
 /// The one layer a program has, refusing anything that is not one.
 fn layer(manifest: &Value) -> Result<&Value> {
-    // An index is what a container image looks like, and pointing at one is the
-    // likely mistake here — worth saying so rather than reporting a missing
-    // field.
+    // An index is a multi-platform container image.
     if manifest.get("manifests").is_some() {
         bail!("not a program: a multi-platform image, which berm has no use for");
     }
@@ -343,8 +340,4 @@ fn field(challenge: &str, key: &str) -> Option<String> {
     let at = challenge.find(&format!("{key}=\""))? + key.len() + 2;
     let rest = &challenge[at..];
     Some(rest[..rest.find('"')?].to_owned())
-}
-
-fn digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }

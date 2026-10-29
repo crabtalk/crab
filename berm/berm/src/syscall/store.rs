@@ -30,7 +30,7 @@ where
     let get = move |at: Callsite, request: Vec<u8>| {
         let read = read.clone();
         async move {
-            let fields = wire::fields(&request)?;
+            let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
             at.rows_left()?;
             let value = match at.journal.read(&at.program, key) {
@@ -45,7 +45,7 @@ where
             // than bare, so a stored empty value is not read as one that was
             // never written.
             Ok(match value {
-                Some(value) => wire::frame(&[&value]),
+                Some(value) => abi::wire::request(&[&value]),
                 None => Vec::new(),
             })
         }
@@ -53,7 +53,7 @@ where
     let set = move |at: Callsite, request: Vec<u8>| {
         let write = write.clone();
         async move {
-            let fields = wire::fields(&request)?;
+            let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
             let Some(value) = fields.get(1) else {
                 bail!("request has no value");

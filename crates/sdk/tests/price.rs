@@ -1,7 +1,7 @@
 //! `[prices]` values: USD decimal strings read into micros, at least $0.0001
 //! and to at most six places.
 
-use crabtalk_sdk::sandbox::price::Price;
+use crabtalk_sdk::services::price::Price;
 
 fn micros(s: &str) -> u64 {
     s.parse::<Price>().unwrap().into()

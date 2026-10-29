@@ -1,6 +1,6 @@
 //! How a host is sized.
 
-use berm::syscall::call::DEFAULT_CALL_DEPTH;
+use berm::Calls;
 use serde::Deserialize;
 use std::{path::PathBuf, time::Duration};
 
@@ -82,7 +82,7 @@ fn rows() -> u64 {
 }
 
 fn depth() -> u32 {
-    DEFAULT_CALL_DEPTH
+    Calls::DEFAULT_DEPTH
 }
 
 fn databases() -> PathBuf {

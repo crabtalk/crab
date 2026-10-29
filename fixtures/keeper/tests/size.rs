@@ -54,7 +54,7 @@ async fn a_refused_deploy_leaves_the_size_as_it_was() -> Result<()> {
         "{error:#}"
     );
     let held = host
-        .host()
+        .host
         .databases
         .get("keeper")?
         .limit(DATABASE_SIZE)

@@ -1,13 +1,13 @@
 //! `crab cost` — what a service cost in a month, by resource.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn run(client: &Client, name: &str, month: Option<&str>, json: bool) -> Result<()> {
-    let billing = utils::wait(client.billing(name, month))?;
+    let billing = runtime::wait(client.billing(name, month))?;
     if json {
-        return utils::json(&billing);
+        return terminal::json(&billing);
     }
     let total: i64 = billing.days.iter().map(|day| day.cost_micros).sum();
     println!(

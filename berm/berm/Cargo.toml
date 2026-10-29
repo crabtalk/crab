@@ -1,6 +1,6 @@
 [package]
 name = "berm"
-description = "The operating system for agent harnesses — runs guest programs under wasmtime"
+description = "The wasm runtime CrabTalk services run on"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,6 +13,7 @@ categories = ["wasm", "virtualization"]
 anyhow.workspace = true
 berm-api.workspace = true
 berm-codegen.workspace = true
+berm-abi.workspace = true
 futures-util.workspace = true
 hex = { workspace = true, features = ["std"] }
 libc.workspace = true
@@ -28,7 +29,7 @@ wasmtime.workspace = true
 tokio = { workspace = true, optional = true }
 
 [features]
-# `database`: a program's own SQLite database, for a host serving `berm.sql`.
+# `sqlite`: a program's own SQLite database, for a host serving `berm.sql`.
 sqlite = ["dep:rusqlite", "dep:tokio"]
 
 [dev-dependencies]

@@ -1,17 +1,13 @@
 //! This program's own bytes, surviving its invocations.
 //!
-//! Guest memory does not cross an invocation — every call gets a fresh one —
-//! so anything a program needs next time goes here.
-//!
-//! Neither door names a program. The keyspace is whichever one is asking, which
-//! the host reads off the call itself, so another program's keys are not
-//! refused: there is nothing to say to reach them.
-//!
-//! Whether a host serves these at all is its own decision, the same as
-//! [`crate::call`]: under a plain `berm::Berm` the call traps as an unknown
-//! host call.
+//! Neither door names a program: the keyspace is whichever one is asking, as
+//! the host reads it off the call. A host that registers nothing for these
+//! traps them as unknown host calls.
 
-use crate::abi::{self, host, host::CallError, wire};
+use crate::{
+    abi::{self, wire},
+    host::{self, CallError},
+};
 use alloc::{string::String, vec::Vec};
 
 /// Read `key`, or `None` if this program has never written it.
@@ -21,10 +17,8 @@ use alloc::{string::String, vec::Vec};
 /// ```
 pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
     let reply = host::call(abi::HOST_GET, &wire::request(&[key.as_bytes()]))?;
-    // One field is a value, none is an absent key — which is why the reply is
-    // framed rather than the bytes themselves: a stored empty value is a
-    // value, and would otherwise read as never written.
-    let Some(fields) = wire::fields(&reply) else {
+    // One field is a value, a stored empty one included; none is an absent key.
+    let Ok(fields) = wire::fields(&reply) else {
         return Err(CallError::Failed(String::from(
             "host framed a reply this guest cannot read",
         )));

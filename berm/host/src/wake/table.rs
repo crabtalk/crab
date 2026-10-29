@@ -194,6 +194,7 @@ pub(crate) async fn crons(
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
+            let unsaved = unsaved.resolve(conn)?;
             let caller = host::join(&scope, &name);
             // The last run, as `calls::call` reads one.
             let mut statement = conn.prepare_cached(
@@ -238,6 +239,7 @@ pub(crate) async fn armed(
     let (scope, program) = (scope.to_owned(), program.to_owned());
     store
         .read(move |conn| {
+            let unsaved = unsaved.resolve(conn)?;
             let mut statement = conn.prepare_cached(&format!(
                 "SELECT {COLUMNS}, w.tool, w.args, w.due, w.name, w.failures
                    FROM service_wakes w

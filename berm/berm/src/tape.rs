@@ -232,6 +232,7 @@ fn name(at: &Callsite, syscall: u64) -> String {
         abi::HTTP_FETCH,
         abi::HTTP_PROXY,
         abi::HTTP_FETCH_ALL,
+        abi::HTTP_PROXY_ALL,
         abi::EMIT,
         abi::SQL,
         abi::GET,

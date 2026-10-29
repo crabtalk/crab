@@ -15,7 +15,7 @@ use std::sync::Weak;
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
     sql::programs(move |at: Callsite, statement: Statement| {
-        let kept = host::alive(&host).map(|host| host.kept(&at.program));
+        let kept = host::alive(&host).map(|host| at.database(|| host.kept(&at.program)));
         async move {
             let Some(database) = kept? else {
                 bail!("this service keeps no database");

@@ -1,7 +1,7 @@
 //! `crab request` — what the account asked a person to do, by its code: where
 //! it stands, or once it is no longer pending.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::request::{Purchase, Request, RequestKind, RequestStatus},
@@ -28,7 +28,7 @@ pub fn asked(request: &Request, json: bool) -> Result<()> {
             request: &'a Request,
             next: Next<'a>,
         }
-        return utils::json(&Asked {
+        return terminal::json(&Asked {
             request,
             next: Next {
                 command: &wait,
@@ -85,9 +85,9 @@ fn describe(request: &Request) -> String {
 
 /// End request `code` now, and print it.
 pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
-    let request = utils::wait(client.expire_request(code))?;
+    let request = runtime::wait(client.expire_request(code))?;
     if json {
-        return utils::json(&request);
+        return terminal::json(&request);
     }
     println!(
         "{}  {}  {}",
@@ -106,13 +106,13 @@ pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) ->
     let request = loop {
         let left = until.saturating_duration_since(Instant::now()).as_secs();
         let hold = if wait { left.min(HOLD) } else { 0 };
-        let request = utils::wait(client.request(code, hold))?;
+        let request = runtime::wait(client.request(code, hold))?;
         if request.status != RequestStatus::Pending || hold == 0 {
             break request;
         }
     };
     if json {
-        utils::json(&request)?;
+        terminal::json(&request)?;
     } else {
         println!(
             "{}  {}  {}",

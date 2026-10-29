@@ -1,7 +1,6 @@
 //! `/auth` — signing in, the sessions it mints, and the provider accounts
 //! it signs in with.
 
-use crate::utils::text_enum;
 use serde::{Deserialize, Serialize};
 
 /// Which front-end surface started the sign-in: where the callback redirects,
@@ -14,7 +13,7 @@ pub enum Client {
     Terminal,
 }
 
-text_enum!(Client { Web => "web", Terminal => "terminal" });
+berm_api::text_enum!(Client);
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,9 +24,8 @@ pub struct Session {
     pub ip: String,
     pub agent: String,
     pub created_at: i64,
-    /// Unix seconds when the session lapses *if left idle*. This is a sliding
-    /// window, not a fixed deadline: every authenticated request pushes it
-    /// forward to `now + 7d`, so an actively used session never expires here.
+    /// Unix seconds when the session lapses *if left idle*. Every
+    /// authenticated request pushes it forward to `now + 7d`.
     pub expires_at: i64,
     /// Unix seconds the session was explicitly revoked (logout / "sign out
     /// this device"), or null if still live. A revoked session's token is

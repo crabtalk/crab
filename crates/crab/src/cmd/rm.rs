@@ -1,6 +1,6 @@
 //! `crab rm` — take programs out of service.
 
-use crate::{project, utils};
+use crate::{project, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
@@ -8,12 +8,12 @@ use crabtalk_sdk::client::Client;
 /// directory selects.
 pub fn run(client: &Client, names: &[String], yes: bool) -> Result<()> {
     let names = project::selected(names)?;
-    utils::confirm(
+    terminal::confirm(
         yes,
         &format!("remove {} and what it committed", names.join(", ")),
     )?;
     for name in &names {
-        utils::wait(client.undeploy(name))?;
+        runtime::wait(client.undeploy(name))?;
         eprintln!("removed {name}");
     }
     Ok(())

@@ -7,19 +7,13 @@
 //! declares.
 
 use anyhow::{Context, Result};
+use berm::clock;
 use berm_host::Secrets;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::ErrorKind,
-    path::PathBuf,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::BTreeMap, fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 /// What the file is called under the host's root.
 pub const FILE: &str = "secrets.toml";
@@ -100,9 +94,7 @@ impl Grants {
     /// Set `service`'s secret `name` to `value`, sent to `hosts`; `false`
     /// when it is set already.
     pub fn set(&self, service: &str, name: &str, value: &str, hosts: &[String]) -> Result<bool> {
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |since| since.as_secs() as i64);
+        let created_at = (clock::now() / 1000) as i64;
         let table = self.with(|table| {
             let kept = table.entry(service.to_owned()).or_default();
             if kept.contains_key(name) {

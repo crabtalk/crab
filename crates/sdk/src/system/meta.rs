@@ -13,14 +13,13 @@ pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionInfo {
-    /// The running build's crate version, e.g. `0.1.1`. Plain semver, so it is
-    /// safe to compare — but it moves only when someone bumps it, which is not
-    /// every deploy. Use `commit` to identify a build.
+    /// The running build's crate version, e.g. `0.1.1`, plain semver. It moves
+    /// only when someone bumps it, not every deploy; `commit` identifies a
+    /// build.
     pub version: String,
     /// The commit this binary was built from — the full 40-character SHA, e.g.
-    /// `9bb4d4f11e60a4da6c8ca91a9dba2c5e874d2035`. Full rather than abbreviated
-    /// because git widens the short form as a repo grows, so its width is not a
-    /// stable contract; truncate for display. `unknown` outside a git tree.
+    /// `9bb4d4f11e60a4da6c8ca91a9dba2c5e874d2035`; truncate for display.
+    /// `unknown` outside a git tree.
     pub commit: String,
     /// The database schema this deployment is on — the highest migration
     /// applied, matching the number a migration filename starts with. What the

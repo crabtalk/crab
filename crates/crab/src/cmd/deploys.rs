@@ -1,14 +1,14 @@
 //! `crab deploys` — a service's deploys on Cloud, refused and failed ones
 //! included.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
-    let deploys = utils::wait(client.deploys(name))?;
+    let deploys = runtime::wait(client.deploys(name))?;
     if json {
-        return utils::json(&deploys);
+        return terminal::json(&deploys);
     }
     if deploys.is_empty() {
         println!("no deploys recorded");

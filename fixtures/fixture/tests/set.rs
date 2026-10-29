@@ -20,10 +20,10 @@ async fn a_project_switches_together() -> Result<()> {
         .await?;
     assert_eq!(deployed.len(), 2);
     assert_eq!(
-        host.host().runtime("acct/one").await?.project.as_deref(),
+        host.host.runtime("acct/one").await?.project.as_deref(),
         Some("p")
     );
-    assert!(host.host().get("acct/two").is_some());
+    assert!(host.host.get("acct/two").is_some());
     Ok(())
 }
 
@@ -40,8 +40,8 @@ async fn one_refused_refuses_the_project_and_none_switches() -> Result<()> {
         .unwrap_err()
         .to_string();
     assert!(refused.contains("two:"), "{refused}");
-    assert!(host.host().get("acct/one").is_none());
-    assert!(host.host().get("acct/two").is_none());
+    assert!(host.host.get("acct/one").is_none());
+    assert!(host.host.get("acct/two").is_none());
     Ok(())
 }
 
@@ -78,9 +78,9 @@ async fn one_failing_to_switch_puts_those_switched_back() -> Result<()> {
         .unwrap_err()
         .to_string();
     assert!(failed.contains("two failed to switch"), "{failed}");
-    let one = host.host().get("acct/one").expect("one runs what it ran");
-    assert_eq!(one.manifest().name, "berm-bare");
-    assert!(host.host().get("acct/two").is_none());
+    let one = host.host.get("acct/one").expect("one runs what it ran");
+    assert_eq!(one.manifest.name, "berm-bare");
+    assert!(host.host.get("acct/two").is_none());
     Ok(())
 }
 
@@ -97,7 +97,7 @@ async fn a_service_of_another_project_is_refused() -> Result<()> {
         .to_string();
     assert!(refused.contains("hn is in project foo"), "{refused}");
     assert_eq!(
-        host.host().runtime("acct/hn").await?.project.as_deref(),
+        host.host.runtime("acct/hn").await?.project.as_deref(),
         Some("foo")
     );
     Ok(())
@@ -125,7 +125,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
         agent: None,
     };
     for service in ["acct/one", "acct/two", "acct/three"] {
-        host.host()
+        host.host
             .call(
                 service,
                 Some(&caller),
@@ -136,7 +136,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
             .await?;
     }
 
-    let listed = host.host().listings("acct").await?;
+    let listed = host.host.listings("acct").await?;
     let of = |name: &str| {
         listed
             .iter()
@@ -169,7 +169,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
         if written {
             host.flush().await?;
         }
-        let (calls, _) = host.host().scope_calls("acct", page.clone()).await?;
+        let (calls, _) = host.host.scope_calls("acct", page.clone()).await?;
         let mut services: Vec<&str> = calls.iter().map(|call| call.service.as_str()).collect();
         services.sort();
         assert_eq!(services, ["one", "two"], "written: {written}");

@@ -23,13 +23,15 @@ use std::{
     time::{Duration, Instant},
 };
 use wasmtime::{
-    Caller, Extern, InstanceAllocationStrategy, InstancePre, Linker, Memory, Module,
+    Caller, Extern, InstanceAllocationStrategy, InstancePre, Linker, Memory, Module, ModuleExport,
     PoolingAllocationConfig, Store, ToWasmtimeResult, Trap, UpdateDeadline,
 };
 
 /// The module every syscall is imported from, and the one name under it.
 const MODULE: &str = "berm";
 const SYSCALL: &str = "syscall";
+/// The export a guest's linear memory is reached through.
+const MEMORY: &str = "memory";
 
 /// How often the engine's epoch advances, and so how often a running guest's
 /// deadline and CPU time are checked.
@@ -40,8 +42,8 @@ const TICK: Duration = Duration::from_millis(100);
 pub struct Config {
     /// Where compiled code is cached, if anywhere.
     ///
-    /// Entries are keyed on contents, so a stale directory yields misses
-    /// rather than wrong code, and it is safe to share between processes.
+    /// Entries are keyed on contents: a stale directory yields misses, and it
+    /// is safe to share between processes.
     pub cache_dir: Option<PathBuf>,
     /// How many guests may be live at once, across every program and nested
     /// calls included. Slots are reserved when the engine is built; a call
@@ -108,9 +110,8 @@ impl Engine {
         }
 
         // An instance, its memory, its table and the fiber it runs on are
-        // taken from slots reserved here rather than mapped per call. One of
-        // each per guest: a guest asking for a second memory or table fails to
-        // instantiate.
+        // taken from slots reserved here. One of each per guest: a guest asking
+        // for a second memory or table fails to instantiate.
         let mut pool = PoolingAllocationConfig::new();
         pool.total_core_instances(config.instances)
             .total_memories(config.instances)
@@ -166,18 +167,18 @@ pub(crate) struct Image {
     pub(crate) budget: Budget,
     /// [`Engine::reserve`].
     pub(crate) reserve: Arc<Pool>,
-    /// Imports resolved once, at deploy. A guest reaching for something no
-    /// syscall is registered for is refused by the deploy that introduced it,
-    /// rather than trapping on a model's turn.
+    /// Imports resolved once, at deploy. An image importing something no
+    /// syscall is registered for is refused by its deploy.
     pre: InstancePre<Invocation>,
-    exports: Vec<String>,
-    /// Bytes the image and its compiled code take.
-    pub(crate) bytes: u64,
+    exports: Vec<(String, ModuleExport)>,
+    /// Its [`MEMORY`] export.
+    memory: Option<ModuleExport>,
 }
 
 impl Image {
-    /// Compile `image` against `table`.
-    pub(crate) fn compile(engine: &Engine, image: &[u8], table: Table) -> Result<Self> {
+    /// Compile `image` against `table`, beside the bytes the image and its
+    /// compiled code take.
+    pub(crate) fn compile(engine: &Engine, image: &[u8], table: Table) -> Result<(Self, u64)> {
         let budget = Budget {
             cpu: engine.cpu.as_micros() as u64,
             rows: engine.rows,
@@ -237,20 +238,30 @@ impl Image {
         )?;
 
         let compiled = module.image_range();
-        Ok(Self {
-            bytes: image.len() as u64 + (compiled.end as usize - compiled.start as usize) as u64,
-            exports: module.exports().map(|e| e.name().to_owned()).collect(),
+        let bytes = image.len() as u64 + (compiled.end as usize - compiled.start as usize) as u64;
+        let image = Self {
+            exports: module
+                .exports()
+                .filter_map(|export| {
+                    let name = export.name();
+                    Some((name.to_owned(), module.get_export_index(name)?))
+                })
+                .collect(),
+            memory: module.get_export_index(MEMORY),
             pre: linker.instantiate_pre(&module)?,
             engine,
             budget,
             reserve,
-        })
+        };
+        Ok((image, bytes))
     }
 
     /// Every name this image exports. Which of them are tools is the ABI's
     /// question.
-    pub(crate) fn exports(&self) -> Vec<&str> {
-        self.exports.iter().map(String::as_str).collect()
+    pub(crate) fn exports(&self) -> impl Iterator<Item = (&str, ModuleExport)> {
+        self.exports
+            .iter()
+            .map(|(name, export)| (name.as_str(), *export))
     }
 
     /// Instantiate and run one tool, spending at most its invocation's budget
@@ -261,7 +272,11 @@ impl Image {
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
     /// built for this call and dropped with it.
-    pub(crate) async fn call(&self, symbol: &str, invocation: Invocation) -> Result<Invocation> {
+    pub(crate) async fn call(
+        &self,
+        tool: &ModuleExport,
+        invocation: Invocation,
+    ) -> Result<Invocation> {
         let deadline = invocation.at.deadline;
         let cpu = invocation.cpu.clone();
         let mut store = Store::new(&self.engine, invocation);
@@ -292,20 +307,30 @@ impl Image {
             .time(async {
                 let instance = self.pre.instantiate_async(&mut store).await;
                 let called = match &instance {
-                    Ok(instance) => match instance.get_typed_func::<(), ()>(&mut store, symbol) {
-                        Ok(tool) => tool.call_async(&mut store, ()).await,
-                        Err(error) => Err(error),
-                    },
+                    Ok(instance) => {
+                        store.data_mut().memory = self
+                            .memory
+                            .and_then(|memory| instance.get_module_export(&mut store, &memory))
+                            .and_then(Extern::into_memory);
+                        match instance
+                            .get_module_export(&mut store, tool)
+                            .and_then(Extern::into_func)
+                            .ok_or_else(|| wasmtime::Error::msg("tool export is not a function"))
+                            .and_then(|func| func.typed::<(), ()>(&store))
+                        {
+                            Ok(tool) => tool.call_async(&mut store, ()).await,
+                            Err(error) => Err(error),
+                        }
+                    }
                     Err(_) => Ok(()),
                 };
                 (instance, called)
             })
             .await;
-        let memory = instance.as_ref().ok().map_or(0, |instance| {
-            instance
-                .get_memory(&mut store, "memory")
-                .map_or(0, |memory| memory.data_size(&store) as u64)
-        });
+        let memory = store
+            .data()
+            .memory
+            .map_or(0, |memory| memory.data_size(&store) as u64);
         store.data().at.meter(Meter {
             cpu: clock.spent() / 1_000,
             memory,
@@ -351,9 +376,16 @@ pub(crate) fn write(caller: &mut Caller<'_, Invocation>, addr: u64, bytes: &[u8]
     Ok(memory.write(&mut *caller, addr as usize, bytes)?)
 }
 
+/// The guest's memory, looked up by name only for a syscall made while it
+/// starts up, before [`Image::call`] has set [`Invocation::memory`].
 fn memory(caller: &mut Caller<'_, Invocation>) -> Result<Memory> {
-    caller
-        .get_export("memory")
+    if let Some(memory) = caller.data().memory {
+        return Ok(memory);
+    }
+    let memory = caller
+        .get_export(MEMORY)
         .and_then(Extern::into_memory)
-        .context("program exports no memory")
+        .context("program exports no memory")?;
+    caller.data_mut().memory = Some(memory);
+    Ok(memory)
 }

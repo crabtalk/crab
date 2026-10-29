@@ -1,6 +1,6 @@
 //! `crab app` — the apps a website calls the account's services through.
 
-use crate::utils;
+use crate::{runtime, terminal};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::app::{AppRequest, Issuer},
@@ -8,9 +8,9 @@ use crabtalk_sdk::{
 };
 
 pub fn ls(client: &Client, json: bool) -> Result<()> {
-    let apps = utils::wait(client.apps())?;
+    let apps = runtime::wait(client.apps())?;
     if json {
-        return utils::json(&apps);
+        return terminal::json(&apps);
     }
     for app in &apps {
         println!("{}  {}", app.id, app.name);
@@ -54,26 +54,26 @@ pub fn request(
 }
 
 pub fn create(client: &Client, request: &AppRequest, json: bool) -> Result<()> {
-    let app = utils::wait(client.create_app(request))?;
+    let app = runtime::wait(client.create_app(request))?;
     if json {
-        return utils::json(&app);
+        return terminal::json(&app);
     }
     eprintln!("app {} made", app.id);
     Ok(())
 }
 
 pub fn update(client: &Client, id: &str, request: &AppRequest, json: bool) -> Result<()> {
-    let app = utils::wait(client.update_app(id, request))?;
+    let app = runtime::wait(client.update_app(id, request))?;
     if json {
-        return utils::json(&app);
+        return terminal::json(&app);
     }
     eprintln!("app {id} replaced");
     Ok(())
 }
 
 pub fn rm(client: &Client, id: &str, yes: bool) -> Result<()> {
-    utils::confirm(yes, &format!("delete app {id}"))?;
-    utils::wait(client.delete_app(id))?;
+    terminal::confirm(yes, &format!("delete app {id}"))?;
+    runtime::wait(client.delete_app(id))?;
     eprintln!("deleted {id}");
     Ok(())
 }

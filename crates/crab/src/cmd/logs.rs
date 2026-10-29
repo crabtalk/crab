@@ -1,6 +1,6 @@
 //! `crab logs` — what a program emitted.
 
-use crate::utils;
+use crate::{runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
@@ -12,10 +12,10 @@ const PAGE: u64 = 1000;
 pub fn run(client: &Client, name: &str, after: u64, json: bool) -> Result<()> {
     let mut after = after;
     loop {
-        let page = utils::wait(client.logs(name, after, PAGE))?;
+        let page = runtime::wait(client.logs(name, after, PAGE))?;
         for log in &page {
             match json {
-                true => utils::json(log)?,
+                true => terminal::json(log)?,
                 false => println!("{}  {}  {}", log.seq, log.topics.join(","), log.data),
             }
         }

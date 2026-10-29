@@ -13,8 +13,8 @@
 
 use anyhow::{Context, Result, ensure};
 use berm::{
-    Berm, Calls, Changes, Config, Engine, Output, storage,
-    syscall::{after, call, emit, store},
+    Berm, Calls, Changes, Config, Engine, Output,
+    syscall::{after, emit, store},
 };
 use parking_lot::Mutex;
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
@@ -53,12 +53,7 @@ async fn main() -> Result<()> {
     );
     syscalls.push(emit::programs(|_, _| async { Ok(false) }));
     syscalls.push(after::programs(|_, _| async { Ok(()) }));
-    let berm = Berm::new(
-        &engine,
-        Calls::by_name(call::DEFAULT_CALL_DEPTH),
-        syscalls,
-        storage::Memory::new(),
-    );
+    let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), syscalls);
     berm.deploy("outer", &image)?;
     berm.deploy("inner", &image)?;
 

@@ -7,7 +7,7 @@
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
-/// A type with a JSON Schema, owned so that it can be both read and written.
+/// A type with a JSON Schema.
 /// `#[derive(Schema)]` implements it, and the serde impls that read and write
 /// the type as that schema says.
 pub trait Schema {
@@ -48,7 +48,7 @@ pub enum Shape {
 /// One property of a [`Shape::Object`].
 pub struct Field {
     pub name: &'static str,
-    /// Empty when the field has none.
+    /// A JSON string, its quotes included; empty when the field has none.
     pub description: &'static str,
     pub shape: &'static Shape,
 }
@@ -185,7 +185,7 @@ const fn shape_into(sink: &mut Sink, shape: &Shape, description: &str) {
     }
     if !description.is_empty() {
         sink.put(r#","description":"#);
-        sink.quoted(description);
+        sink.put(description);
     }
     sink.put("}");
 }

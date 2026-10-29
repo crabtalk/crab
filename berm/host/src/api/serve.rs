@@ -259,8 +259,8 @@ async fn wakes<E: Env>(
     Ok(Json(host.armed(&service).await?))
 }
 
-/// Run one tool. `POST` because an invocation is not idempotent, and the body
-/// is the argument object byte for byte as the program will read it.
+/// Run one tool. The body is the argument object byte for byte as the program
+/// will read it.
 async fn call<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,

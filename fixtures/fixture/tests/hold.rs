@@ -3,32 +3,24 @@
 
 use anyhow::Result;
 use berm_api::{Output, host::Link};
-use berm_host::test::{self, TestHost};
 
-async fn deployed(services: &[&str]) -> Result<TestHost> {
-    let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
-    for service in services {
-        host.deploy(service, &image).await?;
-    }
-    Ok(host)
-}
+mod common;
 
 #[tokio::test]
 async fn a_held_wake_stays_and_fires_once_released() -> Result<()> {
-    let host = deployed(&["acct/fixture", "other/fixture"]).await?;
+    let host = common::deployed(&["acct/fixture", "other/fixture"]).await?;
     host.call("acct/fixture", "tick", br#"{"delay":0}"#).await?;
     host.call("other/fixture", "tick", br#"{"delay":0}"#)
         .await?;
 
-    host.host().hold(vec!["acct".into()]).await?;
-    assert_eq!(host.host().held(), vec!["acct".to_owned()]);
+    host.host.hold(vec!["acct".into()]).await?;
+    assert_eq!(host.host.held(), vec!["acct".to_owned()]);
     let fired = host.fire().await?;
     assert_eq!(fired.len(), 1);
     assert_eq!(fired[0].0.service, "other/fixture");
     assert_eq!(host.wakes().await?.len(), 2);
 
-    host.host().hold(Vec::new()).await?;
+    host.host.hold(Vec::new()).await?;
     let fired = host.fire().await?;
     assert_eq!(fired.len(), 2);
     assert!(fired.iter().any(|(wake, _)| wake.service == "acct/fixture"));
@@ -37,8 +29,8 @@ async fn a_held_wake_stays_and_fires_once_released() -> Result<()> {
 
 #[tokio::test]
 async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
-    let host = deployed(&["acct/fixture", "acct/inner"]).await?;
-    host.host().hold(vec!["acct".into()]).await?;
+    let host = common::deployed(&["acct/fixture", "acct/inner"]).await?;
+    host.host.hold(vec!["acct".into()]).await?;
 
     let nested = host
         .call("acct/fixture", "nest", br#"{"query":"hi"}"#)
@@ -59,7 +51,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
         stack: vec!["acct/fixture".into()],
     };
     let refused = host
-        .host()
+        .host
         .link(
             "acct/fixture",
             "echo",
@@ -70,7 +62,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
         .expect_err("a link into a held scope is refused");
     assert_eq!(refused.0.as_u16(), 403);
 
-    host.host().hold(Vec::new()).await?;
+    host.host.hold(Vec::new()).await?;
     assert!(matches!(
         host.call("acct/fixture", "nest", br#"{"query":"hi"}"#)
             .await?
@@ -78,7 +70,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
         Output::Done(_)
     ));
     assert!(
-        host.host()
+        host.host
             .link("acct/fixture", "echo", br#"{"query":"hi"}"#.to_vec(), link)
             .await
             .is_ok()

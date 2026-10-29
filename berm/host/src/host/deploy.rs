@@ -164,14 +164,8 @@ impl<E: Env> Host<E> {
             // Stored bytes are otherwise sampled once a day, so a service
             // deployed or seeded after the day's sample would read as before.
             let today = self.today();
-            if let Err(e) = meter::sample(
-                &self.store,
-                service,
-                &self.databases,
-                program.bytes(),
-                today,
-            )
-            .await
+            if let Err(e) =
+                meter::sample(&self.store, service, &self.databases, program.bytes, today).await
             {
                 tracing::warn!(service, "sampling stored bytes failed: {e:#}");
             }
@@ -273,7 +267,7 @@ impl<E: Env> Host<E> {
             .pull(reference, digest)
             .await
             .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-        let manifest = Manifest::from_image(&image)
+        let manifest = Manifest::try_from(image.as_slice())
             .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         self.served(&manifest)?;
         Ok((image, manifest))
@@ -325,7 +319,7 @@ impl<E: Env> Host<E> {
                     .pull(&reference, &digest)
                     .await
                     .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-                if Manifest::from_image(&image).is_ok() {
+                if Manifest::try_from(image.as_slice()).is_ok() {
                     return Err(deny(StatusCode::BAD_GATEWAY, format!("{e:#}")));
                 }
                 tracing::warn!(service, "replacing a program this host cannot read: {e:#}");
@@ -419,9 +413,8 @@ impl<E: Env> Host<E> {
         manifest: &Manifest,
     ) -> Result<Vec<Broken>, Denied> {
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         let mut breaks = Vec::new();
-        for broken in current.manifest().breaks(manifest) {
+        for broken in current.manifest.breaks(manifest) {
             let of = match &broken.surface {
                 Surface::Tool(tool) => (Kind::Tool, tool.as_str(), Outcome::Done),
                 Surface::Event(event) => (Kind::Event, event.as_str(), Outcome::Done),

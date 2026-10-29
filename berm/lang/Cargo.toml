@@ -10,11 +10,11 @@ keywords = ["berm", "program", "sandbox", "wasm"]
 categories = ["wasm", "no-std"]
 
 [lib]
-# No host tests yet: the crate is `no_std`, so a test harness would need one
-# written against the stubs below.
+# The crate has no tests of its own; kits test through `berm_lang::test`.
 test = false
 
 [dependencies]
+berm-abi.workspace = true
 berm-codegen.workspace = true
 serde = { workspace = true, features = ["alloc"] }
 serde_json = { workspace = true, features = ["alloc"] }

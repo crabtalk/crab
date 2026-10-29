@@ -1,13 +1,12 @@
 //! `berm.call` — one program reaching another.
 //!
-//! berm serves it against the set of deployed programs it already holds. The
-//! target is named in the request rather than wired at deploy, so an image
-//! works against whatever it was deployed beside; which deployed program a name
-//! reaches is the embedder's [`Calls::resolve`].
+//! berm serves it against the set of deployed programs it holds. The target is
+//! named in the request; which deployed program a name reaches is the
+//! embedder's [`Calls::resolve`].
 
 use crate::{
     Berm, Budget, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Program, Refused, Syscall,
-    abi, wire,
+    abi, clock, wire,
 };
 use anyhow::{Result, bail};
 use berm_api::{Output, host::Outcome};
@@ -16,15 +15,6 @@ use std::{
     pin::Pin,
     sync::{Arc, Weak},
 };
-
-/// How deep a chain of programs calling programs may go before the next call
-/// is refused. Zero turns composition off.
-///
-/// Not a bound on the native stack, which a nesting level costs ~720 bytes of
-/// and would allow thousands: it bounds how far a mechanical composition can
-/// run away from the turn that asked for it, and how much guest address space
-/// one chain reserves — 64 MiB a level.
-pub const DEFAULT_CALL_DEPTH: u32 = 4;
 
 /// The deployed name a call's target reaches, asked with the calling site and
 /// the tool called. An `Err` refuses the call.
@@ -117,7 +107,7 @@ impl Scope for Unheld {
 /// How `berm.call` reaches programs.
 #[derive(Clone)]
 pub struct Calls {
-    /// See [`DEFAULT_CALL_DEPTH`].
+    /// See [`Calls::DEFAULT_DEPTH`].
     pub depth: u32,
     pub resolve: Resolve,
     pub named: Named,
@@ -131,6 +121,15 @@ pub struct Calls {
 }
 
 impl Calls {
+    /// How deep a chain of programs calling programs may go before the next
+    /// call is refused. Zero turns composition off.
+    ///
+    /// Not a bound on the native stack, which a nesting level costs ~720
+    /// bytes of and would allow thousands: it bounds how far a mechanical
+    /// composition can run away from the turn that asked for it, and how much
+    /// guest address space one chain reserves — 64 MiB a level.
+    pub const DEFAULT_DEPTH: u32 = 4;
+
     /// A target reaches the program deployed under that name, and is told the
     /// caller's deployed name.
     pub fn by_name(depth: u32) -> Self {
@@ -140,20 +139,13 @@ impl Calls {
             named: Arc::new(str::to_owned),
             enter: Arc::new(|_, _| Box::pin(async { Ok(Box::new(Unheld) as Box<dyn Scope>) })),
             budget: Arc::new(|_, _| None),
-            now: Arc::new(system_now),
+            now: Arc::new(clock::now),
             called: Arc::new(|_, _, _, _| {}),
             invoked: Arc::new(|_, _, _, _| {}),
             remote: Arc::new(|_, _, _, _, _| None),
             pool: Arc::new(|_| Arc::default()),
         }
     }
-}
-
-/// The system clock, saturating at the epoch.
-pub fn system_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_millis() as u64)
 }
 
 /// Serve `berm.call` against `runtime`.
@@ -181,7 +173,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                 remote.clone(),
             );
             Box::pin(async move {
-                let fields = wire::fields(&request)?;
+                let fields = abi::wire::fields(&request)?;
                 let program = wire::text(&fields, 0, "program")?;
                 let tool = wire::text(&fields, 1, "tool")?;
                 let args = wire::text(&fields, 2, "arguments")?;
@@ -200,12 +192,10 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     .into());
                 };
 
-                // `try_read` rather than a blocking one: a deploy holding the
-                // write lock is mid-flight, which is worth reporting rather
-                // than waiting on from inside a guest. Cloned out and the guard
-                // dropped before the guest below runs: holding it across a
-                // nested call would block the next deploy for as long as that
-                // call takes.
+                // A deploy holding the write lock refuses the call. The guard
+                // is dropped before the guest below runs: held across a nested
+                // call, it blocks the next deploy for as long as that call
+                // takes.
                 let deployed = resolve(&at, program, tool)
                     .map_err(|error| Refused(format!("{program}.{tool}: {error:#}")))?;
                 let target = {

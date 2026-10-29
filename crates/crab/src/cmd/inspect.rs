@@ -1,26 +1,26 @@
 //! `crab inspect` — what a program claims to be.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use berm_api::{Program, Runtime, ToolSpec};
 use crabtalk_sdk::{
     client::{Client, Error},
-    sandbox::service::{Measured, Terms},
+    services::service::{Measured, Terms},
 };
 use serde_json::Value;
 
 /// Print `name` as its caller sees it: the runtime too when the host answers
 /// it, which Cloud does for the service's owners alone.
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
-    let program = utils::wait(client.inspect(name))?;
-    let runtime = match utils::wait(client.runtime(name)) {
+    let program = runtime::wait(client.inspect(name))?;
+    let runtime = match runtime::wait(client.runtime(name)) {
         Ok(runtime) => Some(runtime),
         Err(Error::Api { status: 403, .. }) => None,
         Err(e) => return Err(e.into()),
     };
-    let terms = utils::wait(client.terms(name))?;
+    let terms = runtime::wait(client.terms(name))?;
     if json {
-        return utils::json(&serde_json::json!({
+        return terminal::json(&serde_json::json!({
             "program": program,
             "runtime": runtime,
             "terms": terms,

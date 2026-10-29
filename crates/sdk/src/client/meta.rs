@@ -24,8 +24,8 @@ impl Client {
         self.json(self.at(Method::GET, "/meta/rates")).await
     }
 
-    /// Whether the deployment is serving. Answered by status code alone, so a
-    /// `503` is a `false` rather than an [`Error`].
+    /// Whether the deployment is serving, by status code alone: a `503` is
+    /// `false`.
     pub async fn health(&self) -> Result<bool, Error> {
         self.probe(self.at(Method::GET, "/meta/health")).await
     }

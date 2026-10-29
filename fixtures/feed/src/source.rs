@@ -2,11 +2,11 @@
 //! follows, read the same way.
 
 use crate::Post;
-use alloc::{format, string::String, vec::Vec};
-use berm_lang::http;
+use alloc::{format, string::String};
+use berm_lang::http::Response;
 use core::str;
 use lake::{
-    Feed, Kind, Listed, Schedule, Source, State, Watch,
+    Feed, Kind, Listed, Read, Request, Schedule, Source, State, Watch,
     rss::{self, Entry},
 };
 
@@ -32,22 +32,23 @@ impl Source for Rss {
         state.follow(FEED, Kind::Chronological);
     }
 
-    fn fetch(feed: &Feed) -> Result<Vec<Listed<Entry>>, String> {
-        let response =
-            http::fetch("GET", &feed.key, &[], b"").map_err(|error| format!("{error}"))?;
-        if response.status != 200 {
-            return Err(format!("{} answered {}", feed.key, response.status));
-        }
+    fn request(feed: &Feed) -> Result<Request, String> {
+        Ok(Request::get(&feed.key))
+    }
+
+    fn parse(feed: &Feed, response: Response) -> Result<Read<Entry>, String> {
         let xml =
             str::from_utf8(&response.body).map_err(|_| format!("{} is not UTF-8", feed.key))?;
-        Ok(rss::entries(xml)?
-            .into_iter()
-            .map(|entry| Listed {
-                id: entry.id.clone(),
-                posted: entry.posted,
-                item: entry,
-            })
-            .collect())
+        Ok(Read::Listed(
+            rss::entries(xml)?
+                .into_iter()
+                .map(|entry| Listed {
+                    id: entry.id.clone(),
+                    posted: entry.posted,
+                    item: entry,
+                })
+                .collect(),
+        ))
     }
 
     fn post(_feed: &Feed, entry: Entry) -> Post {
@@ -63,7 +64,11 @@ impl Source for Rss {
         false
     }
 
-    fn thread(watch: &Watch) -> Result<(u64, ()), String> {
+    fn request_thread(watch: &Watch) -> Result<Request, String> {
+        Err(format!("{} has no thread", watch.id))
+    }
+
+    fn parse_thread(watch: &Watch, _response: Response) -> Result<(u64, ()), String> {
         Err(format!("{} has no thread", watch.id))
     }
 

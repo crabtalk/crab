@@ -1,10 +1,9 @@
 //! What a program says it is, read from its image's [`ABI_SECTION`],
 //! [`PROGRAM_SECTION`] and [`KITS_SECTION`].
 
-use crate::{
-    ABI_SECTION, ABI_VERSION, DEFAULT_BUFFER, Image, KITS_SECTION, PROGRAM_SECTION, ToolSpec,
-};
+use crate::{DEFAULT_BUFFER, Image, ToolSpec};
 use anyhow::{Context, Result, bail};
+use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, PROGRAM_SECTION};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
@@ -37,10 +36,8 @@ pub struct Manifest {
     /// What this program reaches for once it runs, its kits' declarations
     /// included.
     ///
-    /// Runtime, and resolved wherever the image lands — nothing here is
-    /// fetched or installed, and a name nothing answers to is reported rather
-    /// than refused. Declared by the author because a target computed at the
-    /// call cannot be read off the image at all.
+    /// Resolved wherever the image lands; nothing here is fetched or
+    /// installed, and a name nothing answers to is reported, not refused.
     #[serde(default)]
     pub deps: Deps,
     /// The typed logs it emits, by name.
@@ -372,13 +369,59 @@ impl Manifest {
         kits.chain(own).collect()
     }
 
-    /// Read what an image claims to be, without compiling or running it.
-    ///
-    /// Refused when the image has no [`PROGRAM_SECTION`], which a bare
-    /// `cargo build` leaves out; when it has no tools; when a tool record was
-    /// compiled in a crate other than the program's; and when it names a kit
-    /// twice.
-    pub fn from_image(image: &[u8]) -> Result<Self> {
+    /// Refuse a manifest of another ABI, with no tools, naming a kit twice,
+    /// with a kit keeping tables or naming former keys and declaring no id, or
+    /// with an id or former key empty or named twice.
+    fn checked(self) -> Result<Self> {
+        versioned(self.abi_version)?;
+        if self.tools.is_empty() {
+            bail!("program declares no tools");
+        }
+        for (at, kit) in self.kits.iter().enumerate() {
+            if self.kits[..at].iter().any(|seen| seen.name == kit.name) {
+                bail!("program manifest names kit {} twice", kit.name);
+            }
+            if kit.database.is_some() && kit.id.is_none() {
+                bail!("kit {} keeps tables and declares no id", kit.name);
+            }
+            if kit.formerly.iter().any(|key| key.is_empty()) {
+                bail!("kit {} names an empty former key", kit.name);
+            }
+            if !kit.formerly.is_empty() && kit.id.is_none() {
+                bail!("kit {} names former keys and declares no id", kit.name);
+            }
+            let keys = |kit: &Kit| -> Vec<String> {
+                kit.id.iter().chain(&kit.formerly).cloned().collect()
+            };
+            let mine = keys(kit);
+            if let Some(key) = mine
+                .iter()
+                .enumerate()
+                .find_map(|(at, key)| mine[..at].contains(key).then_some(key))
+            {
+                bail!("kit {} names the key {key} twice", kit.name);
+            }
+            if let Some(key) = mine
+                .iter()
+                .find(|key| self.kits[..at].iter().any(|seen| keys(seen).contains(key)))
+            {
+                bail!("kits {} and another keep migrations under {key}", kit.name);
+            }
+        }
+        Ok(self)
+    }
+}
+
+/// What an image claims to be, read without compiling or running it.
+///
+/// Refused when the image has no [`PROGRAM_SECTION`], which a bare
+/// `cargo build` leaves out; when it has no tools; when a tool record was
+/// compiled in a crate other than the program's; and when it names a kit
+/// twice.
+impl TryFrom<&[u8]> for Manifest {
+    type Error = anyhow::Error;
+
+    fn try_from(image: &[u8]) -> Result<Self> {
         let image = Image(image);
         let abi = image.section(ABI_SECTION)?.unwrap_or_default();
         let abi =
@@ -459,48 +502,6 @@ impl Manifest {
         manifest.tools.sort_by(|a, b| a.name.cmp(&b.name));
         manifest.events.sort_by(|a, b| a.name.cmp(&b.name));
         manifest.checked()
-    }
-
-    /// Refuse a manifest of another ABI, with no tools, naming a kit twice,
-    /// with a kit keeping tables or naming former keys and declaring no id, or
-    /// with an id or former key empty or named twice.
-    fn checked(self) -> Result<Self> {
-        versioned(self.abi_version)?;
-        if self.tools.is_empty() {
-            bail!("program declares no tools");
-        }
-        for (at, kit) in self.kits.iter().enumerate() {
-            if self.kits[..at].iter().any(|seen| seen.name == kit.name) {
-                bail!("program manifest names kit {} twice", kit.name);
-            }
-            if kit.database.is_some() && kit.id.is_none() {
-                bail!("kit {} keeps tables and declares no id", kit.name);
-            }
-            if kit.formerly.iter().any(|key| key.is_empty()) {
-                bail!("kit {} names an empty former key", kit.name);
-            }
-            if !kit.formerly.is_empty() && kit.id.is_none() {
-                bail!("kit {} names former keys and declares no id", kit.name);
-            }
-            let keys = |kit: &Kit| -> Vec<String> {
-                kit.id.iter().chain(&kit.formerly).cloned().collect()
-            };
-            let mine = keys(kit);
-            if let Some(key) = mine
-                .iter()
-                .enumerate()
-                .find_map(|(at, key)| mine[..at].contains(key).then_some(key))
-            {
-                bail!("kit {} names the key {key} twice", kit.name);
-            }
-            if let Some(key) = mine
-                .iter()
-                .find(|key| self.kits[..at].iter().any(|seen| keys(seen).contains(key)))
-            {
-                bail!("kits {} and another keep migrations under {key}", kit.name);
-            }
-        }
-        Ok(self)
     }
 }
 

@@ -49,16 +49,14 @@ async fn fixture() -> Result<TestHost> {
 async fn note(host: &TestHost, word: &str) -> Result<Output> {
     let args = format!(r#"{{"word":"{word}"}}"#).into_bytes();
     let (_, output) = host
-        .host()
+        .host
         .call(FIXTURE, Some(&caller()), "note", args, false)
         .await?;
     Ok(output)
 }
 
 async fn records(host: &TestHost, calls: u64, logs: u64, limit: u32) -> Result<Records> {
-    host.host()
-        .records(RecordsPage { calls, logs, limit })
-        .await
+    host.host.records(RecordsPage { calls, logs, limit }).await
 }
 
 /// The cursors that store everything in `records`.
@@ -110,7 +108,7 @@ async fn records_answers_past_the_cursors_and_deletes_up_to_them() -> Result<()>
     assert!(words(&rest.logs)[0].contains("three"));
 
     // What was stored is gone from the host, and what was not is still there.
-    let (written, _) = host.host().calls(FIXTURE, page()).await?;
+    let (written, _) = host.host.calls(FIXTURE, page()).await?;
     assert_eq!(written.len(), 1);
     assert_eq!(written[0].id, rest.calls[0].call.id);
     assert_eq!(host.logs(FIXTURE, None).await?.len(), 1);
@@ -118,7 +116,7 @@ async fn records_answers_past_the_cursors_and_deletes_up_to_them() -> Result<()>
     let (calls, logs) = stored(&rest);
     let none = records(&host, calls, logs, 10).await?;
     assert!(none.calls.is_empty() && none.logs.is_empty());
-    assert!(host.host().calls(FIXTURE, page()).await?.0.is_empty());
+    assert!(host.host.calls(FIXTURE, page()).await?.0.is_empty());
     assert!(host.logs(FIXTURE, None).await?.is_empty());
     Ok(())
 }
@@ -154,16 +152,16 @@ async fn a_failed_calls_replay_outlives_its_deletion() -> Result<()> {
     let id = failed.calls[0].call.id;
     let (calls, logs) = stored(&failed);
     records(&host, calls, logs, 10).await?;
-    assert!(host.host().calls(FIXTURE, page()).await?.0.is_empty());
+    assert!(host.host.calls(FIXTURE, page()).await?.0.is_empty());
 
-    let input = host.host().call_input(FIXTURE, id).await?;
+    let input = host.host.call_input(FIXTURE, id).await?;
     assert_eq!(input.tool, "note");
     assert_eq!(input.args, r#"{"word":"fail"}"#);
     assert_eq!(
         input.caller.map(|caller| caller.id).as_deref(),
         Some("acct")
     );
-    host.host().call_tape(FIXTURE, id).await?;
+    host.host.call_tape(FIXTURE, id).await?;
     Ok(())
 }
 
@@ -178,16 +176,16 @@ async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
         200,
         r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title></channel></rss>"#,
     );
-    host.host()
+    host.host
         .set_cron("feed", "tick", Some("* * * * *".to_owned()))
         .await?;
     let wakes = host.wakes().await?;
     host.set_now(wakes[0].1);
     assert_eq!(host.fire().await?.len(), 1);
 
-    let unsaved = host.host().crons("feed").await?.crons;
+    let unsaved = host.host.crons("feed").await?.crons;
     host.flush().await?;
-    let written = host.host().crons("feed").await?.crons;
+    let written = host.host.crons("feed").await?.crons;
     let last = written[0].last.clone().expect("the tick ran");
     assert_eq!(last.tool, "tick");
     assert_eq!(
@@ -199,9 +197,9 @@ async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
     assert_eq!(pulled.calls.len(), 1);
     let (calls, logs) = stored(&pulled);
     records(&host, calls, logs, 10).await?;
-    assert!(host.host().calls("feed", page()).await?.0.is_empty());
+    assert!(host.host.calls("feed", page()).await?.0.is_empty());
 
-    let kept = host.host().crons("feed").await?.crons;
+    let kept = host.host.crons("feed").await?.crons;
     assert_eq!(
         serde_json::to_value(&kept[0].last)?,
         serde_json::to_value(&written[0].last)?

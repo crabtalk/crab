@@ -11,7 +11,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use berm::{Berm, Calls, Config, Engine, storage, syscall::call};
+use berm::{Berm, Calls, Config, Engine};
 use std::{fs, path::PathBuf, sync::Arc};
 
 const GUEST: &str = "target/berm/berm_fixture.wasm";
@@ -38,12 +38,7 @@ async fn main() -> Result<()> {
         ..Config::default()
     })?;
 
-    let berm = Berm::new(
-        &engine,
-        Calls::by_name(call::DEFAULT_CALL_DEPTH),
-        vec![],
-        storage::Memory::new(),
-    );
+    let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), vec![]);
     berm.deploy("inner", &image)?;
     berm.deploy("outer", &image)?;
 
@@ -62,7 +57,7 @@ async fn main() -> Result<()> {
     // The other half of the wire: a refusal is not the target's own failure,
     // and the calling guest is told which it got. Nothing answers to `inner`
     // once it is gone.
-    assert!(berm.remove("inner")?);
+    assert!(berm.remove("inner"));
     let failure = Result::from(
         berm.call(None, "outer", "nest", br#"{"query":"hi"}"#.to_vec())
             .await?
@@ -92,7 +87,7 @@ async fn main() -> Result<()> {
     let owned = Berm::new(
         &engine,
         Calls {
-            depth: call::DEFAULT_CALL_DEPTH,
+            depth: Calls::DEFAULT_DEPTH,
             resolve: Arc::new(|at, target, _| {
                 let (owner, _) = at
                     .program
@@ -107,10 +102,9 @@ async fn main() -> Result<()> {
                     .map_or(program, |(_, name)| name)
                     .to_owned()
             }),
-            ..Calls::by_name(call::DEFAULT_CALL_DEPTH)
+            ..Calls::by_name(Calls::DEFAULT_DEPTH)
         },
         vec![],
-        storage::Memory::new(),
     );
     owned.deploy("alice/outer", &image)?;
     owned.deploy("alice/inner", &image)?;

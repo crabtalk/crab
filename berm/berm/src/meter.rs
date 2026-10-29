@@ -22,12 +22,8 @@ pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
 pub struct Meters(Mutex<ByTool>);
 
 impl Meters {
-    pub(crate) fn add(&self, program: &str, tool: &str, used: Meter) {
-        *self
-            .0
-            .lock()
-            .entry((program.into(), tool.into()))
-            .or_default() += used;
+    pub(crate) fn add(&self, program: Arc<str>, tool: Arc<str>, used: Meter) {
+        *self.0.lock().entry((program, tool)).or_default() += used;
     }
 
     /// CPU microseconds over every program.

@@ -2,7 +2,7 @@
 
 use crate::{
     context::{self, Contexts},
-    format, utils,
+    format, runtime, terminal,
 };
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
@@ -27,10 +27,10 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
         .or(contexts.current.as_deref())
         .unwrap_or(context::DEFAULT)
         .to_owned();
-    let serving = utils::wait(client.health()).unwrap_or(false);
+    let serving = runtime::wait(client.health()).unwrap_or(false);
     let (account, plan) = match &client.owner {
         Some(owner) => {
-            let period = utils::wait(client.period())?;
+            let period = runtime::wait(client.period())?;
             (Some(owner.name().to_owned()), Some(period))
         }
         None => (None, None),
@@ -43,7 +43,7 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
         plan: plan.as_ref().map(|period| period.plan.clone()),
     };
     if json {
-        return utils::json(&status);
+        return terminal::json(&status);
     }
     println!("context  {}", status.context);
     println!(

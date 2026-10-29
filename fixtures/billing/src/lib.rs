@@ -7,7 +7,7 @@ extern crate alloc;
 
 use alloc::string::String;
 use berm_lang::{Result, tool};
-use crabkit::stripe::{Data, Session, Subscriber};
+use stripe::{Data, Session, Subscriber};
 
 /// Opens a Stripe Checkout session subscribing the calling user to a
 /// plan, and answers the URL to send them to.

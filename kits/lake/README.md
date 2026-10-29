@@ -43,11 +43,12 @@ pub fn posts(after: u64) -> Result<Vec<Post>> {
 
 ## A source
 
-Implement `Source` to fetch items and threads and shape what is stored, and set a `Schedule` with fetch limits and intervals in milliseconds:
+Implement `Source` to build the request for a feed or a thread and read its answer, and shape what is stored, and set a `Schedule` with fetch limits and intervals in milliseconds:
 
 ```rust,ignore
 use core::str;
-use crabkit::lake::{Feed, Kind, Listed, Schedule, Source, State, Watch, rss::{self, Entry}};
+use berm_lang::http::Response;
+use crabkit::lake::{Feed, Kind, Listed, Read, Request, Schedule, Source, State, Watch, rss::{self, Entry}};
 
 pub struct Blog;
 
@@ -68,18 +69,22 @@ impl Source for Blog {
         state.follow("https://example.com/feed.xml", Kind::Chronological);
     }
 
-    fn fetch(feed: &Feed) -> Result<Vec<Listed<Entry>>, String> {
-        let response = berm_lang::http::fetch("GET", &feed.key, &[], b"").map_err(|e| format!("{e}"))?;
+    fn request(feed: &Feed) -> Result<Request, String> {
+        Ok(Request::get(&feed.key))
+    }
+
+    fn parse(_feed: &Feed, response: Response) -> Result<Read<Entry>, String> {
         let xml = str::from_utf8(&response.body).map_err(|_| String::from("not UTF-8"))?;
-        Ok(rss::entries(xml)?
+        Ok(Read::Listed(rss::entries(xml)?
             .into_iter()
             .map(|entry| Listed { id: entry.id.clone(), posted: entry.posted, item: entry })
-            .collect())
+            .collect()))
     }
 
     fn post(_feed: &Feed, entry: Entry) -> Post { /* ... */ }
     fn watches(_feed: &Feed) -> bool { false }
-    fn thread(watch: &Watch) -> Result<(u64, ()), String> { Err(format!("{} has no thread", watch.id)) }
+    fn request_thread(watch: &Watch) -> Result<Request, String> { Err(format!("{} has no thread", watch.id)) }
+    fn parse_thread(watch: &Watch, _response: Response) -> Result<(u64, ()), String> { Err(format!("{} has no thread", watch.id)) }
     fn reply(_watch: &Watch, _thread: ()) {}
 }
 ```
@@ -88,7 +93,7 @@ impl Source for Blog {
 
 ## A tick
 
-A tick fetches the feeds due and then the threads due, least recently fetched first, and fetches no more threads once it has stored 8 MiB. A thread is stored in place of the last only when its comment count changed. It logs a `Fetched` for each feed and a `FetchFailed` for each fetch that failed, which is retried when next due. State is stored under the service's `lake` key, and all of it commits with the call.
+A tick fetches the feeds due and then the threads due, least recently fetched first, each phase's requests sent in one batch: plain ones over `berm.http.fetch_all`, proxied ones over `berm.http.proxy_all`. An answer with a status outside 2xx is a failed fetch. A feed whose `parse` answers `Read::More` has those requests sent in the next round, with every other feed's of that round, and its closure handed their answers, until it answers `Read::Listed`. It stores no more threads once it has stored 8 MiB. A thread is stored in place of the last only when its comment count changed. It logs a `Fetched` for each feed and a `FetchFailed` for each fetch that failed, which is retried when next due. State is stored under the service's `lake` key, and all of it commits with the call.
 
 ## Reading
 

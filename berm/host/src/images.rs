@@ -2,11 +2,9 @@
 
 use crate::Images;
 use anyhow::{Context, Result};
+use berm_api::digest;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-
-/// What a digest opens with.
-const SHA256: &str = "sha256:";
 
 #[derive(Clone)]
 pub struct Stored {
@@ -28,7 +26,7 @@ impl Stored {
 
     /// Whether the image `digest` names is kept.
     pub async fn holds(&self, digest: &str) -> bool {
-        match digest.strip_prefix(SHA256) {
+        match digest.strip_prefix(digest::PREFIX) {
             Some(hex) => fs::try_exists(self.dir.join(hex)).await.unwrap_or(false),
             None => false,
         }
@@ -36,7 +34,7 @@ impl Stored {
 
     /// Keep `image`, answering with its digest.
     pub async fn put(&self, image: &[u8]) -> Result<String> {
-        let hex = berm::digest(image);
+        let hex = digest::hex(image);
         let path = self.dir.join(&hex);
         if !fs::try_exists(&path).await.unwrap_or(false) {
             fs::create_dir_all(&self.dir)
@@ -50,14 +48,14 @@ impl Stored {
                 .await
                 .context("failed to keep an image")?;
         }
-        Ok(format!("{SHA256}{hex}"))
+        Ok(digest::prefixed(&hex))
     }
 }
 
 impl Images for Stored {
     async fn pull(&self, _: &str, digest: &str) -> Result<Vec<u8>> {
         let hex = digest
-            .strip_prefix(SHA256)
+            .strip_prefix(digest::PREFIX)
             .with_context(|| format!("{digest:?} is not a sha256 digest"))?;
         fs::read(self.dir.join(hex))
             .await

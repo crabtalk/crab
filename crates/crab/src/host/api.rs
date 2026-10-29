@@ -14,11 +14,11 @@ use axum::{
     response::Response,
     routing::{get, post, put},
 };
-use berm_api::{Deployed, Program as Wire, host};
+use berm_api::{Deployed, Program as Wire, digest, host};
 use berm_host::{Denied, Named, deny};
 use crabtalk_sdk::{
     client::LOCAL,
-    sandbox::service::{
+    services::service::{
         DeployRequest, DeploySetRequest, Hosts, Secret, SetSecret, Upload, UploadRequest,
     },
 };
@@ -33,9 +33,8 @@ impl Service {
     /// MCP, at `/mcp`.
     pub fn router(self: Arc<Self>) -> Router {
         let service = self;
-        // `route_service` rather than `nest_service`: MCP Streamable HTTP is one
-        // path taking POST, GET and DELETE, and nesting can drop the `Host` header
-        // the transport validates against.
+        // MCP Streamable HTTP is one path taking POST, GET and DELETE, and
+        // `nest_service` can drop the `Host` header the transport validates.
         let mcp = StreamableHttpService::new(
             {
                 let service = service.clone();
@@ -107,9 +106,9 @@ async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
     )
 }
 
-/// Deploy under `name` the image uploaded through `POST /services/local/{name}/image` that the body
-/// names by its digest. `PUT` because the name is the address and redeploying
-/// the same name replaces what is there.
+/// Deploy under `name` the image uploaded through
+/// `POST /services/local/{name}/image` that the body names by its digest.
+/// Redeploying the same name replaces what is there.
 async fn deploy(
     State(service): State<Arc<Service>>,
     Extension(Named(name)): Extension<Named>,
@@ -135,7 +134,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
             "a seed starts a service on Cloud; the local host's own database is where one is made",
         ));
     }
-    if !deploy.reference.starts_with("sha256:") {
+    if !deploy.reference.starts_with(digest::PREFIX) {
         return Err(deny(
             StatusCode::BAD_REQUEST,
             format!(
@@ -175,7 +174,7 @@ async fn image(
             "`sha256` is a SHA-256 in lowercase hex",
         ));
     }
-    if service.holds(&format!("sha256:{}", upload.sha256)).await {
+    if service.holds(&digest::prefixed(&upload.sha256)).await {
         return Ok(Json(Upload { upload: None }));
     }
     let host = headers
@@ -196,11 +195,12 @@ async fn upload(
     Path((_, sha256)): Path<(String, String)>,
     image: Bytes,
 ) -> Result<StatusCode, Denied> {
-    let digest = service.keep(&image).await?;
-    if digest != format!("sha256:{sha256}") {
+    let kept = service.keep(&image).await?;
+    let named = digest::prefixed(&sha256);
+    if kept != named {
         return Err(deny(
             StatusCode::BAD_REQUEST,
-            format!("the image uploaded is {digest}, not sha256:{sha256}"),
+            format!("the image uploaded is {kept}, not {named}"),
         ));
     }
     Ok(StatusCode::NO_CONTENT)

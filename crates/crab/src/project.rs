@@ -7,7 +7,7 @@ use berm_build::Workspace;
 use std::{collections::BTreeMap, fs, path::Path};
 
 /// What the project file beside a program's or kit's `Cargo.toml` is called.
-pub const FILE: &str = "crab.toml";
+pub const FILE: &str = berm_api::project::FILE;
 
 /// The `crab.toml` in `dir`.
 pub fn read(dir: &Path) -> Result<Project> {
@@ -20,7 +20,7 @@ pub fn selected(names: &[String]) -> Result<Vec<String>> {
     if !names.is_empty() {
         return Ok(names.to_vec());
     }
-    let workspace = Workspace::read(Path::new("."), FILE, &[])?;
+    let workspace = Workspace::read(Path::new("."), &[])?;
     let mut names = Vec::new();
     for dir in &workspace.services {
         names.push(read(dir)?.name()?.to_owned());

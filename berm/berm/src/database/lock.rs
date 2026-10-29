@@ -5,24 +5,32 @@ use crate::{
     database::{self, Database},
 };
 use anyhow::{Result, bail};
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::{Arc, atomic::Ordering},
+    time::Instant,
+};
 use tokio::sync::OwnedMutexGuard;
 
 /// The savepoint a nested call takes on each database its chain holds.
 pub(crate) const SAVEPOINT: &str = "_berm_call";
 
-/// Which chain holds each database's writer, and which database each chain is
-/// waiting for the writer of.
+/// [`Database::holder`] while no chain holds the writer. [`crate::chain`]
+/// numbers chains from 1.
+pub(crate) const FREE: u64 = 0;
+
+/// Which database each chain is waiting for the writer of. Each
+/// [`Database::holder`] changes only under it, so a walk over both sees one
+/// state.
 #[derive(Default)]
 pub(crate) struct Graph {
-    holders: HashMap<Arc<str>, u64>,
-    waits: HashMap<u64, Arc<str>>,
+    waits: HashMap<u64, Arc<Database>>,
 }
 
 impl Database {
     /// Whether `chain` holds the writer.
     pub(crate) fn holds(&self, chain: u64) -> bool {
-        self.graph.lock().holders.get(&self.name) == Some(&chain)
+        self.holder.load(Ordering::Acquire) == chain
     }
 
     /// Take the writer for `chain` and open a transaction, held until the
@@ -30,11 +38,12 @@ impl Database {
     pub(crate) async fn write(self: &Arc<Self>, chain: u64, deadline: Instant) -> Result<Writing> {
         let waiting = {
             let mut graph = self.graph.lock();
-            let mut wanted = self.name.clone();
+            let mut wanted = self.clone();
             for _ in 0..=graph.waits.len() {
-                let Some(&holder) = graph.holders.get(&wanted) else {
+                let holder = wanted.holder.load(Ordering::Acquire);
+                if holder == FREE {
                     break;
-                };
+                }
                 if holder == chain {
                     return Err(Refused(format!(
                         "{}'s database is held by a chain waiting on this one",
@@ -47,7 +56,7 @@ impl Database {
                 };
                 wanted = next.clone();
             }
-            graph.waits.insert(chain, self.name.clone());
+            graph.waits.insert(chain, self.clone());
             Waiting {
                 graph: self.graph.clone(),
                 chain,
@@ -65,7 +74,10 @@ impl Database {
                 self.name
             );
         };
-        self.graph.lock().holders.insert(self.name.clone(), chain);
+        {
+            let _graph = self.graph.lock();
+            self.holder.store(chain, Ordering::Release);
+        }
         let writing = Writing {
             database: self.clone(),
             _held: held,
@@ -154,11 +166,8 @@ impl Drop for Writing {
                 }
             }));
         }
-        self.database
-            .graph
-            .lock()
-            .holders
-            .remove(&self.database.name);
+        let _graph = self.database.graph.lock();
+        self.database.holder.store(FREE, Ordering::Release);
     }
 }
 
@@ -170,6 +179,7 @@ struct Waiting {
 
 impl Drop for Waiting {
     fn drop(&mut self) {
-        self.graph.lock().waits.remove(&self.chain);
+        let waited = self.graph.lock().waits.remove(&self.chain);
+        drop(waited);
     }
 }

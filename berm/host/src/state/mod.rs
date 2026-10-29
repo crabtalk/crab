@@ -28,7 +28,7 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
             let host = host::alive(&reading);
             async move {
                 let host = host?;
-                if let Some(database) = host.kept(&at.program) {
+                if let Some(database) = at.database(|| host.kept(&at.program)) {
                     return database?.get(at.chain, key).await;
                 }
                 let (scope, name) = host::split(&at.program);
@@ -38,7 +38,8 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
         move |at: Callsite, key: String, value: Vec<u8>| {
             let host = host::alive(&writing);
             async move {
-                let Some(database) = host?.kept(&at.program) else {
+                let host = host?;
+                let Some(database) = at.database(|| host.kept(&at.program)) else {
                     return Ok(false);
                 };
                 database?.set(at.chain, key, value).await?;

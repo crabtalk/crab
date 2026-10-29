@@ -4,7 +4,7 @@ use crate::host::Service;
 use axum::http::StatusCode;
 use berm_api::{Break, Manifest, Output, host::Deploy};
 use berm_host::{Denied, Images, Installed, deny};
-use crabtalk_sdk::sandbox::price;
+use crabtalk_sdk::services::price;
 
 impl Service {
     /// Make the tools of the image `deploy` names reachable under `name`,
@@ -19,7 +19,7 @@ impl Service {
         let replaced = self.get(name);
         let installed = self.host.deploy(name, deploy, None).await?;
         let breaks = replaced
-            .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
+            .map(|replaced| replaced.manifest.breaks(&installed.program.manifest))
             .unwrap_or_default();
         for broken in &breaks {
             tracing::warn!(name, "breaks callers: {broken}");
@@ -53,7 +53,7 @@ impl Service {
                     .iter()
                     .find(|(one, _)| *one == name)
                     .and_then(|(_, replaced)| replaced.as_ref())
-                    .map(|replaced| replaced.manifest().breaks(installed.program.manifest()))
+                    .map(|replaced| replaced.manifest.breaks(&installed.program.manifest))
                     .unwrap_or_default();
                 (name, installed, breaks)
             })
@@ -71,7 +71,7 @@ impl Service {
             .pull(digest, digest)
             .await
             .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-        let manifest = Manifest::from_image(&image)
+        let manifest = Manifest::try_from(image.as_slice())
             .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         price::check(&manifest, priced).map_err(|e| deny(StatusCode::BAD_REQUEST, e))
     }

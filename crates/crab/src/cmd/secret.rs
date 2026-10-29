@@ -1,6 +1,6 @@
 //! `crab secret` — a program's secrets.
 
-use crate::{cmd::request, fill::Form, utils};
+use crate::{cmd::request, fill::Form, runtime, terminal};
 use anyhow::{Context, Result, bail};
 use crabtalk_sdk::client::Client;
 use std::{
@@ -21,7 +21,7 @@ pub fn put(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Resul
             "no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret} --host <host>`"
         );
     }
-    utils::wait(client.put_secret(name, secret, value, hosts))?;
+    runtime::wait(client.put_secret(name, secret, value, hosts))?;
     match hosts.is_empty() {
         true => eprintln!(
             "set {name} {secret}, sent to no host: crab secret hosts {name} {secret} --host <host>"
@@ -33,16 +33,16 @@ pub fn put(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Resul
 
 /// Send `name`'s secret `secret` to `hosts` alone.
 pub fn hosts(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Result<()> {
-    utils::wait(client.put_secret_hosts(name, secret, hosts))?;
+    runtime::wait(client.put_secret_hosts(name, secret, hosts))?;
     eprintln!("{name} {secret} is sent to {}", hosts.join(", "));
     Ok(())
 }
 
 /// Print `name`'s secrets, by name, each beside the hosts it is sent to.
 pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
-    let secrets = utils::wait(client.secrets(name))?;
+    let secrets = runtime::wait(client.secrets(name))?;
     if json {
-        return utils::json(&secrets);
+        return terminal::json(&secrets);
     }
     for secret in &secrets {
         match secret.sent() {
@@ -58,8 +58,8 @@ pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
 
 /// Revoke `name`'s secret `secret`.
 pub fn rm(client: &Client, name: &str, secret: &str, yes: bool) -> Result<()> {
-    utils::confirm(yes, &format!("revoke {name} {secret}"))?;
-    utils::wait(client.delete_secret(name, secret))?;
+    terminal::confirm(yes, &format!("revoke {name} {secret}"))?;
+    runtime::wait(client.delete_secret(name, secret))?;
     eprintln!("revoked {name} {secret}");
     Ok(())
 }
@@ -68,7 +68,7 @@ pub fn rm(client: &Client, name: &str, secret: &str, yes: bool) -> Result<()> {
 /// `credential`, with `copies` the values its credentials have them enter at
 /// the provider and `context` shown to them: print its page, and how to wait
 /// for it.
-pub fn ask(
+pub fn request(
     client: &Client,
     name: &str,
     credential: Option<&str>,
@@ -82,7 +82,7 @@ pub fn ask(
             bail!("--copy gives {key} twice");
         }
     }
-    let asked = utils::wait(client.ask_secrets(name, credential, copy, context))?;
+    let asked = runtime::wait(client.ask_secrets(name, credential, copy, context))?;
     request::asked(&asked, json)
 }
 
@@ -103,7 +103,7 @@ pub fn fill(client: &Client, name: &str, copies: &[(String, String)]) -> Result<
             "crab secret fill takes values typed at a terminal: ask the person to run `crab secret fill {name}` in theirs"
         );
     }
-    let credentials = utils::wait(client.runtime(name))?.deps.grouped();
+    let credentials = runtime::wait(client.runtime(name))?.deps.grouped();
     if credentials.is_empty() {
         eprintln!("{name} declares no secrets");
         return Ok(());

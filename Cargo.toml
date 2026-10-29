@@ -10,12 +10,12 @@ license = "Apache-2.0"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
 
 [workspace.dependencies]
-crab = { package = "crab-agent", path = "crates/crab", version = "0.1.1" }
 crabkit = { path = "crates/crabkit", version = "0.1.1" }
 crabtalk-sdk = { path = "crates/sdk", version = "0.1.1" }
 
 # berm
 berm = { path = "berm/berm", version = "0.1.1" }
+berm-abi = { path = "berm/abi", version = "0.1.1" }
 berm-api = { path = "berm/api", version = "0.1.1" }
 berm-build = { path = "berm/build", version = "0.1.1" }
 berm-codegen = { path = "berm/codegen", version = "0.1.1" }
@@ -90,14 +90,12 @@ tokio = { version = "1", features = [
 pulldown-cmark = { version = "0.13", default-features = false }
 ratatui = "0.30"
 regex = "1"
-rpassword = "7"
 toml = "1"
 toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = "5"
-# Off by default: `cache` drags in a config format nothing here reads.
 wasmtime = { version = "48", default-features = false, features = [
     "anyhow",
     "async",

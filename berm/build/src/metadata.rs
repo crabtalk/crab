@@ -3,6 +3,7 @@
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::{
+    ops::Deref,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -19,7 +20,7 @@ pub struct Metadata {
 pub struct Package {
     pub name: String,
     pub version: String,
-    pub manifest_path: PathBuf,
+    pub manifest_path: ManifestPath,
     pub description: Option<String>,
     pub homepage: Option<String>,
     pub repository: Option<String>,
@@ -64,14 +65,27 @@ impl Metadata {
             .with_context(|| format!("no Cargo.toml in {}", dir.display()))?;
         self.packages
             .iter()
-            .find(|package| package.manifest_path == manifest)
+            .find(|package| *package.manifest_path == *manifest)
             .with_context(|| format!("{} is not a package", manifest.display()))
     }
 }
 
-impl Package {
-    /// The directory of its `Cargo.toml`.
+/// The path of a package's `Cargo.toml`, as cargo reports it.
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct ManifestPath(pub PathBuf);
+
+impl ManifestPath {
+    /// The directory of the `Cargo.toml`.
     pub fn dir(&self) -> &Path {
-        self.manifest_path.parent().unwrap_or(Path::new("."))
+        self.0.parent().unwrap_or(Path::new("."))
+    }
+}
+
+impl Deref for ManifestPath {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
     }
 }

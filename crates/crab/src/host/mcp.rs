@@ -48,7 +48,7 @@ impl Mcp {
             .iter()
             .filter(|deployed| !self.service.host.stopped(&deployed.name))
             .filter_map(|deployed| {
-                let manifest = deployed.manifest();
+                let manifest = &deployed.manifest;
                 let tools: Vec<mcp::Tool> = manifest
                     .tools
                     .iter()
@@ -92,8 +92,7 @@ impl ServerHandler for Mcp {
             .enable_resources()
             .build();
 
-        // Named here rather than from rmcp's build environment, which would
-        // report rmcp.
+        // crab's own name; rmcp's build environment would report rmcp.
         ServerInfo::new(capabilities)
             .with_server_info(Implementation::new(
                 env!("CARGO_PKG_NAME"),
@@ -177,8 +176,7 @@ impl ServerHandler for Mcp {
             Ok(Output::Done(result)) => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
-            // The program ran and reported failure. That is a tool result the
-            // model should see and react to, not a protocol error.
+            // The program ran and reported failure: a tool result.
             Ok(Output::Failed(failure)) => {
                 Ok(CallToolResult::error(vec![ContentBlock::text(failure)]))
             }

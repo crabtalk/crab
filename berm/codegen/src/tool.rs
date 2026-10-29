@@ -1,7 +1,7 @@
 //! What `#[tool]` expands a function into: the function, its record in the
 //! `.berm.abi` section, and the export the host calls.
 
-use crate::{ABI_SECTION, utils};
+use berm_abi::{ABI_SECTION, ABI_VERSION, TOOL_PREFIX};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -11,10 +11,6 @@ use syn::{
 
 /// JSON Schema for a tool that takes no parameters.
 const DEFAULT_PARAMETERS: &str = r#"{"type":"object"}"#;
-
-/// Prefix on every tool's exported symbol, so a tool called `init` or
-/// `describe` cannot collide with the exports the ABI reserves.
-const TOOL_PREFIX: &str = "berm_tool_";
 
 /// What `#[tool(...)]` says of the function.
 #[derive(Default)]
@@ -104,7 +100,7 @@ impl Tool {
     /// Read `function` as a tool, stripping the doc comments off its
     /// parameters, which the compiler does not take.
     fn read(options: Options, function: &mut ItemFn) -> syn::Result<Self> {
-        let description = utils::docs(&function.attrs);
+        let description = crate::docs(&function.attrs);
         let deprecated = function
             .attrs
             .iter()
@@ -128,7 +124,7 @@ impl Tool {
                     "a tool's parameter is a plain name — it is the argument's key",
                 ));
             };
-            let description = utils::docs(&typed.attrs);
+            let description = crate::docs(&typed.attrs);
             typed.attrs.retain(|a| !a.path().is_ident("doc"));
             params.push(Param {
                 ident: pattern.ident.clone(),
@@ -197,16 +193,19 @@ impl Tool {
         };
         let mut out = Pieces::default();
         out.text(&format!(
-            r#"{{"tool":{{"name":"{}","description":"{}","parameters":"#,
-            utils::escape(&self.name),
-            utils::escape(&self.description),
+            r#"{{"tool":{{"name":{},"description":{},"parameters":"#,
+            serde_json::Value::from(self.name.as_str()),
+            serde_json::Value::from(self.description.as_str()),
         ));
         match self.params.is_empty() {
             true => out.text(DEFAULT_PARAMETERS),
             false => {
                 let fields = self.params.iter().map(|param| {
                     let name = param.ident.unraw().to_string();
-                    let description = utils::escape(&param.description);
+                    let description = match param.description.is_empty() {
+                        true => String::new(),
+                        false => serde_json::Value::from(param.description.as_str()).to_string(),
+                    };
                     let ty = &param.ty;
                     quote! {
                         ::berm_lang::schema::Field {
@@ -244,17 +243,15 @@ impl Tool {
                 out.text(&format!(r#","{key}":true"#));
             }
         }
-        out.text(r#"},"abi_version":"#);
-        out.flush();
-        out.pieces.push(quote!(::berm_lang::schema::Piece::Text(
-            ::berm_lang::ABI_VERSION_TEXT
-        )));
-        out.text(&format!(r#","crate":"{}"}}"#, utils::escape(&krate)));
+        out.text(&format!(
+            r#"}},"abi_version":{ABI_VERSION},"crate":{}}}"#,
+            serde_json::Value::from(krate)
+        ));
         out.flush();
         let pieces = out.pieces;
         Ok(quote! {
-            // What this tool is, as a section rather than an export: the host
-            // reads it out of the image without compiling or running anything.
+            // This tool's record, in a custom section the host reads without
+            // compiling or running the image.
             const _: () = {
                 const PIECES: &[::berm_lang::schema::Piece] = &[#(#pieces),*];
                 #[used]

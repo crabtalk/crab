@@ -5,8 +5,8 @@ compiles it once, holds it by the name it answers to, and instantiates it per
 invocation under wasmtime — nothing survives the call.
 
 ```rust
-let calls = Calls::by_name(call::DEFAULT_CALL_DEPTH);
-let berm = Berm::new(&engine, calls, vec![], storage::Memory::new());
+let calls = Calls::by_name(Calls::DEFAULT_DEPTH);
+let berm = Berm::new(&engine, calls, vec![]);
 berm.deploy("example", &wasm)?;
 let outcome = berm.call(None, "example", "echo", br#"{"query":"hi"}"#.to_vec()).await?;
 ```
@@ -34,7 +34,7 @@ as `proxied`.
 A guest cannot decline how far a chain of programs may nest, the depth
 `Calls` is built with, or how long one may run, `bound/watchdog.rs`.
 
-`Manifest::from_image(bytes)` reads what an image claims to be without compiling or
+`Manifest::try_from(bytes)` reads what an image claims to be without compiling or
 running it.
 
 ```sh

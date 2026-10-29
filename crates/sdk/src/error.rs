@@ -1,9 +1,7 @@
 //! Error envelopes.
 //!
-//! Wire types, so they live here rather than beside the server's error carrier:
-//! every service crate needs to *produce* one, and only cloud has an
-//! `AppError`. Keeping the shapes in the shared crate is what lets a refusal
-//! from a service crate look identical to one from cloud.
+//! Wire types every service crate produces; a refusal has one shape whichever
+//! crate made it.
 
 use serde::{Deserialize, Serialize};
 

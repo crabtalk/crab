@@ -1,6 +1,6 @@
 //! `crab sunset` — when a deprecated tool stops being served.
 
-use crate::utils;
+use crate::runtime;
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use crabtalk_sdk::client::Client;
@@ -20,7 +20,7 @@ pub fn run(client: &Client, name: &str, tool: &str, on: Option<&str>) -> Result<
                 })
         })
         .transpose()?;
-    utils::wait(client.sunset(name, tool, sunset))?;
+    runtime::wait(client.sunset(name, tool, sunset))?;
     match on {
         Some(on) => eprintln!("{name}.{tool} stops being served on {on}"),
         None => eprintln!("{name}.{tool} has no sunset"),

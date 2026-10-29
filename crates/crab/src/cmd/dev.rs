@@ -1,16 +1,14 @@
-//! `crab dev` — the local host: deploy programs to it and serve their tools
+//! `crab dev` — the local host: deploy services to it and serve their tools
 //! over HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`, or
 //! in the background with `-d`. One per machine.
 
 use crate::{
-    context,
-    dev::{Dev, Status},
-    format,
-    host::{self, Service, secrets},
-    utils,
+    context, format,
+    host::{self, Dev, Service, Status, secrets},
+    runtime, terminal,
 };
 use anyhow::{Context, Result, bail};
-use berm::syscall::call;
+use berm::{Calls, clock};
 use clap::Args;
 use reqwest::StatusCode;
 use std::{
@@ -45,12 +43,12 @@ pub struct Daemon {
     /// default.
     #[arg(long)]
     pub root: Option<PathBuf>,
-    /// How deep a chain of programs calling programs may go. `0` refuses
+    /// How deep a chain of services calling services may go. `0` refuses
     /// the first one, which is composition off.
     ///
     /// The bound is on runaway composition, not on the stack: a level
     /// costs ~720 bytes of it, and 64 MiB of guest address space.
-    #[arg(long, default_value_t = call::DEFAULT_CALL_DEPTH)]
+    #[arg(long, default_value_t = Calls::DEFAULT_DEPTH)]
     pub max_call_depth: u32,
     /// The proxy `berm.http.proxy` goes through, e.g.
     /// `http://user:pass@gate.example.com:3120`. Without one it goes
@@ -98,7 +96,7 @@ impl Daemon {
 
 /// `~/.crab/host`.
 pub fn root() -> Result<PathBuf> {
-    Ok(utils::home()?.join(".crab").join("host"))
+    Ok(context::dir()?.join("host"))
 }
 
 pub fn url(path: &str) -> String {
@@ -109,7 +107,7 @@ pub fn url(path: &str) -> String {
 pub fn run(daemon: &Daemon) -> Result<()> {
     host::trace();
     let root = daemon.root()?;
-    utils::wait(async {
+    runtime::wait(async {
         let secrets = root.join(secrets::FILE);
         let service = Service::new(
             root.clone(),
@@ -129,7 +127,7 @@ pub fn run(daemon: &Daemon) -> Result<()> {
             Status {
                 pid: process::id(),
                 root,
-                since: call::system_now(),
+                since: clock::now(),
             },
         );
         tracing::info!("listening on http://{addr}, mcp at http://{addr}/mcp");
@@ -149,7 +147,7 @@ pub fn run(daemon: &Daemon) -> Result<()> {
 /// already answering is left as it is.
 pub fn detach(daemon: &Daemon) -> Result<()> {
     let at = format!("http://{}", daemon.addr);
-    match utils::wait(ask(&at)) {
+    match runtime::wait(ask(&at)) {
         Ok(Some(_)) => {
             eprintln!("the host is already running on {at}");
             Ok(())
@@ -163,7 +161,7 @@ pub fn detach(daemon: &Daemon) -> Result<()> {
 /// background with its defaults when nothing does.
 pub fn up() -> Result<()> {
     let at = url("");
-    match utils::wait(ask(&at)) {
+    match runtime::wait(ask(&at)) {
         Ok(Some(_)) => Ok(()),
         Ok(None) => bail!("something other than the host answers on {at}"),
         Err(_) => start(&at, &root()?, Vec::new()),
@@ -201,7 +199,7 @@ fn start(at: &str, root: &Path, args: Vec<OsString>) -> Result<()> {
         if let Some(exit) = child.try_wait()? {
             bail!("the host {exit}; {} says why", path.display());
         }
-        if let Ok(Some(_)) = utils::wait(ask(at)) {
+        if let Ok(Some(_)) = runtime::wait(ask(at)) {
             eprintln!("started the host on {at}, writing to {}", path.display());
             return Ok(());
         }
@@ -219,7 +217,7 @@ const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
 /// Print the host's state. Fails when no host answers.
 pub fn status(json: bool) -> Result<()> {
-    let status = match utils::wait(ask(&url(""))) {
+    let status = match runtime::wait(ask(&url(""))) {
         Ok(Some(status)) => status,
         Ok(None) => bail!(
             "something other than the host answers on {}",
@@ -228,7 +226,7 @@ pub fn status(json: bool) -> Result<()> {
         Err(_) => bail!("no host on {}", context::LOCAL),
     };
     if json {
-        return utils::json(&status);
+        return terminal::json(&status);
     }
     println!(
         "host      http://{}  pid {}  since {}",
@@ -242,7 +240,7 @@ pub fn status(json: bool) -> Result<()> {
 
 /// Stop the host.
 pub fn stop() -> Result<()> {
-    let response = utils::wait(reqwest::Client::new().post(url("/dev/stop")).send())
+    let response = runtime::wait(reqwest::Client::new().post(url("/dev/stop")).send())
         .with_context(|| format!("no host on {}", context::LOCAL))?;
     if response.status() == StatusCode::NOT_FOUND {
         bail!(

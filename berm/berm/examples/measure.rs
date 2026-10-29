@@ -11,7 +11,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use berm::{Berm, Calls, Config, Engine, Program, storage};
+use berm::{Berm, Calls, Config, Engine, Program};
 use std::{
     fs,
     path::PathBuf,
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
     println!("compile (warm cache):{warm:>12.3?}");
 
     let program = compile(&cache, &image)?;
-    println!("manifest:              {:?}", program.manifest());
+    println!("manifest:              {:?}", program.manifest);
 
     println!(
         "heap probe:            {:?}",
@@ -117,10 +117,9 @@ async fn main() -> Result<()> {
         );
     }
 
-    // `carry` never allocates and `echo` does, so the flat delta above would be
-    // the heap's first use rather than the parse. `probe` allocates without
-    // parsing, which tells the two apart — and it costs the same for one byte
-    // as for four thousand, so what is priced is the first use, not the bytes.
+    // `carry` never allocates and `echo` does, so the flat delta above includes
+    // the heap's first use. `probe` allocates without parsing, and costs the
+    // same for one byte as for four thousand.
     println!(
         "  alloc, no parse:     {:>10.3?}",
         p50("probe", b"")
@@ -150,7 +149,7 @@ fn compile(dir: &std::path::Path, image: &[u8]) -> Result<Arc<Program>> {
         cache_dir: Some(dir.to_path_buf()),
         ..Config::default()
     })?;
-    Berm::new(&engine, Calls::by_name(0), vec![], storage::Memory::new()).deploy("fixture", image)
+    Berm::new(&engine, Calls::by_name(0), vec![]).deploy("fixture", image)
 }
 
 fn time<T>(f: impl FnOnce() -> Result<T>) -> Result<Duration> {

@@ -2,7 +2,7 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::Result;
-use berm::{ByTool, Meter, Meters, Program, User, tape::Taping};
+use berm::{ByTool, Meter, Meters, Program, User, chain, tape::Taping};
 use berm_api::{Output, host::NestedCall};
 use std::sync::Arc;
 
@@ -24,7 +24,7 @@ impl<E: Env> Host<E> {
         taping: Taping,
     ) -> Result<Invoked> {
         let meters = Arc::new(Meters::default());
-        let chain = berm::chain();
+        let chain = chain::next();
         self.logs.started(chain, call);
         let outcome = program
             .call_as(
@@ -86,7 +86,7 @@ impl<E: Env> Host<E> {
 /// How a call ended.
 pub(crate) struct Invoked {
     pub result: Output,
-    /// `result` is [`Output::Failed`] because the tool refused its caller.
+    /// The tool refused its caller; `result` is then [`Output::Failed`].
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,

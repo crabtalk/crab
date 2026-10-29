@@ -242,6 +242,7 @@ name = "berm"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "berm-abi",
  "berm-api",
  "berm-codegen",
  "berm-rusqlite",
@@ -261,6 +262,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-abi"
+version = "0.1.1"
+
+[[package]]
 name = "berm-account"
 version = "0.1.1"
 dependencies = [
@@ -278,12 +283,15 @@ name = "berm-api"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "berm-abi",
  "berm-rusqlite",
  "bytesize",
+ "hex",
  "object 0.40.0",
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "sha2 0.11.0",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
  "utoipa",
@@ -308,7 +316,7 @@ dependencies = [
  "berm-api",
  "berm-host",
  "berm-lang",
- "crabkit",
+ "crabkit-stripe",
  "serde_json",
  "tokio",
 ]
@@ -325,6 +333,7 @@ name = "berm-build"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "berm-abi",
  "berm-api",
  "serde",
  "serde_json",
@@ -335,6 +344,7 @@ dependencies = [
 name = "berm-codegen"
 version = "0.1.1"
 dependencies = [
+ "berm-abi",
  "proc-macro2",
  "quote",
  "serde_json",
@@ -401,7 +411,6 @@ dependencies = [
  "berm-kit",
  "berm-lang",
  "berm-rusqlite",
- "serde_json",
  "tokio",
 ]
 
@@ -416,6 +425,7 @@ dependencies = [
 name = "berm-lang"
 version = "0.1.1"
 dependencies = [
+ "berm-abi",
  "berm-codegen",
  "dlmalloc",
  "serde",
@@ -439,10 +449,8 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
- "hex",
  "reqwest",
  "serde_json",
- "sha2 0.11.0",
 ]
 
 [[package]]
@@ -840,7 +848,6 @@ dependencies = [
  "regex",
  "reqwest",
  "rmcp",
- "rpassword",
  "self_update",
  "serde",
  "serde_json",
@@ -3287,17 +3294,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpassword"
-version = "7.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2da316a15f47e3d053de9cb2c439650bd8fa4aaeb9365f2e5f27f492ff73c196"
-dependencies = [
- "libc",
- "rtoolbox",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "rsqlite-vfs"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3305,16 +3301,6 @@ checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
 dependencies = [
  "hashbrown 0.16.1",
  "thiserror 2.0.20",
-]
-
-[[package]]
-name = "rtoolbox"
-version = "0.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a1efe12a1469752d0e6ff5ebec0b6ef4924cc5c4c71046b0ec730040535819d"
-dependencies = [
- "libc",
- "windows-sys 0.61.2",
 ]
 
 [[package]]

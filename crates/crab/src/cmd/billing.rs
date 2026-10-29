@@ -1,7 +1,7 @@
 //! `crab billing` — the account's plan, credit and payments. A purchase is a
 //! payment request: a code whose page the person paying opens.
 
-use crate::{cmd::request, format, utils};
+use crate::{cmd::request, format, runtime, terminal};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::{
@@ -15,9 +15,9 @@ use serde::Serialize;
 
 /// Where the account stands: its plan and period, credit, refill and card.
 pub fn status(client: &Client, json: bool) -> Result<()> {
-    let period = utils::wait(client.period())?;
-    let credit = utils::wait(client.credit())?;
-    let card = utils::wait(client.payment_method())?;
+    let (period, credit, card) = runtime::wait(async {
+        tokio::try_join!(client.period(), client.credit(), client.payment_method())
+    })?;
     if json {
         #[derive(Serialize)]
         struct Status<'a, P, C, M> {
@@ -25,7 +25,7 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
             credit: &'a C,
             card: &'a M,
         }
-        return utils::json(&Status {
+        return terminal::json(&Status {
             period: &period,
             credit: &credit,
             card: &card,
@@ -66,7 +66,7 @@ pub fn ask(
     context: &str,
     json: bool,
 ) -> Result<()> {
-    let asked = utils::wait(client.ask_payment(purchase, plan, context))?;
+    let asked = runtime::wait(client.ask_payment(purchase, plan, context))?;
     request::asked(&asked, json)
 }
 
@@ -76,7 +76,7 @@ pub fn refill(client: &Client, amount: u32, cap: u32) -> Result<()> {
     if cap > 0 && amount < 20 {
         bail!("a refill buys $20 or more");
     }
-    utils::wait(client.set_refill(&RefillRequest {
+    runtime::wait(client.set_refill(&RefillRequest {
         cap_micros: i64::from(cap) * 1_000_000,
         amount_micros: i64::from(amount) * 1_000_000,
     }))?;
@@ -89,9 +89,9 @@ pub fn refill(client: &Client, amount: u32, cap: u32) -> Result<()> {
 
 /// Verify the account on GitHub, and print when it was verified.
 pub fn verify(client: &Client, json: bool) -> Result<()> {
-    let verification = utils::wait(client.verify())?;
+    let verification = runtime::wait(client.verify())?;
     if json {
-        return utils::json(&verification);
+        return terminal::json(&verification);
     }
     if let Some(at) = verification.verified_at {
         println!("verified {}", format::date(at));
@@ -100,9 +100,9 @@ pub fn verify(client: &Client, json: bool) -> Result<()> {
 }
 
 pub fn invoices(client: &Client, json: bool) -> Result<()> {
-    let invoices = utils::wait(client.invoices())?;
+    let invoices = runtime::wait(client.invoices())?;
     if json {
-        return utils::json(&invoices);
+        return terminal::json(&invoices);
     }
     if invoices.is_empty() {
         println!("no invoices");
@@ -123,7 +123,7 @@ pub fn invoices(client: &Client, json: bool) -> Result<()> {
 
 /// Open the Stripe portal, on `flow` when one is given.
 pub fn portal(client: &Client, flow: Option<PortalFlow>) -> Result<()> {
-    if !utils::open(&utils::wait(client.portal(Surface::Terminal, flow))?.url) {
+    if !terminal::open(&runtime::wait(client.portal(Surface::Terminal, flow))?.url) {
         eprintln!("open the URL above in a browser");
     }
     Ok(())

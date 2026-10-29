@@ -1,10 +1,8 @@
 //! Run a program's tools natively, without a toolchain or a daemon.
 //!
-//! A program is an image that a host compiles and enters, which is a slow way
-//! to find out that a handler mishandles an empty string. Off a guest target
-//! the exports are ordinary functions, so a test can call one the way the host
-//! would — the same argument transfer, the same failure channel — and check
-//! what came back. The host's bound on arguments and results is not applied.
+//! Off a guest target a test calls a tool's export the way the host would,
+//! with the same argument transfer and failure channel. The host's bound on
+//! arguments and results is not applied.
 //!
 //! ```ignore
 //! #[test]
@@ -20,9 +18,7 @@ use std::{string::String, vec::Vec};
 
 /// Invoke a tool export with `args`, as the host does.
 ///
-/// `Err` is what the program reported through its failure channel — the same
-/// distinction the host draws between a tool that failed and one that returned
-/// the word "error".
+/// `Err` is what the program reported through its failure channel.
 pub fn call(entry: extern "C" fn(), args: &[u8]) -> Result<Vec<u8>, String> {
     sys::with(|host| {
         host.args = args.to_vec();
@@ -34,8 +30,7 @@ pub fn call(entry: extern "C" fn(), args: &[u8]) -> Result<Vec<u8>, String> {
 
     entry();
 
-    // A tool that returned without answering wrote nothing, which is an empty
-    // result rather than a missing one.
+    // A tool that returned without answering has an empty result.
     sys::with(|host| match (host.failure.take(), host.done.take()) {
         (Some(failure), _) => Err(failure),
         (None, Some(result)) => Ok(result),
@@ -57,8 +52,7 @@ pub fn emitted() -> Vec<(Vec<String>, String)> {
 /// Arrange what another program answers, so a tool that calls one can be run
 /// without a host running the other side.
 ///
-/// Answers persist until [`forget`], so a test sets them up once and calls as
-/// often as it likes.
+/// Answers persist until [`forget`].
 ///
 /// ```ignore
 /// test::answer("weather", "forecast", Ok(br#"{"c":7}"#));

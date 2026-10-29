@@ -32,7 +32,6 @@ ratatui.workspace = true
 regex.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp.workspace = true
-rpassword.workspace = true
 rusqlite.workspace = true
 self_update.workspace = true
 serde = { workspace = true, features = ["std"] }

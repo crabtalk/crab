@@ -4,11 +4,11 @@
 pub mod guide;
 mod view;
 
-use crate::utils;
+use crate::runtime;
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use berm_api::{Credential, CredentialSecret};
-use crabtalk_sdk::{client::Client, sandbox::service::Hosts};
+use crabtalk_sdk::{client::Client, services::service::Hosts};
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -104,7 +104,7 @@ impl<'a> Form<'a> {
             None => "the local host on this machine".to_owned(),
             Some(owner) => format!("Cloud, the account {}", owner.name()),
         };
-        let set = utils::wait(client.secrets(service))?;
+        let set = runtime::wait(client.secrets(service))?;
         let steps = credentials
             .into_iter()
             .map(|(id, credential)| Step {
@@ -271,14 +271,14 @@ impl<'a> Form<'a> {
             let written = (|| -> Result<()> {
                 match (typed.is_empty(), *set) {
                     (true, _) => {
-                        utils::wait(self.client.put_secret_hosts(&self.service, name, &hosts))?
+                        runtime::wait(self.client.put_secret_hosts(&self.service, name, &hosts))?
                     }
                     (false, true) => {
-                        utils::wait(self.client.delete_secret(&self.service, name))?;
-                        utils::wait(self.client.put_secret(&self.service, name, typed, &hosts))?;
+                        runtime::wait(self.client.delete_secret(&self.service, name))?;
+                        runtime::wait(self.client.put_secret(&self.service, name, typed, &hosts))?;
                     }
                     (false, false) => {
-                        utils::wait(self.client.put_secret(&self.service, name, typed, &hosts))?
+                        runtime::wait(self.client.put_secret(&self.service, name, typed, &hosts))?
                     }
                 }
                 Ok(())
