@@ -1,4 +1,4 @@
-//! A program calling a program.
+//! A service calling a service.
 //!
 //! The reference guest exports `nest`, which calls `echo` on whatever the
 //! runtime answers for as `inner`. Here that is the same image, deployed twice
@@ -19,7 +19,7 @@ const GUEST: &str = "target/berm/berm_fixture.wasm";
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new("warn,program=info"))
+        .with_env_filter(tracing_subscriber::EnvFilter::new("warn,service=info"))
         .init();
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -83,23 +83,23 @@ async fn main() -> Result<()> {
     println!("depth:    {reached} levels before the runtime refused");
 
     // A resolver decides what a name reaches. Here, as in a host that keeps
-    // programs per owner, `inner` reaches the `inner` beside the caller.
+    // services per owner, `inner` reaches the `inner` beside the caller.
     let owned = Berm::new(
         &engine,
         Calls {
             depth: Calls::DEFAULT_DEPTH,
             resolve: Arc::new(|at, target, _| {
                 let (owner, _) = at
-                    .program
+                    .service
                     .split_once('/')
                     .context("deployed without an owner")?;
                 Ok(format!("{owner}/{target}"))
             }),
             // A callee is told the caller's name within the owner.
-            named: Arc::new(|program| {
-                program
+            named: Arc::new(|service| {
+                service
                     .split_once('/')
-                    .map_or(program, |(_, name)| name)
+                    .map_or(service, |(_, name)| name)
                     .to_owned()
             }),
             ..Calls::by_name(Calls::DEFAULT_DEPTH)

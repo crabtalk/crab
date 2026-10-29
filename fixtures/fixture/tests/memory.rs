@@ -13,13 +13,13 @@ const PAGE: u64 = 64 << 10;
 #[tokio::test]
 async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let program = host
+    let service = host
         .deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
     host.call("acct/fixture", "carry", b"{}").await?;
     let memory = host.host.memory("acct");
     assert_eq!(memory.limit, 0);
-    assert_eq!(memory.loaded, program.bytes);
+    assert_eq!(memory.loaded, service.bytes);
     assert_eq!(memory.running, 0);
     Ok(())
 }
@@ -27,11 +27,11 @@ async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> 
 #[tokio::test]
 async fn a_call_past_the_limit_fails() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let program = host
+    let service = host
         .deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
     host.host
-        .limit(HashMap::from([("acct".to_owned(), program.bytes + PAGE)]));
+        .limit(HashMap::from([("acct".to_owned(), service.bytes + PAGE)]));
     let failed = match host.call("acct/fixture", "carry", b"{}").await {
         Ok(ran) => format!("{:?}", ran.result),
         Err(e) => format!("{e:#}"),

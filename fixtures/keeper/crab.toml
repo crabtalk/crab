@@ -1,6 +1,6 @@
 name = "keeper"
 deploy = false
-programs = ["inner"]
+calls = ["inner"]
 
 [syscalls]
 "berm.get" = []

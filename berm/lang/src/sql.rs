@@ -1,4 +1,4 @@
-//! This program's own SQLite database, which its `crab.toml` declares with
+//! This service's own SQLite database, which its `crab.toml` declares with
 //! `[database] migrations = "migrations"`.
 //!
 //! One statement per call. The host runs every statement of an invocation in

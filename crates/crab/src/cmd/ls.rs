@@ -2,7 +2,7 @@
 
 use crate::{runtime, terminal};
 use anyhow::Result;
-use berm_api::Program;
+use berm_api::Service;
 use crabtalk_sdk::client::Client;
 use serde::Serialize;
 
@@ -10,31 +10,31 @@ use serde::Serialize;
 /// listing is for. `inspect` prints the whole one.
 const SHORT: usize = 12;
 
-/// A deployed program, and whether it is stopped.
+/// A deployed service, and whether it is stopped.
 #[derive(Serialize)]
 struct Listed {
     #[serde(flatten)]
-    program: Program,
+    service: Service,
     stopped: bool,
 }
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let mut programs = Vec::new();
-    for program in runtime::wait(client.list())? {
-        let stopped = runtime::wait(client.listing(&program.name))?.stopped;
-        programs.push(Listed { program, stopped });
+    let mut services = Vec::new();
+    for service in runtime::wait(client.list())? {
+        let stopped = runtime::wait(client.listing(&service.name))?.stopped;
+        services.push(Listed { service, stopped });
     }
     if json {
-        return terminal::json(&programs);
+        return terminal::json(&services);
     }
-    if programs.is_empty() {
-        println!("no programs deployed");
+    if services.is_empty() {
+        println!("no services deployed");
         return Ok(());
     }
 
-    let width = programs
+    let width = services
         .iter()
-        .map(|listed| listed.program.name.len())
+        .map(|listed| listed.service.name.len())
         .max()
         .unwrap_or(0)
         .max("NAME".len());
@@ -43,27 +43,27 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         "{:<width$}  {:<SHORT$}  {:<7}  TOOLS",
         "NAME", "DIGEST", "STATE"
     );
-    for Listed { program, stopped } in &programs {
+    for Listed { service, stopped } in &services {
         let state = match stopped {
             true => "stopped",
             false => "running",
         };
         println!(
             "{:<width$}  {:<SHORT$}  {state:<7}  {}",
-            program.name,
-            digest(program),
-            tools(program),
+            service.name,
+            digest(service),
+            tools(service),
         );
     }
     Ok(())
 }
 
-fn digest(program: &Program) -> &str {
-    program.digest.get(..SHORT).unwrap_or(&program.digest)
+fn digest(service: &Service) -> &str {
+    service.digest.get(..SHORT).unwrap_or(&service.digest)
 }
 
-fn tools(program: &Program) -> String {
-    program
+fn tools(service: &Service) -> String {
+    service
         .tools
         .iter()
         .map(|tool| tool.name.as_str())

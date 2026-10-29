@@ -1,4 +1,4 @@
-//! Logs, for whoever reads this program's logs.
+//! Logs, for whoever reads this service's logs.
 //!
 //! A host keeps each log beside the call it was emitted in, whatever that call
 //! ends as.
@@ -24,8 +24,8 @@ pub fn emit(topics: &[&str], data: &str) -> Result<(), CallError> {
     Ok(())
 }
 
-/// A typed log: an `#[event]` struct, or one `declare_program!` generated
-/// from another program's events. It is emitted under the topic
+/// A typed log: an `#[event]` struct, or one `declare_service!` generated
+/// from another service's events. It is emitted under the topic
 /// [`Event::NAME`].
 pub trait Event {
     const NAME: &'static str;

@@ -1,4 +1,4 @@
-//! A program's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
+//! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
 use crate::{Access, Credential, DEFAULT_BUFFER, Deps, ToolRecord, ToolSpec, host};
 use anyhow::{Context, Result, bail};
@@ -14,28 +14,28 @@ use std::{
 /// What the project file is called.
 pub const FILE: &str = "crab.toml";
 
-/// The project file. A program's names its service; a kit's declares only `id`,
-/// `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and
+/// The project file. A service's names it; a kit's declares only `id`,
+/// `formerly`, `secrets`, `[credentials]`, `calls`, `[syscalls]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
     /// The kit's ID, 32 lowercase hex digits, which its applied migrations are
-    /// kept under. A kit keeping tables declares one; a program declares none.
+    /// kept under. A kit keeping tables declares one; a service declares none.
     #[serde(default)]
     pub id: Option<String>,
     /// What the kit's applied migrations were kept under before `id`: the
     /// package names it had.
     #[serde(default)]
     pub formerly: Vec<String>,
-    /// The service the program deploys as.
+    /// The name it deploys as.
     #[serde(default)]
     pub name: Option<String>,
     /// The public registry repository the image is published to and Cloud
     /// pulls it from, without a tag. Absent, a deploy uploads the image.
     #[serde(default)]
     pub image: Option<String>,
-    /// Whether the program is deployed: `false` keeps it out of a
+    /// Whether the service is deployed: `false` keeps it out of a
     /// workspace's deploys, and refuses deploying it.
     #[serde(default = "deployed")]
     pub deploy: bool,
@@ -53,9 +53,9 @@ pub struct Project {
     /// to get them, by id.
     #[serde(default)]
     pub credentials: BTreeMap<String, Credential>,
-    /// Programs it calls by name.
+    /// Services it calls by name.
     #[serde(default)]
-    pub programs: Vec<String>,
+    pub calls: Vec<String>,
     /// The most bytes a call's arguments, and a tool's result, may hold;
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
@@ -169,7 +169,7 @@ impl Project {
         Ok(project)
     }
 
-    /// The service a program deploys as, refused when it names none or
+    /// The name a service deploys as, refused when it names none or
     /// declares a kit's `id`.
     pub fn name(&self) -> Result<&str> {
         if self.id.is_some() || !self.formerly.is_empty() {
@@ -177,7 +177,7 @@ impl Project {
         }
         self.name
             .as_deref()
-            .context("a program names its service: `name = \"…\"`")
+            .context("a service names itself: `name = \"…\"`")
     }
 
     /// What it reaches for once it runs. One keeping a database calls
@@ -188,7 +188,7 @@ impl Project {
             syscalls.entry("berm.sql".to_owned()).or_default();
         }
         Deps {
-            programs: self.programs.clone(),
+            calls: self.calls.clone(),
             syscalls,
             secrets: self
                 .secrets
@@ -205,7 +205,7 @@ impl Project {
         }
     }
 
-    /// What the build writes of each tool into the program record: all but
+    /// What the build writes of each tool into the service record: all but
     /// its price.
     pub fn records(&self) -> BTreeMap<String, ToolRecord> {
         self.tools
@@ -226,9 +226,9 @@ impl Project {
         self.buffer.unwrap_or(DEFAULT_BUFFER)
     }
 
-    /// Refuse what only a program declares, for a kit's `crab.toml`.
+    /// Refuse what only a service declares, for a kit's `crab.toml`.
     pub fn check_kit(&self) -> Result<()> {
-        let program_only = [
+        let service_only = [
             ("name", self.name.is_some()),
             ("image", self.image.is_some()),
             ("deploy", !self.deploy),
@@ -238,14 +238,14 @@ impl Project {
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),
         ];
-        let declared: Vec<&str> = program_only
+        let declared: Vec<&str> = service_only
             .iter()
             .filter(|(_, set)| *set)
             .map(|(key, _)| *key)
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit declares only id, formerly, secrets, [credentials], programs, [syscalls] and [database] migrations, not {}",
+                "a kit declares only id, formerly, secrets, [credentials], calls, [syscalls] and [database] migrations, not {}",
                 declared.join(", ")
             );
         }

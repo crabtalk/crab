@@ -125,7 +125,7 @@ enum Command {
         /// Cloud for another account's public service.
         name: String,
     },
-    /// Write a deployed service's IDL, which `declare_program!` reads.
+    /// Write a deployed service's IDL, which `declare_service!` reads.
     Idl {
         name: String,
         /// Where to write `{name}.json`.

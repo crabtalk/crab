@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 use berm_api::{
-    Budget, Cron, Listing, Program, Runtime, Terms,
+    Budget, Cron, Listing, Runtime, Service, Terms,
     host::{
         CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
         Usage, Wakes,
@@ -79,7 +79,7 @@ async fn listing<E: Env>(
 async fn idl<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
-) -> Result<Json<Program>, Denied> {
+) -> Result<Json<Service>, Denied> {
     Ok(Json(host.idl(&service)?))
 }
 
@@ -259,7 +259,7 @@ async fn wakes<E: Env>(
     Ok(Json(host.armed(&service).await?))
 }
 
-/// Run one tool. The body is the argument object byte for byte as the program
+/// Run one tool. The body is the argument object byte for byte as the service
 /// will read it.
 async fn call<E: Env>(
     State(host): State<Host<E>>,

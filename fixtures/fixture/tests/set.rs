@@ -140,7 +140,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
     let of = |name: &str| {
         listed
             .iter()
-            .find(|listing| listing.program.name == name)
+            .find(|listing| listing.service.name == name)
             .and_then(|listing| listing.project.clone())
     };
     assert_eq!(of("one").as_deref(), Some("p"));
@@ -149,7 +149,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
     // are all named by one.
     let reference = listed
         .iter()
-        .find(|listing| listing.program.name == "one")
+        .find(|listing| listing.service.name == "one")
         .and_then(|listing| listing.reference.clone());
     assert_eq!(reference.as_deref(), Some("test/acct/one"));
 

@@ -1,4 +1,4 @@
-//! One compiled program, and the state of one invocation of it.
+//! One compiled service, and the state of one invocation of it.
 
 use crate::{
     Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi, chain,
@@ -24,11 +24,11 @@ use std::{
 };
 use wasmtime::{Memory, ModuleExport};
 
-/// One compiled program: an image, its tools, and the syscalls it was linked
+/// One compiled service: an image, its tools, and the syscalls it was linked
 /// against. Compilation is paid once; every invocation gets a fresh instance,
 /// and no guest state crosses between calls.
-pub struct Program {
-    /// What this program was deployed as, as every syscall reports it.
+pub struct Service {
+    /// What this service was deployed as, as every syscall reports it.
     pub name: Arc<str>,
     /// sha256 of the image; different bytes deployed under one name differ here.
     pub digest: String,
@@ -47,7 +47,7 @@ pub struct Program {
     budget: Budgeted,
     /// What `berm.now` answers.
     now: Now,
-    /// What the programs it calls are told it is named: the issuer of a user
+    /// What the services it calls are told it is named: the issuer of a user
     /// it vouches for.
     issuer: Arc<str>,
     /// Told of each invocation once it ran.
@@ -66,13 +66,13 @@ struct Tool {
     query: bool,
 }
 
-impl Drop for Program {
+impl Drop for Service {
     fn drop(&mut self) {
         self.pool.unload(self.bytes);
     }
 }
 
-impl Program {
+impl Service {
     /// Compile `image` and resolve its exports, giving it `syscalls`. The
     /// engine's code cache makes a second load of the same bytes cheap across
     /// processes as well as within one.
@@ -84,7 +84,7 @@ impl Program {
         calls: &Calls,
     ) -> Result<Self> {
         let (compiled, bytes) = Image::compile(engine, image, syscall::table(syscalls)?)
-            .context("failed to compile program")?;
+            .context("failed to compile service")?;
 
         let manifest = Manifest::try_from(image)?;
         let tools: BTreeMap<String, Tool> = compiled
@@ -99,16 +99,16 @@ impl Program {
             })
             .collect();
         if tools.is_empty() {
-            bail!("program exports no tools");
+            bail!("service exports no tools");
         }
         if manifest.tools.iter().filter(|tool| tool.stripe).count() > 1 {
-            bail!("program declares more than one stripe tool");
+            bail!("service declares more than one stripe tool");
         }
 
         for tool in &manifest.tools {
             if !tools.contains_key(&tool.name) {
                 bail!(
-                    "program manifest declares tool {:?}, which it does not export",
+                    "service manifest declares tool {:?}, which it does not export",
                     tool.name
                 );
             }
@@ -151,7 +151,7 @@ impl Program {
         })
     }
 
-    /// The tools this program exports, as its export table reports them.
+    /// The tools this service exports, as its export table reports them.
     pub fn tools(&self) -> impl Iterator<Item = &str> {
         self.tools.keys().map(String::as_str)
     }
@@ -164,9 +164,9 @@ impl Program {
             .any(|spec| spec.name == tool && spec.public)
     }
 
-    /// Whether `tool` takes calls from other programs, as its manifest's
+    /// Whether `tool` takes calls from other services, as its manifest's
     /// `callers` says.
-    pub fn reached_by_programs(&self, tool: &str) -> bool {
+    pub fn reached_by_services(&self, tool: &str) -> bool {
         self.manifest
             .tools
             .iter()
@@ -191,7 +191,7 @@ impl Program {
     }
 
     /// Its IDL, deployed as `name`: the JSON a host serves for it.
-    pub fn idl(&self, name: &str) -> berm_api::Program {
+    pub fn idl(&self, name: &str) -> berm_api::Service {
         let Manifest {
             abi_version: _,
             name: _,
@@ -207,7 +207,7 @@ impl Program {
             readme,
             tools,
         } = &self.manifest;
-        berm_api::Program {
+        berm_api::Service {
             name: name.to_owned(),
             version: version.clone(),
             description: description.clone(),
@@ -240,7 +240,7 @@ impl Program {
     /// Run one tool by name, as the first link of a chain.
     ///
     /// `Err` is the host's — a missing tool, a trap, a broken image. The
-    /// program's own reported failure is [`Outcome::result`].
+    /// service's own reported failure is [`Outcome::result`].
     ///
     /// `caller` is who is calling, as the embedder names them; a syscall reads
     /// it off its [`Callsite`] as [`Caller::Outside`]. Any tool may be called
@@ -264,7 +264,7 @@ impl Program {
         .await
     }
 
-    /// [`Program::call`] on behalf of `user` and `client`, which every call in
+    /// [`Service::call`] on behalf of `user` and `client`, which every call in
     /// the chain reads off its [`Callsite`], metered in `meters`. `chain`, from
     /// [`chain::next`], is the chain's [`Callsite::chain`].
     #[allow(clippy::too_many_arguments)]
@@ -359,7 +359,7 @@ impl Program {
     }
 
     /// Run one tool as link `depth` of chain `chain`, called by `caller`, that
-    /// has to be done by `deadline`, under the programs in `stack`. `query` is
+    /// has to be done by `deadline`, under the services in `stack`. `query` is
     /// whether a link above it is a query. What it keeps lands in `journal`,
     /// and a failure takes it back out; what it uses lands in `meters`, failed
     /// or not. `parent` is the invocation that called it on this runtime.
@@ -387,12 +387,12 @@ impl Program {
             query: declared,
         }) = self.tools.get(tool)
         else {
-            bail!("program exports no tool named {tool:?}");
+            bail!("service exports no tool named {tool:?}");
         };
 
         let budget = (self.budget)(&self.name, tool).unwrap_or(self.image.budget);
         let mut at = Callsite {
-            program: self.name.clone(),
+            service: self.name.clone(),
             tool: tool.into(),
             deps: self.deps.clone(),
             caller,
@@ -463,7 +463,7 @@ impl Program {
                 .image
                 .call(export, invocation)
                 .await
-                .with_context(|| format!("program trapped in {tool}"))
+                .with_context(|| format!("service trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
         };
         self.ran(
@@ -540,7 +540,7 @@ fn ended(finished: Invocation, buffer: usize) -> Result<Ended> {
             Output::Failed("result exceeded the output buffer".to_owned())
         }
         Some(Ok(result)) => {
-            Output::Done(String::from_utf8(result).context("program returned invalid UTF-8")?)
+            Output::Done(String::from_utf8(result).context("service returned invalid UTF-8")?)
         }
         None => Output::Done(String::new()),
     };
@@ -551,7 +551,7 @@ fn ended(finished: Invocation, buffer: usize) -> Result<Ended> {
 }
 
 /// Where an invocation sits in a chain that reached it from outside this
-/// runtime. `stack` ends with the program being invoked.
+/// runtime. `stack` ends with the service being invoked.
 #[derive(Clone, Debug)]
 pub struct Link {
     pub caller: Option<Caller>,
@@ -567,16 +567,16 @@ pub struct Link {
 #[derive(Debug)]
 pub struct Ended {
     pub result: Output,
-    /// The program failed the call through `berm.deny`.
+    /// The service failed the call through `berm.deny`.
     pub denied: bool,
 }
 
 /// What one chain answered with, and what it left for the host to commit.
 #[derive(Debug)]
 pub struct Outcome {
-    /// [`Output::Failed`] is the program's own reported failure.
+    /// [`Output::Failed`] is the service's own reported failure.
     pub result: Output,
-    /// The program refused its caller through `berm.deny`; `result` is then
+    /// The service refused its caller through `berm.deny`; `result` is then
     /// [`Output::Failed`].
     pub denied: bool,
     /// Empty when `result` is [`Output::Failed`].
@@ -585,16 +585,16 @@ pub struct Outcome {
 
 /// Guest state for one invocation. Memory is per-invocation.
 pub struct Invocation {
-    /// The program this invocation is of, and the chain it sits in.
+    /// The service this invocation is of, and the chain it sits in.
     pub(crate) at: Callsite,
     /// What `berm.now` answers.
     pub(crate) now: Now,
-    /// Its program's [`Program::issuer`].
+    /// Its service's [`Service::issuer`].
     pub(crate) issuer: Arc<str>,
     pub(crate) args: Vec<u8>,
     /// The last syscall's reply, waiting for the guest to pull it.
     pub(crate) staged: Vec<u8>,
-    /// What the tool answered with, once it has. `Err` is the program's own
+    /// What the tool answered with, once it has. `Err` is the service's own
     /// reported failure.
     pub(crate) outcome: Option<Result<Vec<u8>, String>>,
     /// Set by `berm.deny`.
@@ -603,7 +603,7 @@ pub struct Invocation {
     pub(crate) cpu: Arc<AtomicU64>,
     /// Set once `berm.limit` lowered its budget.
     pub(crate) limited: bool,
-    /// Its part of its program's [`Running`].
+    /// Its part of its service's [`Running`].
     pub(crate) held: Held,
     /// The tape it records or answers from; only a chain's first link has one.
     pub(crate) tape: Option<Deck>,

@@ -1,6 +1,6 @@
 [package]
 name = "berm-codegen"
-description = "Proc-macro codegen for berm programs"
+description = "Proc-macro codegen for berm services"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

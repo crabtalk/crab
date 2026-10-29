@@ -13,7 +13,7 @@ use std::{
     process::ExitCode,
 };
 
-/// A program that ran and said no, which is not berm failing to run it — the
+/// A service that ran and said no, which is not berm failing to run it — the
 /// two leave by different doors so a script can tell them apart.
 const FAILED: u8 = 2;
 
@@ -61,16 +61,16 @@ pub fn run(client: &Client, call: &Call) -> Result<ExitCode> {
     )
 }
 
-/// Call `tool` of `program`.
+/// Call `tool` of `service`.
 pub fn tool(
     client: &Client,
-    program: &str,
+    service: &str,
     tool: &str,
     inline: Option<&str>,
     caller: Option<&Caller>,
 ) -> Result<ExitCode> {
     let arguments = arguments(inline)?;
-    let (output, meter) = runtime::wait(client.call(program, tool, arguments, caller))?;
+    let (output, meter) = runtime::wait(client.call(service, tool, arguments, caller))?;
     if let Some(meter) = meter {
         eprintln!(
             "{}µs CPU, {} rows read, {} written, {}µs SQL CPU, {} KiB memory, {} bytes proxied",
@@ -88,7 +88,7 @@ pub fn tool(
             Ok(ExitCode::SUCCESS)
         }
         Output::Failed(failure) => {
-            eprintln!("{program}.{tool} failed: {failure}");
+            eprintln!("{service}.{tool} failed: {failure}");
             Ok(ExitCode::from(FAILED))
         }
     }
@@ -97,7 +97,7 @@ pub fn tool(
 /// What was typed, what was piped in, or nothing, which is what MCP sends for a
 /// call with no arguments.
 ///
-/// Trimmed: `echo '{}' | crab call` reaches the program as the same bytes
+/// Trimmed: `echo '{}' | crab call` reaches the service as the same bytes
 /// typing it does.
 fn arguments(inline: Option<&str>) -> Result<Vec<u8>> {
     let raw = match inline {

@@ -75,7 +75,7 @@ pub fn trace(message: &str) {
 
 /// What time the host says it is, in milliseconds since the Unix epoch.
 ///
-/// The one clock a program has.
+/// The one clock a service has.
 pub fn now() -> u64 {
     sys::call0(HOST_NOW)
 }

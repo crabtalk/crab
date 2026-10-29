@@ -1,4 +1,4 @@
-//! The Rust target a program builds for, added to the toolchain on first use.
+//! The Rust target a service builds for, added to the toolchain on first use.
 
 use crate::TARGET;
 use anyhow::{Context, Result, bail};

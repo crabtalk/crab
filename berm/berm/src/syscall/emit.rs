@@ -1,4 +1,4 @@
-//! `berm.emit` — a log for whoever reads this program's logs.
+//! `berm.emit` — a log for whoever reads this service's logs.
 //!
 //! berm reads and checks the request. The host takes the log through the
 //! closure below, or leaves it to the chain's journal, which hands it back in
@@ -11,7 +11,7 @@ use std::{future::Future, sync::Arc};
 
 /// Serve `berm.emit`, handing each log to `take`, which answers `false` to
 /// leave it to the chain's journal.
-pub fn programs<T, Taken>(take: T) -> Syscall
+pub fn services<T, Taken>(take: T) -> Syscall
 where
     T: Fn(Callsite, Log) -> Taken + Send + Sync + 'static,
     Taken: Future<Output = Result<bool>> + Send + 'static,
@@ -39,7 +39,7 @@ where
                     .into());
                 }
                 let log = Log {
-                    program: at.program.clone(),
+                    service: at.service.clone(),
                     topics,
                     data,
                 };

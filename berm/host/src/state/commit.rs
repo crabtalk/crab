@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use berm::{
-    Callsite, Changes, Enter, Program, Scope,
+    Callsite, Changes, Enter, Scope, Service,
     database::{Databases, Held},
 };
 use std::{collections::BTreeMap, sync::Arc};
@@ -37,7 +37,7 @@ impl Commits {
         shares.extend(took.map(|key| (key, Vec::new())));
         for write in changes.writes {
             shares
-                .entry(write.program.to_string())
+                .entry(write.service.to_string())
                 .or_default()
                 .push((write.key, write.value));
         }
@@ -59,8 +59,8 @@ impl Commits {
 /// returns ok; unless it is the chain's first, the rest of what it wrote is
 /// committed then.
 pub(crate) fn enter(commits: Commits) -> Enter {
-    Arc::new(move |program: &Program, at: &Callsite| {
-        let (commits, entering) = (commits.clone(), commits.databases.enter(program, at));
+    Arc::new(move |service: &Service, at: &Callsite| {
+        let (commits, entering) = (commits.clone(), commits.databases.enter(service, at));
         let first = at.depth == 1;
         Box::pin(async move {
             let held = entering.await?;

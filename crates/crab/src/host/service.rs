@@ -1,14 +1,14 @@
 //! Deploying, removing, and invoking.
 
-use crate::host::Service;
+use crate::host::Node;
 use axum::http::StatusCode;
 use berm_api::{Break, Manifest, Output, host::Deploy};
 use berm_host::{Denied, Images, Installed, deny};
 use crabtalk_sdk::services::price;
 
-impl Service {
+impl Node {
     /// Make the tools of the image `deploy` names reachable under `name`,
-    /// answering with how it breaks callers of the program it replaced.
+    /// answering with how it breaks callers of the service it replaced.
     /// Refused as the host refuses a deploy.
     pub async fn deploy(
         &self,
@@ -19,7 +19,7 @@ impl Service {
         let replaced = self.get(name);
         let installed = self.host.deploy(name, deploy, None).await?;
         let breaks = replaced
-            .map(|replaced| replaced.manifest.breaks(&installed.program.manifest))
+            .map(|replaced| replaced.manifest.breaks(&installed.service.manifest))
             .unwrap_or_default();
         for broken in &breaks {
             tracing::warn!(name, "breaks callers: {broken}");
@@ -33,7 +33,7 @@ impl Service {
 
     /// Deploy `members`, each a name and the digest of an image kept in
     /// `images`, together, as [`Host::deploy_set`] does, answering with how each
-    /// breaks callers of the program it replaced.
+    /// breaks callers of the service it replaced.
     ///
     /// [`Host::deploy_set`]: berm_host::Host::deploy_set
     pub async fn deploy_set(
@@ -53,7 +53,7 @@ impl Service {
                     .iter()
                     .find(|(one, _)| *one == name)
                     .and_then(|(_, replaced)| replaced.as_ref())
-                    .map(|replaced| replaced.manifest.breaks(&installed.program.manifest))
+                    .map(|replaced| replaced.manifest.breaks(&installed.service.manifest))
                     .unwrap_or_default();
                 (name, installed, breaks)
             })
@@ -86,13 +86,13 @@ impl Service {
         self.images.holds(digest).await
     }
 
-    /// Stop running a program and drop what it committed. `false` if it wasn't
+    /// Stop running a service and drop what it committed. `false` if it wasn't
     /// deployed.
     pub async fn undeploy(&self, name: &str) -> Result<bool, Denied> {
         Ok(self.host.remove(name).await?)
     }
 
-    /// Start or stop a program. `false` if it wasn't deployed.
+    /// Start or stop a service. `false` if it wasn't deployed.
     pub async fn run(&self, name: &str, running: bool) -> Result<bool, Denied> {
         Ok(match running {
             true => self.host.start(name).await?,

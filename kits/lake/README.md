@@ -11,7 +11,7 @@ crabkit = { version = "0.1", features = ["lake"] }
 
 The kit is also the crate `crabkit-lake` on its own.
 
-The kit's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. The hosts a source fetches from differ per source, so the program declares them under `berm.http.fetch` in its own `crab.toml`, beside the tick's expression in `[crons]`:
+The kit's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the kit. The hosts a source fetches from differ per source, so the service declares them under `berm.http.fetch` in its own `crab.toml`, beside the tick's expression in `[crons]`:
 
 ```toml
 [syscalls]
@@ -94,7 +94,7 @@ impl Source for Blog {
 }
 ```
 
-`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items undated or not posted before the newest it has shown, each once; `Unordered`, the items it has not stored before; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed. `store::record(id, feed, now, values)` stores a version the same way outside a fetch, in a feed the program names, and answers the bytes written.
+`Source::follow` follows the feeds a source always follows, at the start of each tick. `State::follow` and `State::unfollow`, between `State::load` and `State::save`, change the feeds followed from the service's own tools. A feed's `Kind` says what of it is stored: `Chronological`, the items undated or not posted before the newest it has shown, each once; `Unordered`, the items it has not stored before; `Records`, each entry as a record, a version stored when its id is new to the feed or its values, the `Post`, changed. `store::record(id, feed, now, values)` stores a version the same way outside a fetch, in a feed the service names, and answers the bytes written.
 
 ## A tick
 
@@ -110,7 +110,7 @@ A tick fetches the feeds due and then the threads due, least recently fetched fi
 
 ## Tables
 
-In the program's database: `lake_items` (`seq`, `id`, `feed`, `posted`, `data`), one row per item per feed, indexed by `lake_items_feed` on (`feed`, `seq`); `lake_threads` (`id`, `data`, `fetched`), the last thread fetched under each watched item; and `lake_records` (`seq`, `id`, `feed`, `since`, `data`), one row per version of a record, indexed by `lake_records_id` on (`id`, `feed`, `seq`). `data` is the `Post` or `Reply` as JSON.
+In the service's database: `lake_items` (`seq`, `id`, `feed`, `posted`, `data`), one row per item per feed, indexed by `lake_items_feed` on (`feed`, `seq`); `lake_threads` (`id`, `data`, `fetched`), the last thread fetched under each watched item; and `lake_records` (`seq`, `id`, `feed`, `since`, `data`), one row per version of a record, indexed by `lake_records_id` on (`id`, `feed`, `seq`). `data` is the `Post` or `Reply` as JSON.
 
 ## License
 

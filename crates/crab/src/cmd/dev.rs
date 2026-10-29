@@ -4,7 +4,7 @@
 
 use crate::{
     context, format,
-    host::{self, Dev, Service, Status, secrets},
+    host::{self, Dev, Node, Status, secrets},
     runtime, terminal,
 };
 use anyhow::{Context, Result, bail};
@@ -109,7 +109,7 @@ pub fn run(daemon: &Daemon) -> Result<()> {
     let root = daemon.root()?;
     runtime::wait(async {
         let secrets = root.join(secrets::FILE);
-        let service = Service::new(
+        let node = Node::new(
             root.clone(),
             secrets,
             daemon.max_call_depth,
@@ -123,7 +123,7 @@ pub fn run(daemon: &Daemon) -> Result<()> {
             .await
             .with_context(|| format!("failed to bind {addr}"))?;
         let dev = Dev::new(
-            service,
+            node,
             Status {
                 pid: process::id(),
                 root,

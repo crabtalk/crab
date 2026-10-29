@@ -14,8 +14,8 @@ use std::sync::Weak;
 /// `berm.sql` for `host`'s services: a query chain reads, any other writes.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
-    sql::programs(move |at: Callsite, statement: Statement| {
-        let kept = host::alive(&host).map(|host| at.database(|| host.kept(&at.program)));
+    sql::services(move |at: Callsite, statement: Statement| {
+        let kept = host::alive(&host).map(|host| at.database(|| host.kept(&at.service)));
         async move {
             let Some(database) = kept? else {
                 bail!("this service keeps no database");

@@ -224,7 +224,7 @@ pub(crate) fn asked(request: &[u8]) -> [u8; 32] {
     }
 }
 
-/// `syscall`'s name, among berm's own and those `at`'s program declares.
+/// `syscall`'s name, among berm's own and those `at`'s service declares.
 fn name(at: &Callsite, syscall: u64) -> String {
     [
         abi::CALL,

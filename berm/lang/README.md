@@ -1,8 +1,8 @@
 # berm-lang
 
-Build a program for [berm](https://crab.talk/docs).
+Build a service for [berm](https://crab.talk/docs).
 
-A program is one WebAssembly module, confined to its own memory, reaching the world only through the host calls it was given. This crate owns the ABI, so you never see a call number or a pointer pair.
+A service is one WebAssembly module, confined to its own memory, reaching the world only through the host calls it was given. This crate owns the ABI, so you never see a call number or a pointer pair.
 
 ```rust
 #![cfg_attr(target_arch = "wasm32", no_std)]
@@ -31,9 +31,9 @@ pub struct Echo {
 }
 ```
 
-A function marked `#[tool(...)]`, in any module of the program's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. `#[tool]` takes `query`, `cron` and `stripe`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
+A function marked `#[tool(...)]`, in any module of the service's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. `#[tool]` takes `query`, `cron` and `stripe`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
 
-**A tool is internal unless its table in `crab.toml` gives it `access`.** Only the host calls an internal tool, for the program's own wakes, crons and Stripe events.
+**A tool is internal unless its table in `crab.toml` gives it `access`.** Only the host calls an internal tool, for the service's own wakes, crons and Stripe events.
 
 ```toml
 [tools.echo]
@@ -41,7 +41,7 @@ access = "public"
 title = "Echo a query"
 ```
 
-A `public` tool can be called by any account the host authenticates and any program allowed to reach it, with arguments the caller chooses. `anonymous` is public and also takes a call from outside with no caller. `accounts` and `services` are restricted: the first takes callers from outside alone, the second other programs alone. `title` is the tool's display name, at most 60 characters on one line. A cron or stripe tool takes no `access`. `berm_lang::caller()` says who called, as the host set it; a tool that limits its callers checks it.
+A `public` tool can be called by any account the host authenticates and any service allowed to reach it, with arguments the caller chooses. `anonymous` is public and also takes a call from outside with no caller. `accounts` and `services` are restricted: the first takes callers from outside alone, the second other services alone. `title` is the tool's display name, at most 60 characters on one line. A cron or stripe tool takes no `access`. `berm_lang::caller()` says who called, as the host set it; a tool that limits its callers checks it.
 
 Off the guest's target this is an ordinary library, which is why the
 `cfg_attr` above is worth copying: tools then run under `cargo test` with no
@@ -49,7 +49,7 @@ wasm toolchain and no daemon. See `berm_lang::test`.
 
 ## Building
 
-A program is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `crab.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Program](https://crab.talk/docs/development/writing#the-crate) has the layout.
+A service is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `crab.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Service](https://crab.talk/docs/development/writing#the-crate) has the layout.
 
 ```sh
 crab build
@@ -63,8 +63,8 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 ## Reaching a runtime
 
-Past its arguments, a program reaches who called, its own state, a database,
-logs, HTTP, other programs, wakes and the clock, each through a syscall its host
+Past its arguments, a service reaches who called, its own state, a database,
+logs, HTTP, other services, wakes and the clock, each through a syscall its host
 serves. [The Guest API](https://crab.talk/docs/development/guest-api) covers each.
 
 ## License

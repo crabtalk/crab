@@ -1,4 +1,4 @@
-//! __NAME__ — a berm program.
+//! __NAME__ — a berm service.
 
 // `no_std` is the guest's shape. Off a guest target this is an ordinary
 // library, so `cargo test` runs the tools below natively.

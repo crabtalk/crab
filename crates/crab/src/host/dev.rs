@@ -1,6 +1,6 @@
 //! The local host's own routes, at `/dev`: what is running, and stopping it.
 
-use crate::host::Service;
+use crate::host::Node;
 use axum::{
     Json, Router,
     extract::State,
@@ -21,16 +21,16 @@ pub struct Status {
 }
 
 pub struct Dev {
-    pub service: Arc<Service>,
+    pub node: Arc<Node>,
     pub status: Status,
     /// Set once the host is asked to stop, so the server can drain.
     stop: Sender<bool>,
 }
 
 impl Dev {
-    pub fn new(service: Arc<Service>, status: Status) -> Arc<Self> {
+    pub fn new(node: Arc<Node>, status: Status) -> Arc<Self> {
         Arc::new(Self {
-            service,
+            node,
             status,
             stop: Sender::new(false),
         })
@@ -38,7 +38,7 @@ impl Dev {
 
     /// The host's routes, with the dev routes beside them.
     pub fn router(self: Arc<Self>) -> Router {
-        self.service.clone().router().merge(
+        self.node.clone().router().merge(
             Router::new()
                 .route("/dev", get(status))
                 .route("/dev/stop", post(stop))

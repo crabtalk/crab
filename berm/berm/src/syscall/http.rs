@@ -1,8 +1,8 @@
 //! `berm.http.fetch` and `berm.http.proxy` — one HTTP request, to a host the
-//! program's manifest declares under the syscall it makes — and their batch
+//! service's manifest declares under the syscall it makes — and their batch
 //! forms `berm.http.fetch_all` and `berm.http.proxy_all`.
 //!
-//! berm checks the request against the asking program's [`crate::Deps`] and
+//! berm checks the request against the asking service's [`crate::Deps`] and
 //! substitutes every `{secret:NAME}` in a header value and in the body.
 //! Resolving a secret and sending the request are the host's, and arrive as
 //! the two closures below.
@@ -24,14 +24,14 @@ pub struct Request {
     pub url: String,
     /// The host `url` names, lowercased, without port or credentials.
     pub host: String,
-    /// How the asking program's manifest declares `host`.
+    /// How the asking service's manifest declares `host`.
     pub reach: Reach,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
-    /// How long the asking program waits for an answer, within its call's
+    /// How long the asking service waits for an answer, within its call's
     /// deadline; `None` for the deadline alone.
     pub timeout: Option<Duration>,
-    /// The most body bytes the asking program takes of its answer. The host
+    /// The most body bytes the asking service takes of its answer. The host
     /// stops reading the body there and answers it cut; `None` for the host's
     /// own bound.
     pub limit: Option<usize>,
@@ -210,7 +210,7 @@ where
 }
 
 /// `text` with every `{secret:NAME}` replaced by what `secret` grants the
-/// asking program for `host`, or `None` when it names no secret.
+/// asking service for `host`, or `None` when it names no secret.
 async fn substitute<R, Found>(
     at: &Callsite,
     secret: &R,
@@ -239,14 +239,14 @@ where
         if !at.deps.secrets.iter().any(|declared| declared == name) {
             return Err(Refused(format!(
                 "{} does not declare the secret {name:?}",
-                at.program
+                at.service
             ))
             .into());
         }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
             return Err(Refused(format!(
                 "no secret {name:?} is granted to {} for {host}",
-                at.program
+                at.service
             ))
             .into());
         };
@@ -266,19 +266,19 @@ fn headers(headers: &[(String, String)]) -> usize {
         .sum()
 }
 
-/// Refuse a host the asking program's manifest does not declare under
+/// Refuse a host the asking service's manifest does not declare under
 /// `syscall`.
 fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
     at.deps.reach(syscall, host).ok_or_else(|| {
         Refused(format!(
             "{} does not declare {host} under {syscall}",
-            at.program
+            at.service
         ))
         .into()
     })
 }
 
-/// `request` off the wire, refused unless the asking program declares its host
+/// `request` off the wire, refused unless the asking service declares its host
 /// under `syscall`.
 fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     let fields = abi::wire::fields(request)?;

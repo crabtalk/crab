@@ -4,7 +4,7 @@
 //! each site before a second of any, a silent site fetched no more in its
 //! tick, a page cut at the bytes it is read for, a failed read logged and
 //! retried, a read whose sitemaps all fail failed and a site with no sitemap
-//! read empty, robots.txt patterns matched percent-encoded, the URLs a program lists and the links its crawler lists fetched
+//! read empty, robots.txt patterns matched percent-encoded, the URLs a service lists and the links its crawler lists fetched
 //! under the site's robots.txt, and a URL listed with its bytes read for them,
 //! past the tick's HTML when it is the tick's first, and the sites after a
 //! tick's first sharing its sitemap bytes.
@@ -383,7 +383,7 @@ async fn kept(host: &TestHost, domain: &str) -> Result<Vec<String>> {
 }
 
 #[tokio::test]
-async fn a_url_its_program_lists_is_fetched_once_its_site_is_read_and_kept_by_its_next_read()
+async fn a_url_its_service_lists_is_fetched_once_its_site_is_read_and_kept_by_its_next_read()
 -> Result<()> {
     let host = deployed().await?;
     arrange(&host);

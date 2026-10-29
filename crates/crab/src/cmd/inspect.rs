@@ -1,8 +1,8 @@
-//! `crab inspect` — what a program claims to be.
+//! `crab inspect` — what a service claims to be.
 
 use crate::{format, runtime, terminal};
 use anyhow::Result;
-use berm_api::{Access, Program, Runtime, ToolSpec};
+use berm_api::{Access, Runtime, Service, ToolSpec};
 use crabtalk_sdk::{
     client::{Client, Error},
     services::service::{Measured, Terms},
@@ -12,7 +12,7 @@ use serde_json::Value;
 /// Print `name` as its caller sees it: the runtime too when the host answers
 /// it, which Cloud does for the service's owners alone.
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
-    let program = runtime::wait(client.inspect(name))?;
+    let service = runtime::wait(client.inspect(name))?;
     let runtime = match runtime::wait(client.runtime(name)) {
         Ok(runtime) => Some(runtime),
         Err(Error::Api { status: 403, .. }) => None,
@@ -21,49 +21,49 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
     let terms = runtime::wait(client.terms(name))?;
     if json {
         return terminal::json(&serde_json::json!({
-            "program": program,
+            "service": service,
             "runtime": runtime,
             "terms": terms,
         }));
     }
-    show(&program, runtime.as_ref(), &terms);
+    show(&service, runtime.as_ref(), &terms);
     Ok(())
 }
 
-pub fn show(program: &Program, runtime: Option<&Runtime>, terms: &Terms) {
-    println!("{}", program.name);
-    if !program.description.is_empty() {
-        println!("  {}", program.description);
+pub fn show(service: &Service, runtime: Option<&Runtime>, terms: &Terms) {
+    println!("{}", service.name);
+    if !service.description.is_empty() {
+        println!("  {}", service.description);
     }
-    if !program.version.is_empty() {
-        println!("  version {}", program.version);
+    if !service.version.is_empty() {
+        println!("  version {}", service.version);
     }
-    println!("  digest  {}", program.digest);
+    println!("  digest  {}", service.digest);
     for (label, value) in [
-        ("homepage", &program.homepage),
-        ("repository", &program.repository),
+        ("homepage", &service.homepage),
+        ("repository", &service.repository),
     ] {
         if !value.is_empty() {
             println!("  {label} {value}");
         }
     }
-    if !program.readme.is_empty() {
+    if !service.readme.is_empty() {
         println!();
-        for line in program.readme.lines() {
+        for line in service.readme.lines() {
             println!("  {line}");
         }
     }
     let Some(runtime) = runtime else {
-        tools(program.tools.iter(), terms);
+        tools(service.tools.iter(), terms);
         return;
     };
     let answered = |missing: bool| match missing {
         true => "  (nothing answers to it here)",
         false => "",
     };
-    for dep in &runtime.deps.programs {
-        let missing = runtime.unresolved.programs.contains(dep);
-        println!("  program {dep}{}", answered(missing));
+    for dep in &runtime.deps.calls {
+        let missing = runtime.unresolved.calls.contains(dep);
+        println!("  service {dep}{}", answered(missing));
     }
     for (name, reached) in &runtime.deps.syscalls {
         let missing = runtime.unresolved.syscalls.contains_key(name);
@@ -78,7 +78,7 @@ pub fn show(program: &Program, runtime: Option<&Runtime>, terms: &Terms) {
         println!("  secret  {name}{}", answered(missing));
     }
 
-    tools(program.tools.iter().chain(&runtime.tools), terms);
+    tools(service.tools.iter().chain(&runtime.tools), terms);
     for event in &runtime.events {
         println!();
         match event.deprecated {

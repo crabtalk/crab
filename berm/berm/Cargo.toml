@@ -29,7 +29,7 @@ wasmtime.workspace = true
 tokio = { workspace = true, optional = true }
 
 [features]
-# `sqlite`: a program's own SQLite database, for a host serving `berm.sql`.
+# `sqlite`: a service's own SQLite database, for a host serving `berm.sql`.
 sqlite = ["dep:rusqlite", "dep:tokio"]
 
 [dev-dependencies]

@@ -6,7 +6,7 @@ use berm::database::Databases;
 use berm_api::{Migration, Sequence};
 use std::path::PathBuf;
 
-/// The program's own sequence of one migration.
+/// The service's own sequence of one migration.
 fn own(name: &str, sql: &str) -> Sequence {
     Sequence {
         kit: String::new(),

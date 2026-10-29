@@ -1,6 +1,6 @@
-//! `declare_program!` — typed calls and types from another program's IDL.
+//! `declare_service!` — typed calls and types from another service's IDL.
 //!
-//! The IDL is the JSON a host serves for a program: a deployed program as the control API
+//! The IDL is the JSON a host serves for a service: a deployed service as the control API
 //! reports it. It is read from `idls/{name}.json` in the crate's directory or
 //! the nearest ancestor that has one.
 
@@ -19,7 +19,7 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
     let fail =
         |message: &str| syn::Error::new(name.span(), format!("{}: {message}", path.display()));
 
-    let program = idl["name"].as_str().ok_or_else(|| fail("no `name`"))?;
+    let service = idl["name"].as_str().ok_or_else(|| fail("no `name`"))?;
     let tools = idl["tools"].as_array().ok_or_else(|| fail("no `tools`"))?;
 
     // Every titled object anywhere in the IDL is one struct, by its title.
@@ -190,8 +190,8 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
             // Rebuilds this crate when the IDL changes.
             const _: &str = include_str!(#source);
 
-            /// What the program is deployed as, which every call names.
-            pub const NAME: &str = #program;
+            /// What the service is deployed as, which every call names.
+            pub const NAME: &str = #service;
 
             /// Its argument and result structs.
             #[allow(deprecated)]
@@ -219,7 +219,7 @@ fn deprecation(spec: &Value) -> TokenStream {
 /// `idls/{name}.json` in the crate's directory or the nearest ancestor.
 fn find(name: &Ident) -> syn::Result<PathBuf> {
     let root = std::env::var("CARGO_MANIFEST_DIR")
-        .map_err(|_| syn::Error::new(name.span(), "declare_program! needs CARGO_MANIFEST_DIR"))?;
+        .map_err(|_| syn::Error::new(name.span(), "declare_service! needs CARGO_MANIFEST_DIR"))?;
     let file = format!("{name}.json");
     PathBuf::from(&root)
         .ancestors()
@@ -228,7 +228,7 @@ fn find(name: &Ident) -> syn::Result<PathBuf> {
         .ok_or_else(|| {
             syn::Error::new(
                 name.span(),
-                format!("no idls/{file} in {root} or above it; save the IDL of the program deployed as `{name}` there"),
+                format!("no idls/{file} in {root} or above it; save the IDL of the service deployed as `{name}` there"),
             )
         })
 }

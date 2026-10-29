@@ -70,8 +70,8 @@ async fn logged(host: &TestHost, topic: &str) -> Result<Vec<Value>> {
 #[tokio::test]
 async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    let program = host.deploy("feed", &test::build("berm-feed")?).await?;
-    let manifest = &program.manifest;
+    let service = host.deploy("feed", &test::build("berm-feed")?).await?;
+    let manifest = &service.manifest;
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "crabkit-lake");
     for syscall in ["berm.get", "berm.set", "berm.sql"] {

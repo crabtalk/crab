@@ -12,8 +12,8 @@ use serde_json::{Map, Value, json};
 use std::env;
 
 /// The layer, and what the whole artifact is typed as.
-const PROGRAM: &str = "application/vnd.berm.program.v1";
-/// The config blob: what the program says it is.
+const SERVICE: &str = "application/vnd.berm.service.v1";
+/// The config blob: what the service says it is.
 const MANIFEST: &str = "application/vnd.berm.manifest.v1+json";
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 /// Accepted only to be refused by name: a registry handed one of these back as
@@ -98,14 +98,14 @@ impl Registry {
 
         let config = artifact
             .get("config")
-            .context("not a program: the artifact has no config")?;
+            .context("not a service: the artifact has no config")?;
 
         let kind = config
             .get("mediaType")
             .and_then(Value::as_str)
             .unwrap_or("");
         if kind != MANIFEST {
-            bail!("not a program: its config is {kind:?}");
+            bail!("not a service: its config is {kind:?}");
         }
         let digest = config
             .get("digest")
@@ -113,23 +113,23 @@ impl Registry {
             .context("the artifact's config has no digest")?;
 
         let bytes = self.blob(digest)?;
-        let json = str::from_utf8(&bytes).context("program manifest is not UTF-8")?;
+        let json = str::from_utf8(&bytes).context("service manifest is not UTF-8")?;
         Ok((image, json.parse()?))
     }
 
     /// Upload the image, its manifest as the config blob, and the artifact
     /// manifest naming both. Returns the image's digest, which is the layer's.
-    pub fn push(&self, reference: &str, program: &[u8]) -> Result<String> {
-        let manifest = serde_json::to_vec(&Manifest::try_from(program)?)?;
-        let image = self.upload(program)?;
+    pub fn push(&self, reference: &str, service: &[u8]) -> Result<String> {
+        let manifest = serde_json::to_vec(&Manifest::try_from(service)?)?;
+        let image = self.upload(service)?;
         let config = self.upload(&manifest)?;
 
         let artifact = json!({
             "schemaVersion": 2,
             "mediaType": OCI_MANIFEST,
-            "artifactType": PROGRAM,
+            "artifactType": SERVICE,
             "config": { "mediaType": MANIFEST, "digest": config, "size": manifest.len() },
-            "layers": [ { "mediaType": PROGRAM, "digest": image, "size": program.len() } ],
+            "layers": [ { "mediaType": SERVICE, "digest": image, "size": service.len() } ],
             "annotations": annotations(),
         });
 
@@ -275,32 +275,32 @@ fn send(request: RequestBuilder) -> Result<Response> {
     }
 }
 
-/// The one layer a program has, refusing anything that is not one.
+/// The one layer a service has, refusing anything that is not one.
 fn layer(manifest: &Value) -> Result<&Value> {
     // An index is a multi-platform container image.
     if manifest.get("manifests").is_some() {
-        bail!("not a program: a multi-platform image, which berm has no use for");
+        bail!("not a service: a multi-platform image, which berm has no use for");
     }
 
     let layers = manifest
         .get("layers")
         .and_then(Value::as_array)
-        .context("not a program: the artifact has no layers")?;
+        .context("not a service: the artifact has no layers")?;
     let [layer] = layers.as_slice() else {
         bail!(
-            "not a program: {} layers, where one is the whole of it",
+            "not a service: {} layers, where one is the whole of it",
             layers.len()
         );
     };
 
     let kind = layer.get("mediaType").and_then(Value::as_str).unwrap_or("");
-    if kind != PROGRAM {
-        bail!("not a program: its layer is {kind:?}");
+    if kind != SERVICE {
+        bail!("not a service: its layer is {kind:?}");
     }
     Ok(layer)
 }
 
-/// Standard OCI keys only. What the program *is* lives in the config blob, and
+/// Standard OCI keys only. What the service *is* lives in the config blob, and
 /// a second copy here would be the one that rots.
 fn annotations() -> Value {
     let mut annotations = Map::new();

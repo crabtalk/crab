@@ -1,6 +1,6 @@
 # berm-codegen
 
-The proc macros of a program: `#[tool]`, `#[derive(Schema)]`, `#[event]`, `#[error_code]`, `declare_program!`, `syscalls!` and `hosts!`. Re-exported by
+The proc macros of a service: `#[tool]`, `#[derive(Schema)]`, `#[event]`, `#[error_code]`, `declare_service!`, `syscalls!` and `hosts!`. Re-exported by
 [`berm-lang`](https://crates.io/crates/berm-lang) — depend on that, not on this.
 
 ```rust
@@ -18,7 +18,7 @@ pub fn greet(
 
 A function marked `#[tool]` is a tool; its doc comment is the description the model reads, and a tool without one is a compile error. Its parameters are its arguments and the `Ok` of its `Result` is its reply, each typed by `Schema`. `#[tool]` takes `query`, `cron` and `stripe`; who may call a tool is `access` in its `[tools]` table of `crab.toml`. `#[tool]`, `#[derive(Schema)]`, `#[event]` and `#[error_code]` go on items anywhere in the crate.
 
-Each `#[tool]` expands to the function, its export `berm_tool_<name>`, and its record in the `.berm.abi` section, naming the crate it is compiled in. The program's own declarations are in its `crab.toml`, which `crab build` appends to the image as the `.berm.program` section, each tool's access, title and catalog job among them.
+Each `#[tool]` expands to the function, its export `berm_tool_<name>`, and its record in the `.berm.abi` section, naming the crate it is compiled in. The service's own declarations are in its `crab.toml`, which `crab build` appends to the image as the `.berm.service` section, each tool's access, title and catalog job among them.
 
 ## License
 

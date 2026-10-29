@@ -1,12 +1,12 @@
 [package]
 name = "berm-lang"
-description = "Guest-side library for building berm programs"
+description = "Guest-side library for building berm services"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-keywords = ["berm", "program", "sandbox", "wasm"]
+keywords = ["berm", "service", "sandbox", "wasm"]
 categories = ["wasm", "no-std"]
 
 [lib]

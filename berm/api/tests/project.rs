@@ -66,16 +66,16 @@ fn the_auth_kits_credentials_parse() {
 }
 
 #[test]
-fn a_programs_tools_are_read_and_a_kits_are_refused() {
-    let program = read(
+fn a_services_tools_are_read_and_a_kits_are_refused() {
+    let service = read(
         "name = \"app\"\n\n[tools.search]\naccess = \"services\"\ntitle = \"Search\"\nprice = 2_000\ncatalog = \"web.search\"\n",
     )
     .unwrap();
-    let search = &program.tools["search"];
+    let search = &service.tools["search"];
     assert_eq!(search.access, Some(Access::Services));
     assert_eq!(search.price, Some(2_000));
     assert_eq!(
-        program.records()["search"].catalog.as_deref(),
+        service.records()["search"].catalog.as_deref(),
         Some("web.search")
     );
     let kit = read("[tools.search]\naccess = \"public\"\n").unwrap();

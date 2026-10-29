@@ -1,7 +1,7 @@
-//! Whether a program's next manifest keeps working for the callers of this one.
+//! Whether a service's next manifest keeps working for the callers of this one.
 //!
-//! Arguments are read by the new program from callers built against the old
-//! one; results and events are read by those callers from the new program.
+//! Arguments are read by the new service from callers built against the old
+//! one; results and events are read by those callers from the new service.
 //! Fields a reader does not know are ignored.
 
 use crate::{EventSpec, Manifest, ToolSpec};

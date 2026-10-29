@@ -1,4 +1,4 @@
-//! `crab new` — scaffold a program.
+//! `crab new` — scaffold a service.
 
 use crate::project;
 use anyhow::{Context, Result, bail};
@@ -48,10 +48,10 @@ pub fn run(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// A program name is a crate name, held to cargo's rules.
+/// A service name is a crate name, held to cargo's rules.
 fn check(name: &str) -> Result<()> {
     if name.is_empty() {
-        bail!("a program needs a name");
+        bail!("a service needs a name");
     }
     if name.starts_with(|c: char| c.is_ascii_digit()) {
         bail!("{name:?} starts with a digit, which a crate name cannot");

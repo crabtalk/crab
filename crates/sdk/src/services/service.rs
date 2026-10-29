@@ -2,7 +2,7 @@
 
 use crate::services::price::Price;
 use berm_api::{
-    Credential, Meter, Program,
+    Credential, Meter, Service,
     host::{self, Call, ServedDay},
 };
 use serde::{Deserialize, Serialize};
@@ -255,9 +255,9 @@ impl Hosts {
 
 /// One of an account's services, as its owners list them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Service {
+pub struct Owned {
     #[serde(flatten)]
-    pub program: Program,
+    pub service: Service,
     pub private: bool,
     pub served: host::Served,
     /// The project it was last deployed in.

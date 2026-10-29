@@ -1,9 +1,9 @@
-//! One HTTP request, to a host this program's manifest declares under
+//! One HTTP request, to a host this service's manifest declares under
 //! `berm.http.fetch`, or under `berm.http.proxy` to send it through the host's
 //! proxy.
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
-//! manifest declares. The host substitutes it, and this program never holds the value.
+//! manifest declares. The host substitutes it, and this service never holds the value.
 
 use crate::{
     abi::{self, wire},
@@ -60,7 +60,7 @@ pub fn fetch(
 }
 
 /// [`fetch`], through the host's proxy. The host meters the bytes sent and
-/// received against this program as `proxied`.
+/// received against this service as `proxied`.
 pub fn proxy(
     method: &str,
     url: &str,
@@ -78,7 +78,7 @@ pub struct Request<'a> {
     pub body: &'a [u8],
     /// Milliseconds to wait for an answer; `None` for the call's deadline.
     pub timeout: Option<u64>,
-    /// The most bytes of the answer's body this program takes; the host cuts
+    /// The most bytes of the answer's body this service takes; the host cuts
     /// the rest before it reaches it. `None` for all of it.
     pub limit: Option<usize>,
 }
@@ -92,7 +92,7 @@ pub fn fetch_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallEr
 
 /// [`fetch_all`], through the host's proxy, each request to a host the
 /// manifest declares under `berm.http.proxy`. The host meters the bytes sent
-/// and received against this program as `proxied`.
+/// and received against this service as `proxied`.
 pub fn proxy_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
     send_all(abi::HOST_HTTP_PROXY_ALL, requests)
 }

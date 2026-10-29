@@ -1,4 +1,4 @@
-//! The contract between a berm program and its host: host-call numbers,
+//! The contract between a berm service and its host: host-call numbers,
 //! request framing, export names and image sections.
 //!
 //! A host call's number is derived from its name by [`hash`] (RFC 0205). Every
@@ -12,21 +12,21 @@ extern crate alloc;
 
 pub mod wire;
 
-/// The ABI version a program is built against and a host speaks. A host
-/// refuses a program built against another.
-pub const ABI_VERSION: u32 = 5;
+/// The ABI version a service is built against and a host speaks. A host
+/// refuses a service built against another.
+pub const ABI_VERSION: u32 = 6;
 
-/// The section of what the compiler wrote of a program. A wasm custom
+/// The section of what the compiler wrote of a service. A wasm custom
 /// section, which is what `#[link_section]` emits on `wasm32`. It holds JSON
 /// records back to back, in the order the linker joined them: one
 /// `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one
 /// `{"event": …}` per `#[event]`.
 pub const ABI_SECTION: &str = ".berm.abi";
 
-/// The section the build appends for the program: one program record.
-pub const PROGRAM_SECTION: &str = ".berm.program";
+/// The section the build appends for the service: one service record.
+pub const SERVICE_SECTION: &str = ".berm.service";
 
-/// The section the build appends for the program's kits: a JSON array of kits,
+/// The section the build appends for the service's kits: a JSON array of kits,
 /// by name.
 pub const KITS_SECTION: &str = ".berm.kits";
 
@@ -70,9 +70,9 @@ pub const fn hash(name: &str) -> u64 {
 /// The name a host registers to serve [`HOST_CALL`].
 pub const CALL: &str = "berm.call";
 
-/// Call a tool on another program. `(ptr, len) -> staged length`
+/// Call a tool on another service. `(ptr, len) -> staged length`
 ///
-/// Request fields are the program, the tool, and the argument blob; the reply
+/// Request fields are the service, the tool, and the argument blob; the reply
 /// is the tool's result, staged like any other. The runtime serves this one
 /// itself.
 pub const HOST_CALL: u64 = hash(CALL);
@@ -80,11 +80,11 @@ pub const HOST_CALL: u64 = hash(CALL);
 /// The name a host registers to serve [`HOST_CALL_AFTER`].
 pub const CALL_AFTER: &str = "berm.call.after";
 
-/// Call a tool later, replacing whatever this program had pending.
+/// Call a tool later, replacing whatever this service had pending.
 /// `(ptr, len) -> staged length`
 ///
-/// Request fields are the delay in milliseconds, the program, the tool and the
-/// argument blob; the reply is empty. One wake per program that arms it.
+/// Request fields are the delay in milliseconds, the service, the tool and the
+/// argument blob; the reply is empty. One wake per service that arms it.
 pub const HOST_CALL_AFTER: u64 = hash(CALL_AFTER);
 
 /// The name a host registers to serve [`HOST_HTTP_FETCH`].
@@ -140,7 +140,7 @@ pub const HOST_EMIT: u64 = hash(EMIT);
 /// The name a host registers to serve [`HOST_SQL`].
 pub const SQL: &str = "berm.sql";
 
-/// Run one SQL statement against this program's own database.
+/// Run one SQL statement against this service's own database.
 /// `(ptr, len) -> staged length`
 ///
 /// Request fields are the statement and its parameters as a JSON array. The
@@ -152,11 +152,11 @@ pub const GET: &str = "berm.get";
 /// The name a host registers to serve [`HOST_SET`].
 pub const SET: &str = "berm.set";
 
-/// Read one of this program's own keys. `(ptr, len) -> staged length`
+/// Read one of this service's own keys. `(ptr, len) -> staged length`
 ///
 /// The request is the key; the reply is one field when the key is set and no
-/// fields when it is not. Neither this nor [`HOST_SET`] carries a program: the
-/// keyspace is whichever program is asking.
+/// fields when it is not. Neither this nor [`HOST_SET`] carries a service: the
+/// keyspace is whichever service is asking.
 pub const HOST_GET: u64 = hash(GET);
 
 /// Write one. `(ptr, len) -> staged length`
@@ -167,15 +167,15 @@ pub const HOST_SET: u64 = hash(SET);
 
 /// Who made this call. `(ptr, len) -> staged length`, the pair ignored.
 ///
-/// The reply is no fields when the host started the chain on the program's
-/// own behalf, else two: `outside` or `program`, then the name. The runtime
+/// The reply is no fields when the host started the chain on the service's
+/// own behalf, else two: `outside` or `service`, then the name. The runtime
 /// serves this one itself.
 pub const HOST_CALLER: u64 = hash("berm.caller");
 
 /// The end user the chain runs for. `(ptr, len) -> staged length`, the pair
 /// ignored.
 ///
-/// The reply is no fields when neither the embedder nor a program vouched for
+/// The reply is no fields when neither the embedder nor a service vouched for
 /// one, else the issuer and the subject. The runtime serves this one itself.
 pub const HOST_USER: u64 = hash("berm.user");
 
@@ -185,8 +185,8 @@ pub const VOUCH: &str = "berm.vouch";
 /// Vouch for the end user the chain runs for from here on. `(ptr, len) ->
 /// staged length`
 ///
-/// The request is the subject; the issuer is the program, as the programs it
-/// calls are told it is named. The reply is empty. Refused to a program whose
+/// The request is the subject; the issuer is the service, as the services it
+/// calls are told it is named. The reply is empty. Refused to a service whose
 /// manifest does not declare [`VOUCH`], and in a chain that already runs for a
 /// user. The runtime serves this one itself, and every call made after
 /// carries the user.

@@ -1,10 +1,10 @@
-//! Build a berm program.
+//! Build a berm service.
 //!
-//! A program is one WebAssembly module, confined to its own memory and reaching
+//! A service is one WebAssembly module, confined to its own memory and reaching
 //! the world only through the host calls it was given. Each `#[tool]` function
 //! is a tool; its doc comment is what the model reads when deciding whether to
 //! call it, its parameters are its arguments, and the `Ok` of its [`Result`] is
-//! its reply, each typed by [`Schema`]. A program is a `cdylib` built for
+//! its reply, each typed by [`Schema`]. A service is a `cdylib` built for
 //! `wasm32-unknown-unknown` by `crab build`, which appends what its `crab.toml`
 //! and its kits declare; a host refuses an image cargo alone links. berm serves
 //! [`call`], [`emit`] ([`emit!`] for an `#[event]` struct), [`now`] and
@@ -43,7 +43,7 @@ extern crate alloc;
 extern crate self as berm_lang;
 
 pub use berm_abi as abi;
-pub use berm_codegen::{Schema, declare_program, error_code, event, syscalls, tool};
+pub use berm_codegen::{Schema, declare_service, error_code, event, syscalls, tool};
 pub use call::{CallError, Caller, User, after, call, caller, client, deny, limit, user, vouch};
 #[doc(hidden)]
 pub use emit::event as __event;
@@ -78,7 +78,7 @@ pub mod test;
 #[cfg_attr(not(target_arch = "wasm32"), path = "sys/stub.rs")]
 mod sys;
 
-/// What `declare_program!`'s types are written in, reachable without the
+/// What `declare_service!`'s types are written in, reachable without the
 /// author's `extern crate alloc`.
 #[doc(hidden)]
 pub mod __private {

@@ -1,5 +1,5 @@
-//! Which crates the build takes for a program's kits: each it compiled for the
-//! guest in the program's own build, with a `crab.toml`.
+//! Which crates the build takes for a service's kits: each it compiled for the
+//! guest in the service's own build, with a `crab.toml`.
 
 use berm_abi::ABI_VERSION;
 use berm_api::Manifest;
@@ -25,18 +25,18 @@ fn package(root: &Path, dir: &str, name: &str, version: &str, dependencies: &str
     write(root, &format!("{dir}/src/lib.rs"), "#![no_std]\n");
 }
 
-/// The program in `root/program`, a cdylib depending on what `dependencies`
+/// The service in `root/service`, a cdylib depending on what `dependencies`
 /// and `dev` name.
-fn program(root: &Path, dependencies: &str, dev: &str) {
+fn service(root: &Path, dependencies: &str, dev: &str) {
     write(
         root,
-        "program/Cargo.toml",
+        "service/Cargo.toml",
         &format!(
-            "[package]\nname = \"program\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\n{dependencies}\n\n[dev-dependencies]\n{dev}\n"
+            "[package]\nname = \"service\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\n{dependencies}\n\n[dev-dependencies]\n{dev}\n"
         ),
     );
-    write(root, "program/src/lib.rs", "");
-    write(root, "program/crab.toml", "name = \"program\"\n");
+    write(root, "service/src/lib.rs", "");
+    write(root, "service/crab.toml", "name = \"service\"\n");
 }
 
 /// A `crab.toml` a kit may not have, so taking the crate for a kit fails the
@@ -47,7 +47,7 @@ const NOT_A_KIT: &str = "name = \"kit\"\n";
 fn a_kit_at_two_versions_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
-    program(
+    service(
         root,
         "kit = { path = \"../kit1\" }\nother = { path = \"../other\" }",
         "",
@@ -64,7 +64,7 @@ fn a_kit_at_two_versions_is_refused() {
         "kit = { path = \"../kit2\" }",
     );
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("service"), None).unwrap_err();
     assert!(
         error.to_string().contains("kit kit at two versions"),
         "{error:#}"
@@ -75,7 +75,7 @@ fn a_kit_at_two_versions_is_refused() {
 fn a_kit_behind_another_crate_is_found() {
     let root = TempDir::new().unwrap();
     let root = root.path();
-    program(root, "facade = { path = \"../facade\" }", "");
+    service(root, "facade = { path = \"../facade\" }", "");
     package(
         root,
         "facade",
@@ -86,7 +86,7 @@ fn a_kit_behind_another_crate_is_found() {
     package(root, "kit", "kit", "0.1.0", "");
     write(root, "kit/crab.toml", NOT_A_KIT);
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("service"), None).unwrap_err();
     assert!(format!("{error:#}").contains("the kit kit"), "{error:#}");
 }
 
@@ -94,42 +94,42 @@ fn a_kit_behind_another_crate_is_found() {
 fn a_dev_dependency_is_no_kit() {
     let root = TempDir::new().unwrap();
     let root = root.path();
-    program(root, "", "kit = { path = \"../kit\" }");
+    service(root, "", "kit = { path = \"../kit\" }");
     package(root, "kit", "kit", "0.1.0", "");
     write(root, "kit/crab.toml", NOT_A_KIT);
 
     // Built past its kits, it is refused only for what it lacks itself.
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("service"), None).unwrap_err();
     assert!(format!("{error:#}").contains("no tools"), "{error:#}");
 }
 
 #[test]
-fn a_program_without_a_cdylib_is_refused() {
+fn a_service_without_a_cdylib_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
-    package(root, "program", "program", "0.1.0", "");
-    write(root, "program/crab.toml", "name = \"program\"\n");
+    package(root, "service", "service", "0.1.0", "");
+    write(root, "service/crab.toml", "name = \"service\"\n");
     // Its own workspace, apart from the one the test runs in.
-    let manifest = root.join("program/Cargo.toml");
+    let manifest = root.join("service/Cargo.toml");
     let text = fs::read_to_string(&manifest).unwrap();
     fs::write(&manifest, text + "\n[workspace]\n").unwrap();
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
+    let error = berm_build::build(&root.join("service"), None).unwrap_err();
     assert!(error.to_string().contains("builds no cdylib"), "{error:#}");
 }
 
 #[test]
-fn a_program_naming_no_service_is_refused() {
+fn a_service_naming_no_name_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
-    program(root, "", "");
-    write(root, "program/crab.toml", "deploy = true\n");
+    service(root, "", "");
+    write(root, "service/crab.toml", "deploy = true\n");
 
-    let error = berm_build::build(&root.join("program"), None).unwrap_err();
-    assert!(error.to_string().contains("names its service"), "{error:#}");
+    let error = berm_build::build(&root.join("service"), None).unwrap_err();
+    assert!(error.to_string().contains("names itself"), "{error:#}");
 }
 
-/// A program `name` in `root/name` whose only tool, `run`, is a record and an
+/// A service `name` in `root/name` whose only tool, `run`, is a record and an
 /// export written by hand, depending on what `dependencies` names.
 fn tooled(root: &Path, name: &str, dependencies: &str) {
     write(
@@ -157,7 +157,7 @@ fn tooled(root: &Path, name: &str, dependencies: &str) {
     );
 }
 
-/// The kits the finished image of the program in `dir` names.
+/// The kits the finished image of the service in `dir` names.
 fn kits(dir: &Path) -> Vec<String> {
     let image = berm_build::build(dir, None).unwrap();
     let manifest = Manifest::try_from(fs::read(image).unwrap().as_slice()).unwrap();
@@ -165,7 +165,7 @@ fn kits(dir: &Path) -> Vec<String> {
 }
 
 #[test]
-fn each_program_is_credited_only_the_kits_its_own_features_link() {
+fn each_service_is_credited_only_the_kits_its_own_features_link() {
     let root = TempDir::new().unwrap();
     let root = root.path();
     write(

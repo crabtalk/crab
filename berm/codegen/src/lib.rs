@@ -1,7 +1,7 @@
-//! `#[tool]` — turns a function into a tool of a loadable program.
+//! `#[tool]` — turns a function into a tool of a loadable service.
 //!
 //! `#[tool]`, `#[derive(Schema)]`, `#[event]` and `#[error_code]` go on items
-//! anywhere in the program's crate.
+//! anywhere in the service's crate.
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, Expr, ExprLit, ItemFn, Lit, parse_macro_input};
@@ -31,7 +31,7 @@ fn docs(attrs: &[syn::Attribute]) -> String {
     description.trim().to_owned()
 }
 
-/// Declare the syscalls a program may call, emitting a stub for each.
+/// Declare the syscalls a service may call, emitting a stub for each.
 ///
 /// ```ignore
 /// berm_lang::syscalls! {
@@ -53,19 +53,19 @@ pub fn syscalls(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Typed calls, types and events for another program, from its IDL.
+/// Typed calls, types and events for another service, from its IDL.
 ///
 /// ```ignore
-/// berm_lang::declare_program!(hn);
+/// berm_lang::declare_service!(hn);
 ///
 /// let lanes = hn::calls::lanes()?;
 /// ```
 ///
-/// Reads `idls/hn.json`, the IDL of the program deployed as `hn`, from the crate's
+/// Reads `idls/hn.json`, the IDL of the service deployed as `hn`, from the crate's
 /// directory or the nearest ancestor that has one. A call takes the tool's
 /// arguments in the IDL's key order, an optional one as an `Option`.
 #[proc_macro]
-pub fn declare_program(input: TokenStream) -> TokenStream {
+pub fn declare_service(input: TokenStream) -> TokenStream {
     let name = parse_macro_input!(input as syn::Ident);
     declare::expand(&name)
         .unwrap_or_else(syn::Error::into_compile_error)
@@ -81,7 +81,7 @@ pub fn hosts(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Make a function a tool of the program its crate builds.
+/// Make a function a tool of the service its crate builds.
 ///
 /// ```ignore
 /// use berm_lang::{Result, tool};
@@ -102,15 +102,15 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// reply, written as JSON, and `()` replies nothing. It is exported as
 /// `berm_tool_<name>`. Who may call it is `access` in its `[tools]` table of
 /// `crab.toml`, which the build writes into the manifest; without one it is
-/// internal, only called by the host for the program's own wakes, crons and
+/// internal, only called by the host for the service's own wakes, crons and
 /// Stripe events. `query` marks it read-only: the host refuses its writes,
 /// logs and wakes. `cron` marks a tool its host calls when the cron
 /// expression its deploy or its owner sets fires; it takes no parameters.
 /// `stripe` marks the one tool its host calls with each Stripe event its
-/// daemon takes for the program, the event object as the argument object.
+/// daemon takes for the service, the event object as the argument object.
 /// Neither a cron nor a stripe tool takes `access`. `#[deprecated]` marks a
 /// tool so in the manifest. An image holding a tool of a package other than
-/// the program's is refused.
+/// the service's is refused.
 #[proc_macro_attribute]
 pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {
     let mut options = tool::Options::default();
@@ -135,7 +135,7 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 }
 
 /// A typed log, emitted with `berm_lang::emit!` under the struct's name and
-/// listed in the program's manifest. Its doc comment is what a reader of the
+/// listed in the service's manifest. Its doc comment is what a reader of the
 /// logs is told it means; `#[deprecated]` marks it so in the manifest.
 #[proc_macro_attribute]
 pub fn event(args: TokenStream, item: TokenStream) -> TokenStream {
@@ -145,7 +145,7 @@ pub fn event(args: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// An enum of a program's failures. Each variant takes `#[msg("…")]`, the
+/// An enum of a service's failures. Each variant takes `#[msg("…")]`, the
 /// message a tool failing with it answers, and converts into
 /// `berm_lang::Error`.
 #[proc_macro_attribute]

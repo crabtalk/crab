@@ -40,10 +40,10 @@ pub(crate) enum Door {
     Hosted(Call),
 }
 
-/// Every syscall one program can reach, by the number its name hashes to.
+/// Every syscall one service can reach, by the number its name hashes to.
 pub(crate) type Table = HashMap<u64, Door>;
 
-/// Assemble what a program is instantiated with: the ABI's own doors, then
+/// Assemble what a service is instantiated with: the ABI's own doors, then
 /// whatever the embedder registered.
 ///
 /// A name already spoken for, berm's own included, is refused.
@@ -107,7 +107,7 @@ fn builtins() -> Table {
         abi::HOST_TRACE,
         handler(|guest, ptr, len| {
             let message = engine::read(guest, ptr, len)?;
-            tracing::info!(target: "program", "{}", String::from_utf8_lossy(&message));
+            tracing::info!(target: "service", "{}", String::from_utf8_lossy(&message));
             Ok(0)
         }),
     );
@@ -117,7 +117,7 @@ fn builtins() -> Table {
         handler(|guest, _, _| {
             let reply = match &guest.data().at.caller {
                 Some(Asking::Outside(name)) => abi::wire::request(&[b"outside", name.as_bytes()]),
-                Some(Asking::Program(name)) => abi::wire::request(&[b"program", name.as_bytes()]),
+                Some(Asking::Service(name)) => abi::wire::request(&[b"service", name.as_bytes()]),
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -193,7 +193,7 @@ fn builtins() -> Table {
         }),
     );
 
-    // Registered for every program, including one given no syscalls.
+    // Registered for every service, including one given no syscalls.
     table.insert(
         abi::HOST_RESULT_READ,
         handler(|guest, ptr, capacity| {
@@ -313,12 +313,12 @@ fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Have the rest of `invocation`'s chain run for `subject`, vouched for by its
-/// program.
+/// service.
 fn vouch(invocation: &mut Invocation, subject: Vec<u8>) -> Result<Vec<u8>> {
     let issuer = invocation.issuer.clone();
     let at = &mut invocation.at;
     if !at.deps.syscalls.contains_key(abi::VOUCH) {
-        return Err(Refused(format!("{} does not declare {}", at.program, abi::VOUCH)).into());
+        return Err(Refused(format!("{} does not declare {}", at.service, abi::VOUCH)).into());
     }
     if at.user.is_some() {
         return Err(Refused(String::from("the chain already runs for a user")).into());

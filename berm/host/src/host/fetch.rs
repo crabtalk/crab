@@ -62,7 +62,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     let host = host.clone();
     let secret = move |at: Callsite, secret: String, to: String| {
         let host = host::alive(&host);
-        async move { host?.secrets.grant(&at.program, &secret, &to).await }
+        async move { host?.secrets.grant(&at.service, &secret, &to).await }
     };
     match door {
         Door::Fetch => http::fetch(send, secret),

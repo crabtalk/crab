@@ -120,7 +120,7 @@ impl Parse for Module {
             calls.push(inner.parse()?);
         }
         if calls.is_empty() {
-            return Err(syn::Error::new(name.span(), "a program needs a call"));
+            return Err(syn::Error::new(name.span(), "a service needs a call"));
         }
 
         Ok(Self {
@@ -302,7 +302,7 @@ impl Ty {
                     .ok()
                     .and_then(|text| text.parse().ok())
                     .ok_or(::berm_lang::CallError::Failed(::alloc::string::String::from(
-                        "the host sent a number this program cannot read",
+                        "the host sent a number this service cannot read",
                     )))?
             },
             Ty::Pairs => unreachable!("a reply is never pairs"),
@@ -329,7 +329,7 @@ impl Declaration {
         quote!(#(#modules)*)
     }
 
-    /// The stub a program calls.
+    /// The stub a service calls.
     fn guest(&self, module: &Module, call: &Call) -> TokenStream {
         let wire = format!("{}.{}.{}", self.namespace, module.name, call.name);
         let ident = &call.name;
@@ -411,7 +411,7 @@ impl Declaration {
                         else {
                             return ::core::result::Result::Err(
                                 ::berm_lang::CallError::Failed(::alloc::string::String::from(
-                                    "the host framed a reply this program cannot read",
+                                    "the host framed a reply this service cannot read",
                                 )),
                             );
                         };

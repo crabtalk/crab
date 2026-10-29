@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use berm_api::{
-    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Program, Runtime,
+    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Runtime, Service,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Body, Method, RequestBuilder};
@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 impl Client {
     /// Every service the account runs.
-    pub async fn list(&self) -> Result<Vec<Program>, Error> {
+    pub async fn list(&self) -> Result<Vec<Service>, Error> {
         self.json(self.at(Method::GET, &self.addressed().services()))
             .await
     }
@@ -28,7 +28,7 @@ impl Client {
         self.json(self.at(Method::GET, &self.path_of(name))).await
     }
 
-    pub async fn inspect(&self, name: &str) -> Result<Program, Error> {
+    pub async fn inspect(&self, name: &str) -> Result<Service, Error> {
         let path = format!("{}/idl", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
@@ -86,21 +86,21 @@ impl Client {
         self.ok(request).await.map(drop)
     }
 
-    /// Call `tool` of `program`, as `caller` on a local host, which takes it
+    /// Call `tool` of `service`, as `caller` on a local host, which takes it
     /// unverified.
     pub async fn call(
         &self,
-        program: &str,
+        service: &str,
         tool: &str,
         arguments: Vec<u8>,
         caller: Option<&Caller>,
     ) -> Result<(Output, Option<Meter>), Error> {
-        if self.owner.is_none() && program.contains('/') {
+        if self.owner.is_none() && service.contains('/') {
             return Err(Error::Host(
                 "the local host has no accounts: call its services by name alone",
             ));
         }
-        let path = format!("{}/tools/{tool}", self.path_of(program));
+        let path = format!("{}/tools/{tool}", self.path_of(service));
         let request = self.as_caller(self.at(Method::POST, &path).body(arguments), caller)?;
         self.answered(request).await
     }

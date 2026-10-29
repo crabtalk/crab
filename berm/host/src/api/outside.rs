@@ -97,8 +97,8 @@ impl<E: Env> Host<E> {
         caller: Option<Caller>,
         headers: HeaderMap,
     ) -> Result<Called, Denied> {
-        let program = self.deployed(service)?;
-        let Some(spec) = program
+        let deployed = self.deployed(service)?;
+        let Some(spec) = deployed
             .manifest
             .tools
             .iter()
@@ -138,7 +138,7 @@ impl<E: Env> Host<E> {
             );
             Err(denied)
         };
-        if !program.reached_by_accounts(tool) {
+        if !deployed.reached_by_accounts(tool) {
             return refused(
                 deny(
                     StatusCode::FORBIDDEN,
@@ -181,10 +181,10 @@ impl<E: Env> Host<E> {
             client,
             ..
         } = call;
-        let program = self
+        let deployed = self
             .get(&service)
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
-        let deprecated = program
+        let deprecated = deployed
             .manifest
             .tools
             .iter()
@@ -228,11 +228,11 @@ impl<E: Env> Host<E> {
         let started = self.calls.start();
         let recorder = Recorder::default();
         let kept = args.clone();
-        let input = |args| calls::ran_with(&tool, args, caller.clone(), &program.digest);
+        let input = |args| calls::ran_with(&tool, args, caller.clone(), &deployed.digest);
         let (source, who) = counted(caller.as_ref());
         let invoked = self
             .invoke(
-                &program,
+                &deployed,
                 started.id,
                 caller
                     .as_ref()

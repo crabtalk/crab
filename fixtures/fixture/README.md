@@ -1,6 +1,6 @@
 # berm-fixture
 
-The reference guest: the smallest real program, and what berm is measured and
+The reference guest: the smallest real service, and what berm is measured and
 tested against. Its tools each price or prove one thing — see the module
 doc in `src/lib.rs`.
 

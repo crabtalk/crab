@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static CHAINS: AtomicU64 = AtomicU64::new(0);
 
 /// A [`Callsite::chain`](crate::Callsite::chain) no chain in this process has
-/// had, for [`Program::call_as`](crate::Program::call_as).
+/// had, for [`Service::call_as`](crate::Service::call_as).
 pub fn next() -> u64 {
     CHAINS.fetch_add(1, Ordering::Relaxed) + 1
 }

@@ -1,5 +1,5 @@
 //! Sign-in as a kit: a GitHub or Google login turned into a session of the
-//! program using it, for an account each of the user's identities signs in
+//! service using it, for an account each of the user's identities signs in
 //! to. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`.
 
 #![no_std]

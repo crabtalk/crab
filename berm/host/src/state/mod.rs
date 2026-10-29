@@ -23,15 +23,15 @@ pub(crate) mod terms;
 /// database when it keeps one and over `service_state` otherwise.
 pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
     let (reading, writing) = (host.clone(), host.clone());
-    syscall::store::programs(
+    syscall::store::services(
         move |at: Callsite, key: String| {
             let host = host::alive(&reading);
             async move {
                 let host = host?;
-                if let Some(database) = at.database(|| host.kept(&at.program)) {
+                if let Some(database) = at.database(|| host.kept(&at.service)) {
                     return database?.get(at.chain, key).await;
                 }
-                let (scope, name) = host::split(&at.program);
+                let (scope, name) = host::split(&at.service);
                 service::read(&host.store, scope, name, key).await
             }
         },
@@ -39,7 +39,7 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
             let host = host::alive(&writing);
             async move {
                 let host = host?;
-                let Some(database) = at.database(|| host.kept(&at.program)) else {
+                let Some(database) = at.database(|| host.kept(&at.service)) else {
                     return Ok(false);
                 };
                 database?.set(at.chain, key, value).await?;

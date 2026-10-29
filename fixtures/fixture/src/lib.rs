@@ -1,4 +1,4 @@
-//! The reference guest: the smallest real program, and what berm is measured
+//! The reference guest: the smallest real service, and what berm is measured
 //! and tested against.
 //!
 //! Each tool prices or proves one thing. `berm/berm/examples/measure.rs` and
@@ -13,7 +13,7 @@ extern crate alloc;
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::{Caller, Result, Schema, event, tool};
 
-berm_lang::declare_program!(fixture);
+berm_lang::declare_service!(fixture);
 
 /// Answers its arguments back.
 #[tool]
@@ -117,13 +117,13 @@ pub fn random() -> Result<String> {
     Ok(hex::encode(bytes))
 }
 
-/// Says who called: `outside NAME`, `program NAME`, or `none`, then
+/// Says who called: `outside NAME`, `service NAME`, or `none`, then
 /// ` user ISSUER SUBJECT` when the chain runs for a user.
 #[tool]
 pub fn whoami() -> Result<String> {
     let mut said = match berm_lang::caller()? {
         Some(Caller::Outside(name)) => format!("outside {name}"),
-        Some(Caller::Program(name)) => format!("program {name}"),
+        Some(Caller::Service(name)) => format!("service {name}"),
         None => String::from("none"),
     };
     if let Some(user) = berm_lang::user()? {
@@ -132,16 +132,16 @@ pub fn whoami() -> Result<String> {
     Ok(said)
 }
 
-/// Answers `ok` to a program, and denies any other caller.
+/// Answers `ok` to a service, and denies any other caller.
 #[tool]
 pub fn guarded() -> Result<String> {
     match berm_lang::caller()? {
-        Some(Caller::Program(_)) => Ok("ok".into()),
-        _ => Err(berm_lang::deny("programs only")),
+        Some(Caller::Service(_)) => Ok("ok".into()),
+        _ => Err(berm_lang::deny("services only")),
     }
 }
 
-/// Answers `ok`; only programs may call it.
+/// Answers `ok`; only services may call it.
 #[tool]
 pub fn fromservices() -> Result<String> {
     Ok("ok".into())
@@ -209,7 +209,7 @@ pub fn nest(query: String, page: Option<u32>) -> Result<Echo> {
 /// Counts how many times it has run, arming itself to run again in `delay`
 /// milliseconds until it has run three times. Proves an invocation can
 /// outlive the one that asked for it, and that what crosses the gap is the
-/// program's own keys.
+/// service's own keys.
 #[tool]
 pub fn tick(delay: u64) -> Result<Round> {
     let round = berm_lang::get("ticks")
@@ -248,7 +248,7 @@ pub fn note(word: String) -> Result<String> {
 
 /// Calls `note` on `inner` with `word`, carries on whether or not that
 /// failed, emits `word` under the topic `relay`, and answers what this
-/// program reads back under `note`.
+/// service reads back under `note`.
 #[tool]
 pub fn relay(word: String) -> Result<String> {
     let args = format!(r#"{{"word":{}}}"#, berm_lang::json::to(&word)?);
@@ -295,7 +295,7 @@ pub fn peek() -> Result<Peek> {
     })
 }
 
-/// Calls itself on `inner` one level deeper, which is this same program
+/// Calls itself on `inner` one level deeper, which is this same service
 /// when deployed under that name — the runaway a depth limit exists to
 /// stop. Answers how many levels got through before the host refused.
 #[tool]

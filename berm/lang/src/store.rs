@@ -1,6 +1,6 @@
-//! This program's own bytes, surviving its invocations.
+//! This service's own bytes, surviving its invocations.
 //!
-//! Neither door names a program: the keyspace is whichever one is asking, as
+//! Neither door names a service: the keyspace is whichever one is asking, as
 //! the host reads it off the call. A host that registers nothing for these
 //! traps them as unknown host calls.
 
@@ -10,7 +10,7 @@ use crate::{
 };
 use alloc::{string::String, vec::Vec};
 
-/// Read `key`, or `None` if this program has never written it.
+/// Read `key`, or `None` if this service has never written it.
 ///
 /// ```ignore
 /// let seen = berm_lang::get("last-run")?.unwrap_or_default();
@@ -32,7 +32,7 @@ pub fn set(key: &str, value: &[u8]) -> Result<(), CallError> {
     Ok(())
 }
 
-/// Read `key` as JSON, or `None` if this program has never written it.
+/// Read `key` as JSON, or `None` if this service has never written it.
 pub fn get_json<T: for<'de> serde::Deserialize<'de>>(key: &str) -> Result<Option<T>, CallError> {
     let Some(bytes) = get(key)? else {
         return Ok(None);

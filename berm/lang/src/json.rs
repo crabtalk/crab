@@ -1,4 +1,4 @@
-//! What `declare_program!`'s typed calls expand to.
+//! What `declare_service!`'s typed calls expand to.
 
 use crate::CallError;
 use alloc::{format, string::String};

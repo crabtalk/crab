@@ -101,7 +101,7 @@ pub struct Held {
 }
 
 impl Held {
-    /// The program whose writer the invocation took, if it took one.
+    /// The service whose writer the invocation took, if it took one.
     pub fn took(&self) -> Option<&str> {
         self.writing.as_ref().map(|writing| &*writing.database.name)
     }

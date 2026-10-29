@@ -1,4 +1,4 @@
-//! The program's statements against a connection.
+//! The service's statements against a connection.
 
 use crate::{Refused, bound::cpu, syscall::sql::Statement};
 use anyhow::{Context, Result, bail};
@@ -16,13 +16,13 @@ const MAX_REPLY: usize = 4 << 20;
 const RESERVED: &str = "_berm_";
 
 thread_local! {
-    /// Whether the statement this thread prepares or runs is the program's.
+    /// Whether the statement this thread prepares or runs is the service's.
     pub(crate) static GUEST: Cell<bool> = const { Cell::new(false) };
 }
 
 /// While [`GUEST`] is set, refuse transaction control, `ATTACH`, `DETACH`, a
 /// `PRAGMA` that sets a value, and anything reaching a `_berm_*` table. A
-/// cached statement is not authorized again, so only the program's statements
+/// cached statement is not authorized again, so only the service's statements
 /// are prepared through the cache.
 pub(crate) fn guard(conn: &Connection) -> Result<()> {
     conn.authorizer(Some(|context: AuthContext<'_>| {
@@ -77,7 +77,7 @@ pub struct Answer {
     pub cpu: u64,
 }
 
-/// Run one of the program's statements.
+/// Run one of the service's statements.
 pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> Result<Answer> {
     let params: Vec<serde_json::Value> =
         serde_json::from_str(&statement.params).context("the parameters are not a JSON array")?;

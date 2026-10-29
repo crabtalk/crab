@@ -1,7 +1,7 @@
 //! What a chain wrote and emitted, held until its first call returns.
 //!
 //! `berm.set` and `berm.emit` land here, not in the host. A chain whose first
-//! call returns a result hands the whole of it back from [`crate::Program::call`]
+//! call returns a result hands the whole of it back from [`crate::Service::call`]
 //! as [`Changes`]; one that fails, traps or runs past its deadline hands back
 //! nothing. A nested call that fails takes its own entries with it, and the
 //! caller carries on from where it was.
@@ -24,24 +24,24 @@ pub const LIMIT: usize = 16 << 20;
 /// What a chain left behind, for the host to commit as one.
 #[derive(Debug, Default)]
 pub struct Changes {
-    /// The last value each program wrote under each key.
+    /// The last value each service wrote under each key.
     pub writes: Vec<Write>,
     /// Every log, in the order the chain emitted it.
     pub logs: Vec<Log>,
 }
 
-/// One key a program wrote.
+/// One key a service wrote.
 #[derive(Debug, Clone)]
 pub struct Write {
-    pub program: Arc<str>,
+    pub service: Arc<str>,
     pub key: String,
     pub value: Vec<u8>,
 }
 
-/// One log a program emitted.
+/// One log a service emitted.
 #[derive(Debug, Clone)]
 pub struct Log {
-    pub program: Arc<str>,
+    pub service: Arc<str>,
     pub topics: Vec<String>,
     pub data: String,
 }
@@ -61,7 +61,7 @@ pub(crate) struct Journal(Mutex<Entries>);
 struct Entries {
     list: Vec<Entry>,
     bytes: usize,
-    /// Where in `list` each program's key was last written.
+    /// Where in `list` each service's key was last written.
     last: HashMap<Arc<str>, HashMap<String, usize>>,
 }
 
@@ -72,12 +72,12 @@ enum Entry {
 }
 
 impl Journal {
-    /// Hold `value` under `program`'s `key`.
-    pub(crate) fn write(&self, program: &Arc<str>, key: &str, value: &[u8]) -> Result<()> {
+    /// Hold `value` under `service`'s `key`.
+    pub(crate) fn write(&self, service: &Arc<str>, key: &str, value: &[u8]) -> Result<()> {
         self.push(
             key.len() + value.len(),
             Entry::Write(Write {
-                program: program.clone(),
+                service: service.clone(),
                 key: key.to_owned(),
                 value: value.to_vec(),
             }),
@@ -90,10 +90,10 @@ impl Journal {
         self.push(size, Entry::Log(log))
     }
 
-    /// What `program` last wrote under `key` in this chain, if it has.
-    pub(crate) fn read(&self, program: &str, key: &str) -> Option<Vec<u8>> {
+    /// What `service` last wrote under `key` in this chain, if it has.
+    pub(crate) fn read(&self, service: &str, key: &str) -> Option<Vec<u8>> {
         let entries = self.0.lock();
-        let at = *entries.last.get(program)?.get(key)?;
+        let at = *entries.last.get(service)?.get(key)?;
         match &entries.list[at] {
             Entry::Write(write) => Some(write.value.clone()),
             Entry::Log(_) => None,
@@ -128,7 +128,7 @@ impl Journal {
         last.clear();
         for (at, entry) in list.iter().enumerate() {
             if let Entry::Write(write) = entry {
-                last.entry(write.program.clone())
+                last.entry(write.service.clone())
                     .or_default()
                     .insert(write.key.clone(), at);
             }
@@ -147,7 +147,7 @@ impl Journal {
         for entry in list {
             match entry {
                 Entry::Write(write) => {
-                    writes.insert((write.program.clone(), write.key.clone()), write);
+                    writes.insert((write.service.clone(), write.key.clone()), write);
                 }
                 Entry::Log(log) => logs.push(log),
             }
@@ -172,7 +172,7 @@ impl Journal {
             let at = entries.list.len();
             entries
                 .last
-                .entry(write.program.clone())
+                .entry(write.service.clone())
                 .or_default()
                 .insert(write.key.clone(), at);
         }

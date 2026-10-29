@@ -1,4 +1,4 @@
-//! `crab logs` — what a program emitted.
+//! `crab logs` — what a service emitted.
 
 use crate::{runtime, terminal};
 use anyhow::Result;

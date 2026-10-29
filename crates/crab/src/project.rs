@@ -1,4 +1,4 @@
-//! A program's or kit's `crab.toml`: reading it, and writing it with its
+//! A service's or kit's `crab.toml`: reading it, and writing it with its
 //! layout kept as written.
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -7,7 +7,7 @@ use berm_build::Workspace;
 use crabtalk_sdk::{catalog::Catalog, services::price::Price};
 use std::{collections::BTreeMap, fs, path::Path};
 
-/// What the project file beside a program's or kit's `Cargo.toml` is called.
+/// What the project file beside a service's or kit's `Cargo.toml` is called.
 pub const FILE: &str = berm_api::project::FILE;
 
 /// The `crab.toml` in `dir`, refused when a tool's price is not one or its

@@ -1,7 +1,7 @@
 //! The host every berm daemon runs: the services it holds, the state they
 //! commit, and the calls into them. A daemon builds a [`Host`] over its own
 //! [`Env`], authenticates its callers, nests [`router`] under the path it names
-//! services by and serves its own routes beside it; everything a program
+//! services by and serves its own routes beside it; everything a service
 //! observes is the host's.
 
 use axum::{

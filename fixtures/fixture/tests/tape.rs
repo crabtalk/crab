@@ -42,8 +42,8 @@ fn page() -> CallPage {
 async fn replay(image: &[u8], tool: &str, args: &str, tape: Tape) -> Result<Output> {
     let engine = Engine::new(&Config::default())?;
     let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), Vec::new());
-    let program = berm.deploy("fixture", image)?;
-    let outcome = program
+    let service = berm.deploy("fixture", image)?;
+    let outcome = service
         .call_as(
             None,
             None,

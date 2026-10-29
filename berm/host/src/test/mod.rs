@@ -24,7 +24,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use berm::{
-    Meter, Program,
+    Meter, Service,
     syscall::{
         http::{Request, Response},
         sql::Statement,
@@ -119,7 +119,7 @@ pub struct Wake {
     /// The service that armed it.
     pub service: String,
     /// The service it calls, by name in the arming one's scope.
-    pub program: String,
+    pub calls: String,
     pub tool: String,
     pub args: String,
 }
@@ -213,7 +213,7 @@ impl TestHost {
 
     /// Run `image` as `service`, every public tool confirmed and each cron tool
     /// without an expression.
-    pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+    pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Service>> {
         self.seeded(service, image, None).await
     }
 
@@ -224,18 +224,18 @@ impl TestHost {
         service: &str,
         image: &[u8],
         seed: Option<&Path>,
-    ) -> Result<Arc<Program>> {
+    ) -> Result<Arc<Service>> {
         self.installed(service, image, seed, DATABASE_SIZE, false)
             .await
     }
 
     /// [`TestHost::deploy`], its database held to `size` bytes.
-    pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Program>> {
+    pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Service>> {
         self.installed(service, image, None, size, false).await
     }
 
     /// [`TestHost::deploy`], installed stopped.
-    pub async fn pushed(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+    pub async fn pushed(&self, service: &str, image: &[u8]) -> Result<Arc<Service>> {
         self.installed(service, image, None, DATABASE_SIZE, true)
             .await
     }
@@ -278,7 +278,7 @@ impl TestHost {
         seed: Option<&Path>,
         size: u64,
         stopped: bool,
-    ) -> Result<Arc<Program>> {
+    ) -> Result<Arc<Service>> {
         let digest = digest::of(image);
         let reference = format!("test/{service}");
         self.images.0.lock().insert(digest.clone(), image.to_vec());
@@ -299,7 +299,7 @@ impl TestHost {
                 seed,
             )
             .await?
-            .program)
+            .service)
     }
 
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
@@ -340,14 +340,14 @@ impl TestHost {
     }
 
     async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
-        let program = self
+        let deployed = self
             .host
             .get(service)
             .with_context(|| format!("no service named {service:?} is deployed"))?;
         let invoked = self
             .host
             .invoke(
-                &program,
+                &deployed,
                 self.host.calls.start().id,
                 None,
                 user,
@@ -392,7 +392,7 @@ impl TestHost {
         for wake in self.host.due().await? {
             let woken = Wake::from(&wake);
             let Some(invoked) = self.host.fire(wake).await else {
-                bail!("{}.{} did not run", woken.program, woken.tool);
+                bail!("{}.{} did not run", woken.calls, woken.tool);
             };
             fired.push((
                 woken,
@@ -434,11 +434,11 @@ impl TestHost {
 
     /// What `service` last committed under `key`.
     pub async fn state(&self, service: &str, key: &str) -> Result<Option<Vec<u8>>> {
-        let program = self
+        let deployed = self
             .host
             .get(service)
             .with_context(|| format!("no service named {service:?} is deployed"))?;
-        if host::keeps(&program) {
+        if host::keeps(&deployed) {
             return self
                 .host
                 .databases
@@ -479,7 +479,7 @@ impl From<&table::Wake> for Wake {
     fn from(wake: &table::Wake) -> Self {
         Self {
             service: host::join(&wake.scope, &wake.name),
-            program: wake.program.clone(),
+            calls: wake.service.clone(),
             tool: wake.tool.clone(),
             args: wake.args.clone(),
         }
@@ -492,7 +492,7 @@ impl Drop for TestHost {
     }
 }
 
-/// Build the program `package` of the workspace the current directory is in
+/// Build the service `package` of the workspace the current directory is in
 /// as `crab build` does, and answer its finished image.
 pub fn build(package: &str) -> Result<Vec<u8>> {
     let image = berm_build::build(&std::env::current_dir()?, Some(package))?;

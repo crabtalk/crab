@@ -1,6 +1,6 @@
 ---
 name: crab
-description: Build a product's services on crab — berm programs deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
+description: Build a product's services on crab — deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
 ---
 
 # Building on crab

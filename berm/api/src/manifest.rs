@@ -1,9 +1,9 @@
-//! What a program says it is, read from its image's [`ABI_SECTION`],
-//! [`PROGRAM_SECTION`] and [`KITS_SECTION`].
+//! What a service says it is, read from its image's [`ABI_SECTION`],
+//! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
 use crate::{Access, DEFAULT_BUFFER, Image, ToolSpec};
 use anyhow::{Context, Result, bail};
-use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, PROGRAM_SECTION};
+use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, str::FromStr};
@@ -34,7 +34,7 @@ pub struct Manifest {
     /// host refuses arguments past it and fails a result past it.
     #[serde(default = "default_buffer")]
     pub buffer: usize,
-    /// What this program reaches for once it runs, its kits' declarations
+    /// What this service reaches for once it runs, its kits' declarations
     /// included.
     ///
     /// Resolved wherever the image lands; nothing here is fetched or
@@ -52,10 +52,10 @@ pub struct Manifest {
     pub kits: Vec<Kit>,
 }
 
-/// The [`PROGRAM_SECTION`] the build appends: the program's own declarations,
+/// The [`SERVICE_SECTION`] the build appends: the service's own declarations,
 /// from its package and its `crab.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProgramRecord {
+pub struct ServiceRecord {
     /// The package it was built from. Each tool record names it.
     pub name: String,
     #[serde(default)]
@@ -78,7 +78,7 @@ pub struct ProgramRecord {
     pub tools: BTreeMap<String, ToolRecord>,
 }
 
-/// What `[tools]` in a program's `crab.toml` says of one tool, applied onto
+/// What `[tools]` in a service's `crab.toml` says of one tool, applied onto
 /// its [`ToolSpec`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolRecord {
@@ -91,7 +91,7 @@ pub struct ToolRecord {
     pub catalog: Option<String>,
 }
 
-/// A library crate a program links that has a `crab.toml` of its own: its
+/// A library crate a service links that has a `crab.toml` of its own: its
 /// declarations, as one entry of the [`KITS_SECTION`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kit {
@@ -104,17 +104,17 @@ pub struct Kit {
     /// What its applied migrations were kept under before `id`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formerly: Vec<String>,
-    /// The package's version when the program was built.
+    /// The package's version when the service was built.
     #[serde(default)]
     pub version: String,
     #[serde(default)]
     pub deps: Deps,
-    /// The tables it keeps in the program's database.
+    /// The tables it keeps in the service's database.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
 }
 
-/// A program's own SQLite database: the migrations that build it, in order.
+/// A service's own SQLite database: the migrations that build it, in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Database {
     pub migrations: Vec<Migration>,
@@ -124,14 +124,14 @@ pub struct Database {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sequence {
     /// What its applied migrations are kept under: a kit's id, or `""` for
-    /// the program's own.
+    /// the service's own.
     pub kit: String,
     /// What its applied migrations were kept under before `kit`.
     pub formerly: Vec<String>,
     pub migrations: Vec<Migration>,
 }
 
-/// One migration. A host applies each once, in order, and refuses a program
+/// One migration. A host applies each once, in order, and refuses a service
 /// whose migrations no longer begin with the ones it applied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Migration {
@@ -139,7 +139,7 @@ pub struct Migration {
     pub sql: String,
 }
 
-/// One typed log a program emits, from an `#[event]` struct. Emitted under the
+/// One typed log a service emits, from an `#[event]` struct. Emitted under the
 /// topic `name`, its data the JSON `fields` describes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventSpec {
@@ -151,12 +151,12 @@ pub struct EventSpec {
     pub deprecated: bool,
 }
 
-/// What a program reaches for once it runs, by kind.
+/// What a service reaches for once it runs, by kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Deps {
-    /// Programs it calls by name.
+    /// Services it calls by name.
     #[serde(default)]
-    pub programs: Vec<String>,
+    pub calls: Vec<String>,
     /// Syscalls it makes beyond the ABI's own, each beside what it reaches
     /// through that call — the hosts a fetch goes to, the names a secret is
     /// read by. An empty list is the call alone.
@@ -234,7 +234,7 @@ fn masked() -> bool {
 
 impl Deps {
     pub fn is_empty(&self) -> bool {
-        self.programs.is_empty() && self.syscalls.is_empty() && self.secrets.is_empty()
+        self.calls.is_empty() && self.syscalls.is_empty() && self.secrets.is_empty()
     }
 
     /// Add what `other` reaches that this does not. Refused when both declare
@@ -247,7 +247,7 @@ impl Deps {
                 }
             }
         };
-        missing(&mut self.programs, &other.programs);
+        missing(&mut self.calls, &other.calls);
         missing(&mut self.secrets, &other.secrets);
         for (name, reached) in &other.syscalls {
             missing(self.syscalls.entry(name.clone()).or_default(), reached);
@@ -369,11 +369,11 @@ pub enum Reach {
     Pattern,
 }
 
-/// `inner, berm.http.fetch (example.com), secret openai` — every program,
+/// `inner, berm.http.fetch (example.com), secret openai` — every service,
 /// every syscall with what it reaches, then every secret.
 impl fmt::Display for Deps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut items = self.programs.clone();
+        let mut items = self.calls.clone();
         items.extend(
             self.syscalls
                 .iter()
@@ -419,11 +419,11 @@ impl Manifest {
     fn checked(self) -> Result<Self> {
         versioned(self.abi_version)?;
         if self.tools.is_empty() {
-            bail!("program declares no tools");
+            bail!("service declares no tools");
         }
         for (at, kit) in self.kits.iter().enumerate() {
             if self.kits[..at].iter().any(|seen| seen.name == kit.name) {
-                bail!("program manifest names kit {} twice", kit.name);
+                bail!("service manifest names kit {} twice", kit.name);
             }
             if kit.database.is_some() && kit.id.is_none() {
                 bail!("kit {} keeps tables and declares no id", kit.name);
@@ -458,10 +458,10 @@ impl Manifest {
 
 /// What an image claims to be, read without compiling or running it.
 ///
-/// Each tool takes its access, title and catalog from the program record.
-/// Refused when the image has no [`PROGRAM_SECTION`], which a bare
+/// Each tool takes its access, title and catalog from the service record.
+/// Refused when the image has no [`SERVICE_SECTION`], which a bare
 /// `cargo build` leaves out; when it has no tools; when a tool record was
-/// compiled in a crate other than the program's; when the program record
+/// compiled in a crate other than the service's; when the service record
 /// names a tool the image lacks, or gives a cron or stripe tool access; and
 /// when it names a kit twice.
 impl TryFrom<&[u8]> for Manifest {
@@ -471,11 +471,11 @@ impl TryFrom<&[u8]> for Manifest {
         let image = Image(image);
         let abi = image.section(ABI_SECTION)?.unwrap_or_default();
         let abi =
-            str::from_utf8(abi).with_context(|| format!("program's {ABI_SECTION} is not UTF-8"))?;
+            str::from_utf8(abi).with_context(|| format!("service's {ABI_SECTION} is not UTF-8"))?;
         let mut tools = Vec::new();
         let mut events = Vec::new();
         for record in serde_json::Deserializer::from_str(abi).into_iter::<AbiRecord>() {
-            match record.with_context(|| format!("program's {ABI_SECTION} is not valid JSON"))? {
+            match record.with_context(|| format!("service's {ABI_SECTION} is not valid JSON"))? {
                 AbiRecord::Event { event } => events.push(event),
                 AbiRecord::Tool {
                     tool,
@@ -485,33 +485,33 @@ impl TryFrom<&[u8]> for Manifest {
                     versioned(abi_version)?;
                     tools.push((tool, krate));
                 }
-                AbiRecord::Program { abi_version } => {
+                AbiRecord::Service { abi_version } => {
                     versioned(abi_version)?;
-                    bail!("program's {ABI_SECTION} holds a program record");
+                    bail!("service's {ABI_SECTION} holds a service record");
                 }
             }
         }
 
-        let program = image.section(PROGRAM_SECTION)?.with_context(|| {
-            format!("program has no {PROGRAM_SECTION} section, which `crab build` appends")
+        let service = image.section(SERVICE_SECTION)?.with_context(|| {
+            format!("service has no {SERVICE_SECTION} section, which `crab build` appends")
         })?;
-        let mut program: ProgramRecord = serde_json::from_slice(program)
-            .with_context(|| format!("program's {PROGRAM_SECTION} is not valid"))?;
+        let mut service: ServiceRecord = serde_json::from_slice(service)
+            .with_context(|| format!("service's {SERVICE_SECTION} is not valid"))?;
         let kits: Vec<Kit> = match image.section(KITS_SECTION)? {
             Some(kits) => serde_json::from_slice(kits)
-                .with_context(|| format!("program's {KITS_SECTION} is not valid"))?,
+                .with_context(|| format!("service's {KITS_SECTION} is not valid"))?,
             None => Vec::new(),
         };
 
-        let mut records = std::mem::take(&mut program.tools);
+        let mut records = std::mem::take(&mut service.tools);
         let tools = tools
             .into_iter()
             .map(|(mut tool, krate)| {
-                if krate != program.name {
+                if krate != service.name {
                     bail!(
-                        "tool {:?} was compiled in {krate}, not in the program {}; a kit carries no tools",
+                        "tool {:?} was compiled in {krate}, not in the service {}; a kit carries no tools",
                         tool.name,
-                        program.name
+                        service.name
                     );
                 }
                 let record = records.remove(&tool.name).unwrap_or_default();
@@ -528,10 +528,10 @@ impl TryFrom<&[u8]> for Manifest {
             })
             .collect::<Result<Vec<_>>>()?;
         if let Some(name) = records.keys().next() {
-            bail!("[tools] names {name:?}, which the program has no tool of");
+            bail!("[tools] names {name:?}, which the service has no tool of");
         }
 
-        let ProgramRecord {
+        let ServiceRecord {
             name,
             version,
             description,
@@ -542,7 +542,7 @@ impl TryFrom<&[u8]> for Manifest {
             mut deps,
             database,
             tools: _,
-        } = program;
+        } = service;
         for kit in &kits {
             deps.merge(&kit.deps)
                 .with_context(|| format!("linking kit {}", kit.name))?;
@@ -575,7 +575,7 @@ impl FromStr for Manifest {
 
     fn from_str(json: &str) -> Result<Self> {
         let manifest: Manifest =
-            serde_json::from_str(json).context("program manifest is not valid JSON")?;
+            serde_json::from_str(json).context("service manifest is not valid JSON")?;
         manifest.checked()
     }
 }
@@ -584,7 +584,7 @@ impl FromStr for Manifest {
 fn versioned(abi_version: u32) -> Result<()> {
     if abi_version != ABI_VERSION {
         bail!(
-            "program was built against ABI version {abi_version}, this host speaks {ABI_VERSION}"
+            "service was built against ABI version {abi_version}, this host speaks {ABI_VERSION}"
         );
     }
     Ok(())
@@ -608,9 +608,9 @@ enum AbiRecord {
         #[serde(rename = "crate")]
         krate: String,
     },
-    /// The program record an image built against ABI version 4 or earlier
+    /// The service record an image built against ABI version 4 or earlier
     /// carries in its place.
-    Program {
+    Service {
         abi_version: u32,
     },
 }

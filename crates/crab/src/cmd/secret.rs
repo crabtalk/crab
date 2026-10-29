@@ -1,4 +1,4 @@
-//! `crab secret` — a program's secrets.
+//! `crab secret` — a service's secrets.
 
 use crate::{cmd::request, fill::Form, runtime, terminal};
 use anyhow::{Context, Result, bail};

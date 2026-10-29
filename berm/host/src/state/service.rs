@@ -252,7 +252,7 @@ fn schedule(
             for Declared { tool, cron, due } in declared {
                 tx.execute(
                     "INSERT INTO service_wakes
-                            (scope, name, slot, program, tool, args, due, cron, declared)
+                            (scope, name, slot, service, tool, args, due, cron, declared)
                      VALUES (?1, ?2, ?3, ?2, ?3, '', ?5, ?4, ?4)
                      ON CONFLICT (scope, name, slot) DO UPDATE
                         SET due = IIF(service_wakes.cron IS excluded.cron,
@@ -265,7 +265,7 @@ fn schedule(
         None => {
             for tool in cron_tools {
                 tx.execute(
-                    "INSERT INTO service_wakes (scope, name, slot, program, tool, args)
+                    "INSERT INTO service_wakes (scope, name, slot, service, tool, args)
                      VALUES (?1, ?2, ?3, ?2, ?3, '')
                      ON CONFLICT (scope, name, slot) DO NOTHING",
                     params![scope, name, tool],

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
 
 /// Header carrying a tool call's [`Meter`], summed over every
-/// program the call reached, as JSON.
+/// service the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
 /// Header carrying the [`Caller`] a call to the local host is made as, as

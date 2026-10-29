@@ -1,6 +1,6 @@
 [package]
 name = "berm-api"
-description = "What a program says it is, and what the local host's control API speaks"
+description = "What a service says it is, and what the local host's control API speaks"
 edition.workspace = true
 version.workspace = true
 repository.workspace = true

@@ -25,7 +25,7 @@ pub struct Watched {
     pub failed: u64,
 }
 
-/// A URL a site's sitemaps list, of a kind its program names.
+/// A URL a site's sitemaps list, of a kind its service names.
 #[derive(Schema)]
 pub struct Listed {
     pub url: String,
@@ -60,7 +60,7 @@ pub struct Due {
     pub lastmod: Option<String>,
     pub etag: Option<String>,
     pub modified: Option<String>,
-    /// The bytes of HTML its program listed it to be read for.
+    /// The bytes of HTML its service listed it to be read for.
     pub bytes: Option<usize>,
 }
 

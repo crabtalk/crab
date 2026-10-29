@@ -1,6 +1,6 @@
-//! Calling a tool on another program.
+//! Calling a tool on another service.
 //!
-//! The target is named at the call. What is deployed beside the program is
+//! The target is named at the call. What is deployed beside the service is
 //! reachable; a name that is not answers [`CallError::Refused`].
 
 use crate::{
@@ -11,7 +11,7 @@ use alloc::string::{String, ToString};
 
 pub use host::CallError;
 
-/// Run `tool` on the program deployed as `program`, with `args` as its argument
+/// Run `tool` on the service deployed as `service`, with `args` as its argument
 /// blob — the same JSON a model would have sent it.
 ///
 /// ```ignore
@@ -19,28 +19,28 @@ pub use host::CallError;
 /// ```
 ///
 /// `Err` says which kind of failure it was. [`CallError::Refused`] means
-/// nothing ran — no such program, or the chain is already as deep as the host
+/// nothing ran — no such service, or the chain is already as deep as the host
 /// allows — and [`CallError::Failed`] means the tool ran and reported failure.
-pub fn call(program: &str, tool: &str, args: &str) -> Result<String, CallError> {
-    let request = wire::request(&[program.as_bytes(), tool.as_bytes(), args.as_bytes()]);
+pub fn call(service: &str, tool: &str, args: &str) -> Result<String, CallError> {
+    let request = wire::request(&[service.as_bytes(), tool.as_bytes(), args.as_bytes()]);
     let result = host::call(abi::HOST_CALL, &request)?;
     Ok(String::from_utf8_lossy(&result).into_owned())
 }
 
-/// Have `tool` on `program` run in `delay` milliseconds, and return now.
+/// Have `tool` on `service` run in `delay` milliseconds, and return now.
 ///
 /// ```ignore
 /// berm_lang::after(300, "weather", "poll", "{}")?;
 /// ```
 ///
-/// One wake per program: arming again drops whatever this one had pending. The
+/// One wake per service: arming again drops whatever this one had pending. The
 /// invocation it starts carries nothing from this one; what the woken tool
 /// needs goes in [`crate::set`]. Its failure is logged by the host and reaches
-/// no one; the program and tool are checked when it is armed.
-pub fn after(delay: u64, program: &str, tool: &str, args: &str) -> Result<(), CallError> {
+/// no one; the service and tool are checked when it is armed.
+pub fn after(delay: u64, service: &str, tool: &str, args: &str) -> Result<(), CallError> {
     let request = wire::request(&[
         delay.to_string().as_bytes(),
-        program.as_bytes(),
+        service.as_bytes(),
         tool.as_bytes(),
         args.as_bytes(),
     ]);
@@ -53,17 +53,17 @@ pub fn after(delay: u64, program: &str, tool: &str, args: &str) -> Result<(), Ca
 pub enum Caller {
     /// Someone the host authenticated: an account, as the host names it.
     Outside(String),
-    /// Another program, through [`call`], as the host names it.
-    Program(String),
+    /// Another service, through [`call`], as the host names it.
+    Service(String),
 }
 
 /// Who made this call, as the host says. `None` when the host started it on
-/// this program's own behalf: a wake.
+/// this service's own behalf: a wake.
 ///
 /// Set by the host, never by the caller:
 ///
 /// ```ignore
-/// if berm_lang::caller()? != Some(Caller::Program("lake".into())) {
+/// if berm_lang::caller()? != Some(Caller::Service("lake".into())) {
 ///     return Err(berm_lang::deny("only lake calls this"));
 /// }
 /// ```
@@ -78,7 +78,7 @@ pub fn caller() -> Result<Option<Caller>, CallError> {
             let name = String::from_utf8_lossy(name).into_owned();
             match *kind {
                 b"outside" => Ok(Some(Caller::Outside(name))),
-                b"program" => Ok(Some(Caller::Program(name))),
+                b"service" => Ok(Some(Caller::Service(name))),
                 _ => Err(unreadable()),
             }
         }
@@ -90,7 +90,7 @@ pub fn caller() -> Result<Option<Caller>, CallError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     /// Who vouched for them: an identity provider's issuer URL, or the
-    /// program that called [`vouch`], as the programs it calls are told it is
+    /// service that called [`vouch`], as the services it calls are told it is
     /// named.
     pub issuer: String,
     /// Who they are to that issuer.
@@ -99,7 +99,7 @@ pub struct User {
 
 /// The end user this chain runs for, as the host verified them, carried into
 /// every nested call. [`caller`] says who made this call, which in a nested
-/// call is the program that relayed the user.
+/// call is the service that relayed the user.
 pub fn user() -> Result<Option<User>, CallError> {
     let reply = host::call(abi::HOST_USER, &[])?;
     let unreadable =
@@ -115,7 +115,7 @@ pub fn user() -> Result<Option<User>, CallError> {
 }
 
 /// Run the rest of this invocation, and every call it makes after, for the end
-/// user `subject`, with this program as the issuer [`user`] answers.
+/// user `subject`, with this service as the issuer [`user`] answers.
 ///
 /// ```ignore
 /// let account = verified_session(&token)?;

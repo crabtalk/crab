@@ -1,4 +1,4 @@
-# The service this program deploys as.
+# The name it deploys as.
 name = "__NAME__"
 # The public registry repository the image is published to, tagged with the
 # crate's version on each deploy. Without it, a deploy uploads the image to
@@ -6,8 +6,8 @@ name = "__NAME__"
 # image = "ghcr.io/<you>/__NAME__"
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
-# Programs it calls by name.
-# programs = ["inner"]
+# Services it calls by name.
+# calls = ["inner"]
 # The most bytes a call's arguments, and a tool's result, may hold.
 # buffer = 16384
 

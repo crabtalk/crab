@@ -1,10 +1,10 @@
 # Auth
 
-Sign-in for a product's users: a GitHub or Google login turned into a session the program keeps in its own database, for an account each of the user's identities signs in to.
+Sign-in for a product's users: a GitHub or Google login turned into a session the service keeps in its own database, for an account each of the user's identities signs in to.
 
 ## Using it
 
-Add the kit to your program's crate:
+Add the kit to your service's crate:
 
 ```toml
 [dependencies]
@@ -41,7 +41,7 @@ access = "anonymous"
 access = "anonymous"
 ```
 
-The program declares nothing the kit already declares: the kit's `crab.toml` declares its secrets, the hosts it fetches, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the program's database.
+The service declares nothing the kit already declares: the kit's `crab.toml` declares its secrets, the hosts it fetches, and its migrations, and they reach the service's manifest when the service links the kit. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the service's database.
 
 - `Identity::github(code, redirect)` and `Identity::google(code, redirect, verifier)`: the identity an authorization code was granted for, `redirect` the `redirect_uri` it was asked for with and `verifier` the PKCE `code_verifier` when it was asked for with a challenge.
 - `identity.sign_in()`: a session of the account the identity signs in to, made on its first sign-in. Answers `Session {token, expires}`.

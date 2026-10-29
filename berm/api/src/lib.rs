@@ -1,4 +1,4 @@
-//! What a program says it is, and what the local host's control API speaks.
+//! What a service says it is, and what the local host's control API speaks.
 //!
 //! Links no compiler: a client reads an image and talks to the API with this
 //! crate alone.
@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 pub use compat::{Break, Surface};
 pub use image::Image;
 pub use manifest::{
-    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration,
-    ProgramRecord, Reach, Sequence, ToolRecord,
+    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration, Reach,
+    Sequence, ServiceRecord, ToolRecord,
 };
 
 mod compat;
@@ -24,16 +24,16 @@ mod sql;
 pub mod text;
 
 /// The most bytes a call's arguments, and a tool's result, may hold, when a
-/// program's `crab.toml` sets no `buffer`.
+/// service's `crab.toml` sets no `buffer`.
 pub const DEFAULT_BUFFER: usize = 16 * 1024;
 
-/// One log a program emitted.
+/// One log a service emitted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Logged {
-    /// Its position in the program's logs, counting from 1.
+    /// Its position in the service's logs, counting from 1.
     pub seq: u64,
     /// The call it was emitted in, as the host's call log numbers it. `None`
-    /// for a log emitted in a call into the program from another host.
+    /// for a log emitted in a call into the service from another host.
     pub call: Option<u64>,
     /// When it was emitted, in epoch milliseconds.
     pub at: u64,
@@ -41,9 +41,9 @@ pub struct Logged {
     pub data: String,
 }
 
-/// A deployed program as its callers see it: the IDL.
+/// A deployed service as its callers see it: the IDL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Program {
+pub struct Service {
     pub name: String,
     /// The crate's version when it was built.
     #[serde(default)]
@@ -65,7 +65,7 @@ pub struct Program {
     pub tools: Vec<ToolSpec>,
 }
 
-/// How a deployed program runs, for its owners: what [`Program`] leaves out.
+/// How a deployed service runs, for its owners: what [`Service`] leaves out.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Runtime {
     /// Its tools that are not public.
@@ -83,8 +83,8 @@ pub struct Runtime {
 /// A deploy's answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deployed {
-    pub program: Program,
-    /// How it broke callers of the program it replaced, as
+    pub service: Service,
+    /// How it broke callers of the service it replaced, as
     /// [`Manifest::breaks`] words it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub breaks: Vec<String>,
@@ -96,11 +96,11 @@ pub struct Deployed {
     pub page: Option<String>,
 }
 
-/// A deployed program as anyone it is visible to sees it: its IDL and what it
+/// A deployed service as anyone it is visible to sees it: its IDL and what it
 /// served.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Listing {
-    pub program: Program,
+    pub service: Service,
     pub served: host::Served,
     /// Stopped by its owners, or deployed stopped: it takes no calls and fires
     /// no wakes.
@@ -169,8 +169,8 @@ pub struct ToolSpec {
     pub query: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deprecated: bool,
-    /// Callable by accounts and other programs. A tool that is not is only
-    /// called by its host, for the program's own wakes, crons and Stripe
+    /// Callable by accounts and other services. A tool that is not is only
+    /// called by its host, for the service's own wakes, crons and Stripe
     /// events.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub public: bool,
@@ -194,7 +194,7 @@ pub struct ToolSpec {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cron: bool,
     /// Called by its host with each Stripe event its daemon takes for the
-    /// service, the event as the argument object. Not public; a program has
+    /// service, the event as the argument object. Not public; a service has
     /// at most one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stripe: bool,
@@ -232,14 +232,14 @@ impl ToolSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Access {
-    /// Accounts and other programs.
+    /// Accounts and other services.
     Public,
-    /// Accounts and other programs, and a call from outside with no caller:
+    /// Accounts and other services, and a call from outside with no caller:
     /// no account, or an app's call with no user.
     Anonymous,
     /// Callers from outside alone.
     Accounts,
-    /// Programs reaching it through `berm.call` alone.
+    /// Services reaching it through `berm.call` alone.
     Services,
 }
 
@@ -259,7 +259,7 @@ impl std::fmt::Display for Access {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Callers {
-    /// Programs reaching it through `berm.call`.
+    /// Services reaching it through `berm.call`.
     Services,
     /// Callers from outside, as the host authenticates them.
     Accounts,
@@ -267,9 +267,9 @@ pub enum Callers {
 
 /// What running a tool produced.
 ///
-/// [`Self::Failed`] is the program's own report, and it arrives with the same
+/// [`Self::Failed`] is the service's own report, and it arrives with the same
 /// `200` a result does: the call was fine and the tool said no. A refusal — no
-/// such program, no such tool, a trap — is a [`Failed`] with a status to match.
+/// such service, no such tool, a trap — is a [`Failed`] with a status to match.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Output {
@@ -298,7 +298,7 @@ impl From<Output> for Result<String, String> {
 /// The most bytes one log may hold, its data and topics together.
 pub const MAX_LOG: usize = 4096;
 
-/// What a call used of one program: its runs, the chains it was the first link
+/// What a call used of one service: its runs, the chains it was the first link
 /// of; its invocations, the CPU time they spent in microseconds, nested calls
 /// excluded, the largest linear memory one
 /// reached, in bytes, their budgets of memory held over their wall-clock time

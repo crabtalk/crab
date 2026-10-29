@@ -1,4 +1,4 @@
-//! Run a program's tools natively, without a toolchain or a daemon.
+//! Run a service's tools natively, without a toolchain or a daemon.
 //!
 //! Off a guest target a test calls a tool's export the way the host would,
 //! with the same argument transfer and failure channel. The host's bound on
@@ -18,7 +18,7 @@ use std::{string::String, vec::Vec};
 
 /// Invoke a tool export with `args`, as the host does.
 ///
-/// `Err` is what the program reported through its failure channel.
+/// `Err` is what the service reported through its failure channel.
 pub fn call(entry: extern "C" fn(), args: &[u8]) -> Result<Vec<u8>, String> {
     sys::with(|host| {
         host.args = args.to_vec();
@@ -38,18 +38,18 @@ pub fn call(entry: extern "C" fn(), args: &[u8]) -> Result<Vec<u8>, String> {
     })
 }
 
-/// What the program traced during the last [`call`].
+/// What the service traced during the last [`call`].
 pub fn traced() -> Vec<String> {
     sys::with(|host| host.traced.clone())
 }
 
-/// Each log's topics and data, as the program emitted them during the last
+/// Each log's topics and data, as the service emitted them during the last
 /// [`call`].
 pub fn emitted() -> Vec<(Vec<String>, String)> {
     sys::with(|host| host.emitted.clone())
 }
 
-/// Arrange what another program answers, so a tool that calls one can be run
+/// Arrange what another service answers, so a tool that calls one can be run
 /// without a host running the other side.
 ///
 /// Answers persist until [`forget`].
@@ -58,16 +58,16 @@ pub fn emitted() -> Vec<(Vec<String>, String)> {
 /// test::answer("weather", "forecast", Ok(br#"{"c":7}"#));
 /// test::answer("gone", "any", Err(CallError::Refused("not deployed".into())));
 /// ```
-pub fn answer(program: &str, tool: &str, result: Result<&[u8], CallError>) {
+pub fn answer(service: &str, tool: &str, result: Result<&[u8], CallError>) {
     let (outcome, bytes) = match result {
         Ok(bytes) => (0, bytes.to_vec()),
         Err(CallError::Failed(message)) => (abi::ERROR, message.into_bytes()),
         Err(CallError::Refused(message)) => (abi::ERROR | abi::REFUSED, message.into_bytes()),
     };
     sys::with(|host| {
-        host.answers.retain(|(a, b, ..)| a != program || b != tool);
+        host.answers.retain(|(a, b, ..)| a != service || b != tool);
         host.answers
-            .push((program.into(), tool.into(), outcome, bytes));
+            .push((service.into(), tool.into(), outcome, bytes));
     });
 }
 
@@ -81,8 +81,8 @@ pub fn forget() {
     });
 }
 
-/// One request a program sent through `berm.http.fetch` or `berm.http.proxy`,
-/// `{secret:NAME}` as the program wrote it.
+/// One request a service sent through `berm.http.fetch` or `berm.http.proxy`,
+/// `{secret:NAME}` as the service wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fetched {
     pub method: String,

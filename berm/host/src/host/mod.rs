@@ -22,7 +22,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use berm::{
-    Berm, Engine, Now, Pool, Program, User,
+    Berm, Engine, Now, Pool, Service, User,
     database::{Database, Databases},
 };
 use berm_api::{
@@ -132,12 +132,12 @@ impl<E: Env> Inner<E> {
         self.chains - self.gate.available_permits()
     }
 
-    /// The database of `program`, when it is deployed and keeps one.
-    pub(crate) fn kept(&self, program: &str) -> Option<Result<Arc<Database>>> {
+    /// The database of `service`, when it is deployed and keeps one.
+    pub(crate) fn kept(&self, service: &str) -> Option<Result<Arc<Database>>> {
         self.berm
-            .get(program)
-            .filter(|program| keeps(program))
-            .map(|_| self.databases.get(program))
+            .get(service)
+            .filter(|service| keeps(service))
+            .map(|_| self.databases.get(service))
     }
 }
 
@@ -280,9 +280,9 @@ impl<E: Env> Host<E> {
             let key = join(&row.scope, &row.name);
             let size = row.size;
             match self.load(row).await {
-                Ok(program) => {
-                    tracing::debug!(service = key, digest = %program.digest, "loaded");
-                    if keeps(&program)
+                Ok(service) => {
+                    tracing::debug!(service = key, digest = %service.digest, "loaded");
+                    if keeps(&service)
                         && let Err(e) = async { self.databases.get(&key)?.limit(size).await }.await
                     {
                         tracing::error!(service = key, "limiting its database failed: {e:#}");
@@ -293,14 +293,14 @@ impl<E: Env> Host<E> {
         }
     }
 
-    /// The program a `services` row names, pulled and compiled unless it
+    /// The service a `services` row names, pulled and compiled unless it
     /// already runs that digest.
-    async fn load(&self, row: service::Row) -> Result<Arc<Program>> {
+    async fn load(&self, row: service::Row) -> Result<Arc<Service>> {
         let key = join(&row.scope, &row.name);
-        if let Some(program) = self.berm.get(&key)
-            && row.digest.strip_prefix(digest::PREFIX) == Some(program.digest.as_str())
+        if let Some(service) = self.berm.get(&key)
+            && row.digest.strip_prefix(digest::PREFIX) == Some(service.digest.as_str())
         {
-            return Ok(program);
+            return Ok(service);
         }
         let image = self.images.pull(&row.reference, &row.digest).await?;
         self.compile(key, image).await
@@ -350,12 +350,12 @@ impl<E: Env> Host<E> {
         }
         let today = self.today();
         if self.sampled.swap(today, Ordering::Relaxed) != today {
-            for program in self.berm.list() {
+            for service in self.berm.list() {
                 meter::sample(
                     &self.store,
-                    &program.name,
+                    &service.name,
                     &self.databases,
-                    program.bytes,
+                    service.bytes,
                     today,
                 )
                 .await?;
@@ -372,19 +372,19 @@ impl<E: Env> Host<E> {
         }
     }
 
-    /// The program `service` runs.
-    pub fn get(&self, service: &str) -> Option<Arc<Program>> {
+    /// The service `service` runs.
+    pub fn get(&self, service: &str) -> Option<Arc<Service>> {
         self.berm.get(service)
     }
 
     /// Every service in `scope` this host runs, by its name within it.
-    pub fn list(&self, scope: &str) -> Vec<(String, Arc<Program>)> {
+    pub fn list(&self, scope: &str) -> Vec<(String, Arc<Service>)> {
         self.berm
             .list()
             .into_iter()
-            .filter_map(|program| {
-                let (within, name) = split(&program.name);
-                (within == scope).then(|| (name.to_owned(), program.clone()))
+            .filter_map(|service| {
+                let (within, name) = split(&service.name);
+                (within == scope).then(|| (name.to_owned(), service.clone()))
             })
             .collect()
     }
@@ -447,7 +447,7 @@ impl<E: Env> Host<E> {
     }
 
     /// Compile an image into the runtime, off the async workers.
-    async fn compile(&self, key: String, image: Vec<u8>) -> Result<Arc<Program>> {
+    async fn compile(&self, key: String, image: Vec<u8>) -> Result<Arc<Service>> {
         let berm = self.berm.clone();
         task::spawn_blocking(move || berm.deploy(&key, &image))
             .await
@@ -460,9 +460,9 @@ pub(crate) fn alive<E: Env>(host: &Weak<Inner<E>>) -> Result<Arc<Inner<E>>> {
     host.upgrade().context("the host is closed")
 }
 
-/// Whether `program` keeps a database.
-pub(crate) fn keeps(program: &Program) -> bool {
-    program.manifest.keeps_database()
+/// Whether `service` keeps a database.
+pub(crate) fn keeps(service: &Service) -> bool {
+    service.manifest.keeps_database()
 }
 
 /// How often counted uses are written.

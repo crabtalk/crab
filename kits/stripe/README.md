@@ -4,7 +4,7 @@ Stripe subscriptions for a product's users: Checkout, the customer portal, and e
 
 ## Using it
 
-Add the kit to your program's crate:
+Add the kit to your service's crate:
 
 ```toml
 [dependencies]
@@ -38,14 +38,14 @@ pub fn webhook(data: Data) -> Result<()> {
 access = "public"
 ```
 
-The program declares nothing the kit already declares: the kit's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the program's database.
+The service declares nothing the kit already declares: the kit's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the service's manifest when the service links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the service's database.
 
 - `Subscriber::calling()`: the end user the call carries; a call with none is refused. `Subscriber { user }` names another.
 - `subscriber.checkout(plan, success, cancel)`: a Checkout session subscribing the user to the price whose `lookup_key` is `plan`, sending them to `success` once they subscribe and to `cancel` if they leave. Their first checkout makes their Stripe customer. Answers `Session {url}`.
 - `subscriber.portal(back)`: a customer portal session for the user, sending them back to `back`. Refused before their first checkout.
 - `subscriber.plan()`: the `lookup_key` of the price the user's active or trialing subscription is on.
 - `subscriber.customer()`: the user's Stripe `Customer`, once they have checked out.
-- `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A program has one `#[tool(stripe)]` tool, which calls it.
+- `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A service has one `#[tool(stripe)]` tool, which calls it.
 - `Price::find`, `Customer::create`, `customer.checkout`, `customer.portal` and `Subscription::retrieve` are the Stripe API calls these make.
 
 ## Setting it up

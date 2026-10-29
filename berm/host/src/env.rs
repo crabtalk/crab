@@ -44,7 +44,7 @@ pub struct Edges<E: Env> {
     pub clock: E::Clock,
 }
 
-/// A program's bytes for a deploy.
+/// A service's bytes for a deploy.
 pub trait Images: Send + Sync + 'static {
     /// The image `digest` names, published as `reference`.
     fn pull(&self, reference: &str, digest: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;

@@ -37,17 +37,17 @@ const TIMEOUT: u64 = 60_000;
 /// the wake fires.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
-    after::programs(move |at: Callsite, wake: after::Wake| {
+    after::services(move |at: Callsite, wake: after::Wake| {
         let host = host::alive(&host);
         async move {
             let host = host?;
-            if wake.program.contains('/') {
+            if wake.service.contains('/') {
                 bail!("a service wakes services in its own scope, by name");
             }
-            let (scope, name) = host::split(&at.program);
-            let key = host::join(scope, &wake.program);
+            let (scope, name) = host::split(&at.service);
+            let key = host::join(scope, &wake.service);
             let target = host.berm.get(&key);
-            let own = wake.program == name;
+            let own = wake.service == name;
             let wakeable = match target {
                 Some(target) => target
                     .manifest
@@ -55,12 +55,12 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                     .iter()
                     .any(|spec| spec.name == wake.tool && (own || spec.public)),
                 None if host.routes.peer(&key).is_some() => true,
-                None => bail!("no service named {:?} is deployed", wake.program),
+                None => bail!("no service named {:?} is deployed", wake.service),
             };
             if !wakeable {
                 bail!(
                     "{} has no tool named {:?} this service may wake",
-                    wake.program,
+                    wake.service,
                     wake.tool
                 );
             }
@@ -70,7 +70,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                 &host.store,
                 scope,
                 name,
-                &wake.program,
+                &wake.service,
                 &wake.tool,
                 &wake.args,
                 due,
@@ -130,11 +130,11 @@ impl<E: Env> Host<E> {
     pub(crate) async fn fire(&self, wake: table::Wake) -> Option<Invoked> {
         let mut ran = None;
         let fired = async {
-            let key = host::join(&wake.scope, &wake.program);
+            let key = host::join(&wake.scope, &wake.service);
             let from = host::join(&wake.scope, &wake.name);
             let Some(target) = self.berm.get(&key) else {
                 let Some(peer) = self.routes.peer(&key) else {
-                    bail!("no service named {:?} is deployed", wake.program);
+                    bail!("no service named {:?} is deployed", wake.service);
                 };
                 let link = Link {
                     caller: None,
@@ -227,7 +227,7 @@ impl<E: Env> Host<E> {
             Err(e) => {
                 tracing::warn!(
                     service = wake.name,
-                    program = wake.program,
+                    service = wake.service,
                     "wake failed: {e:#}"
                 );
                 true

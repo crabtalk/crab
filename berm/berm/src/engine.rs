@@ -1,4 +1,4 @@
-//! wasmtime — where a program's bytes become code that runs.
+//! wasmtime — where a service's bytes become code that runs.
 //!
 //! Every syscall arrives through one import, `berm.syscall`, carrying the
 //! number its name hashes to alongside the request.
@@ -45,7 +45,7 @@ pub struct Config {
     /// Entries are keyed on contents: a stale directory yields misses, and it
     /// is safe to share between processes.
     pub cache_dir: Option<PathBuf>,
-    /// How many guests may be live at once, across every program and nested
+    /// How many guests may be live at once, across every service and nested
     /// calls included. Slots are reserved when the engine is built; a call
     /// past the last one fails.
     pub instances: u32,
@@ -78,7 +78,7 @@ impl Default for Config {
     }
 }
 
-/// A compilation target, shared by every program a runtime holds.
+/// A compilation target, shared by every service a runtime holds.
 ///
 /// Cheap to clone; each compiled image keeps its own handle.
 #[derive(Clone)]
@@ -160,7 +160,7 @@ fn tick(engine: &wasmtime::Engine) {
         .expect("spawn the berm epoch ticker");
 }
 
-/// One compiled program, ready to instantiate.
+/// One compiled service, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
     /// [`Config::cpu`], [`Config::rows`] and [`Config::memory`].
@@ -266,7 +266,7 @@ impl Image {
 
     /// Instantiate and run one tool, spending at most its invocation's budget
     /// of CPU, and meter the CPU it spent, the linear memory it reached and its
-    /// budget of memory over its wall-clock time against its program, trapped
+    /// budget of memory over its wall-clock time against its service, trapped
     /// or not.
     ///
     /// The invocation goes in carrying the arguments and comes back carrying
@@ -385,7 +385,7 @@ fn memory(caller: &mut Caller<'_, Invocation>) -> Result<Memory> {
     let memory = caller
         .get_export(MEMORY)
         .and_then(Extern::into_memory)
-        .context("program exports no memory")?;
+        .context("service exports no memory")?;
     caller.data_mut().memory = Some(memory);
     Ok(memory)
 }

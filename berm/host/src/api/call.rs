@@ -11,7 +11,7 @@ use crate::{
 };
 use axum::http::StatusCode;
 use berm::{
-    Budget, Meters, Program, Refused,
+    Budget, Meters, Refused, Service,
     tape::{Recorder, Taping},
 };
 use berm_api::{
@@ -30,14 +30,14 @@ const MAX_PAGE: i64 = 1000;
 
 impl<E: Env> Host<E> {
     /// `service`'s IDL.
-    pub fn idl(&self, service: &str) -> Result<berm_api::Program, Denied> {
-        let program = self.deployed(service)?;
-        Ok(program.idl(host::split(service).1))
+    pub fn idl(&self, service: &str) -> Result<berm_api::Service, Denied> {
+        let deployed = self.deployed(service)?;
+        Ok(deployed.idl(host::split(service).1))
     }
 
     /// `service` as anyone it is visible to sees it.
     pub async fn listing(&self, service: &str) -> Result<Listing, Denied> {
-        let program = self.idl(service)?;
+        let idl = self.idl(service)?;
         let (scope, name) = host::split(service);
         let served = meter::served(
             &self.store,
@@ -51,7 +51,7 @@ impl<E: Env> Host<E> {
         .unwrap_or_default();
         let row = service::row(&self.store, scope, name).await?;
         Ok(Listing {
-            program,
+            service: idl,
             served,
             stopped: self.stops.stopped(service),
             reference: row.as_ref().and_then(service::Row::registry),
@@ -63,17 +63,17 @@ impl<E: Env> Host<E> {
     /// answers to: services neither deployed here nor routed to a peer, and
     /// secrets not granted it. Secrets that cannot be read grant nothing.
     pub async fn runtime(&self, service: &str) -> Result<berm_api::Runtime, Denied> {
-        let program = self.deployed(service)?;
+        let deployed = self.deployed(service)?;
         let scope = host::split(service).0;
-        let deps = &program.manifest.deps;
+        let deps = &deployed.manifest.deps;
         let granted = self.secrets.names(service).await.unwrap_or_default();
         let project = service::row(&self.store, scope, host::split(service).1)
             .await?
             .and_then(|row| row.project);
         Ok(berm_api::Runtime {
             unresolved: Deps {
-                programs: deps
-                    .programs
+                calls: deps
+                    .calls
                     .iter()
                     .filter(|name| {
                         let key = host::join(scope, name);
@@ -91,7 +91,7 @@ impl<E: Env> Host<E> {
                     .collect(),
             },
             project,
-            ..program.runtime()
+            ..deployed.runtime()
         })
     }
 
@@ -110,12 +110,12 @@ impl<E: Env> Host<E> {
         Ok(self
             .list(scope)
             .into_iter()
-            .map(|(name, program)| {
+            .map(|(name, deployed)| {
                 let row = rows.remove(&name);
                 Listing {
-                    program: program.idl(&name),
+                    service: deployed.idl(&name),
                     served: served.remove(&name).unwrap_or_default(),
-                    stopped: self.stops.stopped(&program.name),
+                    stopped: self.stops.stopped(&deployed.name),
                     reference: row.as_ref().and_then(service::Row::registry),
                     project: row.and_then(|row| row.project),
                 }
@@ -126,8 +126,8 @@ impl<E: Env> Host<E> {
     /// `service`'s terms: each public tool's budget, what its owner set or
     /// else this host's.
     pub fn terms(&self, service: &str) -> Result<Terms, Denied> {
-        let program = self.deployed(service)?;
-        let tools = program
+        let deployed = self.deployed(service)?;
+        let tools = deployed
             .manifest
             .tools
             .iter()
@@ -203,8 +203,8 @@ impl<E: Env> Host<E> {
 
     /// Refused unless `service` is deployed and exports `tool`.
     fn exported(&self, service: &str, tool: &str) -> Result<(), Denied> {
-        let program = self.deployed(service)?;
-        if !program.tools().any(|exported| exported == tool) {
+        let deployed = self.deployed(service)?;
+        if !deployed.tools().any(|exported| exported == tool) {
             return Err(deny(
                 StatusCode::NOT_FOUND,
                 format!("the service has no tool named {tool:?}"),
@@ -251,9 +251,9 @@ impl<E: Env> Host<E> {
             self.usage.unsaved(service),
         )
         .await?;
-        if let Some(program) = self.get(service) {
+        if let Some(deployed) = self.get(service) {
             for row in used.iter_mut().filter(|row| row.kind == Kind::Tool) {
-                row.public = Some(program.public(&row.item));
+                row.public = Some(deployed.public(&row.item));
             }
         }
         Ok(used)
@@ -491,10 +491,10 @@ impl<E: Env> Host<E> {
         args: Vec<u8>,
         link: Link,
     ) -> Result<Reply, Denied> {
-        let program = self.get(service).ok_or_else(|| {
+        let deployed = self.get(service).ok_or_else(|| {
             deny(
                 StatusCode::NOT_FOUND,
-                format!("no program named {service:?} is deployed"),
+                format!("no service named {service:?} is deployed"),
             )
         })?;
         let refused = |message: String| {
@@ -514,21 +514,21 @@ impl<E: Env> Host<E> {
         if self.stops.stopped(service) {
             return refused(format!("{service} is stopped"));
         }
-        if !program.public(tool) {
+        if !deployed.public(tool) {
             return refused(format!("{service} has no public tool named {tool:?}"));
         }
-        if link.caller.is_some() && !program.reached_by_programs(tool) {
-            return refused(format!("{service}.{tool} takes no calls from programs"));
+        if link.caller.is_some() && !deployed.reached_by_services(tool) {
+            return refused(format!("{service}.{tool} takes no calls from services"));
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let meters = Arc::new(Meters::default());
-        let outcome = program
+        let outcome = deployed
             .link(
                 berm::Link {
                     caller: link
                         .caller
                         .as_deref()
-                        .map(|caller| berm::Caller::Program(caller.into())),
+                        .map(|caller| berm::Caller::Service(caller.into())),
                     user: link.user.as_ref().map(host::user),
                     client: link.client.as_deref().map(Into::into),
                     depth: link.depth,
@@ -537,7 +537,7 @@ impl<E: Env> Host<E> {
                     stack: link
                         .stack
                         .iter()
-                        .map(|program| Arc::from(program.as_str()))
+                        .map(|service| Arc::from(service.as_str()))
                         .collect(),
                 },
                 tool,
@@ -587,8 +587,8 @@ impl<E: Env> Host<E> {
     /// none of the event; the daemon verifies it. A held scope's services take
     /// none, and a tool's failure is a `500` carrying its message.
     pub async fn stripe(&self, service: &str, event: Vec<u8>) -> Result<(), Denied> {
-        let program = self.deployed(service)?;
-        let Some(tool) = program
+        let deployed = self.deployed(service)?;
+        let Some(tool) = deployed
             .manifest
             .tools
             .iter()
@@ -631,7 +631,7 @@ impl<E: Env> Host<E> {
         let kept = event.clone();
         let invoked = self
             .invoke(
-                &program,
+                &deployed,
                 started.id,
                 None,
                 None,
@@ -656,7 +656,7 @@ impl<E: Env> Host<E> {
             outcome,
             invoked.as_ref().ok(),
             (outcome == Outcome::Failed)
-                .then(|| calls::ran_with(&tool, kept, None, &program.digest)),
+                .then(|| calls::ran_with(&tool, kept, None, &deployed.digest)),
             (outcome == Outcome::Failed)
                 .then(|| recorder.tape())
                 .as_ref(),
@@ -687,7 +687,7 @@ impl<E: Env> Host<E> {
 
     /// What `service` is using now.
     pub async fn live(&self, service: &str) -> Result<wire::Live, Denied> {
-        let program = self.deployed(service)?;
+        let deployed = self.deployed(service)?;
         let (scope, name) = host::split(service);
         let now = usage::seconds(&self.now);
         let day = now.div_euclid(86_400) as i32;
@@ -698,11 +698,11 @@ impl<E: Env> Host<E> {
             total,
             per_second: on as f64 / elapsed,
         };
-        let (running, memory) = program.running.now();
+        let (running, memory) = deployed.running.now();
         Ok(wire::Live {
             running,
             memory,
-            stored: meter::stored(&self.store, service, &self.databases, program.bytes).await?,
+            stored: meter::stored(&self.store, service, &self.databases, deployed.bytes).await?,
             cpu: count(used.all.cpu, used.on.cpu),
             read: count(used.all.read, used.on.read),
             written: count(used.all.written, used.on.written),
@@ -731,10 +731,10 @@ impl<E: Env> Host<E> {
         let services = self
             .list(scope)
             .into_iter()
-            .map(|(name, program)| {
-                let (_, running) = program.running.now();
+            .map(|(name, deployed)| {
+                let (_, running) = deployed.running.now();
                 let held = wire::Held {
-                    loaded: program.bytes,
+                    loaded: deployed.bytes,
                     running,
                 };
                 (name, held)
@@ -766,8 +766,8 @@ impl<E: Env> Host<E> {
         Ok(usage::record(&self.store, used).await?)
     }
 
-    /// The program `service` runs now.
-    pub(crate) fn deployed(&self, service: &str) -> Result<Arc<Program>, Denied> {
+    /// The service `service` runs now.
+    pub(crate) fn deployed(&self, service: &str) -> Result<Arc<Service>, Denied> {
         self.get(service)
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))
     }

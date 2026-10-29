@@ -1,4 +1,4 @@
-//! What a program invocation costs under concurrent load.
+//! What a service invocation costs under concurrent load.
 //!
 //! Every call is split two ways — inside host calls, and the rest
 //! (instantiate, guest code, teardown, and waiting for a thread). `carry`
@@ -11,7 +11,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use berm::{Berm, Callsite, Config, Engine, Program, Syscall, abi};
+use berm::{Berm, Callsite, Config, Engine, Service, Syscall, abi};
 use std::{
     fs,
     path::PathBuf,
@@ -63,17 +63,17 @@ async fn main() -> Result<()> {
         instances: 10_000,
         ..Config::default()
     })?;
-    let program =
+    let service =
         Berm::new(&engine, berm::Calls::by_name(0), vec![get]).deploy("fixture", &image)?;
 
     println!("cores: {}", std::thread::available_parallelism()?);
     header("carry");
     for concurrency in [1, 2, 4, 8, 16, 64] {
-        row(&program, "carry", concurrency, 4000).await?;
+        row(&service, "carry", concurrency, 4000).await?;
     }
     header(&format!("wait ({WAIT:?} in one host call)"));
     for concurrency in [1, 64, 512, 1024, 2048, 8192] {
-        row(&program, "wait", concurrency, concurrency * 4).await?;
+        row(&service, "wait", concurrency, concurrency * 4).await?;
     }
     Ok(())
 }
@@ -89,7 +89,7 @@ fn header(tool: &str) {
 /// Run `calls` invocations of `tool`, `concurrency` of them in flight at once,
 /// and print what they cost.
 async fn row(
-    program: &Arc<Program>,
+    service: &Arc<Service>,
     tool: &'static str,
     concurrency: usize,
     calls: usize,
@@ -98,13 +98,13 @@ async fn row(
     let start = Instant::now();
     let mut workers = Vec::with_capacity(concurrency);
     for worker in 0..concurrency {
-        let program = program.clone();
+        let service = service.clone();
         let mine = calls / concurrency + usize::from(worker < calls % concurrency);
         workers.push(tokio::spawn(async move {
             let mut latencies = Vec::with_capacity(mine);
             for _ in 0..mine {
                 let submitted = Instant::now();
-                Result::from(program.call(None, tool, b"{}".to_vec()).await?.result)
+                Result::from(service.call(None, tool, b"{}".to_vec()).await?.result)
                     .map_err(anyhow::Error::msg)?;
                 latencies.push(submitted.elapsed());
             }

@@ -1,4 +1,4 @@
-//! What a chain used, by program.
+//! What a chain used, by service.
 
 use crate::Refused;
 use anyhow::{Result, bail};
@@ -13,7 +13,7 @@ use std::{
     time::Instant,
 };
 
-/// Meters by program and the tool of it that ran.
+/// Meters by service and the tool of it that ran.
 pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
 
 /// One chain's meters, shared by every invocation in it. Filled whether the
@@ -22,11 +22,11 @@ pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
 pub struct Meters(Mutex<ByTool>);
 
 impl Meters {
-    pub(crate) fn add(&self, program: Arc<str>, tool: Arc<str>, used: Meter) {
-        *self.0.lock().entry((program, tool)).or_default() += used;
+    pub(crate) fn add(&self, service: Arc<str>, tool: Arc<str>, used: Meter) {
+        *self.0.lock().entry((service, tool)).or_default() += used;
     }
 
-    /// CPU microseconds over every program.
+    /// CPU microseconds over every service.
     pub(crate) fn cpu(&self) -> u64 {
         self.0.lock().values().map(|meter| meter.cpu).sum()
     }
@@ -36,7 +36,7 @@ impl Meters {
     }
 }
 
-/// What a program's invocations hold while they run.
+/// What a service's invocations hold while they run.
 #[derive(Debug, Default)]
 pub struct Running {
     calls: AtomicU64,
@@ -53,7 +53,7 @@ impl Running {
     }
 }
 
-/// The memory the programs drawing from it hold at once: their images and
+/// The memory the services drawing from it hold at once: their images and
 /// compiled code while they are deployed, and the linear memory of their
 /// invocations while they run.
 #[derive(Debug, Default)]
@@ -123,7 +123,7 @@ impl Pool {
     }
 }
 
-/// One invocation's part of its program's [`Running`] and of its [`Pool`],
+/// One invocation's part of its service's [`Running`] and of its [`Pool`],
 /// and its budget of memory reserved from the engine's, from when it is built
 /// until it is dropped. Its store's limiter, so the memory it holds is counted
 /// as it grows and held to its budget.
@@ -249,7 +249,7 @@ impl wasmtime::ResourceLimiter for Held {
     }
 }
 
-/// What one invocation used itself, the programs it called left out, and its
+/// What one invocation used itself, the services it called left out, and its
 /// budget of rows read and written.
 #[derive(Debug)]
 pub(crate) struct Own {

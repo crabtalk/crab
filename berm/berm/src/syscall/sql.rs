@@ -1,4 +1,4 @@
-//! `berm.sql` — one statement against the asking program's own database.
+//! `berm.sql` — one statement against the asking service's own database.
 //!
 //! berm reads the request; running it is the host's, and arrives as the
 //! closure below. [`crate::database`] is one, over SQLite.
@@ -18,7 +18,7 @@ pub struct Statement {
 /// Serve `berm.sql` against `exec`, handed the callsite and the statement and
 /// answering the reply's JSON. A statement under a `query` ([`Callsite::query`])
 /// may only read.
-pub fn programs<E, Ran>(exec: E) -> Syscall
+pub fn services<E, Ran>(exec: E) -> Syscall
 where
     E: Fn(Callsite, Statement) -> Ran + Send + Sync + 'static,
     Ran: Future<Output = Result<String>> + Send + 'static,

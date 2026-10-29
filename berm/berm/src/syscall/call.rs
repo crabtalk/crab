@@ -1,11 +1,11 @@
-//! `berm.call` — one program reaching another.
+//! `berm.call` — one service reaching another.
 //!
-//! berm serves it against the set of deployed programs it holds. The target is
-//! named in the request; which deployed program a name reaches is the
+//! berm serves it against the set of deployed services it holds. The target is
+//! named in the request; which deployed service a name reaches is the
 //! embedder's [`Calls::resolve`].
 
 use crate::{
-    Berm, Budget, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Program, Refused, Syscall,
+    Berm, Budget, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Refused, Service, Syscall,
     abi, clock, wire,
 };
 use anyhow::{Result, bail};
@@ -20,19 +20,19 @@ use std::{
 /// the tool called. An `Err` refuses the call.
 pub type Resolve = Arc<dyn Fn(&Callsite, &str, &str) -> Result<String> + Send + Sync>;
 
-/// What a called program is told the program calling it is named, given the
+/// What a called service is told the service calling it is named, given the
 /// name that one was deployed as.
 pub type Named = Arc<dyn Fn(&str) -> String + Send + Sync>;
 
-/// What an invocation of `program` runs inside, asked with the invocation's
+/// What an invocation of `service` runs inside, asked with the invocation's
 /// site before it runs: the chain's first call and every nested one.
-pub type Enter = Arc<dyn Fn(&Program, &Callsite) -> Opening + Send + Sync>;
+pub type Enter = Arc<dyn Fn(&Service, &Callsite) -> Opening + Send + Sync>;
 
-/// The budget of one invocation of `tool` of the program deployed as
-/// `program`. `None` takes the engine's [`crate::Config`].
+/// The budget of one invocation of `tool` of the service deployed as
+/// `service`. `None` takes the engine's [`crate::Config`].
 pub type Budgeted = Arc<dyn Fn(&str, &str) -> Option<Budget> + Send + Sync>;
 
-/// The pool the program deployed as a name draws its memory from, asked once
+/// The pool the service deployed as a name draws its memory from, asked once
 /// as it loads.
 pub type Pooled = Arc<dyn Fn(&str) -> Arc<Pool> + Send + Sync>;
 
@@ -40,12 +40,12 @@ pub type Pooled = Arc<dyn Fn(&str) -> Arc<Pool> + Send + Sync>;
 /// syscall, where an unwind aborts the process.
 pub type Now = Arc<dyn Fn() -> u64 + Send + Sync>;
 
-/// Told of every nested call that reached a deployed program: the calling
+/// Told of every nested call that reached a deployed service: the calling
 /// site, the deployed name, the tool, and how it ended.
 pub type Reported = Arc<dyn Fn(&Callsite, &str, &str, Outcome) + Send + Sync>;
 
 /// Told of every invocation once it ran, trapped or not: its site, the tool,
-/// what it used itself, the programs it called left out, and how it ran.
+/// what it used itself, the services it called left out, and how it ran.
 pub type Invoked = Arc<dyn Fn(&Callsite, &str, Meter, Ran) + Send + Sync>;
 
 /// How one invocation ran.
@@ -58,7 +58,7 @@ pub struct Ran {
     pub outcome: Outcome,
 }
 
-/// Reaches a program deployed outside this runtime: asked with the calling
+/// Reaches a service deployed outside this runtime: asked with the calling
 /// site, the deployed name, the tool, its arguments, and the link the target
 /// runs as. `None` when nothing is deployed under that name elsewhere either.
 /// The target's runtime commits what it changes; nothing lands in the
@@ -66,7 +66,7 @@ pub struct Ran {
 pub type Remote =
     Arc<dyn Fn(&Callsite, &str, &str, Vec<u8>, Link) -> Option<Reaching> + Send + Sync>;
 
-/// A call to a program outside this runtime, under way.
+/// A call to a service outside this runtime, under way.
 pub type Reaching = Pin<Box<dyn Future<Output = Result<Ended>> + Send>>;
 
 /// A [`Scope`], being opened. An `Err` fails the invocation before it runs.
@@ -104,7 +104,7 @@ impl Scope for Unheld {
     }
 }
 
-/// How `berm.call` reaches programs.
+/// How `berm.call` reaches services.
 #[derive(Clone)]
 pub struct Calls {
     /// See [`Calls::DEFAULT_DEPTH`].
@@ -121,7 +121,7 @@ pub struct Calls {
 }
 
 impl Calls {
-    /// How deep a chain of programs calling programs may go before the next
+    /// How deep a chain of services calling services may go before the next
     /// call is refused. Zero turns composition off.
     ///
     /// Not a bound on the native stack, which a nesting level costs ~720
@@ -130,7 +130,7 @@ impl Calls {
     /// guest address space one chain reserves — 64 MiB a level.
     pub const DEFAULT_DEPTH: u32 = 4;
 
-    /// A target reaches the program deployed under that name, and is told the
+    /// A target reaches the service deployed under that name, and is told the
     /// caller's deployed name.
     pub fn by_name(depth: u32) -> Self {
         Self {
@@ -174,20 +174,20 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
             );
             Box::pin(async move {
                 let fields = abi::wire::fields(&request)?;
-                let program = wire::text(&fields, 0, "program")?;
+                let service = wire::text(&fields, 0, "service")?;
                 let tool = wire::text(&fields, 1, "tool")?;
                 let args = wire::text(&fields, 2, "arguments")?;
 
                 if at.depth > limit {
                     return Err(Refused(format!(
-                        "call depth {limit} reached before {program}.{tool}; a program cannot nest deeper"
+                        "call depth {limit} reached before {service}.{tool}; a service cannot nest deeper"
                     ))
                     .into());
                 }
 
                 let Some(runtime) = runtime.upgrade() else {
                     return Err(Refused(format!(
-                        "the runtime is shutting down, so {program}.{tool} cannot run"
+                        "the runtime is shutting down, so {service}.{tool} cannot run"
                     ))
                     .into());
                 };
@@ -196,19 +196,19 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                 // is dropped before the guest below runs: held across a nested
                 // call, it blocks the next deploy for as long as that call
                 // takes.
-                let deployed = resolve(&at, program, tool)
-                    .map_err(|error| Refused(format!("{program}.{tool}: {error:#}")))?;
+                let deployed = resolve(&at, service, tool)
+                    .map_err(|error| Refused(format!("{service}.{tool}: {error:#}")))?;
                 let target = {
-                    let Ok(programs) = runtime.programs.try_read() else {
+                    let Ok(services) = runtime.services.try_read() else {
                         return Err(Refused(format!(
-                            "the deployed set is being written; {program}.{tool} was not reached"
+                            "the deployed set is being written; {service}.{tool} was not reached"
                         ))
                         .into());
                     };
-                    programs.get(&deployed).cloned()
+                    services.get(&deployed).cloned()
                 };
 
-                let caller = Some(Caller::Program(named(&at.program).into()));
+                let caller = Some(Caller::Service(named(&at.service).into()));
                 let Some(target) = target else {
                     let link = Link {
                         caller,
@@ -227,10 +227,10 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     let Some(reaching) =
                         remote(&at, &deployed, tool, args.as_bytes().to_vec(), link)
                     else {
-                        let missing = match deployed == program {
-                            true => format!("no program named {program:?} is deployed"),
+                        let missing = match deployed == service {
+                            true => format!("no service named {service:?} is deployed"),
                             false => {
-                                format!("{program:?} reaches {deployed:?}, which is not deployed")
+                                format!("{service:?} reaches {deployed:?}, which is not deployed")
                             }
                         };
                         return Err(Refused(missing).into());
@@ -244,10 +244,10 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     Err(Refused(message).into())
                 };
                 if !target.public(tool) {
-                    return refuse(format!("{program} has no public tool named {tool:?}"));
+                    return refuse(format!("{service} has no public tool named {tool:?}"));
                 }
-                if !target.reached_by_programs(tool) {
-                    return refuse(format!("{program}.{tool} takes no calls from programs"));
+                if !target.reached_by_services(tool) {
+                    return refuse(format!("{service}.{tool} takes no calls from services"));
                 }
 
                 let stack: Arc<[Arc<str>]> = at

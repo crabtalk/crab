@@ -1,12 +1,12 @@
 [package]
 name = "berm-build"
-description = "Builds a berm program's image: its cdylib for the guest target, with the sections its crab.toml and its kits declare"
+description = "Builds a berm service's image: its cdylib for the guest target, with the sections its crab.toml and its kits declare"
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
 license = "AGPL-3.0-only"
 authors.workspace = true
-keywords = ["berm", "wasm", "build", "program"]
+keywords = ["berm", "wasm", "build", "service"]
 categories = ["wasm", "development-tools::build-utils"]
 
 [dependencies]

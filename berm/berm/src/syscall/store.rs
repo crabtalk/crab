@@ -1,7 +1,7 @@
-//! `berm.get` and `berm.set` — a program's own bytes, surviving its invocations.
+//! `berm.get` and `berm.set` — a service's own bytes, surviving its invocations.
 //!
-//! Neither door takes a program. The keyspace is whichever one is asking, read
-//! off the [`Callsite`], so another program's keys are not refused — a guest
+//! Neither door takes a service. The keyspace is whichever one is asking, read
+//! off the [`Callsite`], so another service's keys are not refused — a guest
 //! has no way to name them.
 //!
 //! The host takes a write through the closure below, or leaves it to the
@@ -19,7 +19,7 @@ use std::{future::Future, sync::Arc};
 ///
 /// `read` answers `None` for a key never written. The guest is suspended
 /// until it resolves.
-pub fn programs<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
+pub fn services<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
 where
     R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
@@ -33,7 +33,7 @@ where
             let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
             at.rows_left()?;
-            let value = match at.journal.read(&at.program, key) {
+            let value = match at.journal.read(&at.service, key) {
                 Some(held) => Some(held),
                 None => read(at.clone(), key.to_owned()).await?,
             };
@@ -63,7 +63,7 @@ where
             }
             at.rows_left()?;
             if !write(at.clone(), key.to_owned(), value.to_vec()).await? {
-                at.journal.write(&at.program, key, value)?;
+                at.journal.write(&at.service, key, value)?;
             }
             at.meter(Meter {
                 written: 1,

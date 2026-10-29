@@ -150,7 +150,7 @@
     },
     {
       "name": "whoami",
-      "description": "Says who called: `outside NAME`, `program NAME`, or `none`, then ` user ISSUER SUBJECT` when the chain runs for a user.",
+      "description": "Says who called: `outside NAME`, `service NAME`, or `none`, then ` user ISSUER SUBJECT` when the chain runs for a user.",
       "parameters": {
         "type": "object"
       },
@@ -161,7 +161,7 @@
     },
     {
       "name": "guarded",
-      "description": "Answers `ok` to a program, and denies any other caller.",
+      "description": "Answers `ok` to a service, and denies any other caller.",
       "parameters": {
         "type": "object"
       },
@@ -172,7 +172,7 @@
     },
     {
       "name": "fromservices",
-      "description": "Answers `ok`; only programs may call it.",
+      "description": "Answers `ok`; only services may call it.",
       "parameters": {
         "type": "object"
       },
@@ -234,7 +234,7 @@
     },
     {
       "name": "nest",
-      "description": "Calls `echo` on whatever is deployed as `inner`, to prove a program can reach a program. Says which kind of failure came back, because telling \"it ran and said no\" from \"it was never there\" is the point of the second bit on the wire.",
+      "description": "Calls `echo` on whatever is deployed as `inner`, to prove a service can reach a service. Says which kind of failure came back, because telling \"it ran and said no\" from \"it was never there\" is the point of the second bit on the wire.",
       "parameters": {
         "properties": {
           "page": {
@@ -289,7 +289,7 @@
     },
     {
       "name": "relay",
-      "description": "Calls `note` on `inner` with `word`, carries on whether or not that failed, emits `word` under the topic `relay`, and answers what this program reads back under `note`.",
+      "description": "Calls `note` on `inner` with `word`, carries on whether or not that failed, emits `word` under the topic `relay`, and answers what this service reads back under `note`.",
       "parameters": {
         "properties": {
           "word": {
@@ -365,7 +365,7 @@
     },
     {
       "name": "recurse",
-      "description": "Calls itself on `inner` one level deeper, which is this same program when deployed under that name — the runaway a depth limit exists to stop. Answers how many levels got through before the host refused.",
+      "description": "Calls itself on `inner` one level deeper, which is this same service when deployed under that name — the runaway a depth limit exists to stop. Answers how many levels got through before the host refused.",
       "parameters": {
         "properties": {
           "depth": {

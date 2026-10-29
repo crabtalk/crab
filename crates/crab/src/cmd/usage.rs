@@ -1,4 +1,4 @@
-//! `crab usage` — what a program used, a day each; with no program, what the
+//! `crab usage` — what a service used, a day each; with no service, what the
 //! account's services used and how much of its plan.
 
 use crate::{format, runtime, terminal};

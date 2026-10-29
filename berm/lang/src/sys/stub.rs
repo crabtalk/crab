@@ -1,7 +1,7 @@
 //! What a host call does when there is no host.
 //!
 //! Off wasm, the argument blob, the trace, emitted logs, the failure channel,
-//! other programs and HTTP are served from [`crate::test`]'s state. Any other
+//! other services and HTTP are served from [`crate::test`]'s state. Any other
 //! syscall panics naming it.
 
 use crate::{abi, test::Fetched};
@@ -26,7 +26,7 @@ pub(crate) struct Host {
     pub failure: Option<String>,
     /// What the last syscall answered with, staged as a real host stages it.
     pub result: Vec<u8>,
-    /// What a test has arranged another program to answer: the program, the
+    /// What a test has arranged another service to answer: the service, the
     /// tool, the outcome bits, and the bytes.
     pub answers: Vec<(String, String, u64, Vec<u8>)>,
     /// What a test has arranged a request to answer: the method, the URL,
@@ -109,15 +109,15 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             unsafe { core::ptr::copy_nonoverlapping(host.result.as_ptr(), a0 as *mut u8, taken) };
             host.result.len() as u64
         }),
-        // Another program, if the test arranged what it answers.
+        // Another service, if the test arranged what it answers.
         abi::HOST_CALL => {
             let request = bytes(a0, a1);
             let Ok(fields) = abi::wire::fields(request) else {
                 no_host(number)
             };
-            let (program, tool) = match fields.as_slice() {
-                [program, tool, ..] => (
-                    String::from_utf8_lossy(program).into_owned(),
+            let (service, tool) = match fields.as_slice() {
+                [service, tool, ..] => (
+                    String::from_utf8_lossy(service).into_owned(),
                     String::from_utf8_lossy(tool).into_owned(),
                 ),
                 _ => no_host(number),
@@ -125,7 +125,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             let staged = with(|host| {
                 host.answers
                     .iter()
-                    .find(|(a, b, ..)| *a == program && *b == tool)
+                    .find(|(a, b, ..)| *a == service && *b == tool)
                     .map(|(.., outcome, bytes)| (*outcome, bytes.clone()))
             });
             match staged {
@@ -135,7 +135,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                     length | outcome
                 }),
                 None => panic!(
-                    "nothing arranged for {program}.{tool}; call berm_lang::test::answer first"
+                    "nothing arranged for {service}.{tool}; call berm_lang::test::answer first"
                 ),
             }
         }

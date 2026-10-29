@@ -22,7 +22,7 @@ use std::{collections::HashMap, mem, sync::Weak};
 /// `berm.emit`: each log taken into `host`'s pending logs as it is emitted.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
-    emit::programs(move |at: Callsite, log: Log| {
+    emit::services(move |at: Callsite, log: Log| {
         let taken = host::alive(&host).map(|host| {
             host.logs.take(&at, log);
             true
@@ -103,7 +103,7 @@ impl Pending {
     pub(crate) fn take(&self, at: &Callsite, log: Log) {
         let call = self.run(at.chain);
         self.pending.lock().push(Emitted {
-            service: at.program.to_string(),
+            service: at.service.to_string(),
             call,
             at: (self.now)(),
             topics: log.topics,

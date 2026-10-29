@@ -9,7 +9,7 @@ use crate::{
     wake::{cron, table},
 };
 use axum::http::StatusCode;
-use berm::{Program, database::Database};
+use berm::{Service, database::Database};
 use berm_api::{
     Manifest, Surface,
     host::{
@@ -21,7 +21,7 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 /// A deploy that went live.
 pub struct Installed {
-    pub program: Arc<Program>,
+    pub service: Arc<Service>,
     /// The migrations it applied, a kit's as `{kit}/{name}`.
     pub migrations: Vec<String>,
 }
@@ -29,13 +29,13 @@ pub struct Installed {
 impl<E: Env> Host<E> {
     /// Run the index entry `deploy` names as `service`. Refused when it
     /// needs a syscall this host does not serve, or, unless `force`, when it
-    /// breaks a public tool or event of the program
+    /// breaks a public tool or event of the service
     /// it replaces that a caller used, with a call that was done, in the last
     /// [`usage::WINDOW`] days, but by the services `exempt` names. Refused too
     /// when its `size` is outside
     /// [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`] or below what its
     /// database holds. A refused deploy leaves the database held to the size
-    /// it was. A program whose image this host cannot read, such as one built
+    /// it was. A service whose image this host cannot read, such as one built
     /// against another ABI, is replaced as on a first deploy.
     ///
     /// `seed`, a SQLite file on the databases' filesystem, starts the
@@ -120,7 +120,7 @@ impl<E: Env> Host<E> {
                 .filter(|spec| spec.deprecated)
                 .map(|spec| spec.name.clone())
                 .collect();
-            let program = self
+            let deployed = self
                 .compile(key.clone(), image)
                 .await
                 .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
@@ -142,7 +142,7 @@ impl<E: Env> Host<E> {
             .await?;
             self.stops.mark(&key, stopped);
             Ok(Installed {
-                program,
+                service: deployed,
                 migrations,
             })
         }
@@ -159,13 +159,16 @@ impl<E: Env> Host<E> {
         {
             tracing::error!(service, error = %e, "the refused seed stays");
         }
-        if let Ok(Installed { program, .. }) = &installed {
+        if let Ok(Installed {
+            service: deployed, ..
+        }) = &installed
+        {
             self.waking.notify_one();
             // Stored bytes are otherwise sampled once a day, so a service
             // deployed or seeded after the day's sample would read as before.
             let today = self.today();
             if let Err(e) =
-                meter::sample(&self.store, service, &self.databases, program.bytes, today).await
+                meter::sample(&self.store, service, &self.databases, deployed.bytes, today).await
             {
                 tracing::warn!(service, "sampling stored bytes failed: {e:#}");
             }
@@ -239,7 +242,7 @@ impl<E: Env> Host<E> {
         }
         Ok(Checked {
             version: manifest.version.clone(),
-            calls: manifest.deps.programs.clone(),
+            calls: manifest.deps.calls.clone(),
             migrations,
             breaks,
             secrets: manifest.deps.secrets.clone(),
@@ -248,7 +251,7 @@ impl<E: Env> Host<E> {
 
     /// The image `digest` names and its manifest, refused when `size` is
     /// outside [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`], the image is not
-    /// a program or it needs a syscall this host does not serve.
+    /// a service or it needs a syscall this host does not serve.
     async fn image(
         &self,
         reference: &str,
@@ -303,17 +306,17 @@ impl<E: Env> Host<E> {
         ))
     }
 
-    /// The program `service` runs, none when it runs none or one this host
+    /// The service `service` runs, none when it runs none or one this host
     /// cannot read, such as one built against another ABI. Read under its
     /// deploy lock.
-    async fn current(&self, service: &str) -> Result<Option<Arc<Program>>, Denied> {
+    async fn current(&self, service: &str) -> Result<Option<Arc<Service>>, Denied> {
         let (scope, name) = host::split(service);
         let Some(row) = service::row(&self.store, scope, name).await? else {
             return Ok(None);
         };
         let (reference, digest) = (row.reference.clone(), row.digest.clone());
         match self.load(row).await {
-            Ok(program) => Ok(Some(program)),
+            Ok(deployed) => Ok(Some(deployed)),
             Err(e) => {
                 let image = self
                     .images
@@ -323,7 +326,7 @@ impl<E: Env> Host<E> {
                 if Manifest::try_from(image.as_slice()).is_ok() {
                     return Err(deny(StatusCode::BAD_GATEWAY, format!("{e:#}")));
                 }
-                tracing::warn!(service, "replacing a program this host cannot read: {e:#}");
+                tracing::warn!(service, "replacing a service this host cannot read: {e:#}");
                 Ok(None)
             }
         }
@@ -404,13 +407,13 @@ impl<E: Env> Host<E> {
         Ok(cron_tools)
     }
 
-    /// How `manifest` breaks a public tool or event of `current`, the program
+    /// How `manifest` breaks a public tool or event of `current`, the service
     /// `service` runs, that a caller used, with a call that was done, in the
     /// last [`usage::WINDOW`] days, with each caller and its last call.
     async fn broken(
         &self,
         service: &str,
-        current: &Program,
+        current: &Service,
         manifest: &Manifest,
     ) -> Result<Vec<Broken>, Denied> {
         let (scope, name) = host::split(service);
