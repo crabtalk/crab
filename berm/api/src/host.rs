@@ -765,11 +765,24 @@ pub struct Live {
 
 /// The memory a scope's services hold now, and the most they may.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Memory {
     /// Bytes; `0` is no limit.
     pub limit: u64,
     /// Bytes of the images and compiled code of its services deployed.
+    pub loaded: u64,
+    /// Bytes of linear memory its invocations running now hold.
+    pub running: u64,
+    /// What each of its services holds, by its name within the scope.
+    #[serde(default)]
+    pub services: BTreeMap<String, Held>,
+}
+
+/// The memory one service holds now.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct Held {
+    /// Bytes of its image and compiled code.
     pub loaded: u64,
     /// Bytes of linear memory its invocations running now hold.
     pub running: u64,

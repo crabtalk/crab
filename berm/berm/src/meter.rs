@@ -76,6 +76,7 @@ impl Pool {
             limit: self.limit.load(Ordering::Relaxed),
             loaded: self.loaded.load(Ordering::Relaxed),
             running: self.running.load(Ordering::Relaxed),
+            services: BTreeMap::new(),
         }
     }
 
@@ -85,6 +86,7 @@ impl Pool {
             limit,
             loaded,
             running,
+            ..
         } = self.now();
         limit != 0 && loaded + running >= limit
     }

@@ -725,9 +725,25 @@ impl<E: Env> Host<E> {
         self.pools.replace(limits);
     }
 
-    /// The memory `scope`'s services hold now, and its limit.
+    /// The memory `scope`'s services hold now, each and together, and its
+    /// limit.
     pub fn memory(&self, scope: &str) -> wire::Memory {
-        self.pools.pool(scope).now()
+        let services = self
+            .list(scope)
+            .into_iter()
+            .map(|(name, program)| {
+                let (_, running) = program.running.now();
+                let held = wire::Held {
+                    loaded: program.bytes,
+                    running,
+                };
+                (name, held)
+            })
+            .collect();
+        wire::Memory {
+            services,
+            ..self.pools.pool(scope).now()
+        }
     }
 
     /// Hold `scopes` in place of the scopes held. A held scope's services fire
