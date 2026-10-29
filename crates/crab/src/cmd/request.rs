@@ -56,6 +56,10 @@ fn describe(request: &Request) -> String {
     if request.kind == RequestKind::Login {
         return "sign crab in".to_owned();
     }
+    if request.kind == RequestKind::Deploy {
+        let services: Vec<&str> = request.deploys.keys().map(String::as_str).collect();
+        return format!("approve deploying {}, signed in", services.join(", "));
+    }
     if request.kind == RequestKind::Secret {
         let asked: Vec<&str> = request
             .credentials
@@ -98,19 +102,24 @@ pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+/// Request `code` once it is no longer pending, or as it stands after
+/// `timeout` seconds.
+pub fn settled(client: &Client, code: &str, timeout: u64) -> Result<Request> {
+    let until = Instant::now() + Duration::from_secs(timeout);
+    loop {
+        let left = until.saturating_duration_since(Instant::now()).as_secs();
+        let request = runtime::wait(client.request(code, left.min(HOLD)))?;
+        if request.status != RequestStatus::Pending || left == 0 {
+            return Ok(request);
+        }
+    }
+}
+
 /// Where request `code` stands. With `wait`, once it is no longer pending,
 /// giving up after `timeout` seconds. Fails unless it completed or, without
 /// `wait`, is still pending.
 pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) -> Result<()> {
-    let until = Instant::now() + Duration::from_secs(timeout);
-    let request = loop {
-        let left = until.saturating_duration_since(Instant::now()).as_secs();
-        let hold = if wait { left.min(HOLD) } else { 0 };
-        let request = runtime::wait(client.request(code, hold))?;
-        if request.status != RequestStatus::Pending || hold == 0 {
-            break request;
-        }
-    };
+    let request = settled(client, code, if wait { timeout } else { 0 })?;
     if json {
         terminal::json(&request)?;
     } else {

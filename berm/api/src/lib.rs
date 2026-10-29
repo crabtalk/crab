@@ -91,6 +91,9 @@ pub struct Deployed {
     /// The migrations it applied, a kit's as `{kit}/{name}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub migrations: Vec<String>,
+    /// The service's web page, on Cloud; none on the local host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
 }
 
 /// A deployed program as anyone it is visible to sees it: its IDL and what it

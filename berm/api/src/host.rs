@@ -103,6 +103,9 @@ pub struct Checked {
     /// How it breaks what callers of the running version used in the last
     /// [`USED_DAYS`] days, the callers `exempt` names left out.
     pub breaks: Vec<Broken>,
+    /// The secrets it names, its kits' included.
+    #[serde(default)]
+    pub secrets: Vec<String>,
 }
 
 /// A break of what callers used, and who used it.

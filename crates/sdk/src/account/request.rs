@@ -1,9 +1,9 @@
 //! `/requests` — what an account asks a person to do, handed to them as a
-//! short code: pay for a purchase, set secrets of a service, or sign a device
-//! in as them.
+//! short code: pay for a purchase, set secrets of a service, sign a device in
+//! as them, or approve a deploy.
 
-use crate::account::org::PublicAccount;
-use berm_api::Credential;
+use crate::{account::org::PublicAccount, services::service::DeployRequest};
+use berm_api::{Credential, Deployed, Manifest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -18,6 +18,9 @@ pub enum RequestKind {
     Secret,
     /// Sign a device in as the person: RFC 8628's device grant.
     Login,
+    /// Approve a deploy of the account's services, which runs as the person
+    /// approving it.
+    Deploy,
 }
 
 berm_api::text_enum!(RequestKind);
@@ -42,7 +45,8 @@ berm_api::text_enum!(Purchase);
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
-    /// Paid, the secrets set, or the sign-in approved.
+    /// Paid, the secrets set, the sign-in approved, or the deploy approved
+    /// and run, whether or not it went live.
     Completed,
     /// The person declined it.
     Declined,
@@ -85,13 +89,22 @@ pub enum CreateRequest {
         #[serde(default)]
         context: String,
     },
+    /// Deploy the account's services together, by name, once a person
+    /// approves; as `POST /orgs/{org}/services/deploys` deploys them.
+    Deploy {
+        account: String,
+        services: BTreeMap<String, DeployRequest>,
+        /// What it is for, in the asker's words, shown to the person.
+        #[serde(default)]
+        context: String,
+    },
 }
 
 /// A request, as the person who opens its code sees it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
-    /// What a person types at `/pay`, `/secrets` or `/device`, as
+    /// What a person types at `/pay`, `/secrets`, `/device` or `/deploy`, as
     /// `WDJB-MJHT`.
     pub code: String,
     /// The page that opens it.
@@ -124,6 +137,21 @@ pub struct Request {
     /// declined, its code or error on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redirect: Option<String>,
+    /// What a deploy request deploys, by service.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deploys: BTreeMap<String, DeployRequest>,
+    /// What each image a deploy request deploys says it is, by service, read
+    /// from the image when it was asked.
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub manifests: BTreeMap<String, Manifest>,
+    /// Each service an approved deploy put live, by name.
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deployed: BTreeMap<String, Deployed>,
+    /// Why an approved deploy did not go live.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
 }
 
 /// A credential a secret request asks for, as its service declared it when

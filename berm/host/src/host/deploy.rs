@@ -242,6 +242,7 @@ impl<E: Env> Host<E> {
             calls: manifest.deps.programs.clone(),
             migrations,
             breaks,
+            secrets: manifest.deps.secrets.clone(),
         })
     }
 

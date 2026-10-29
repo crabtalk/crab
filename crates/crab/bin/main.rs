@@ -94,7 +94,9 @@ enum Command {
     },
     /// Build services and deploy each as its `crab.toml` names it, replacing
     /// whatever holds the name, and serve it: the one whose directory this is,
-    /// or at a workspace's root every one not saying `deploy = false`.
+    /// or at a workspace's root every one not saying `deploy = false`. On
+    /// Cloud it waits for a person to approve it at the link it prints last;
+    /// `--yes` deploys without asking.
     Deploy(cmd::deploy::Deploy),
     /// `crab deploy`, installing each stopped, to serve once started.
     Push(cmd::deploy::Deploy),
@@ -579,8 +581,8 @@ fn main() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false)?,
-        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true)?,
+        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false, yes)?,
+        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true, yes)?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
         Command::Inspect { name } => cmd::inspect::run(&client()?, name, json)?,

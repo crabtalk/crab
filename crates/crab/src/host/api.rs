@@ -122,6 +122,7 @@ async fn deploy(
         program: deployed.program.idl(&name),
         breaks: breaks.iter().map(ToString::to_string).collect(),
         migrations: deployed.migrations,
+        page: None,
     }))
 }
 
@@ -232,6 +233,7 @@ async fn deploy_set(
                     program: installed.program.idl(&name),
                     breaks: breaks.iter().map(ToString::to_string).collect(),
                     migrations: installed.migrations,
+                    page: None,
                 };
                 (name, deployed)
             })

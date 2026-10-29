@@ -2,7 +2,7 @@
 //! their images, serving or stopped.
 
 use crate::{
-    cmd::{dev, inspect},
+    cmd::{dev, inspect, request},
     fill::Form,
     project, runtime,
 };
@@ -12,6 +12,7 @@ use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
+    account::request::RequestStatus,
     client::{Client, Error},
     services::service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
 };
@@ -61,8 +62,8 @@ pub struct Deploy {
 /// more than one together, every one checked before any switches; with
 /// `pull`, one service's crons its owners set on the host are written into
 /// `crab.toml`'s `[crons]` first. `stopped` installs them to serve once
-/// started.
-pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
+/// started. On Cloud, a person approves the deploy at a link unless `yes`.
+pub fn run(client: &Client, deploy: &Deploy, stopped: bool, yes: bool) -> Result<()> {
     let Deploy {
         dir,
         packages,
@@ -101,31 +102,15 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
         .and_then(|name| name.to_str())
         .with_context(|| format!("{} names no project", workspace.root.display()))?
         .to_owned();
-    if let [dir] = workspace.services.as_slice() {
+    let one = workspace.services.len() == 1;
+    let mut services = BTreeMap::new();
+    for dir in &workspace.services {
         // On Cloud, the image is pushed to `image`, or `crab.toml`'s, tagged
         // with the crate's version, or uploaded when neither names a registry.
-        let (project, bytes) = build(client, dir, pull)?;
-        let name = project.name()?;
-        let reference = reference(client, name, &project, image, registry, bytes)?;
-        let request = request(
-            client,
-            dir,
-            &project,
-            reference,
-            &in_project,
-            force,
-            stopped,
-        )?;
-        let deployed = runtime::wait(client.deploy(name, &request))?;
-        return report(client, name, &deployed);
-    }
-    let mut set = DeploySetRequest {
-        services: BTreeMap::new(),
-    };
-    for dir in &workspace.services {
-        let (project, bytes) = build(client, dir, false)?;
+        let (project, bytes) = build(client, dir, one && pull)?;
         let name = project.name()?.to_owned();
-        let reference = reference(client, &name, &project, None, registry, bytes)?;
+        let image = image.filter(|_| one);
+        let reference = reference(client, &name, &project, image, registry, bytes)?;
         let request = request(
             client,
             dir,
@@ -135,10 +120,51 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool) -> Result<()> {
             force,
             stopped,
         )?;
-        set.services.insert(name, request);
+        services.insert(name, request);
     }
-    let deployed = runtime::wait(client.deploy_set(&set))?;
+    if client.owner.is_some() && !yes {
+        return approved(client, services);
+    }
+    let deployed = match services.pop_first() {
+        Some((name, request)) if services.is_empty() => {
+            let deployed = runtime::wait(client.deploy(&name, &request))?;
+            BTreeMap::from([(name, deployed)])
+        }
+        first => {
+            services.extend(first);
+            runtime::wait(client.deploy_set(&DeploySetRequest { services }))?
+        }
+    };
     for (name, deployed) in &deployed {
+        report(client, name, deployed)?;
+    }
+    Ok(())
+}
+
+/// Ask a person to approve deploying `services` on Cloud, print the page that
+/// does it as the last line, and wait for them; then report each service the
+/// deploy put live. Fails when they decline, it expires, or it does not go
+/// live.
+fn approved(client: &Client, services: BTreeMap<String, DeployRequest>) -> Result<()> {
+    let asked = runtime::wait(client.ask_deploy(services, ""))?;
+    let minutes = (asked.expires_at - asked.created_at) / 60;
+    eprintln!(
+        "a person approves this deploy at the link, signed in, within {minutes} minutes; `--yes` deploys without asking"
+    );
+    println!("{}", asked.url);
+    let settled = request::settled(client, &asked.code, (minutes * 60) as u64)?;
+    match settled.status {
+        RequestStatus::Pending => bail!("nobody approved the deploy in {minutes} minutes"),
+        RequestStatus::Declined => bail!("the person declined the deploy"),
+        RequestStatus::Expired => {
+            bail!("the deploy expired unapproved; deploy again for a new link")
+        }
+        RequestStatus::Completed => {}
+    }
+    if let Some(failure) = &settled.failure {
+        bail!("the approved deploy did not go live: {failure}");
+    }
+    for (name, deployed) in &settled.deployed {
         report(client, name, deployed)?;
     }
     Ok(())
@@ -329,6 +355,9 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
             None => println!("  have a person set them at their terminal: crab secret fill {name}"),
             Some(_) => println!("  ask a person to set them: crab secret request {name}"),
         }
+    }
+    if let Some(page) = &deployed.page {
+        println!("  page    {page}");
     }
     Ok(())
 }

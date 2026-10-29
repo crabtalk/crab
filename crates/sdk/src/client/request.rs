@@ -1,10 +1,12 @@
-//! `/requests` — asking a person to pay or to set a secret, by a code.
+//! `/requests` — asking a person to pay, to set a secret or to approve a
+//! deploy, by a code.
 
 use crate::{
     account::request::{
         CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest, Purchase, Request,
     },
     client::{Client, Error},
+    services::service::DeployRequest,
 };
 use reqwest::Method;
 use std::collections::BTreeMap;
@@ -42,6 +44,21 @@ impl Client {
             service: service.to_owned(),
             credential: credential.map(str::to_owned),
             copy,
+            context: context.to_owned(),
+        })
+        .await
+    }
+
+    /// Ask a person to approve deploying the account's `services` together,
+    /// by name.
+    pub async fn ask_deploy(
+        &self,
+        services: BTreeMap<String, DeployRequest>,
+        context: &str,
+    ) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Deploy {
+            account: self.account()?.name().to_owned(),
+            services,
             context: context.to_owned(),
         })
         .await
