@@ -87,6 +87,9 @@ pub struct Found {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
     pub name: String,
+    /// Its display name, MCP's tool `title`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub description: String,
     /// What a call costs the caller, in USD micros; absent when it is free.
     #[serde(default, skip_serializing_if = "Option::is_none")]

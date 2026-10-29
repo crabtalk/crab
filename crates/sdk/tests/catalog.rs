@@ -1,7 +1,7 @@
 //! The catalog's list: the shipped file loads, a platform listed twice is
 //! refused, and a job is checked against it.
 
-use crabtalk_sdk::catalog::Catalog;
+use crabtalk_sdk::catalog::{Catalog, Provider};
 
 #[test]
 fn the_list_loads_in_the_order_written() {
@@ -45,4 +45,44 @@ fn a_job_starts_with_a_listed_platform() {
             "{malformed}"
         );
     }
+}
+
+fn provider(service: &str, title: Option<&str>, calls: u64) -> Provider {
+    Provider {
+        service: service.to_owned(),
+        tool: "enrich".to_owned(),
+        title: title.map(str::to_owned),
+        description: String::new(),
+        price: None,
+        calls,
+    }
+}
+
+#[test]
+fn providers_group_into_jobs_under_their_platform() {
+    let catalog = Catalog::listed();
+    let categories = catalog.jobs(vec![
+        ("company.enrich".to_owned(), provider("a/one", None, 3)),
+        (
+            "company.enrich".to_owned(),
+            provider("b/two", Some("Enrich a company"), 9),
+        ),
+        ("company.search".to_owned(), provider("a/one", None, 20)),
+        ("myspace.friends".to_owned(), provider("a/one", None, 1)),
+    ]);
+    assert_eq!(categories.len(), catalog.categories.len());
+    let companies = categories.iter().find(|c| c.id == "companies").unwrap();
+    let company = &companies.platforms[0];
+    assert_eq!(company.id, "company");
+    let ids: Vec<&str> = company.jobs.iter().map(|job| job.id.as_str()).collect();
+    assert_eq!(ids, ["company.search", "company.enrich"]);
+    let enrich = &company.jobs[1];
+    assert_eq!(enrich.title, "Enrich a company");
+    assert_eq!(enrich.providers[0].service, "b/two");
+    let listed: usize = categories
+        .iter()
+        .flat_map(|c| &c.platforms)
+        .map(|p| p.jobs.len())
+        .sum();
+    assert_eq!(listed, 2);
 }

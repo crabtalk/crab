@@ -55,6 +55,7 @@ impl Mcp {
                     .filter(|tool| tool.anonymous)
                     .map(|tool| mcp::Tool {
                         name: tool.name.clone(),
+                        title: tool.title.clone(),
                         description: tool.description.clone(),
                         price: None,
                     })
@@ -63,7 +64,10 @@ impl Mcp {
                     + 2 * count(&manifest.description)
                     + tools
                         .iter()
-                        .map(|tool| count(&format!("{} {}", tool.name, tool.description)))
+                        .map(|tool| {
+                            let title = tool.title.as_deref().unwrap_or_default();
+                            count(&format!("{} {title} {}", tool.name, tool.description))
+                        })
                         .sum::<usize>();
                 (score > 0 && !tools.is_empty()).then(|| {
                     let found = Found {
