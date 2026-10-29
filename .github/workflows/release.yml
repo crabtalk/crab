@@ -1,8 +1,8 @@
 name: Release
 
-# `install.sh` on crab.talk and `crab upgrade` download
+# `install.sh` and `install.ps1` on crab.talk and `crab upgrade` download
 # `releases/latest/download/crab-<target>.{tar.gz,zip}`. Renaming an asset
-# breaks both.
+# breaks them.
 on:
   push:
     tags:
