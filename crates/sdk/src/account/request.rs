@@ -1,6 +1,6 @@
 //! `/requests` — what an account asks a person to do, handed to them as a
 //! short code: pay for a purchase, set secrets of a service, sign a device in
-//! as them, or approve a deploy.
+//! as them, approve a deploy, or verify on GitHub.
 
 use crate::{account::org::PublicAccount, services::service::DeployRequest};
 use berm_api::{Credential, Deployed, Manifest};
@@ -21,6 +21,8 @@ pub enum RequestKind {
     /// Approve a deploy of the account's services, which runs as the person
     /// approving it.
     Deploy,
+    /// Verify the person on GitHub, which lets their account deploy on Hobby.
+    Verify,
 }
 
 berm_api::text_enum!(RequestKind);
@@ -45,8 +47,8 @@ berm_api::text_enum!(Purchase);
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
-    /// Paid, the secrets set, the sign-in approved, or the deploy approved
-    /// and run, whether or not it went live.
+    /// Paid, the secrets set, the sign-in approved, the deploy approved and
+    /// run, whether or not it went live, or the person verified.
     Completed,
     /// The person declined it.
     Declined,
@@ -98,14 +100,22 @@ pub enum CreateRequest {
         #[serde(default)]
         context: String,
     },
+    /// Verify the person `account` names on GitHub. It completes once they
+    /// are verified, by its page or any other way.
+    Verify {
+        account: String,
+        /// What it is for, in the asker's words, shown to the person.
+        #[serde(default)]
+        context: String,
+    },
 }
 
 /// A request, as the person who opens its code sees it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
-    /// What a person types at `/pay`, `/secrets`, `/device` or `/deploy`, as
-    /// `WDJB-MJHT`.
+    /// What a person types at `/pay`, `/secrets`, `/device`, `/deploy` or
+    /// `/verify`, as `WDJB-MJHT`.
     pub code: String,
     /// The page that opens it.
     pub url: String,
@@ -152,6 +162,10 @@ pub struct Request {
     /// Why an approved deploy did not go live.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
+    /// The account is a person's on Hobby, not verified: a deploy request is
+    /// refused when approved until they verify.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unverified: bool,
 }
 
 /// A credential a secret request asks for, as its service declared it when
@@ -232,8 +246,7 @@ pub struct AskedSecret {
     pub label: String,
     /// Never shown once set.
     pub masked: bool,
-    /// A regular expression a value is expected to match; a value that does
-    /// not is warned about, never refused.
+    /// A regular expression a value must match.
     #[serde(default)]
     pub pattern: Option<String>,
     pub set: bool,

@@ -1,5 +1,5 @@
-//! `/requests` — asking a person to pay, to set a secret or to approve a
-//! deploy, by a code.
+//! `/requests` — asking a person to pay, to set a secret, to approve a deploy
+//! or to verify on GitHub, by a code.
 
 use crate::{
     account::request::{
@@ -59,6 +59,15 @@ impl Client {
         self.ask(&CreateRequest::Deploy {
             account: self.account()?.name().to_owned(),
             services,
+            context: context.to_owned(),
+        })
+        .await
+    }
+
+    /// Ask the person the client acts for to verify on GitHub.
+    pub async fn ask_verify(&self, context: &str) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Verify {
+            account: self.account()?.name().to_owned(),
             context: context.to_owned(),
         })
         .await

@@ -56,6 +56,9 @@ fn describe(request: &Request) -> String {
     if request.kind == RequestKind::Login {
         return "sign crab in".to_owned();
     }
+    if request.kind == RequestKind::Verify {
+        return "verify on GitHub, signed in".to_owned();
+    }
     if request.kind == RequestKind::Deploy {
         let services: Vec<&str> = request.deploys.keys().map(String::as_str).collect();
         return format!("approve deploying {}, signed in", services.join(", "));

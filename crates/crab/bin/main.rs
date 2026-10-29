@@ -337,8 +337,13 @@ enum BillingCommand {
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Verify the account on GitHub, which lets it deploy on Hobby.
-    Verify,
+    /// Verify the account on GitHub, which lets it deploy on Hobby: here when
+    /// the check passes, else a code whose page the person verifies at.
+    Verify {
+        /// What it is for, shown to the person who verifies.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
     /// Ask a person to buy credit: a code whose page takes the amount.
     Credit {
         /// What it is for, shown to the person who pays.
@@ -674,7 +679,7 @@ fn main() -> Result<ExitCode> {
                 BillingCommand::Plan { slug, r#for } => {
                     cmd::billing::ask(&client, Purchase::Plan, Some(slug), r#for, json)?
                 }
-                BillingCommand::Verify => cmd::billing::verify(&client, json)?,
+                BillingCommand::Verify { r#for } => cmd::billing::verify(&client, r#for, json)?,
                 BillingCommand::Credit { r#for } => {
                     cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }

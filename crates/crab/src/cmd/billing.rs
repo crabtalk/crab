@@ -1,5 +1,6 @@
 //! `crab billing` — the account's plan, credit and payments. A purchase is a
-//! payment request: a code whose page the person paying opens.
+//! payment request: a code whose page the person paying opens; so is verifying
+//! on GitHub, when it cannot be done from here.
 
 use crate::{cmd::request, format, runtime, terminal};
 use anyhow::{Result, bail};
@@ -87,15 +88,25 @@ pub fn refill(client: &Client, amount: u32, cap: u32) -> Result<()> {
     Ok(())
 }
 
-/// Verify the account on GitHub, and print when it was verified.
-pub fn verify(client: &Client, json: bool) -> Result<()> {
-    let verification = runtime::wait(client.verify())?;
+/// Verify the account on GitHub and print when it was verified; when the check
+/// fails, ask the person to verify at a code's page instead, with `context`
+/// shown to them.
+pub fn verify(client: &Client, context: &str, json: bool) -> Result<()> {
+    let verification = runtime::wait(async {
+        let verification = client.verification().await?;
+        match verification.verified_at.is_none() && verification.reason.is_none() {
+            true => client.verify().await,
+            false => Ok(verification),
+        }
+    })?;
+    let Some(at) = verification.verified_at else {
+        let asked = runtime::wait(client.ask_verify(context))?;
+        return request::asked(&asked, json);
+    };
     if json {
         return terminal::json(&verification);
     }
-    if let Some(at) = verification.verified_at {
-        println!("verified {}", format::date(at));
-    }
+    println!("verified {}", format::date(at));
     Ok(())
 }
 

@@ -178,6 +178,9 @@ pub struct Verification {
     pub verified_at: Option<i64>,
     /// Why verifying it now fails; `None` when verified or when it would pass.
     pub reason: Option<String>,
+    /// The person signs in with GitHub.
+    #[serde(default)]
+    pub github: bool,
 }
 
 /// A plan subscribed: the Checkout URL to pay at, or `None` when an active
