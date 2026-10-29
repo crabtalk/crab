@@ -1,6 +1,6 @@
 //! A program's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Credential, DEFAULT_BUFFER, Deps, host};
+use crate::{Access, Credential, DEFAULT_BUFFER, Deps, ToolRecord, ToolSpec, host};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use serde::Deserialize;
@@ -42,10 +42,9 @@ pub struct Project {
     /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
-    /// Each public tool's price a call on Cloud, by name, in USD as a decimal
-    /// string: `search = "0.002"`.
+    /// What it says of each tool, by name.
     #[serde(default)]
-    pub prices: BTreeMap<String, String>,
+    pub tools: BTreeMap<String, Tool>,
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
@@ -85,6 +84,26 @@ pub struct Database {
     pub migrations: Option<PathBuf>,
 }
 
+/// One tool's table in `[tools]` of `crab.toml`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tool {
+    /// Who may call it; absent, it is internal.
+    #[serde(default)]
+    pub access: Option<Access>,
+    /// Its short display name, at most [`ToolSpec::TITLE`] characters on one
+    /// line.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Its price a call on Cloud, in USD micros: `2_000` is $0.002. A deploy
+    /// carries it.
+    #[serde(default)]
+    pub price: Option<u64>,
+    /// The catalog job it does, as `company.enrich`.
+    #[serde(default)]
+    pub catalog: Option<String>,
+}
+
 fn deployed() -> bool {
     true
 }
@@ -105,6 +124,27 @@ impl Project {
                 );
             }
             seen.push(&secret.name);
+        }
+        for (name, tool) in &project.tools {
+            let at = format!("{}: tools.{name}", path.display());
+            if let Some(title) = &tool.title
+                && (title.chars().count() > ToolSpec::TITLE || title.contains(['\n', '\r']))
+            {
+                bail!(
+                    "{at}: a title is one line of at most {} characters",
+                    ToolSpec::TITLE
+                );
+            }
+            if tool.access.is_none() {
+                for (key, set) in [
+                    ("price", tool.price.is_some()),
+                    ("catalog", tool.catalog.is_some()),
+                ] {
+                    if set {
+                        bail!("{at} sets {key} on an internal tool; give it access");
+                    }
+                }
+            }
         }
         for (id, credential) in &project.credentials {
             if let Some(host) = credential.hosts.iter().find(|host| !Credential::host(host)) {
@@ -153,6 +193,22 @@ impl Project {
         }
     }
 
+    /// What the build writes of each tool into the program record: all but
+    /// its price.
+    pub fn records(&self) -> BTreeMap<String, ToolRecord> {
+        self.tools
+            .iter()
+            .map(|(name, tool)| {
+                let record = ToolRecord {
+                    access: tool.access,
+                    title: tool.title.clone(),
+                    catalog: tool.catalog.clone(),
+                };
+                (name.clone(), record)
+            })
+            .collect()
+    }
+
     /// The most bytes a call's arguments, and a tool's result, may hold.
     pub fn buffer(&self) -> usize {
         self.buffer.unwrap_or(DEFAULT_BUFFER)
@@ -165,7 +221,7 @@ impl Project {
             ("image", self.image.is_some()),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
-            ("prices", !self.prices.is_empty()),
+            ("tools", !self.tools.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),

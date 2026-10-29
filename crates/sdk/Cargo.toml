@@ -15,6 +15,7 @@ reqwest = { workspace = true, optional = true, features = ["json", "query", "rus
 serde = { workspace = true, features = ["std"] }
 tokio = { workspace = true, optional = true, features = ["fs", "time"] }
 serde_json = { workspace = true, features = ["std"] }
+toml = { workspace = true, features = ["preserve_order"] }
 utoipa = { workspace = true, optional = true }
 
 [features]

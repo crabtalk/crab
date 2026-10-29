@@ -50,7 +50,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | Question | Source |
 | --- | --- |
 | The CLI, contexts, `crab.toml` | `crates/crab/README.md` |
-| Tools, `#[tool(...)]` and its `public`, `anonymous`, `query`, `cron`, `stripe`, `callers(...)`; building with `crab build` | https://crab.talk/docs/development/writing, `berm/lang/README.md` |
+| Tools, `#[tool(...)]` and its `query`, `cron`, `stripe`; `[tools]` in `crab.toml` and its `access`, `title`, `price`, `catalog`; building with `crab build` | https://crab.talk/docs/development/writing, `berm/lang/README.md` |
 | Caller, user, database, HTTP, calls between services | https://crab.talk/docs/development/guest-api |
 | `crab.toml` keys, syscalls, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |
 | `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/development/local |

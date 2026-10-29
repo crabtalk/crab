@@ -401,7 +401,7 @@ struct AppFields {
     /// An identity provider whose tokens name its users, `ISSUER=AUDIENCE`.
     #[arg(long = "issuer")]
     issuers: Vec<String>,
-    /// Calls with no token reach the services' `#[tool(anonymous)]` tools.
+    /// Calls with no token reach the services' `access = "anonymous"` tools.
     #[arg(long)]
     anonymous: bool,
 }

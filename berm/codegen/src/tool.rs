@@ -17,12 +17,6 @@ const DEFAULT_PARAMETERS: &str = r#"{"type":"object"}"#;
 pub(crate) struct Options {
     /// `query`: the tool may not write, emit or arm a wake.
     query: bool,
-    /// `public`: callers from outside and other programs may reach it.
-    public: bool,
-    /// `anonymous`: a call from outside with no caller may reach it.
-    anonymous: bool,
-    /// `callers(services)` or `callers(accounts)`.
-    callers: Option<String>,
     /// `cron`.
     cron: bool,
     /// `stripe`.
@@ -34,27 +28,10 @@ impl Options {
     pub(crate) fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         let flag = match &meta.path {
             path if path.is_ident("query") => &mut self.query,
-            path if path.is_ident("public") => &mut self.public,
-            path if path.is_ident("anonymous") => &mut self.anonymous,
             path if path.is_ident("cron") => &mut self.cron,
             path if path.is_ident("stripe") => &mut self.stripe,
-            path if path.is_ident("callers") => {
-                let content;
-                syn::parenthesized!(content in meta.input);
-                let kind: syn::Ident = content.parse()?;
-                if kind != "services" && kind != "accounts" {
-                    return Err(syn::Error::new(
-                        kind.span(),
-                        "expected `services` or `accounts`",
-                    ));
-                }
-                self.callers = Some(kind.to_string());
-                return Ok(());
-            }
             _ => {
-                return Err(meta.error(
-                    "unknown option (expected `public`, `anonymous`, `query`, `cron`, `stripe` or `callers(...)`)",
-                ));
+                return Err(meta.error("unknown option (expected `query`, `cron` or `stripe`)"));
             }
         };
         *flag = true;
@@ -134,34 +111,10 @@ impl Tool {
         }
 
         let ident = &function.sig.ident;
-        if options.cron && options.public {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "a cron tool is called by its host, and cannot be `public`",
-            ));
-        }
-        if options.stripe && options.public {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "a stripe tool is called by its host, and cannot be `public`",
-            ));
-        }
         if options.stripe && options.cron {
             return Err(syn::Error::new_spanned(
                 ident,
                 "a tool is `cron` or `stripe`, not both",
-            ));
-        }
-        if options.anonymous && !options.public {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "an `anonymous` tool is called from outside, and must be `public`",
-            ));
-        }
-        if options.anonymous && options.callers.as_deref() == Some("services") {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "an `anonymous` tool is called from outside, and cannot be `callers(services)`",
             ));
         }
         if options.cron && !params.is_empty() {
@@ -228,17 +181,9 @@ impl Tool {
         for (set, key) in [
             (options.query, "query"),
             (self.deprecated, "deprecated"),
-            (options.public, "public"),
-            (options.anonymous, "anonymous"),
+            (options.cron, "cron"),
+            (options.stripe, "stripe"),
         ] {
-            if set {
-                out.text(&format!(r#","{key}":true"#));
-            }
-        }
-        if let Some(kind) = &options.callers {
-            out.text(&format!(r#","callers":"{kind}""#));
-        }
-        for (set, key) in [(options.cron, "cron"), (options.stripe, "stripe")] {
             if set {
                 out.text(&format!(r#","{key}":true"#));
             }

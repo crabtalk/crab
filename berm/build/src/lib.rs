@@ -3,9 +3,10 @@
 //! cargo builds the program's `cdylib` for [`TARGET`]. Its `.berm.abi` section
 //! holds what the compiler wrote: a record per `#[tool]` and per `#[event]`.
 //! The build appends a `.berm.program` section, from the program's package and
-//! its `crab.toml`, and a `.berm.kits` section, from each kit it links: each
-//! crate cargo compiled for [`TARGET`] in that build, other than the program,
-//! with a `crab.toml` beside its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
+//! its `crab.toml`, each `[tools]` table but its `price` included, and a
+//! `.berm.kits` section, from each kit it links: each crate cargo compiled for
+//! [`TARGET`] in that build, other than the program, with a `crab.toml` beside
+//! its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
 //! cargo's own `.wasm` is left as cargo wrote it.
 
 use crate::{
@@ -76,6 +77,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         buffer: project.buffer(),
         deps: project.deps(),
         database: migrations(program.manifest_path.dir(), &project)?,
+        tools: project.records(),
     };
 
     let out = metadata.target_directory.join(OUT);

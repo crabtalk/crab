@@ -23,7 +23,7 @@ pub fn tick() -> Result<()> {
 }
 
 /// Lists the items stored after `after`, oldest first.
-#[tool(query, public)]
+#[tool(query)]
 pub fn posts(
     /// The `next` of the last page; 0 or absent for the first.
     after: Option<u64>,
@@ -39,7 +39,7 @@ pub fn posts(
 }
 
 /// Follows the feed of records at `url`. Answers whether it was new.
-#[tool(public)]
+#[tool]
 pub fn list(url: String) -> Result<bool> {
     let mut state = State::load()?;
     let added = state.follow(&url, Kind::Records);
@@ -48,13 +48,13 @@ pub fn list(url: String) -> Result<bool> {
 }
 
 /// The latest version of record `id` in each feed that showed it.
-#[tool(query, public)]
+#[tool(query)]
 pub fn record(id: String) -> Result<Records> {
     Ok(Records::from(store::record_of::<Post>(&id)?))
 }
 
 /// Every version of record `id`, oldest first.
-#[tool(query, public)]
+#[tool(query)]
 pub fn versions(id: String) -> Result<Records> {
     Ok(Records::from(store::versions_of::<Post>(&id, None)?))
 }

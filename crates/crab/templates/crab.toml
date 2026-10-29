@@ -11,6 +11,19 @@ name = "__NAME__"
 # The most bytes a call's arguments, and a tool's result, may hold.
 # buffer = 16384
 
+# Each tool's table; every key is optional.
+[tools.echo]
+# Who may call it: "public", "anonymous" (public, and callable with no
+# caller), or restricted to "accounts" or "services". Absent, it is internal:
+# only its host calls it.
+access = "public"
+# Its short display name, at most 60 characters on one line.
+# title = "Echo a query"
+# Its price a call on Cloud, in USD micros: 2_000 is $0.002, at least 100.
+# price = 2_000
+# The catalog job it does: a listed platform, `.`, then the job.
+# catalog = "web.search"
+
 # Syscalls it makes beyond the ABI's own, each beside what it reaches.
 # [syscalls]
 # "berm.http.fetch" = ["example.com"]

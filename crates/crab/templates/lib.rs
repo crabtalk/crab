@@ -10,7 +10,7 @@ use alloc::string::String;
 use berm_lang::{Result, Schema, tool};
 
 /// Answers its argument back.
-#[tool(public)]
+#[tool]
 pub fn echo(
     /// The text to echo back.
     query: String,

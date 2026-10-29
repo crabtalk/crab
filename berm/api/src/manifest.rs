@@ -1,7 +1,7 @@
 //! What a program says it is, read from its image's [`ABI_SECTION`],
 //! [`PROGRAM_SECTION`] and [`KITS_SECTION`].
 
-use crate::{DEFAULT_BUFFER, Image, ToolSpec};
+use crate::{Access, DEFAULT_BUFFER, Image, ToolSpec};
 use anyhow::{Context, Result, bail};
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, PROGRAM_SECTION};
 use serde::{Deserialize, Serialize};
@@ -72,6 +72,22 @@ pub struct ProgramRecord {
     pub deps: Deps,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
+    /// What `[tools]` in its `crab.toml` says of each tool, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tools: BTreeMap<String, ToolRecord>,
+}
+
+/// What `[tools]` in a program's `crab.toml` says of one tool, applied onto
+/// its [`ToolSpec`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolRecord {
+    /// `None` is internal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<Access>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<String>,
 }
 
 /// A library crate a program links that has a `crab.toml` of its own: its
@@ -414,10 +430,12 @@ impl Manifest {
 
 /// What an image claims to be, read without compiling or running it.
 ///
+/// Each tool takes its access, title and catalog from the program record.
 /// Refused when the image has no [`PROGRAM_SECTION`], which a bare
 /// `cargo build` leaves out; when it has no tools; when a tool record was
-/// compiled in a crate other than the program's; and when it names a kit
-/// twice.
+/// compiled in a crate other than the program's; when the program record
+/// names a tool the image lacks, or gives a cron or stripe tool access; and
+/// when it names a kit twice.
 impl TryFrom<&[u8]> for Manifest {
     type Error = anyhow::Error;
 
@@ -449,7 +467,7 @@ impl TryFrom<&[u8]> for Manifest {
         let program = image.section(PROGRAM_SECTION)?.with_context(|| {
             format!("program has no {PROGRAM_SECTION} section, which `crab build` appends")
         })?;
-        let program: ProgramRecord = serde_json::from_slice(program)
+        let mut program: ProgramRecord = serde_json::from_slice(program)
             .with_context(|| format!("program's {PROGRAM_SECTION} is not valid"))?;
         let kits: Vec<Kit> = match image.section(KITS_SECTION)? {
             Some(kits) => serde_json::from_slice(kits)
@@ -457,17 +475,33 @@ impl TryFrom<&[u8]> for Manifest {
             None => Vec::new(),
         };
 
+        let mut records = std::mem::take(&mut program.tools);
         let tools = tools
             .into_iter()
-            .map(|(tool, krate)| match krate == program.name {
-                true => Ok(tool),
-                false => bail!(
-                    "tool {:?} was compiled in {krate}, not in the program {}; a kit carries no tools",
-                    tool.name,
-                    program.name
-                ),
+            .map(|(mut tool, krate)| {
+                if krate != program.name {
+                    bail!(
+                        "tool {:?} was compiled in {krate}, not in the program {}; a kit carries no tools",
+                        tool.name,
+                        program.name
+                    );
+                }
+                let record = records.remove(&tool.name).unwrap_or_default();
+                if record.access.is_some() && (tool.cron || tool.stripe) {
+                    bail!(
+                        "tool {:?} is called by its host, and takes no access",
+                        tool.name
+                    );
+                }
+                tool.set_access(record.access);
+                tool.title = record.title;
+                tool.catalog = record.catalog;
+                Ok(tool)
             })
             .collect::<Result<Vec<_>>>()?;
+        if let Some(name) = records.keys().next() {
+            bail!("[tools] names {name:?}, which the program has no tool of");
+        }
 
         let ProgramRecord {
             name,
@@ -479,6 +513,7 @@ impl TryFrom<&[u8]> for Manifest {
             buffer,
             mut deps,
             database,
+            tools: _,
         } = program;
         for kit in &kits {
             deps.merge(&kit.deps)

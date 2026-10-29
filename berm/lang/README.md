@@ -13,7 +13,7 @@ use alloc::string::String;
 use berm_lang::{Result, Schema, tool};
 
 /// Echo the query back.
-#[tool(public)]
+#[tool]
 pub fn echo(
     /// The text to echo back.
     query: String,
@@ -31,9 +31,17 @@ pub struct Echo {
 }
 ```
 
-A function marked `#[tool(...)]`, in any module of the program's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. `#[tool]` takes `public`, `anonymous`, `query`, `cron`, `stripe` and `callers(services)` or `callers(accounts)`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
+A function marked `#[tool(...)]`, in any module of the program's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. `#[tool]` takes `query`, `cron` and `stripe`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
 
-**A tool is internal unless marked `#[tool(public)]`.** Only the host calls an internal tool, for the program's own wakes, crons and Stripe events. A `public` tool can be called by any account the host authenticates and any program allowed to reach it, with arguments the caller chooses. `berm_lang::caller()` says who called, as the host set it; a tool that limits its callers checks it.
+**A tool is internal unless its table in `crab.toml` gives it `access`.** Only the host calls an internal tool, for the program's own wakes, crons and Stripe events.
+
+```toml
+[tools.echo]
+access = "public"
+title = "Echo a query"
+```
+
+A `public` tool can be called by any account the host authenticates and any program allowed to reach it, with arguments the caller chooses. `anonymous` is public and also takes a call from outside with no caller. `accounts` and `services` are restricted: the first takes callers from outside alone, the second other programs alone. `title` is the tool's display name, at most 60 characters on one line. A cron or stripe tool takes no `access`. `berm_lang::caller()` says who called, as the host set it; a tool that limits its callers checks it.
 
 Off the guest's target this is an ordinary library, which is why the
 `cfg_attr` above is worth copying: tools then run under `cargo test` with no

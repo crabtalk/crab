@@ -1,7 +1,7 @@
-//! `crab.toml` credentials: parsed, folded into `deps`, and a secret declared
-//! twice refused.
+//! `crab.toml`: credentials parsed, folded into `deps`, and a secret declared
+//! twice refused; `[tools]` read and checked.
 
-use berm_api::project::Project;
+use berm_api::{Access, project::Project};
 use std::fs;
 
 fn read(toml: &str) -> anyhow::Result<Project> {
@@ -66,9 +66,49 @@ fn the_auth_kits_credentials_parse() {
 }
 
 #[test]
-fn a_programs_prices_are_read_and_a_kits_are_refused() {
-    let priced = read("name = \"app\"\n\n[prices]\nsearch = \"0.002\"\n").unwrap();
-    assert_eq!(priced.prices["search"], "0.002");
-    let kit = read("[prices]\nsearch = \"0.002\"\n").unwrap();
-    assert!(kit.check_kit().unwrap_err().to_string().contains("prices"));
+fn a_programs_tools_are_read_and_a_kits_are_refused() {
+    let program = read(
+        "name = \"app\"\n\n[tools.search]\naccess = \"services\"\ntitle = \"Search\"\nprice = 2_000\ncatalog = \"web.search\"\n",
+    )
+    .unwrap();
+    let search = &program.tools["search"];
+    assert_eq!(search.access, Some(Access::Services));
+    assert_eq!(search.price, Some(2_000));
+    assert_eq!(
+        program.records()["search"].catalog.as_deref(),
+        Some("web.search")
+    );
+    let kit = read("[tools.search]\naccess = \"public\"\n").unwrap();
+    assert!(kit.check_kit().unwrap_err().to_string().contains("tools"));
+}
+
+#[test]
+fn a_price_or_catalog_on_an_internal_tool_is_refused() {
+    for key in ["price = 2_000", "catalog = \"web.search\""] {
+        let error = read(&format!("name = \"app\"\n[tools.search]\n{key}\n")).unwrap_err();
+        assert!(error.to_string().contains("internal tool"), "{error}");
+    }
+}
+
+#[test]
+fn a_title_past_sixty_characters_or_one_line_is_refused() {
+    let long = "x".repeat(61);
+    for title in [long.as_str(), "two\\nlines"] {
+        let error = read(&format!(
+            "name = \"app\"\n[tools.search]\ntitle = \"{title}\"\n"
+        ))
+        .unwrap_err();
+        assert!(error.to_string().contains("one line"), "{error}");
+    }
+    read(&format!(
+        "name = \"app\"\n[tools.search]\ntitle = \"{}\"\n",
+        "é".repeat(60)
+    ))
+    .unwrap();
+}
+
+#[test]
+fn an_unknown_access_or_key_is_refused() {
+    assert!(read("name = \"app\"\n[tools.search]\naccess = \"everyone\"\n").is_err());
+    assert!(read("name = \"app\"\n[tools.search]\nprices = 1\n").is_err());
 }

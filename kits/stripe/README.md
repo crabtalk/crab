@@ -21,7 +21,7 @@ use berm_lang::{Result, tool};
 use crabkit::stripe::{Data, Session, Subscriber};
 
 /// Opens a Checkout session subscribing the calling user to `plan`.
-#[tool(public)]
+#[tool]
 pub fn upgrade(plan: String, success: String, cancel: String) -> Result<Session> {
     Subscriber::calling()?.checkout(&plan, &success, &cancel)
 }
@@ -31,6 +31,11 @@ pub fn upgrade(plan: String, success: String, cancel: String) -> Result<Session>
 pub fn webhook(data: Data) -> Result<()> {
     data.keep()
 }
+```
+
+```toml
+[tools.upgrade]
+access = "public"
 ```
 
 The program declares nothing the kit already declares: the kit's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the program's database.

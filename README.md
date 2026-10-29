@@ -22,10 +22,17 @@ A service is a Rust library crate with a `crab.toml` beside its `Cargo.toml`. A 
 use berm_lang::{Result, tool};
 
 /// Echo the query back.
-#[tool(public)]
+#[tool]
 pub fn echo(query: String) -> Result<String> {
     Ok(query)
 }
+```
+
+Who may call it, and what it costs, is its table in `crab.toml`:
+
+```toml
+[tools.echo]
+access = "public"
 ```
 
 The docs are at [crab.talk/docs](https://crab.talk/docs/development/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).

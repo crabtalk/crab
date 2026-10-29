@@ -1,6 +1,6 @@
 //! One MCP endpoint over every deployed program: `search`, `call`, and each
 //! program's README and IDL as a resource, as [`crabtalk_sdk::mcp`] lays them out. A
-//! call carries no caller, so only `#[tool(anonymous)]` tools are found or
+//! call carries no caller, so only `access = "anonymous"` tools are found or
 //! called.
 
 use crate::host::Service;

@@ -28,6 +28,14 @@ name = "example"
 # the host.
 image = "ghcr.io/org/example"
 
+# Who may call a tool, its display name, its price a call on Cloud in USD
+# micros, and the catalog job it does. A tool without a table is internal.
+[tools.search]
+access = "public"
+title = "Search the web"
+price = 2_000
+catalog = "web.search"
+
 # When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC.
 [crons]
@@ -39,6 +47,8 @@ size = "2GiB"
 # A SQLite database, relative to this file, a service on Cloud starts from on its first deploy.
 seed = "seed.sqlite"
 ```
+
+`access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, and `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml). A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title` and `catalog` into the image, and a deploy carries `price`.
 
 Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
 
@@ -109,7 +119,7 @@ A service with an `image` pushes it with `GITHUB_TOKEN` as the registry credenti
 `new` is the one subcommand that does not talk to the context's host. It writes
 a program crate pinning the `berm-lang` that shipped with this binary.
 
-`inspect` prints a program's README and renders each tool's JSON Schema as the argument list it describes, since a schema printed raw is something to read past rather than read. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
+`inspect` prints a program's README, a table of its tools with each one's access, title, catalog job, price, marks and description, and each tool's JSON Schema as the argument list it describes. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
 
 `inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 

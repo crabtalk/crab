@@ -22,7 +22,7 @@
 //! use berm_lang::{Result, tool};
 //!
 //! /// Greets `name`.
-//! #[tool(public)]
+//! #[tool]
 //! pub fn greet(
 //!     /// Who to greet.
 //!     name: String,

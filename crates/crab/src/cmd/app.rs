@@ -20,7 +20,7 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
             println!("  issuer    {} for {}", issuer.issuer, issuer.audience);
         }
         if app.anonymous {
-            println!("  anonymous calls reach #[tool(anonymous)] tools");
+            println!("  anonymous calls reach tools with access = \"anonymous\"");
         }
     }
     Ok(())

@@ -16,7 +16,7 @@ use berm_lang::{Caller, Result, Schema, event, tool};
 berm_lang::declare_program!(fixture);
 
 /// Answers its arguments back.
-#[tool(public)]
+#[tool]
 pub fn echo(
     /// The text to echo back.
     query: String,
@@ -28,13 +28,13 @@ pub fn echo(
 
 /// Takes its arguments without reading them, to price the parse `echo`
 /// makes of the same payload.
-#[tool(public)]
+#[tool]
 pub fn carry() -> Result<()> {
     Ok(())
 }
 
 /// Loops `rounds` times, to run a call past the CPU time it includes.
-#[tool(public)]
+#[tool]
 pub fn spin(rounds: u64) -> Result<u64> {
     let mut acc = 0u64;
     for round in 0..rounds {
@@ -45,7 +45,7 @@ pub fn spin(rounds: u64) -> Result<u64> {
 
 /// Lowers this call's memory budget to `memory` bytes, `0` keeping it, then
 /// loops `rounds` times, answering whether lowering it again was refused.
-#[tool(public)]
+#[tool]
 pub fn lowered(memory: u64, rounds: u64) -> Result<bool> {
     berm_lang::limit(0, 0, memory)?;
     let refused = berm_lang::limit(0, 0, memory).is_err();
@@ -54,7 +54,7 @@ pub fn lowered(memory: u64, rounds: u64) -> Result<bool> {
 }
 
 /// Makes 100 host calls, to price one.
-#[tool(public)]
+#[tool]
 pub fn chatty() -> Result<()> {
     let mut total = 0;
     for _ in 0..100 {
@@ -67,7 +67,7 @@ pub fn chatty() -> Result<()> {
 }
 
 /// Allocates, to prove the heap arrives without a second entry.
-#[tool(public)]
+#[tool]
 pub fn probe() -> Result<Vec<u8>> {
     let v = alloc::vec![7u8; 4096];
     Ok(v[..2].to_vec())
@@ -76,7 +76,7 @@ pub fn probe() -> Result<Vec<u8>> {
 /// Reads one stored key and answers whether it was set. Under
 /// `examples/load.rs` the read stands in for a host call that waits on
 /// I/O.
-#[tool(public)]
+#[tool]
 pub fn wait() -> Result<Wait> {
     Ok(match berm_lang::get("wait")? {
         Some(_) => Wait::Set,
@@ -86,7 +86,7 @@ pub fn wait() -> Result<Wait> {
 
 /// Fetches `url`, posting `body` when there is one, and answers the status
 /// and the body's length.
-#[tool(public)]
+#[tool]
 pub fn fetch(
     url: String,
     /// One `Name: Value` header, which may name `{secret:fixture}`.
@@ -110,7 +110,7 @@ pub fn fetch(
 }
 
 /// Answers 32 bytes from the host's random source, as hex.
-#[tool(public)]
+#[tool]
 pub fn random() -> Result<String> {
     let mut bytes = [0; 32];
     berm_lang::random(&mut bytes);
@@ -119,7 +119,7 @@ pub fn random() -> Result<String> {
 
 /// Says who called: `outside NAME`, `program NAME`, or `none`, then
 /// ` user ISSUER SUBJECT` when the chain runs for a user.
-#[tool(public)]
+#[tool]
 pub fn whoami() -> Result<String> {
     let mut said = match berm_lang::caller()? {
         Some(Caller::Outside(name)) => format!("outside {name}"),
@@ -133,7 +133,7 @@ pub fn whoami() -> Result<String> {
 }
 
 /// Answers `ok` to a program, and denies any other caller.
-#[tool(public)]
+#[tool]
 pub fn guarded() -> Result<String> {
     match berm_lang::caller()? {
         Some(Caller::Program(_)) => Ok("ok".into()),
@@ -142,14 +142,14 @@ pub fn guarded() -> Result<String> {
 }
 
 /// Answers `ok`; only programs may call it.
-#[tool(public, callers(services))]
+#[tool]
 pub fn fromservices() -> Result<String> {
     Ok("ok".into())
 }
 
 /// Calls `guarded` and `fromservices` on `fixture`, and answers what they
 /// said.
-#[tool(public)]
+#[tool]
 pub fn askguarded() -> Result<String> {
     use crate::fixture::calls;
 
@@ -157,14 +157,14 @@ pub fn askguarded() -> Result<String> {
 }
 
 /// Calls `whoami` on `fixture`, and answers what it said.
-#[tool(public)]
+#[tool]
 pub fn askwho() -> Result<String> {
     Ok(crate::fixture::calls::whoami()?)
 }
 
 /// Vouches for `subject`, then calls `whoami` on `fixture`, and answers
 /// what it said.
-#[tool(public)]
+#[tool]
 pub fn vouched(
     /// Who the chain runs for from here on.
     subject: String,
@@ -174,14 +174,14 @@ pub fn vouched(
 }
 
 /// Always fails, to exercise the error path.
-#[tool(public)]
+#[tool]
 pub fn boom() -> Result<()> {
     Err("boom, as requested".into())
 }
 
 /// Fetches `url`, draws 4 random bytes, then fails with the body it got and
 /// the bytes, to exercise a tape.
-#[tool(public)]
+#[tool]
 pub fn flaky(url: String) -> Result<()> {
     let response = berm_lang::http::fetch("GET", &url, &[], b"")?;
     let mut bytes = [0; 4];
@@ -196,7 +196,7 @@ pub fn flaky(url: String) -> Result<()> {
 
 /// Calls `echo` on whatever is deployed as `inner`, and says which kind of
 /// failure came back.
-#[tool(public)]
+#[tool]
 pub fn nest(query: String, page: Option<u32>) -> Result<Echo> {
     let args = berm_lang::json::to(&Echo { query, page })?;
     match berm_lang::call("inner", "echo", &args) {
@@ -232,7 +232,7 @@ pub fn tick(delay: u64) -> Result<Round> {
 
 /// Writes `word` under `note`, emits it as a `Noted` event, answers what it
 /// reads back, and fails when `word` is `fail`.
-#[tool(public)]
+#[tool]
 pub fn note(word: String) -> Result<String> {
     berm_lang::set("note", word.as_bytes())?;
     berm_lang::emit!(Noted {
@@ -249,7 +249,7 @@ pub fn note(word: String) -> Result<String> {
 /// Calls `note` on `inner` with `word`, carries on whether or not that
 /// failed, emits `word` under the topic `relay`, and answers what this
 /// program reads back under `note`.
-#[tool(public)]
+#[tool]
 pub fn relay(word: String) -> Result<String> {
     let args = format!(r#"{{"word":{}}}"#, berm_lang::json::to(&word)?);
     let _ = berm_lang::call("inner", "note", &args);
@@ -262,7 +262,7 @@ pub fn relay(word: String) -> Result<String> {
 
 /// Calls `peek` on `fixture`, then `echo` on `fixture` with the note it
 /// read, and answers the query `echo` answered.
-#[tool(public)]
+#[tool]
 pub fn ask() -> Result<String> {
     use crate::fixture::calls;
 
@@ -274,7 +274,7 @@ pub fn ask() -> Result<String> {
 /// Reads `note`, then tries to write it, emit under `note`, arm `tick` and
 /// call `note` on `inner`, and answers what it read and what each attempt
 /// was told.
-#[tool(query, public)]
+#[tool(query)]
 pub fn peek() -> Result<Peek> {
     let told = |attempt: core::result::Result<(), berm_lang::CallError>| match attempt {
         Ok(()) => String::from("allowed"),
@@ -298,7 +298,7 @@ pub fn peek() -> Result<Peek> {
 /// Calls itself on `inner` one level deeper, which is this same program
 /// when deployed under that name — the runaway a depth limit exists to
 /// stop. Answers how many levels got through before the host refused.
-#[tool(public)]
+#[tool]
 pub fn recurse(depth: u32) -> Result<u32> {
     let deeper = depth + 1;
     match berm_lang::call("inner", "recurse", &format!(r#"{{"depth":{deeper}}}"#)) {

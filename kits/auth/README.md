@@ -21,16 +21,24 @@ use berm_lang::{Result, tool};
 use crabkit::auth::{Account, Identity, Session};
 
 /// Signs in with a GitHub authorization code.
-#[tool(public, anonymous)]
+#[tool]
 pub fn sign_in(code: String, redirect: String) -> Result<Session> {
     Identity::github(&code, &redirect)?.sign_in()
 }
 
 /// The account a session is signed in to.
-#[tool(query, public, anonymous)]
+#[tool(query)]
 pub fn account(session: String) -> Result<Account> {
     Account::load(Account::session(&session)?)
 }
+```
+
+```toml
+[tools.sign_in]
+access = "anonymous"
+
+[tools.account]
+access = "anonymous"
 ```
 
 The program declares nothing the kit already declares: the kit's `crab.toml` declares its secrets, the hosts it fetches, and its migrations, and they reach the program's manifest when the program links the kit. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the program's database.

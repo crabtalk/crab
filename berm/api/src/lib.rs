@@ -10,7 +10,7 @@ pub use compat::{Break, Surface};
 pub use image::Image;
 pub use manifest::{
     Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration,
-    ProgramRecord, Reach, Sequence,
+    ProgramRecord, Reach, Sequence, ToolRecord,
 };
 
 mod compat;
@@ -178,6 +178,14 @@ pub struct ToolSpec {
     /// Which callers a public tool takes. `None` takes both.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callers: Option<Callers>,
+    /// Its short display name, at most [`ToolSpec::TITLE`] characters on one
+    /// line: MCP's tool `title`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// The catalog job it does, such as `company.enrich`: a listed platform,
+    /// `.`, then the owner's own words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<String>,
     /// Called by its host when the cron expression its deploy or its owner
     /// sets fires. A cron tool is not public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -187,6 +195,61 @@ pub struct ToolSpec {
     /// at most one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stripe: bool,
+}
+
+impl ToolSpec {
+    /// The most characters a title holds.
+    pub const TITLE: usize = 60;
+
+    /// Who may call it, as `access` in `crab.toml` says it; `None` is
+    /// internal.
+    pub fn access(&self) -> Option<Access> {
+        match (self.public, self.anonymous, self.callers) {
+            (false, ..) => None,
+            (true, true, _) => Some(Access::Anonymous),
+            (true, false, None) => Some(Access::Public),
+            (true, false, Some(Callers::Accounts)) => Some(Access::Accounts),
+            (true, false, Some(Callers::Services)) => Some(Access::Services),
+        }
+    }
+
+    /// Set who may call it to `access`; `None` makes it internal.
+    pub fn set_access(&mut self, access: Option<Access>) {
+        self.public = access.is_some();
+        self.anonymous = access == Some(Access::Anonymous);
+        self.callers = match access {
+            Some(Access::Accounts) => Some(Callers::Accounts),
+            Some(Access::Services) => Some(Callers::Services),
+            _ => None,
+        };
+    }
+}
+
+/// Who may call a tool, as `access` in `crab.toml`'s `[tools]` sets it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Access {
+    /// Accounts and other programs.
+    Public,
+    /// Accounts and other programs, and a call from outside with no caller:
+    /// no account, or an app's call with no user.
+    Anonymous,
+    /// Callers from outside alone.
+    Accounts,
+    /// Programs reaching it through `berm.call` alone.
+    Services,
+}
+
+/// `public`, `anonymous`, `accounts` or `services`, as `crab.toml` spells it.
+impl std::fmt::Display for Access {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Public => "public",
+            Self::Anonymous => "anonymous",
+            Self::Accounts => "accounts",
+            Self::Services => "services",
+        })
+    }
 }
 
 /// One kind of caller.

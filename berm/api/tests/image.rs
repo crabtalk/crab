@@ -2,18 +2,32 @@
 //! `.berm.kits` sections, and what it refuses.
 
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, PROGRAM_SECTION};
-use berm_api::{Credential, CredentialSecret, Deps, Image, Kit, Manifest, ProgramRecord};
+use berm_api::{
+    Access, Credential, CredentialSecret, Deps, Image, Kit, Manifest, ProgramRecord, ToolRecord,
+};
+use std::collections::BTreeMap;
 
 /// A wasm module holding one custom section, `padding`, empty.
 const EMPTY: &[u8] = b"\0asm\x01\0\0\0\0\x08\x07padding";
 
 fn tool(name: &str, krate: &str) -> String {
     format!(
-        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}},"public":true}},"abi_version":{ABI_VERSION},"crate":"{krate}"}}"#
+        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}}}},"abi_version":{ABI_VERSION},"crate":"{krate}"}}"#
+    )
+}
+
+fn cron(name: &str) -> String {
+    format!(
+        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}},"cron":true}},"abi_version":{ABI_VERSION},"crate":"demo"}}"#
     )
 }
 
 fn program() -> Vec<u8> {
+    with_tools(BTreeMap::new())
+}
+
+/// The program record, with `tools` as `[tools]` of its `crab.toml` says.
+fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
     serde_json::to_vec(&ProgramRecord {
         name: "demo".to_owned(),
         version: "0.1.0".to_owned(),
@@ -27,6 +41,7 @@ fn program() -> Vec<u8> {
             ..Deps::default()
         },
         database: None,
+        tools,
     })
     .unwrap()
 }
@@ -211,4 +226,40 @@ fn a_secret_in_two_credentials_is_refused() {
         format!("{error:#}").contains("secret A is in two credentials"),
         "{error:#}"
     );
+}
+
+#[test]
+fn the_program_record_gives_each_tool_its_access_title_and_catalog() {
+    let record = ToolRecord {
+        access: Some(Access::Accounts),
+        title: Some("Search the web".to_owned()),
+        catalog: Some("web.search".to_owned()),
+    };
+    let abi = tool("a", "demo") + &tool("b", "demo");
+    let program = with_tools(BTreeMap::from([("a".to_owned(), record)]));
+    let manifest = Manifest::try_from(&*image(&abi, Some(&program), &[])).unwrap();
+    let a = &manifest.tools[0];
+    assert_eq!(a.access(), Some(Access::Accounts));
+    assert!(a.public && !a.anonymous);
+    assert_eq!(a.title.as_deref(), Some("Search the web"));
+    assert_eq!(a.catalog.as_deref(), Some("web.search"));
+    assert_eq!(manifest.tools[1].access(), None);
+}
+
+#[test]
+fn a_record_for_a_tool_the_image_lacks_is_refused() {
+    let program = with_tools(BTreeMap::from([("gone".to_owned(), ToolRecord::default())]));
+    let error = Manifest::try_from(&*image(&tool("a", "demo"), Some(&program), &[])).unwrap_err();
+    assert!(error.to_string().contains("\"gone\""), "{error}");
+}
+
+#[test]
+fn a_cron_tool_given_access_is_refused() {
+    let record = ToolRecord {
+        access: Some(Access::Public),
+        ..ToolRecord::default()
+    };
+    let program = with_tools(BTreeMap::from([("tick".to_owned(), record)]));
+    let error = Manifest::try_from(&*image(&cron("tick"), Some(&program), &[])).unwrap_err();
+    assert!(error.to_string().contains("takes no access"), "{error}");
 }

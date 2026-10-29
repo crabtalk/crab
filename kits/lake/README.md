@@ -34,11 +34,16 @@ pub fn tick() -> Result<()> {
 }
 
 /// Lists the posts stored after `after`, oldest first.
-#[tool(query, public)]
+#[tool(query)]
 pub fn posts(after: u64) -> Result<Vec<Post>> {
     let stored = store::items::<Post>(None, after, 50)?;
     Ok(stored.into_iter().map(|post| post.item).collect())
 }
+```
+
+```toml
+[tools.posts]
+access = "public"
 ```
 
 ## A source

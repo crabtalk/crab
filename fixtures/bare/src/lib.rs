@@ -10,13 +10,13 @@ extern crate alloc;
 use berm_lang::{Result, tool};
 
 /// Requests `https://example.com/`, answering its status.
-#[tool(public)]
+#[tool]
 pub fn fetch() -> Result<u16> {
     Ok(berm_lang::http::fetch("GET", "https://example.com/", &[], b"")?.status)
 }
 
 /// Vouches for the user `someone`.
-#[tool(public)]
+#[tool]
 pub fn vouch() -> Result<()> {
     Ok(berm_lang::vouch("someone")?)
 }

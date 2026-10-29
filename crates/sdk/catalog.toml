@@ -1,0 +1,139 @@
+# The catalog's categories, each with its platforms. A tool's `catalog` in
+# `crab.toml` starts with a platform listed here; a platform is in one category.
+
+[web]
+title = "Web"
+platforms = ["web", "news"]
+
+[search]
+title = "Search & SEO"
+platforms = ["google", "ai-search", "bing", "duckduckgo", "yahoo", "yandex", "baidu", "naver", "seznam"]
+
+[companies]
+title = "Companies"
+platforms = ["company", "crunchbase", "indeed", "remoteok", "weworkremotely"]
+
+[people]
+title = "People"
+platforms = ["person", "creator"]
+
+[social]
+title = "Social"
+platforms = [
+    "x",
+    "douyin",
+    "facebook",
+    "tiktok",
+    "linkedin",
+    "instagram",
+    "weibo",
+    "kuaishou",
+    "bilibili",
+    "xiaohongshu",
+    "youtube",
+    "zhihu",
+    "pipixia",
+    "reddit",
+    "wechat-channels",
+    "wechat-mp",
+    "lemon8",
+    "threads",
+    "spotify",
+    "telegram",
+    "xigua",
+    "rumble",
+    "toutiao",
+    "pinterest",
+    "twitch",
+    "wechat-search",
+    "bluesky",
+    "hackernews",
+    "producthunt",
+    "youku",
+]
+
+[commerce]
+title = "Commerce"
+platforms = [
+    "amazon",
+    "tiktok-shop",
+    "douyin-shop",
+    "jd",
+    "taobao",
+    "walmart",
+    "beike",
+    "1688",
+    "ebay",
+    "xianyu",
+    "dewu",
+    "etsy",
+    "home-depot",
+    "lazada",
+    "shopify",
+    "steam",
+    "zillow",
+]
+
+[reviews]
+title = "Reviews & travel"
+platforms = [
+    "imdb",
+    "google-play",
+    "douban",
+    "tripadvisor",
+    "app-store",
+    "yelp",
+    "apple-maps",
+    "glassdoor",
+    "trustpilot",
+    "airbnb",
+    "booking",
+    "flights",
+    "hotels",
+]
+
+[markets]
+title = "Markets"
+platforms = ["stocks", "crypto", "markets"]
+
+[models]
+title = "Models"
+platforms = ["video", "speech", "image", "music", "judge", "embedding", "mesh"]
+
+[ads]
+title = "Ads"
+platforms = ["douyin-xingtu", "xiaohongshu-pugongying", "meta-ads", "qq-huxuan", "tiktok-ads"]
+
+[communication]
+title = "Communication"
+platforms = ["phone", "sms"]
+
+[research]
+title = "Research"
+platforms = [
+    "github",
+    "research",
+    "health",
+    "wikipedia",
+    "economics",
+    "medium",
+    "packages",
+    "stackoverflow",
+    "substack",
+    "weather",
+    "law",
+]
+
+[accounts]
+title = "Your accounts"
+platforms = [
+    "google-analytics",
+    "google-ads",
+    "google-business",
+    "google-tag-manager",
+    "slack",
+    "pinterest-ads",
+    "snapchat-ads",
+    "microsoft-ads",
+    "search-console",
+]

@@ -10,6 +10,7 @@
 pub use berm_api;
 
 pub mod account;
+pub mod catalog;
 #[cfg(feature = "client")]
 pub mod client;
 pub mod error;

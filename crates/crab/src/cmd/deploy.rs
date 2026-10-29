@@ -6,17 +6,14 @@ use crate::{
     fill::Form,
     project, runtime,
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use berm_api::{Credential, Deployed, Manifest, digest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     client::{Client, Error},
-    services::{
-        price::Price,
-        service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
-    },
+    services::service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
@@ -214,7 +211,7 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
 }
 
 /// Read and build the project in `dir`, refused when its `crab.toml` says
-/// `deploy = false` or a price in `[prices]` is not one. With `pull`, the
+/// `deploy = false`. With `pull`, the
 /// crons its owners set on the host are written into its `[crons]` first.
 fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> {
     let mut project = project::read(dir)?;
@@ -225,7 +222,6 @@ fn build(client: &Client, dir: &Path, pull: bool) -> Result<(Project, Vec<u8>)> 
             project::FILE
         );
     }
-    prices(&project)?;
     if pull {
         let live = runtime::wait(client.crons(project.name()?))?;
         let crons = live
@@ -299,23 +295,8 @@ fn request(
         seed,
         stopped,
         project: Some(workspace.to_owned()),
-        prices: prices(project)?,
+        prices: project::prices(project)?,
     })
-}
-
-/// Each price `[prices]` in `project` sets, refused naming the tool of one
-/// that is not a price.
-fn prices(project: &Project) -> Result<BTreeMap<String, Price>> {
-    project
-        .prices
-        .iter()
-        .map(|(tool, price)| {
-            let price = price
-                .parse()
-                .map_err(|e| anyhow!("[prices] {tool} in {}: {e}", project::FILE))?;
-            Ok((tool.clone(), price))
-        })
-        .collect()
 }
 
 /// Show what `name` serves now that `deployed` installed it, how it breaks

@@ -87,7 +87,7 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// use berm_lang::{Result, tool};
 ///
 /// /// Greets `name`.
-/// #[tool(public)]
+/// #[tool]
 /// pub fn greet(
 ///     /// Who to greet.
 ///     name: String,
@@ -100,19 +100,16 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// properties of its arguments, each a `Schema` type, and a parameter's doc
 /// comment is its description. It returns `berm_lang::Result<T>`: `T` is its
 /// reply, written as JSON, and `()` replies nothing. It is exported as
-/// `berm_tool_<name>`. **A tool is internal unless marked `public`**: an
-/// internal tool is only called by the host, for the program's own wakes,
-/// crons and Stripe events; a `public` one by any account the host
-/// authenticates and any program allowed to reach this one, with arguments the
-/// caller chooses. `callers(services)` limits a public tool to programs,
-/// `callers(accounts)` to callers from outside, and `anonymous` lets a call
-/// from outside with no caller reach it. `query` marks it read-only: the host
-/// refuses its writes, logs and wakes. `cron` marks a tool its host calls when
-/// the cron expression its deploy or its owner sets fires; it takes no
-/// parameters. `stripe` marks the one tool its host calls with each Stripe
-/// event its daemon takes for the program, the event object as the argument
-/// object. Neither a cron nor a stripe tool is `public`. `#[deprecated]` marks
-/// a tool so in the manifest. An image holding a tool of a package other than
+/// `berm_tool_<name>`. Who may call it is `access` in its `[tools]` table of
+/// `crab.toml`, which the build writes into the manifest; without one it is
+/// internal, only called by the host for the program's own wakes, crons and
+/// Stripe events. `query` marks it read-only: the host refuses its writes,
+/// logs and wakes. `cron` marks a tool its host calls when the cron
+/// expression its deploy or its owner sets fires; it takes no parameters.
+/// `stripe` marks the one tool its host calls with each Stripe event its
+/// daemon takes for the program, the event object as the argument object.
+/// Neither a cron nor a stripe tool takes `access`. `#[deprecated]` marks a
+/// tool so in the manifest. An image holding a tool of a package other than
 /// the program's is refused.
 #[proc_macro_attribute]
 pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {

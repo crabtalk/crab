@@ -2,7 +2,7 @@
 
 use crate::{format, runtime, terminal};
 use anyhow::Result;
-use berm_api::{Program, Runtime, ToolSpec};
+use berm_api::{Access, Program, Runtime, ToolSpec};
 use crabtalk_sdk::{
     client::{Client, Error},
     services::service::{Measured, Terms},
@@ -92,24 +92,78 @@ pub fn show(program: &Program, runtime: Option<&Runtime>, terms: &Terms) {
     }
 }
 
-/// Each of `tools`, with its marks, arguments, reply, and what one call of it
+/// `tools` as a table of each one's access, title, catalog job, price, marks
+/// and description, then each one's arguments, reply, and what one call of it
 /// is held to and costs.
 fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
+    let tools: Vec<&ToolSpec> = tools.collect();
+    let rows: Vec<[String; 7]> = tools
+        .iter()
+        .map(|tool| {
+            let access = match tool.access() {
+                None => "internal".to_owned(),
+                Some(access @ (Access::Accounts | Access::Services)) => {
+                    format!("restricted: {access}")
+                }
+                Some(access) => access.to_string(),
+            };
+            let marks: Vec<&str> = [
+                (tool.query, "query"),
+                (tool.cron, "cron"),
+                (tool.stripe, "stripe"),
+                (tool.deprecated, "deprecated"),
+            ]
+            .into_iter()
+            .filter_map(|(set, mark)| set.then_some(mark))
+            .collect();
+            let price = terms
+                .tools
+                .get(&tool.name)
+                .and_then(|terms| terms.price)
+                .map(|price| price.to_string());
+            let dash = |value: Option<String>| value.unwrap_or_else(|| "-".to_owned());
+            [
+                tool.name.clone(),
+                access,
+                dash(tool.title.clone()),
+                dash(tool.catalog.clone()),
+                dash(price),
+                dash((!marks.is_empty()).then(|| marks.join(", "))),
+                tool.description
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ]
+        })
+        .collect();
+    let head = [
+        "TOOL",
+        "ACCESS",
+        "TITLE",
+        "CATALOG",
+        "PRICE",
+        "MARKS",
+        "DESCRIPTION",
+    ]
+    .map(str::to_owned);
+    let mut widths = [0; 6];
+    for row in std::iter::once(&head).chain(&rows) {
+        for (width, cell) in widths.iter_mut().zip(row) {
+            *width = (*width).max(cell.chars().count());
+        }
+    }
+    println!();
+    for row in std::iter::once(&head).chain(&rows) {
+        let mut line = String::from(" ");
+        for (width, cell) in widths.iter().zip(row) {
+            line.push_str(&format!(" {cell:<width$} "));
+        }
+        println!("{line} {}", row[6]);
+    }
+
     for tool in tools {
         println!();
-        let marks = [
-            (tool.public, " (public)"),
-            (tool.anonymous, " (anonymous)"),
-            (tool.query, " (query)"),
-            (tool.deprecated, " (deprecated)"),
-        ];
-        let marks: String = marks
-            .iter()
-            .filter(|(set, _)| *set)
-            .map(|(_, mark)| *mark)
-            .collect();
-        println!("  {}{marks}", tool.name);
-        println!("    {}", tool.description);
+        println!("  {}", tool.name);
         if let Some(terms) = terms.tools.get(&tool.name) {
             let budget = terms.held.budget;
             let memory = match budget.memory {
@@ -120,9 +174,6 @@ fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
                 "    at most {}µs of CPU, {} rows and {memory} of memory a call",
                 budget.cpu, budget.rows
             );
-            if let Some(price) = terms.price {
-                println!("    {price} per call");
-            }
             if let Some(estimate) = &terms.estimate {
                 let cost = |m: &Measured| format::usd(m.cost_micros_decimal.parse().unwrap_or(0.0));
                 println!(
