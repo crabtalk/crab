@@ -308,10 +308,15 @@ async fn set_secret(
     Path(SecretName { secret }): Path<SecretName>,
     Json(body): Json<SetSecret>,
 ) -> Result<StatusCode, Denied> {
-    service
+    let program = service
         .get(&name)
         .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such program"))?;
     body.check(&secret)
+        .map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
+    program
+        .manifest
+        .deps
+        .admits(&secret, &body.value)
         .map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
     match service
         .secrets

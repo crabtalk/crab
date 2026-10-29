@@ -4,6 +4,7 @@
 use crate::{Access, DEFAULT_BUFFER, Image, ToolSpec};
 use anyhow::{Context, Result, bail};
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, PROGRAM_SECTION};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
@@ -222,8 +223,7 @@ pub struct CredentialSecret {
     /// Never shown once set. An unmasked one, such as a client ID, is.
     #[serde(default = "masked")]
     pub masked: bool,
-    /// A regular expression a value is expected to match. A value that does
-    /// not is warned about, never refused.
+    /// A regular expression a value must match; one that does not is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
 }
@@ -295,6 +295,34 @@ impl Deps {
             .map(|(id, credential)| (id.clone(), credential.clone()))
             .chain(alone)
             .collect()
+    }
+
+    /// Refused when `value` does not match the pattern a credential declares
+    /// for `secret`. A secret no pattern covers takes any value.
+    pub fn admits(&self, secret: &str, value: &str) -> Result<(), String> {
+        let Some(declared) = self
+            .credentials
+            .values()
+            .flat_map(|credential| &credential.secrets)
+            .find(|declared| declared.name == secret)
+        else {
+            return Ok(());
+        };
+        let Some(pattern) = &declared.pattern else {
+            return Ok(());
+        };
+        let compiled =
+            Regex::new(pattern).map_err(|e| format!("{secret}'s pattern is not one: {e}"))?;
+        match compiled.is_match(value) {
+            true => Ok(()),
+            false => {
+                let label = match declared.label.is_empty() {
+                    true => secret,
+                    false => &declared.label,
+                };
+                Err(format!("{label} does not match {pattern}"))
+            }
+        }
     }
 
     /// The id of the credential `secret` is in, when it is in one.

@@ -112,3 +112,13 @@ fn an_unknown_access_or_key_is_refused() {
     assert!(read("name = \"app\"\n[tools.search]\naccess = \"everyone\"\n").is_err());
     assert!(read("name = \"app\"\n[tools.search]\nprices = 1\n").is_err());
 }
+
+#[test]
+fn a_pattern_that_is_not_a_regular_expression_is_refused() {
+    let broken = GITHUB.replace("pattern = '^Ov23li'", "pattern = '^(Ov23li'");
+    let error = read(&broken).unwrap_err();
+    assert!(
+        error.to_string().contains("not a regular expression"),
+        "{error}"
+    );
+}

@@ -288,6 +288,7 @@ dependencies = [
  "bytesize",
  "hex",
  "object 0.40.0",
+ "regex",
  "serde",
  "serde_json",
  "serde_urlencoded",

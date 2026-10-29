@@ -3,6 +3,7 @@
 use crate::{Access, Credential, DEFAULT_BUFFER, Deps, ToolRecord, ToolSpec, host};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
+use regex::Regex;
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
@@ -147,6 +148,17 @@ impl Project {
             }
         }
         for (id, credential) in &project.credentials {
+            for secret in &credential.secrets {
+                if let Some(pattern) = &secret.pattern
+                    && let Err(e) = Regex::new(pattern)
+                {
+                    bail!(
+                        "{}: credentials.{id}: {}'s pattern is not a regular expression: {e}",
+                        path.display(),
+                        secret.name
+                    );
+                }
+            }
             if let Some(host) = credential.hosts.iter().find(|host| !Credential::host(host)) {
                 bail!(
                     "{}: credentials.{id} suggests {host:?}, not a host named in full",

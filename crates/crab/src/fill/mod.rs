@@ -253,6 +253,13 @@ impl<'a> Form<'a> {
             ));
             return Ok(());
         }
+        if let Some(field) = step.fields.iter().find(|field| field.off()) {
+            self.said = Some((
+                format!("{} does not match its pattern", field.label()),
+                true,
+            ));
+            return Ok(());
+        }
         let hosts = step.hosts();
         if let Err(why) = Hosts::check(&hosts) {
             self.said = Some((why, true));
