@@ -6,12 +6,14 @@ use berm_api::{Access, Runtime, Service, ToolSpec};
 use crabtalk_sdk::{
     client::{Client, Error},
     services::service::{Estimate, Measured, Terms},
+    system::meta::Metering,
 };
 use serde_json::Value;
 
 /// Print `name` as its caller sees it: the runtime too when the host answers
-/// it, which Cloud does for the service's owners alone.
-pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
+/// it, which Cloud does for the service's owners alone, and what one run of
+/// each tool costs at most when `cloud` answers with its rates.
+pub fn run(client: &Client, cloud: &Client, name: &str, json: bool) -> Result<()> {
     let service = runtime::wait(client.inspect(name))?;
     let runtime = match runtime::wait(client.runtime(name)) {
         Ok(runtime) => Some(runtime),
@@ -26,11 +28,17 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             "terms": terms,
         }));
     }
-    show(&service, runtime.as_ref(), &terms);
+    let metering = runtime::wait(cloud.rates()).ok();
+    show(&service, runtime.as_ref(), &terms, metering.as_ref());
     Ok(())
 }
 
-pub fn show(service: &Service, runtime: Option<&Runtime>, terms: &Terms) {
+pub fn show(
+    service: &Service,
+    runtime: Option<&Runtime>,
+    terms: &Terms,
+    metering: Option<&Metering>,
+) {
     println!("{}", service.name);
     if !service.description.is_empty() {
         println!("  {}", service.description);
@@ -54,7 +62,7 @@ pub fn show(service: &Service, runtime: Option<&Runtime>, terms: &Terms) {
         }
     }
     let Some(runtime) = runtime else {
-        tools(service.tools.iter(), terms);
+        tools(service.tools.iter(), terms, metering);
         return;
     };
     let answered = |missing: bool| match missing {
@@ -85,7 +93,7 @@ pub fn show(service: &Service, runtime: Option<&Runtime>, terms: &Terms) {
         println!("  var     {name} = {:?}", var.default);
     }
 
-    tools(service.tools.iter().chain(&runtime.tools), terms);
+    tools(service.tools.iter().chain(&runtime.tools), terms, metering);
     for event in &runtime.events {
         println!();
         match event.deprecated {
@@ -102,7 +110,11 @@ pub fn show(service: &Service, runtime: Option<&Runtime>, terms: &Terms) {
 /// `tools` as a table of each one's access, title, catalog job, price, marks
 /// and description, then each one's arguments, reply, and what one call of it
 /// is held to and costs.
-fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
+fn tools<'a>(
+    tools: impl Iterator<Item = &'a ToolSpec>,
+    terms: &Terms,
+    metering: Option<&Metering>,
+) {
     let tools: Vec<&ToolSpec> = tools.collect();
     let rows: Vec<[String; 7]> = tools
         .iter()
@@ -171,17 +183,22 @@ fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
     for tool in tools {
         println!();
         println!("  {}", tool.name);
-        if let Some(terms) = terms.tools.get(&tool.name) {
-            let budget = terms.held.budget;
-            let memory = match budget.memory {
-                0 => "the host's most".to_owned(),
-                bytes => format::bytes(bytes),
-            };
+        if let Some(held) = terms.tools.get(&tool.name) {
+            let budget = held.held.budget;
             println!(
-                "    at most {}µs of CPU, {} rows and {memory} of memory a call",
-                budget.cpu, budget.rows
+                "    at most {}µs of CPU, {} rows and {} of memory a call",
+                budget.cpu,
+                budget.rows,
+                format::bytes(budget.memory)
             );
-            if let Some(estimate) = &terms.estimate {
+            if let Some(metering) = metering {
+                let most = metering.most(&budget, terms.deadline);
+                println!(
+                    "    at most {} to run, its calls to other services aside",
+                    format::usd(most.parse().unwrap_or(0.0))
+                );
+            }
+            if let Some(estimate) = &held.estimate {
                 let cost = |m: &Measured| format::usd(m.cost_micros_decimal.parse().unwrap_or(0.0));
                 let slow = if estimate.runs >= Estimate::P99 {
                     "at p99"

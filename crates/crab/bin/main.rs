@@ -596,6 +596,8 @@ fn run() -> Result<ExitCode> {
             None => client,
         })
     };
+    // The Cloud whose rates price the context's calls.
+    let cloud = || Ok::<_, anyhow::Error>(Contexts::load()?.get(args.context.as_deref())?.cloud());
 
     match &args.command {
         Command::Login {
@@ -657,7 +659,7 @@ fn run() -> Result<ExitCode> {
         Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true, yes)?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
-        Command::Inspect { name } => cmd::inspect::run(&client()?, name, json)?,
+        Command::Inspect { name } => cmd::inspect::run(&client()?, &cloud()?, name, json)?,
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
         Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,
         Command::Logs { name, after } => cmd::logs::run(&client()?, name, *after, json)?,
@@ -742,7 +744,7 @@ fn run() -> Result<ExitCode> {
             (Some(cpu), Some(rows)) => {
                 cmd::budget::set(&client()?, name, tool, *cpu, *rows, *memory)?
             }
-            _ => cmd::budget::show(&client()?, name, tool, json)?,
+            _ => cmd::budget::show(&client()?, &cloud()?, name, tool, json)?,
         },
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {
@@ -857,10 +859,7 @@ fn run() -> Result<ExitCode> {
         Command::Explain { code } => cmd::explain::run(&client()?, code, json)?,
         Command::Upgrade => cmd::upgrade::run(yes)?,
         // The one command whose exit code carries the call's result.
-        Command::Call(call) => {
-            let cloud = Contexts::load()?.get(args.context.as_deref())?.cloud();
-            return cmd::call::run(&client()?, &cloud, call);
-        }
+        Command::Call(call) => return cmd::call::run(&client()?, &cloud()?, call),
         Command::Replay { service, id, on } => {
             return match on {
                 Some(on) => {

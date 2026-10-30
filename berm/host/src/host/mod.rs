@@ -118,6 +118,8 @@ pub struct Inner<E: Env> {
     /// The most one invocation may use, and what a tool's owner has not set
     /// takes.
     pub budget: Budget,
+    /// How long a chain of calls runs before it is stopped.
+    pub(crate) deadline: Duration,
     /// Each tool's budget its owner set.
     pub(crate) terms: Terms,
     /// Held by a deploy of the service keyed by its key.
@@ -242,6 +244,7 @@ impl<E: Env> Host<E> {
                     rows: config.rows,
                     memory: config.memory as u64,
                 },
+                deadline: config.deadline,
                 terms,
                 deploying: Mutex::default(),
                 now,

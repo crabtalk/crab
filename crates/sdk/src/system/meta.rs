@@ -4,7 +4,7 @@ use crate::{
     account::billing::Unit,
     services::service::{MeteredDay, Resource},
 };
-use berm_api::Meter;
+use berm_api::{Budget, Meter};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -53,6 +53,24 @@ pub struct Metering {
     pub included_cpu: u64,
     /// Bytes one log holds at most.
     pub max_log: usize,
+}
+
+impl Metering {
+    /// The most one run of a tool held to `budget` costs to run, as a decimal
+    /// of USD micros, on a host whose chains run at most `deadline`
+    /// milliseconds: its CPU budget spent, every row written, and its memory
+    /// held to the deadline. Bytes proxied and the tool's calls to other
+    /// services are left out.
+    pub fn most(&self, budget: &Budget, deadline: u64) -> String {
+        let meter = Meter {
+            runs: 1,
+            written: budget.rows,
+            held: (budget.memory >> 20) * deadline * 1000,
+            ..Meter::default()
+        };
+        self.rates
+            .cost_decimal(&meter, budget.cpu.saturating_sub(self.included_cpu))
+    }
 }
 
 /// What an owner is charged for its services' meters, each in USD micros per

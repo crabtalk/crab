@@ -64,6 +64,8 @@ pub struct DeployRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Terms {
     pub tools: BTreeMap<String, ToolTerms>,
+    /// Milliseconds a chain of calls runs before the host stops it.
+    pub deadline: u64,
 }
 
 /// What one call of a tool is held to, and what it costs its caller.

@@ -125,6 +125,8 @@ pub struct Listing {
 pub struct Terms {
     /// Each public tool's, by name.
     pub tools: BTreeMap<String, ToolTerms>,
+    /// Milliseconds a chain of calls runs before the host stops it.
+    pub deadline: u64,
 }
 
 /// What one call of a tool is held to.

@@ -33,8 +33,9 @@ pub fn set(
 }
 
 /// What `name`'s `tool` used over the last 30 days, its budget when it is
-/// public, and the memory budget its runs fit.
-pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
+/// public with what one run costs at most when `cloud` answers with its rates,
+/// and the memory budget its runs fit.
+pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
     let mut tools = runtime::wait(client.tools(name))?;
     let Some(used) = tools.remove(tool) else {
         println!("{name}.{tool} was not called in the last 30 days");
@@ -45,16 +46,21 @@ pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
     }
     let terms = runtime::wait(client.terms(name))?;
     println!("{name}.{tool}");
-    if let Some(terms) = terms.tools.get(tool) {
-        let budget = terms.held.budget;
-        let memory = match budget.memory {
-            0 => "the host's most".to_owned(),
-            bytes => format::bytes(bytes),
-        };
+    if let Some(held) = terms.tools.get(tool) {
+        let budget = held.held.budget;
         println!(
-            "  budget       at most {}µs of CPU, {} rows and {memory} of memory a call",
-            budget.cpu, budget.rows
+            "  budget       at most {}µs of CPU, {} rows and {} of memory a call",
+            budget.cpu,
+            budget.rows,
+            format::bytes(budget.memory)
         );
+        if let Ok(metering) = runtime::wait(cloud.rates()) {
+            let most = metering.most(&budget, terms.deadline);
+            println!(
+                "  most         {} to run, its calls to other services aside",
+                format::usd(most.parse().unwrap_or(0.0))
+            );
+        }
     }
     if let Some(estimate) = &used.estimate {
         println!(

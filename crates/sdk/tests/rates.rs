@@ -1,7 +1,7 @@
 //! What meters cost at the rates.
 
-use berm_api::Meter;
-use crabtalk_sdk::system::meta::Rates;
+use berm_api::{Budget, Meter};
+use crabtalk_sdk::system::meta::{Metering, Rates};
 
 fn rates() -> Rates {
     Rates {
@@ -50,4 +50,22 @@ fn proxied_bytes_are_free_while_unrated() {
         ..rates()
     };
     assert_eq!(rated.cost_decimal(&meter, 0), (1u64 << 30).to_string());
+}
+
+#[test]
+fn the_most_a_run_costs_spends_its_whole_budget() {
+    let metering = Metering {
+        rates: rates(),
+        included_cpu: 100,
+        max_log: 4096,
+    };
+    let budget = Budget {
+        cpu: 100_100,
+        rows: 1_000,
+        memory: 16 << 20,
+    };
+    // In billionths of a micro: 150,000,000 for the run, 2,000,000,000 for
+    // 100,000µs of overage, 1,000,000,000,000 for 1,000 rows written, and
+    // 11,520,000,000 for 16 MiB held 60 s.
+    assert_eq!(metering.most(&budget, 60_000), "1013.67");
 }

@@ -125,7 +125,8 @@ impl<E: Env> Host<E> {
     }
 
     /// `service`'s terms: each public tool's budget, what its owner set or
-    /// else this host's.
+    /// else this host's, its memory this host's most where the owner set none,
+    /// and this host's deadline.
     pub fn terms(&self, service: &str) -> Result<Terms, Denied> {
         let deployed = self.deployed(service)?;
         let tools = deployed
@@ -134,16 +135,21 @@ impl<E: Env> Host<E> {
             .iter()
             .filter(|tool| tool.public)
             .map(|tool| {
-                let set = self.terms.get(service, &tool.name);
-                (
-                    tool.name.clone(),
-                    ToolTerms {
-                        budget: set.budget.unwrap_or(self.budget),
-                    },
-                )
+                let mut budget = self
+                    .terms
+                    .get(service, &tool.name)
+                    .budget
+                    .unwrap_or(self.budget);
+                if budget.memory == 0 {
+                    budget.memory = self.budget.memory;
+                }
+                (tool.name.clone(), ToolTerms { budget })
             })
             .collect();
-        Ok(Terms { tools })
+        Ok(Terms {
+            tools,
+            deadline: self.deadline.as_millis() as u64,
+        })
     }
 
     /// Set what one invocation of `tool` of `service` may use, from its next
