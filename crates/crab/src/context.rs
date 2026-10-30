@@ -1,6 +1,7 @@
 //! Where `crab` sends its calls: a named host, and for Cloud, the token and
 //! the account it deploys under. Kept in `~/.crab/contexts.toml`.
 
+use crate::cmd::login;
 use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::client::{Client, Owner};
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,17 @@ pub struct Context {
     /// local host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<Owner>,
+}
+
+impl Context {
+    /// The Cloud whose rates price this context's calls: its host for a Cloud
+    /// context, [`login::CLOUD`] for a local host.
+    pub fn cloud(&self) -> Client {
+        Client::new(match self.owner {
+            Some(_) => self.host.clone(),
+            None => login::CLOUD.to_owned(),
+        })
+    }
 }
 
 /// Every context but [`DEFAULT`], and which one is in use.

@@ -3,7 +3,10 @@
 use crate::{format, runtime, terminal};
 use anyhow::Result;
 use berm_api::Budget;
-use crabtalk_sdk::{client::Client, services::service::Measured};
+use crabtalk_sdk::{
+    client::Client,
+    services::service::{Estimate, Measured},
+};
 
 /// Set `name`'s `tool` to at most `cpu` microseconds, `rows` rows and
 /// `memory` MiB a call; `None` memory is the host's most.
@@ -59,7 +62,12 @@ pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
             format::count(estimate.runs)
         );
         println!("  typical      {}", measured(&estimate.typical));
-        println!("  slow (p99)   {}", measured(&estimate.slow));
+        let slow = if estimate.runs >= Estimate::P99 {
+            "slow (p99)"
+        } else {
+            "slowest"
+        };
+        println!("  {slow:<12} {}", measured(&estimate.slow));
     }
     if let Some(mib) = used.fits_mib {
         println!(
@@ -74,11 +82,12 @@ pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
 fn measured(m: &Measured) -> String {
     let cost = m.cost_micros_decimal.parse::<f64>().unwrap_or(0.0);
     format!(
-        "{} ms, {}µs of CPU, {} rows read, {} written, {} to run",
+        "{} ms, {}µs of CPU, {} rows read, {} written, {:.1} MiB-s held, {} to run",
         m.ms,
         m.cpu,
         format::count(m.read),
         format::count(m.written),
+        m.held as f64 / 1e6,
         format::usd(cost)
     )
 }

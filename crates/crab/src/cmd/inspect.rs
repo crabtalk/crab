@@ -5,7 +5,7 @@ use anyhow::Result;
 use berm_api::{Access, Runtime, Service, ToolSpec};
 use crabtalk_sdk::{
     client::{Client, Error},
-    services::service::{Measured, Terms},
+    services::service::{Estimate, Measured, Terms},
 };
 use serde_json::Value;
 
@@ -183,8 +183,13 @@ fn tools<'a>(tools: impl Iterator<Item = &'a ToolSpec>, terms: &Terms) {
             );
             if let Some(estimate) = &terms.estimate {
                 let cost = |m: &Measured| format::usd(m.cost_micros_decimal.parse().unwrap_or(0.0));
+                let slow = if estimate.runs >= Estimate::P99 {
+                    "at p99"
+                } else {
+                    "at the slowest"
+                };
                 println!(
-                    "    {} to run typically, {} at p99, over {} runs",
+                    "    {} to run typically, {} {slow}, over {} runs",
                     cost(&estimate.typical),
                     cost(&estimate.slow),
                     format::count(estimate.runs)

@@ -76,7 +76,7 @@ pub struct ToolTerms {
     /// that is free.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price: Option<Price>,
-    /// What its runs use; none below [`Estimate::TERMS`] runs.
+    /// What its runs use; none before its first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate: Option<Estimate>,
 }
@@ -91,18 +91,19 @@ pub struct Estimate {
     pub runs: u64,
     /// Each measure's median.
     pub typical: Measured,
-    /// Each measure's 99th percentile.
+    /// Each measure's 99th percentile, which below [`Estimate::P99`] runs is
+    /// its largest.
     pub slow: Measured,
 }
 
 impl Estimate {
-    /// The fewest runs a service's terms publish an estimate from.
-    pub const TERMS: u64 = 20;
+    /// The fewest runs whose 99th percentile is not their largest.
+    pub const P99: u64 = 100;
 }
 
 /// One measure of a run: wall time in milliseconds, CPU time in microseconds,
-/// rows read and written, and its cost at the fleet's rates as a decimal of
-/// USD micros.
+/// rows read and written, memory held in MiB-microseconds, and its cost at the
+/// fleet's rates as a decimal of USD micros.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Measured {
@@ -110,6 +111,8 @@ pub struct Measured {
     pub cpu: u64,
     pub read: u64,
     pub written: u64,
+    #[serde(default)]
+    pub held: u64,
     pub cost_micros_decimal: String,
 }
 

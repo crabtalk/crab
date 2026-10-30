@@ -857,12 +857,16 @@ fn run() -> Result<ExitCode> {
         Command::Explain { code } => cmd::explain::run(&client()?, code, json)?,
         Command::Upgrade => cmd::upgrade::run(yes)?,
         // The one command whose exit code carries the call's result.
-        Command::Call(call) => return cmd::call::run(&client()?, call),
+        Command::Call(call) => {
+            let cloud = Contexts::load()?.get(args.context.as_deref())?.cloud();
+            return cmd::call::run(&client()?, &cloud, call);
+        }
         Command::Replay { service, id, on } => {
             return match on {
                 Some(on) => {
-                    let on = Client::from(Contexts::load()?.get(Some(on))?);
-                    cmd::replay::on(&client()?, &on, service, *id)
+                    let on = Contexts::load()?.get(Some(on))?;
+                    let cloud = on.cloud();
+                    cmd::replay::on(&client()?, &Client::from(on), &cloud, service, *id)
                 }
                 None => cmd::replay::tape(&client()?, service, *id),
             };

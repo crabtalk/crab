@@ -87,8 +87,9 @@ pub fn tape(from: &Client, service: &str, id: u64) -> Result<ExitCode> {
 }
 
 /// Run `service`'s call `id`, as `from` recorded it, on `on`: its tool, its
-/// arguments and its caller, against `on`'s own state.
-pub fn on(from: &Client, on: &Client, service: &str, id: u64) -> Result<ExitCode> {
+/// arguments and its caller, against `on`'s own state, priced at `cloud`'s
+/// rates.
+pub fn on(from: &Client, on: &Client, cloud: &Client, service: &str, id: u64) -> Result<ExitCode> {
     let input = runtime::wait(from.call_input(service, id))?;
     let running = runtime::wait(on.inspect(service))?.digest;
     let running = digest::prefixed(running.trim_start_matches(digest::PREFIX));
@@ -100,6 +101,7 @@ pub fn on(from: &Client, on: &Client, service: &str, id: u64) -> Result<ExitCode
     }
     call::tool(
         on,
+        cloud,
         service,
         &input.tool,
         Some(&input.args),

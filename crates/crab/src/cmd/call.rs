@@ -1,6 +1,6 @@
 //! `crab call` — call one of a service's tools.
 
-use crate::runtime;
+use crate::{format, runtime};
 use anyhow::{Context, Result};
 use berm_api::{
     Output,
@@ -39,8 +39,9 @@ pub struct Call {
     pub user: Option<String>,
 }
 
-/// Call the tool `call` names, as the caller it names.
-pub fn run(client: &Client, call: &Call) -> Result<ExitCode> {
+/// Call the tool `call` names, as the caller it names, priced at `cloud`'s
+/// rates.
+pub fn run(client: &Client, cloud: &Client, call: &Call) -> Result<ExitCode> {
     let caller = call.caller.as_ref().map(|id| Caller {
         id: id.clone(),
         app: None,
@@ -54,6 +55,7 @@ pub fn run(client: &Client, call: &Call) -> Result<ExitCode> {
     });
     tool(
         client,
+        cloud,
         &call.service,
         &call.tool,
         call.arguments.as_deref(),
@@ -61,19 +63,32 @@ pub fn run(client: &Client, call: &Call) -> Result<ExitCode> {
     )
 }
 
-/// Call `tool` of `service`.
+/// Call `tool` of `service`, and print what its run used and, when `cloud`
+/// answers with its rates, what it cost to run.
 pub fn tool(
     client: &Client,
+    cloud: &Client,
     service: &str,
     tool: &str,
     inline: Option<&str>,
     caller: Option<&Caller>,
 ) -> Result<ExitCode> {
     let arguments = arguments(inline)?;
-    let (output, meter) = runtime::wait(client.call(service, tool, arguments, caller))?;
+    let (called, metering) = runtime::wait(async {
+        tokio::join!(client.call(service, tool, arguments, caller), cloud.rates())
+    });
+    let (output, meter) = called?;
     if let Some(meter) = meter {
+        let cost = metering.map_or_else(
+            |_| String::new(),
+            |metering| {
+                let overage = meter.cpu.saturating_sub(metering.included_cpu);
+                let micros = metering.rates.cost_decimal(&meter, overage);
+                format!(", {} to run", format::usd(micros.parse().unwrap_or(0.0)))
+            },
+        );
         eprintln!(
-            "{}µs CPU, {} rows read, {} written, {}µs SQL CPU, {} KiB memory, {} bytes proxied",
+            "{}µs CPU, {} rows read, {} written, {}µs SQL CPU, {} KiB memory, {} bytes proxied{cost}",
             meter.cpu,
             meter.read,
             meter.written,
