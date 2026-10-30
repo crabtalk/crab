@@ -63,6 +63,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
             post(call::<E>).get(query::<E>).patch(update::<E>),
         )
         .route("/tools/{tool}/cron", put(cron::<E>))
+        .route("/tools/{tool}/webhook", post(webhook::<E>))
         .route("/vars", get(vars::<E>))
         .route("/vars/{var}", put(var::<E>))
         .route("/stripe", post(stripe::<E>))
@@ -341,6 +342,18 @@ async fn stripe<E: Env>(
     event: Bytes,
 ) -> Result<StatusCode, Denied> {
     host.stripe(&service, event.to_vec()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Hand a webhook to the service's `#[tool(webhook)]` tool `tool`, the body byte
+/// for byte as it was sent.
+async fn webhook<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(Tool { tool }): Path<Tool>,
+    event: Bytes,
+) -> Result<StatusCode, Denied> {
+    host.webhook(&service, &tool, event.to_vec()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

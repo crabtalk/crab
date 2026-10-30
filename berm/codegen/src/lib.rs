@@ -102,13 +102,15 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// reply, written as JSON, and `()` replies nothing. It is exported as
 /// `berm_tool_<name>`. Who may call it is `access` in its `[tools]` table of
 /// `crab.toml`, which the build writes into the manifest; without one it is
-/// internal, only called by the host for the service's own wakes, crons and
-/// Stripe events. `query` marks it read-only: the host refuses its writes,
+/// internal, only called by the host for the service's own wakes, crons,
+/// Stripe events and webhooks. `query` marks it read-only: the host refuses its writes,
 /// logs and wakes. `cron` marks a tool its host calls when the cron
 /// expression its deploy or its owner sets fires; it takes no parameters.
 /// `stripe` marks the one tool its host calls with each Stripe event its
 /// daemon takes for the service, the event object as the argument object.
-/// Neither a cron nor a stripe tool takes `access`. `#[deprecated]` marks a
+/// `webhook` marks a tool its host calls with each webhook its daemon verified
+/// for that tool, the body as the argument object. A tool is at most one of
+/// `cron`, `stripe` and `webhook`, and none of them takes `access`. `#[deprecated]` marks a
 /// tool so in the manifest. An image holding a tool of a package other than
 /// the service's is refused.
 #[proc_macro_attribute]

@@ -56,7 +56,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | --- | --- |
 | The CLI, contexts, `crab.toml` | `crates/crab/README.md` |
 | A whole working service to start from: its files and the commands that test, build, deploy and call it | https://crab.talk/docs/development/complete-service |
-| `#[tool(...)]` and its `query`, `cron`, `stripe`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crab.talk/docs/development/macros |
+| `#[tool(...)]` and its `query`, `cron`, `stripe`, `webhook`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crab.talk/docs/development/macros |
 | Every `berm_lang` function and type, with its signature | https://crab.talk/docs/development/api |
 | Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crab.talk/docs/development, as `/docs/development/http` |
 | `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[syscalls]`, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |

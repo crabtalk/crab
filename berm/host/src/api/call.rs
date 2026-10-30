@@ -28,6 +28,15 @@ use std::{
 /// The most logs or calls one page answers.
 const MAX_PAGE: i64 = 1000;
 
+/// The error code a webhook for a tool that takes none carries.
+const NO_WEBHOOK_TOOL: &str = "E0014";
+
+/// The error code an event for a stopped or held service carries.
+const PAUSED: &str = "E0018";
+
+/// The error code an event for an account at its memory limit carries.
+const NO_MEMORY: &str = "E0019";
+
 impl<E: Env> Host<E> {
     /// `service`'s IDL.
     pub fn idl(&self, service: &str) -> Result<berm_api::Service, Denied> {
@@ -586,9 +595,7 @@ impl<E: Env> Host<E> {
     }
 
     /// Call `service`'s `#[tool(stripe)]` tool with `event`, a Stripe event as its
-    /// daemon took it, with no caller, and commit what it did. The host reads
-    /// none of the event; the daemon verifies it. A held scope's services take
-    /// none, and a tool's failure is a `500` carrying its message.
+    /// daemon took it.
     pub async fn stripe(&self, service: &str, event: Vec<u8>) -> Result<(), Denied> {
         let deployed = self.deployed(service)?;
         let Some(tool) = deployed
@@ -603,30 +610,62 @@ impl<E: Env> Host<E> {
                 "the service has no stripe tool",
             ));
         };
+        self.deliver(service, deployed, tool, Source::Stripe, event)
+            .await
+    }
+
+    /// Call `service`'s `#[tool(webhook)]` tool `tool` with `event`, a webhook's
+    /// body as its daemon verified it.
+    pub async fn webhook(&self, service: &str, tool: &str, event: Vec<u8>) -> Result<(), Denied> {
+        let deployed = self.deployed(service)?;
+        if !deployed
+            .manifest
+            .tools
+            .iter()
+            .any(|spec| spec.webhook && spec.name == tool)
+        {
+            return Err(deny(
+                StatusCode::NOT_FOUND,
+                format!("the service has no webhook tool {tool:?}"),
+            )
+            .explained(NO_WEBHOOK_TOOL));
+        }
+        self.deliver(service, deployed, tool.to_owned(), Source::Webhook, event)
+            .await
+    }
+
+    /// Run `tool` with `event` as its daemon took it, with no caller, and commit
+    /// what it did. The host reads none of the event; the daemon verifies it. A
+    /// held scope's services take none, and a tool's failure is a `500` carrying
+    /// its message.
+    async fn deliver(
+        &self,
+        service: &str,
+        deployed: Arc<Service>,
+        tool: String,
+        source: Source,
+        event: Vec<u8>,
+    ) -> Result<(), Denied> {
         let paused = match () {
             _ if self.holds.holds(host::split(service).0) => Some("held"),
             _ if self.stops.stopped(service) => Some("stopped"),
             _ => None,
         };
         if let Some(paused) = paused {
-            self.usage.record(
-                service,
-                Kind::Tool,
-                &tool,
-                Source::Stripe,
-                "",
-                Outcome::Refused,
-            );
+            self.usage
+                .record(service, Kind::Tool, &tool, source, "", Outcome::Refused);
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("{service} is {paused}"),
-            ));
+            )
+            .explained(PAUSED));
         }
         if self.pools.pool(host::split(service).0).full() {
             return Err(deny(
                 StatusCode::TOO_MANY_REQUESTS,
                 "the account holds as much memory as it may; retry",
-            ));
+            )
+            .explained(NO_MEMORY));
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
@@ -649,12 +688,12 @@ impl<E: Env> Host<E> {
             Err(_) => Outcome::Failed,
         };
         self.usage
-            .record(service, Kind::Tool, &tool, Source::Stripe, "", outcome);
+            .record(service, Kind::Tool, &tool, source, "", outcome);
         self.calls.record(
             service,
             started,
             &tool,
-            Source::Stripe,
+            source,
             "",
             outcome,
             invoked.as_ref().ok(),

@@ -344,6 +344,8 @@ pub enum Source {
     Anonymous,
     /// A Stripe event its daemon took for the service.
     Stripe,
+    /// A webhook its daemon verified for the service.
+    Webhook,
 }
 
 /// How a use ended.
@@ -740,9 +742,9 @@ pub struct RecordedLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallInput {
     pub tool: String,
-    /// Its arguments as sent: JSON, or a Stripe event's body.
+    /// Its arguments as sent: JSON, or a Stripe event's or a webhook's body.
     pub args: String,
-    /// Who it was made as; none for a wake, a Stripe event or an anonymous
+    /// Who it was made as; none for a wake, a Stripe event, a webhook or an anonymous
     /// call.
     pub caller: Option<Caller>,
     /// The image it ran, as `sha256:` and hex.

@@ -134,6 +134,12 @@ impl Service {
                     tool.name
                 );
             }
+            if tool.webhook && tool.public {
+                bail!(
+                    "tool {:?} is a webhook tool, and cannot be public",
+                    tool.name
+                );
+            }
             if tool.anonymous && (!tool.public || tool.callers == Some(Callers::Services)) {
                 bail!(
                     "tool {:?} takes anonymous calls, and must be public to callers from outside",

@@ -2,7 +2,8 @@
 //! in the database beside its own `words` table.
 //!
 //! `put` writes a word every way the database takes one, `count` reads the
-//! table back, and `relay` calls both on `inner`. It uses `berm-kit`, whose
+//! table back, `hook` writes the word a webhook carries, and `relay` calls
+//! `put` and `count` on `inner`. It uses `berm-kit`, whose
 //! table `note` writes to.
 
 #![cfg_attr(target_arch = "wasm32", no_std)]
@@ -20,6 +21,14 @@ pub fn put(word: String) -> Result<()> {
     berm_lang::sql("INSERT INTO words (word) VALUES (?)", &params)?;
     berm_lang::set("last", word.as_bytes())?;
     berm_lang::emit(&["put"], &word)?;
+    Ok(())
+}
+
+/// Inserts the `word` a webhook carries into `words`.
+#[tool(webhook)]
+pub fn hook(word: String) -> Result<()> {
+    let params = berm_lang::json::to(&[&word])?;
+    berm_lang::sql("INSERT INTO words (word) VALUES (?)", &params)?;
     Ok(())
 }
 

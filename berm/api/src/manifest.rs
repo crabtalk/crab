@@ -524,7 +524,8 @@ impl Manifest {
 /// Refused when the image has no [`SERVICE_SECTION`], which a bare
 /// `cargo build` leaves out; when it has no tools; when a tool record was
 /// compiled in a crate other than the service's; when the service record
-/// names a tool the image lacks, or gives a cron or stripe tool access; and
+/// names a tool the image lacks, or gives a cron, stripe or webhook tool
+/// access; and
 /// when it names a kit twice.
 impl TryFrom<&[u8]> for Manifest {
     type Error = anyhow::Error;
@@ -577,7 +578,7 @@ impl TryFrom<&[u8]> for Manifest {
                     );
                 }
                 let record = records.remove(&tool.name).unwrap_or_default();
-                if record.access.is_some() && (tool.cron || tool.stripe) {
+                if record.access.is_some() && (tool.cron || tool.stripe || tool.webhook) {
                     bail!(
                         "tool {:?} is called by its host, and takes no access",
                         tool.name

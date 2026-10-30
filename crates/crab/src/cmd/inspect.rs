@@ -130,6 +130,7 @@ fn tools<'a>(
                 (tool.query, "query"),
                 (tool.cron, "cron"),
                 (tool.stripe, "stripe"),
+                (tool.webhook, "webhook"),
                 (tool.deprecated, "deprecated"),
             ]
             .into_iter()

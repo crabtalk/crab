@@ -412,6 +412,7 @@ dependencies = [
  "berm-kit",
  "berm-lang",
  "berm-rusqlite",
+ "serde_json",
  "tokio",
 ]
 

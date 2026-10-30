@@ -244,8 +244,8 @@ pub struct ToolSpec {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deprecated: bool,
     /// Callable by accounts and other services. A tool that is not is only
-    /// called by its host, for the service's own wakes, crons and Stripe
-    /// events.
+    /// called by its host, for the service's own wakes, crons, Stripe events
+    /// and webhooks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub public: bool,
     /// Callable from outside with no caller: no account, or an app's call with
@@ -275,6 +275,10 @@ pub struct ToolSpec {
     /// at most one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stripe: bool,
+    /// Called by its host with each webhook its daemon verified for this
+    /// tool, the body as the argument object. Not public.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub webhook: bool,
 }
 
 impl ToolSpec {

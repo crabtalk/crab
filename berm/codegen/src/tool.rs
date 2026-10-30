@@ -21,6 +21,8 @@ pub(crate) struct Options {
     cron: bool,
     /// `stripe`.
     stripe: bool,
+    /// `webhook`.
+    webhook: bool,
 }
 
 impl Options {
@@ -30,8 +32,11 @@ impl Options {
             path if path.is_ident("query") => &mut self.query,
             path if path.is_ident("cron") => &mut self.cron,
             path if path.is_ident("stripe") => &mut self.stripe,
+            path if path.is_ident("webhook") => &mut self.webhook,
             _ => {
-                return Err(meta.error("unknown option (expected `query`, `cron` or `stripe`)"));
+                return Err(
+                    meta.error("unknown option (expected `query`, `cron`, `stripe` or `webhook`)")
+                );
             }
         };
         *flag = true;
@@ -111,10 +116,15 @@ impl Tool {
         }
 
         let ident = &function.sig.ident;
-        if options.stripe && options.cron {
+        if [options.cron, options.stripe, options.webhook]
+            .into_iter()
+            .filter(|set| *set)
+            .count()
+            > 1
+        {
             return Err(syn::Error::new_spanned(
                 ident,
-                "a tool is `cron` or `stripe`, not both",
+                "a tool is at most one of `cron`, `stripe` and `webhook`",
             ));
         }
         if options.cron && !params.is_empty() {
@@ -183,6 +193,7 @@ impl Tool {
             (self.deprecated, "deprecated"),
             (options.cron, "cron"),
             (options.stripe, "stripe"),
+            (options.webhook, "webhook"),
         ] {
             if set {
                 out.text(&format!(r#","{key}":true"#));

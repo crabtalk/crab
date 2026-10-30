@@ -20,4 +20,5 @@ anyhow.workspace = true
 berm-api.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 rusqlite.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
