@@ -69,6 +69,8 @@ pub fn show(
         true => "  (nothing answers to it here)",
         false => "",
     };
+    println!("  berm-lang {}", runtime.lang);
+    println!("  host calls {}", runtime.imports.join(", "));
     for dep in &runtime.deps.calls {
         let missing = runtime.unresolved.calls.contains(dep);
         println!("  service {dep}{}", answered(missing));

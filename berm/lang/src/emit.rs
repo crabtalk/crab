@@ -4,8 +4,9 @@
 //! ends as.
 
 use crate::{
-    abi::{self, wire},
+    abi::wire,
     host::{self, CallError},
+    sys,
 };
 use alloc::vec::Vec;
 
@@ -20,7 +21,7 @@ pub fn emit(topics: &[&str], data: &str) -> Result<(), CallError> {
     for topic in topics {
         wire::field(&mut request, topic.as_bytes());
     }
-    host::call(abi::HOST_EMIT, &request)?;
+    host::call(sys::EMIT, &request)?;
     Ok(())
 }
 

@@ -7,10 +7,7 @@
 //! failure message, and a second bit says whether anything ran at all.
 
 use crate::{
-    abi::{
-        ERROR, HOST_ARG_LEN, HOST_ARG_READ, HOST_DENY, HOST_DONE, HOST_FAIL, HOST_NOW, HOST_RANDOM,
-        HOST_RESULT_READ, HOST_TRACE, REFUSED,
-    },
+    abi::{ERROR, REFUSED},
     sys,
 };
 use alloc::{string::String, vec, vec::Vec};
@@ -45,8 +42,11 @@ impl core::fmt::Display for CallError {
 }
 
 /// Make one syscall call. `Err` carries whatever the host said went wrong.
-pub fn call(number: u64, request: &[u8]) -> Result<Vec<u8>, CallError> {
-    let staged = sys::call2(number, request.as_ptr() as u64, request.len() as u64);
+pub fn call(
+    import: impl FnOnce(usize, usize) -> u64,
+    request: &[u8],
+) -> Result<Vec<u8>, CallError> {
+    let staged = import(request.as_ptr() as usize, request.len());
     let failed = staged & ERROR != 0;
     let refused = staged & REFUSED != 0;
 
@@ -70,58 +70,50 @@ pub fn call(number: u64, request: &[u8]) -> Result<Vec<u8>, CallError> {
 
 /// Write a line to the host's trace.
 pub fn trace(message: &str) {
-    sys::call2(HOST_TRACE, message.as_ptr() as u64, message.len() as u64);
+    sys::TRACE(message.as_ptr() as usize, message.len());
 }
 
 /// What time the host says it is, in milliseconds since the Unix epoch.
 ///
 /// The one clock a service has.
 pub fn now() -> u64 {
-    sys::call0(HOST_NOW)
+    sys::NOW(0, 0)
 }
 
 /// Fill `buffer` with bytes from the host's secure random source.
 pub fn random(buffer: &mut [u8]) {
-    sys::call2(HOST_RANDOM, buffer.as_mut_ptr() as u64, buffer.len() as u64);
+    sys::RANDOM(buffer.as_mut_ptr() as usize, buffer.len());
 }
 
 /// Mark this invocation's failure as refusing its caller.
 pub fn deny() {
-    sys::call0(HOST_DENY);
+    sys::DENY(0, 0);
 }
 
 /// How many bytes this invocation was given.
 pub fn args_len() -> usize {
-    sys::call0(HOST_ARG_LEN) as usize
+    sys::ARG_LEN(0, 0) as usize
 }
 
 /// Pull the argument blob into `buffer`, returning the blob's *full* length. A
 /// caller that gets back more than it offered was truncated, and must fail.
 pub fn read_args(buffer: &mut [u8]) -> usize {
-    sys::call2(
-        HOST_ARG_READ,
-        buffer.as_mut_ptr() as u64,
-        buffer.len() as u64,
-    ) as usize
+    sys::ARG_READ(buffer.as_mut_ptr() as usize, buffer.len()) as usize
 }
 
 /// Hand the host what this tool produced.
 pub fn done(result: &[u8]) {
-    sys::call2(HOST_DONE, result.as_ptr() as u64, result.len() as u64);
+    sys::DONE(result.as_ptr() as usize, result.len());
 }
 
 /// Report failure, the other half of [`done`]. The host marks the invocation
 /// an error.
 pub fn fail(message: &[u8]) {
-    sys::call2(HOST_FAIL, message.as_ptr() as u64, message.len() as u64);
+    sys::FAIL(message.as_ptr() as usize, message.len());
 }
 
 /// Pull the last syscall's staged result, returning its *full* length as
 /// [`read_args`] does.
 pub(crate) fn read_result(buffer: &mut [u8]) -> usize {
-    sys::call2(
-        HOST_RESULT_READ,
-        buffer.as_mut_ptr() as u64,
-        buffer.len() as u64,
-    ) as usize
+    sys::RESULT_READ(buffer.as_mut_ptr() as usize, buffer.len()) as usize
 }

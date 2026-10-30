@@ -75,6 +75,12 @@ pub struct Runtime {
     pub tools: Vec<ToolSpec>,
     pub deps: Deps,
     pub events: Vec<EventSpec>,
+    /// The `berm-lang` version its image was built with.
+    #[serde(default)]
+    pub lang: String,
+    /// The host calls its image imports.
+    #[serde(default)]
+    pub imports: Vec<String>,
     /// The part of `deps` this host answers to nothing for.
     #[serde(default, skip_serializing_if = "Deps::is_empty")]
     pub unresolved: Deps,

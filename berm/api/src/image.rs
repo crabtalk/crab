@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use object::{Object, ObjectSection};
+use wasmparser::{Parser, Payload};
 
 /// A wasm module's bytes.
 pub struct Image<'a>(pub &'a [u8]);
@@ -17,6 +18,26 @@ impl<'a> Image<'a> {
             .data()
             .with_context(|| format!("service's {name} section is unreadable"))?;
         Ok(Some(data))
+    }
+
+    /// The host calls it imports, by name, sorted.
+    pub fn imports(&self) -> Result<Vec<String>> {
+        let mut names = Vec::new();
+        for payload in Parser::new(0).parse_all(self.0) {
+            let Payload::ImportSection(section) =
+                payload.context("service is not a readable image")?
+            else {
+                continue;
+            };
+            for import in section.into_imports() {
+                let import = import.context("service's imports are unreadable")?;
+                if import.module == berm_abi::MODULE {
+                    names.push(import.name.to_owned());
+                }
+            }
+        }
+        names.sort();
+        Ok(names)
     }
 
     /// Its bytes with `payload` appended as the custom section `name`.

@@ -180,6 +180,9 @@ pub struct Request {
     /// Why an approved deploy did not go live.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
+    /// The error code explaining `failure`, as `E0020`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explain: Option<String>,
     /// The account is a person's on Hobby, not verified: a deploy request is
     /// refused when approved until they verify.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

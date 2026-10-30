@@ -1,18 +1,17 @@
 //! wasmtime — where a service's bytes become code that runs.
 //!
-//! Every syscall arrives through one import, `berm.syscall`, carrying the
-//! number its name hashes to alongside the request.
+//! Every syscall is its own import from the `berm` module, by name.
 //!
 //! A guest runs on a fiber: a hosted syscall suspends it, and the thread is
 //! free until the reply resolves.
 
 use crate::{
-    Budget, Invocation, Meter, Pool,
+    Budget, Invocation, Meter, Pool, abi,
     bound::{cpu::Clock, watchdog},
     syscall::{self, Door, Table},
     tape::{self, Answer},
 };
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use std::{
     path::PathBuf,
     sync::{
@@ -27,9 +26,6 @@ use wasmtime::{
     PoolingAllocationConfig, Store, ToWasmtimeResult, Trap, UpdateDeadline,
 };
 
-/// The module every syscall is imported from, and the one name under it.
-const MODULE: &str = "berm";
-const SYSCALL: &str = "syscall";
 /// The export a guest's linear memory is reached through.
 const MEMORY: &str = "memory";
 
@@ -179,6 +175,22 @@ fn tick(engine: &wasmtime::Engine) {
         .expect("spawn the berm epoch ticker");
 }
 
+/// An image was refused for importing a host call this runtime does not serve.
+#[derive(Debug)]
+pub struct MissingHostCall(pub String);
+
+impl std::fmt::Display for MissingHostCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the image uses the host call {}, which this host does not serve",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for MissingHostCall {}
+
 /// One compiled service, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
@@ -188,8 +200,7 @@ pub(crate) struct Image {
     pub(crate) budget: Budget,
     /// [`Engine::reserve`].
     pub(crate) reserve: Arc<Pool>,
-    /// Imports resolved once, at deploy. An image importing something no
-    /// syscall is registered for is refused by its deploy.
+    /// Imports resolved once, at deploy and at load.
     pre: InstancePre<Invocation>,
     exports: Vec<(String, ModuleExport)>,
     /// Its [`MEMORY`] export.
@@ -205,54 +216,64 @@ impl Image {
         let engine = engine.wasmtime.clone();
         let module = Module::new(&engine, image)?;
 
+        if let Some(import) = module
+            .imports()
+            .find(|import| import.module() == abi::MODULE && !table.contains_key(import.name()))
+        {
+            return Err(MissingHostCall(import.name().to_owned()).into());
+        }
+
         let mut linker: Linker<Invocation> = Linker::new(&engine);
-        let table = Arc::new(table);
-        linker.func_wrap_async(
-            MODULE,
-            SYSCALL,
-            move |mut caller: Caller<'_, Invocation>, (number, ptr, len): (u64, u32, u32)| {
-                // A syscall the guest was not given traps: the absence is the
-                // enforcement.
-                let door = table.get(&number).cloned();
-                Box::new(async move {
-                    let (ptr, len) = (ptr as u64, len as u64);
-                    let answer = match door {
-                        Some(Door::Builtin(call)) => call(&mut caller, ptr, len),
-                        door => match syscall::request(&mut caller, ptr, len) {
-                            Ok((at, request)) => {
-                                let deck = caller.data().tape.clone();
-                                let asked = deck.as_ref().map(|_| tape::asked(&request));
-                                let replayed =
-                                    deck.as_ref().zip(asked).and_then(|(deck, asked)| {
-                                        deck.lock().replay(&at, number, asked)
-                                    });
-                                match (replayed, door) {
-                                    (Some(Err(diverged)), _) => Err(diverged),
-                                    (Some(Ok(answer)), door) => {
-                                        let through =
-                                            deck.is_some_and(|deck| deck.lock().through(number));
-                                        if let (true, Some(Door::Hosted(call))) = (through, door) {
-                                            let _ = call(at, request).await;
+        for (name, door) in table {
+            let syscall: Arc<str> = name.as_str().into();
+            linker.func_wrap_async(
+                abi::MODULE,
+                &name,
+                move |mut caller: Caller<'_, Invocation>, (ptr, len): (u32, u32)| {
+                    let (door, syscall) = (door.clone(), syscall.clone());
+                    Box::new(async move {
+                        let (ptr, len) = (ptr as u64, len as u64);
+                        let answer = match door {
+                            Door::Builtin(call) => call(&mut caller, ptr, len),
+                            Door::Hosted(call) => match syscall::request(&mut caller, ptr, len) {
+                                Ok((at, request)) => {
+                                    let deck = caller.data().tape.clone();
+                                    let asked = deck.as_ref().map(|_| tape::asked(&request));
+                                    let replayed =
+                                        deck.as_ref().zip(asked).and_then(|(deck, asked)| {
+                                            deck.lock().replay(&syscall, asked)
+                                        });
+                                    match replayed {
+                                        Some(Err(diverged)) => Err(diverged),
+                                        Some(Ok(answer)) => {
+                                            let through = deck
+                                                .is_some_and(|deck| deck.lock().through(&syscall));
+                                            if through {
+                                                let _ = call(at, request).await;
+                                            }
+                                            Ok(syscall::stage(&mut caller, answer.reply()))
                                         }
-                                        Ok(syscall::stage(&mut caller, answer.reply()))
-                                    }
-                                    (None, Some(Door::Hosted(call))) => {
-                                        let reply = call(at, request).await;
-                                        if let Some((deck, asked)) = deck.zip(asked) {
-                                            deck.lock().record(number, asked, Answer::of(&reply));
+                                        None => {
+                                            let reply = call(at, request).await;
+                                            if let Some((deck, asked)) = deck.zip(asked) {
+                                                deck.lock().record(
+                                                    &syscall,
+                                                    asked,
+                                                    Answer::of(&reply),
+                                                );
+                                            }
+                                            Ok(syscall::stage(&mut caller, reply))
                                         }
-                                        Ok(syscall::stage(&mut caller, reply))
                                     }
-                                    (None, _) => Err(anyhow!("no syscall for {number}")),
                                 }
-                            }
-                            Err(error) => Err(error),
-                        },
-                    };
-                    answer.to_wasmtime_result()
-                })
-            },
-        )?;
+                                Err(error) => Err(error),
+                            },
+                        };
+                        answer.to_wasmtime_result()
+                    })
+                },
+            )?;
+        }
 
         let compiled = module.image_range();
         let bytes = image.len() as u64 + (compiled.end as usize - compiled.start as usize) as u64;

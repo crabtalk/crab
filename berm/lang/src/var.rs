@@ -1,8 +1,9 @@
 //! This service's settings, each a var of `[vars]` in its `crab.toml`.
 
 use crate::{
-    abi::{self, wire},
+    abi::wire,
     host::{self, CallError},
+    sys,
 };
 use alloc::string::String;
 
@@ -13,7 +14,7 @@ use alloc::string::String;
 /// let keywords = berm_lang::var("keywords")?;
 /// ```
 pub fn var(name: &str) -> Result<String, CallError> {
-    let reply = host::call(abi::HOST_VAR, &wire::request(&[name.as_bytes()]))?;
+    let reply = host::call(sys::VAR, &wire::request(&[name.as_bytes()]))?;
     String::from_utf8(reply)
         .map_err(|_| CallError::Failed(alloc::format!("the host answered {name} as non-UTF-8")))
 }

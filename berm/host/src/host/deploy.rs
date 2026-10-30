@@ -23,6 +23,10 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 /// carries.
 const PAST_MOST: &str = "E0013";
 
+/// The error code a deploy refused for a host call this host does not serve
+/// carries.
+const MISSING_HOST_CALL: &str = "E0020";
+
 /// A deploy that went live.
 pub struct Installed {
     pub service: Arc<Service>,
@@ -133,9 +137,12 @@ impl<E: Env> Host<E> {
                 .collect();
             let deployed = self.compile(key.clone(), image).await.map_err(|e| {
                 let denied = deny(StatusCode::BAD_REQUEST, format!("{e:#}"));
-                match e.downcast_ref::<berm::PastMost>() {
-                    Some(_) => denied.explained(PAST_MOST),
-                    None => denied,
+                if e.downcast_ref::<berm::PastMost>().is_some() {
+                    denied.explained(PAST_MOST)
+                } else if e.downcast_ref::<berm::MissingHostCall>().is_some() {
+                    denied.explained(MISSING_HOST_CALL)
+                } else {
+                    denied
                 }
             })?;
             service::install(

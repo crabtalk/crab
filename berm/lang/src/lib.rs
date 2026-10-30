@@ -78,7 +78,8 @@ mod var;
 // `wasm.rs` makes real host calls; `stub.rs` is the host a test stands in for.
 #[cfg_attr(target_arch = "wasm32", path = "sys/wasm.rs")]
 #[cfg_attr(not(target_arch = "wasm32"), path = "sys/stub.rs")]
-mod sys;
+#[doc(hidden)]
+pub mod sys;
 
 /// What `declare_service!`'s types are written in, reachable without the
 /// author's `extern crate alloc`.

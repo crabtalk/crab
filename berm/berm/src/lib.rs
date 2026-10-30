@@ -23,7 +23,7 @@ use anyhow::Result;
 pub use berm_abi as abi;
 pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
 pub use berm_codegen::hosts;
-pub use engine::{Config, Engine, PastMost};
+pub use engine::{Config, Engine, MissingHostCall, PastMost};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
@@ -212,7 +212,7 @@ impl Berm {
     /// Whether a service deployed here can make the syscall `name`.
     pub fn serves(&self, name: &str) -> bool {
         name == abi::CALL
-            || syscall::is_builtin(abi::hash(name))
+            || syscall::is_builtin(name)
             || self.syscalls.iter().any(|syscall| syscall.name == name)
     }
 
@@ -220,6 +220,13 @@ impl Berm {
     fn load(&self, name: &str, image: &[u8]) -> Result<Arc<Service>> {
         let mut syscalls = self.syscalls.clone();
         syscalls.push(syscall::call::syscalls(self.me.clone(), self.calls.clone()));
+        // Every call of the ABI links, so an image is refused only for one this
+        // berm has never heard of. One no door serves here is refused when reached.
+        for name in abi::ALL {
+            if !syscall::is_builtin(name) && !syscalls.iter().any(|served| served.name == *name) {
+                syscalls.push(syscall::refused(name.to_string()));
+            }
+        }
         Ok(Arc::new(Service::load(
             &self.engine,
             image,
@@ -280,8 +287,8 @@ impl Berm {
 /// from its linker, and that absence is the enforcement — there is no check to
 /// write and none to forget. Whatever bounds it is whatever it closes over.
 ///
-/// The name is hashed to the number the guest passes to `berm.syscall`, and
-/// berm neither reserves a namespace nor recognises one: every name in the list
+/// The name is the import the guest makes from the `berm` module, and berm
+/// neither reserves a namespace nor recognises one: every name in the list
 /// belongs to the embedder that wrote it.
 #[derive(Clone)]
 pub struct Syscall {

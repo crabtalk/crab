@@ -219,6 +219,8 @@ impl Service {
         let Manifest {
             abi_version: _,
             name: _,
+            lang: _,
+            imports: _,
             buffer: _,
             database: _,
             kits: _,
@@ -257,6 +259,8 @@ impl Service {
                 .collect(),
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
+            lang: self.manifest.lang.clone(),
+            imports: self.manifest.imports.clone(),
             unresolved: Default::default(),
             project: None,
         }

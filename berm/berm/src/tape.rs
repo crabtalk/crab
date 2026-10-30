@@ -6,7 +6,7 @@
 //! the clock and the random source with what they returned. A replay answers
 //! each from the tape and refuses a request whose digest differs.
 
-use crate::{Callsite, Refused, abi};
+use crate::Refused;
 use anyhow::{Context, Result, bail};
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
@@ -27,8 +27,8 @@ pub struct Tape {
 /// One answer from outside the guest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
-    /// The syscall's number, as [`abi::hash`] gives it.
-    pub syscall: u64,
+    /// The syscall's name.
+    pub syscall: String,
     /// sha256 of the request; zero for the clock and the random source.
     pub asked: [u8; 32],
     pub answer: Answer,
@@ -98,7 +98,7 @@ pub(crate) enum Playing {
     Replaying {
         tape: Tape,
         at: usize,
-        through: HashSet<u64>,
+        through: HashSet<String>,
     },
 }
 
@@ -134,7 +134,7 @@ impl Taping {
             Taping::Replay { tape, through } => Playing::Replaying {
                 tape,
                 at: 0,
-                through: through.iter().map(|name| abi::hash(name)).collect(),
+                through: through.into_iter().collect(),
             },
         };
         Some(Arc::new(Mutex::new(playing)))
@@ -143,7 +143,7 @@ impl Taping {
 
 impl Playing {
     /// Add `answer` to `syscall`, asked as `asked`, on a tape being recorded.
-    pub(crate) fn record(&mut self, syscall: u64, asked: [u8; 32], answer: Answer) {
+    pub(crate) fn record(&mut self, syscall: &str, asked: [u8; 32], answer: Answer) {
         let Playing::Recording { tape, bytes } = self else {
             return;
         };
@@ -154,13 +154,14 @@ impl Playing {
             Answer::Done(bytes) => bytes.len(),
             Answer::Failed(text) | Answer::Refused(text) => text.len(),
             Answer::Number(_) => 8,
-        } + 41;
+        } + 37
+            + syscall.len();
         if *bytes > MAX_TAPE {
             tape.complete = false;
             return;
         }
         tape.entries.push(Entry {
-            syscall,
+            syscall: syscall.to_owned(),
             asked,
             answer,
         });
@@ -168,12 +169,7 @@ impl Playing {
 
     /// The recorded answer to the next syscall, refused when it is not
     /// `syscall` asked as `digest`. `None` while recording.
-    pub(crate) fn replay(
-        &mut self,
-        at_site: &Callsite,
-        syscall: u64,
-        digest: [u8; 32],
-    ) -> Option<Result<Answer>> {
+    pub(crate) fn replay(&mut self, syscall: &str, digest: [u8; 32]) -> Option<Result<Answer>> {
         let Playing::Replaying { tape, at, .. } = self else {
             return None;
         };
@@ -181,8 +177,7 @@ impl Playing {
         let Some(entry) = tape.entries.get(*at) else {
             return Some(Err(match tape.complete {
                 true => anyhow::anyhow!(
-                    "diverged at syscall {position}: asked {}, and the call made no more",
-                    name(at_site, syscall)
+                    "diverged at syscall {position}: asked {syscall}, and the call made no more"
                 ),
                 false => anyhow::anyhow!(
                     "the tape was cut at syscall {position}, where the recording stopped"
@@ -191,10 +186,9 @@ impl Playing {
         };
         if entry.syscall != syscall || entry.asked != digest {
             return Some(Err(anyhow::anyhow!(
-                "diverged at syscall {position}: asked {} {}, recorded {} {}",
-                name(at_site, syscall),
+                "diverged at syscall {position}: asked {syscall} {}, recorded {} {}",
                 hex::encode(&digest[..6]),
-                name(at_site, entry.syscall),
+                entry.syscall,
                 hex::encode(&entry.asked[..6]),
             )));
         }
@@ -203,8 +197,8 @@ impl Playing {
     }
 
     /// Whether a replay runs `syscall`'s door too.
-    pub(crate) fn through(&self, syscall: u64) -> bool {
-        matches!(self, Playing::Replaying { through, .. } if through.contains(&syscall))
+    pub(crate) fn through(&self, syscall: &str) -> bool {
+        matches!(self, Playing::Replaying { through, .. } if through.contains(syscall))
     }
 
     /// The tape recorded, taken out.
@@ -224,36 +218,15 @@ pub(crate) fn asked(request: &[u8]) -> [u8; 32] {
     }
 }
 
-/// `syscall`'s name, among berm's own and those `at`'s service declares.
-fn name(at: &Callsite, syscall: u64) -> String {
-    [
-        abi::CALL,
-        abi::CALL_AFTER,
-        abi::HTTP_FETCH,
-        abi::HTTP_PROXY,
-        abi::HTTP_FETCH_ALL,
-        abi::HTTP_PROXY_ALL,
-        abi::EMIT,
-        abi::SQL,
-        abi::GET,
-        abi::SET,
-        "berm.now",
-        "berm.random",
-    ]
-    .into_iter()
-    .chain(at.deps.syscalls.keys().map(String::as_str))
-    .find(|name| abi::hash(name) == syscall)
-    .map_or_else(|| format!("syscall {syscall:#x}"), str::to_owned)
-}
-
 /// The tape as bytes: `1` or `0` for complete, then each entry as its
-/// syscall's number, its digest, a kind byte, and a little-endian number or a
+/// syscall's `u32`-prefixed name, its digest, a kind byte, and a little-endian number or a
 /// `u32`-prefixed body.
 impl From<&Tape> for Vec<u8> {
     fn from(tape: &Tape) -> Self {
         let mut bytes = vec![u8::from(tape.complete)];
         for entry in &tape.entries {
-            bytes.extend(entry.syscall.to_le_bytes());
+            bytes.extend((entry.syscall.len() as u32).to_le_bytes());
+            bytes.extend(entry.syscall.as_bytes());
             bytes.extend(entry.asked);
             let (kind, body): (u8, &[u8]) = match &entry.answer {
                 Answer::Done(body) => (0, body),
@@ -291,7 +264,8 @@ impl TryFrom<&[u8]> for Tape {
         let mut entries = Vec::new();
         let mut left = bytes.len() - 1;
         while left > 0 {
-            let syscall = u64::from_le_bytes(take(8)?.try_into()?);
+            let named = u32::from_le_bytes(take(4)?.try_into()?) as usize;
+            let syscall = String::from_utf8(take(named)?.to_vec())?;
             let asked: [u8; 32] = take(32)?.try_into()?;
             let kind = take(1)?[0];
             let (answer, read) = match kind {
@@ -308,7 +282,7 @@ impl TryFrom<&[u8]> for Tape {
                 }
                 other => bail!("a tape's answer is not of kind {other}"),
             };
-            left -= 41 + read;
+            left -= 37 + named + read;
             entries.push(Entry {
                 syscall,
                 asked,

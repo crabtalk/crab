@@ -39,6 +39,7 @@ impl<E: Env> Host<E> {
         let mut checked = BTreeMap::new();
         let mut refused = BTreeMap::new();
         let mut status = StatusCode::CONFLICT;
+        let mut explain = None;
         for (service, deploy) in &members {
             let name = host::split(service).1.to_owned();
             match self.check(service, deploy.clone(), false).await {
@@ -47,6 +48,7 @@ impl<E: Env> Host<E> {
                 }
                 Err(denied) => {
                     status = denied.status;
+                    explain = denied.explain.or(explain);
                     refused.insert(name, denied.message);
                 }
             }
@@ -66,7 +68,10 @@ impl<E: Env> Host<E> {
                 return self.install_set(&scope, members, plan).await;
             }
         }
-        Err(deny(status, SetRefused(&refused).to_string()))
+        Err(Denied {
+            explain,
+            ..deny(status, SetRefused(&refused).to_string())
+        })
     }
 
     /// Switch `members` in `plan`'s order, putting those switched back when

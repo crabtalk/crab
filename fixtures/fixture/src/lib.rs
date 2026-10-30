@@ -186,6 +186,29 @@ pub fn vouched(
     Ok(crate::fixture::calls::whoami()?)
 }
 
+/// Makes the host calls no other tool here makes, whatever each answers, so
+/// this image imports them. Answers `url`'s fetch status, when it had one.
+#[tool]
+pub fn reach(url: String) -> Result<Option<u16>> {
+    let request = berm_lang::http::Request {
+        method: "GET",
+        url: &url,
+        headers: &[],
+        body: b"",
+        timeout: Some(1_000),
+        limit: None,
+    };
+    let _ = berm_lang::client();
+    let _ = berm_lang::http::proxy("GET", &url, &[], b"");
+    let _ = berm_lang::http::proxy_all(core::slice::from_ref(&request));
+    let fetched = berm_lang::http::fetch_all(core::slice::from_ref(&request))?;
+    Ok(fetched
+        .into_iter()
+        .next()
+        .and_then(|fetched| fetched.ok())
+        .map(|response| response.status))
+}
+
 /// Always fails, to exercise the error path.
 #[tool]
 pub fn boom() -> Result<()> {

@@ -60,32 +60,38 @@ pub(crate) fn with<T>(f: impl FnOnce(&mut Host) -> T) -> T {
     HOST.with(|host| f(&mut host.borrow_mut()))
 }
 
-#[inline]
-pub fn call0(number: u64) -> u64 {
-    match number {
-        abi::HOST_ARG_LEN => with(|host| host.args.len() as u64),
-        _ => no_host(number),
-    }
+macro_rules! imports {
+    ($($(#[$doc:meta])* $call:ident = $name:literal;)*) => {
+        $(
+            #[allow(non_snake_case)]
+            pub fn $call(ptr: usize, len: usize) -> u64 {
+                call($name, ptr as u64, len as u64)
+            }
+        )*
+    };
 }
 
-#[inline]
-pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
-    match number {
-        abi::HOST_ARG_READ => with(|host| {
+abi::host_calls!(imports);
+
+/// The stand-in for the host call `name`, for what `syscalls!` declares too.
+pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
+    match name {
+        abi::ARG_LEN => with(|host| host.args.len() as u64),
+        abi::ARG_READ => with(|host| {
             let taken = host.args.len().min(a1 as usize);
             // Safety: a0/a1 describe a buffer the caller owns, exactly as the
             // real host requires. Off-target that buffer is ordinary memory.
             unsafe { core::ptr::copy_nonoverlapping(host.args.as_ptr(), a0 as *mut u8, taken) };
             host.args.len() as u64
         }),
-        abi::HOST_TRACE => {
+        abi::TRACE => {
             with(|host| host.traced.push(read(a0, a1)));
             0
         }
-        abi::HOST_EMIT => {
+        abi::EMIT => {
             let request = bytes(a0, a1);
             let Ok(fields) = abi::wire::fields(request) else {
-                no_host(number)
+                no_host(name)
             };
             let mut fields = fields
                 .iter()
@@ -97,33 +103,33 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
             });
             0
         }
-        abi::HOST_DONE => {
+        abi::DONE => {
             with(|host| host.done = Some(bytes(a0, a1).to_vec()));
             0
         }
-        abi::HOST_FAIL => {
+        abi::FAIL => {
             with(|host| host.failure = Some(read(a0, a1)));
             0
         }
-        abi::HOST_RESULT_READ => with(|host| {
+        abi::RESULT_READ => with(|host| {
             let taken = host.result.len().min(a1 as usize);
-            // Safety: as HOST_ARG_READ above -- the caller owns the buffer it
+            // Safety: as ARG_READ above -- the caller owns the buffer it
             // described, and off-target it is ordinary memory.
             unsafe { core::ptr::copy_nonoverlapping(host.result.as_ptr(), a0 as *mut u8, taken) };
             host.result.len() as u64
         }),
         // Another service, if the test arranged what it answers.
-        abi::HOST_CALL => {
+        abi::CALL => {
             let request = bytes(a0, a1);
             let Ok(fields) = abi::wire::fields(request) else {
-                no_host(number)
+                no_host(name)
             };
             let (service, tool) = match fields.as_slice() {
                 [service, tool, ..] => (
                     String::from_utf8_lossy(service).into_owned(),
                     String::from_utf8_lossy(tool).into_owned(),
                 ),
-                _ => no_host(number),
+                _ => no_host(name),
             };
             let staged = with(|host| {
                 host.answers
@@ -142,14 +148,14 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                 ),
             }
         }
-        abi::HOST_VAR => {
+        abi::VAR => {
             let request = bytes(a0, a1);
             let Ok(fields) = abi::wire::fields(request) else {
-                no_host(number)
+                no_host(name)
             };
             let name = match fields.as_slice() {
                 [name] => String::from_utf8_lossy(name).into_owned(),
-                _ => no_host(number),
+                _ => no_host(name),
             };
             let value = with(|host| {
                 host.vars
@@ -165,26 +171,26 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                 host.result.len() as u64
             })
         }
-        abi::HOST_HTTP_FETCH | abi::HOST_HTTP_PROXY => {
+        abi::HTTP_FETCH | abi::HTTP_PROXY => {
             let request = bytes(a0, a1);
             let Some((status, body)) = respond(request) else {
-                no_host(number)
+                no_host(name)
             };
             with(|host| {
                 host.result = abi::wire::request(&[status.to_string().as_bytes(), &body]);
                 host.result.len() as u64
             })
         }
-        abi::HOST_HTTP_FETCH_ALL | abi::HOST_HTTP_PROXY_ALL => {
+        abi::HTTP_FETCH_ALL | abi::HTTP_PROXY_ALL => {
             let batch = bytes(a0, a1);
             let Ok(requests) = abi::wire::fields(batch) else {
-                no_host(number)
+                no_host(name)
             };
             let answers: Vec<Vec<u8>> = requests
                 .into_iter()
                 .map(|request| {
                     let Some((status, body)) = respond(request) else {
-                        no_host(number)
+                        no_host(name)
                     };
                     abi::wire::request(&[b"ok", status.to_string().as_bytes(), &body])
                 })
@@ -195,7 +201,7 @@ pub fn call2(number: u64, a0: u64, a1: u64) -> u64 {
                 host.result.len() as u64
             })
         }
-        _ => no_host(number),
+        _ => no_host(name),
     }
 }
 
@@ -255,6 +261,6 @@ fn read(ptr: u64, len: u64) -> String {
 }
 
 #[cold]
-fn no_host(number: u64) -> ! {
-    panic!("host call {number:#x} has no stand-in; it needs a real host");
+fn no_host(name: &str) -> ! {
+    panic!("host call {name} has no stand-in; it needs a real host");
 }

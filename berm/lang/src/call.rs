@@ -3,10 +3,7 @@
 //! The target is named at the call. What is deployed beside the service is
 //! reachable; a name that is not answers [`CallError::Refused`].
 
-use crate::{
-    abi::{self, wire},
-    host,
-};
+use crate::{abi::wire, host, sys};
 use alloc::string::{String, ToString};
 
 pub use host::CallError;
@@ -23,7 +20,7 @@ pub use host::CallError;
 /// allows — and [`CallError::Failed`] means the tool ran and reported failure.
 pub fn call(service: &str, tool: &str, args: &str) -> Result<String, CallError> {
     let request = wire::request(&[service.as_bytes(), tool.as_bytes(), args.as_bytes()]);
-    let result = host::call(abi::HOST_CALL, &request)?;
+    let result = host::call(sys::CALL, &request)?;
     Ok(String::from_utf8_lossy(&result).into_owned())
 }
 
@@ -44,7 +41,7 @@ pub fn after(delay: u64, service: &str, tool: &str, args: &str) -> Result<(), Ca
         tool.as_bytes(),
         args.as_bytes(),
     ]);
-    host::call(abi::HOST_CALL_AFTER, &request)?;
+    host::call(sys::CALL_AFTER, &request)?;
     Ok(())
 }
 
@@ -68,7 +65,7 @@ pub enum Caller {
 /// }
 /// ```
 pub fn caller() -> Result<Option<Caller>, CallError> {
-    let reply = host::call(abi::HOST_CALLER, &[])?;
+    let reply = host::call(sys::CALLER, &[])?;
     let unreadable =
         || CallError::Failed(String::from("host framed a reply this guest cannot read"));
     let fields = wire::fields(&reply).map_err(|_| unreadable())?;
@@ -101,7 +98,7 @@ pub struct User {
 /// every nested call. [`caller`] says who made this call, which in a nested
 /// call is the service that relayed the user.
 pub fn user() -> Result<Option<User>, CallError> {
-    let reply = host::call(abi::HOST_USER, &[])?;
+    let reply = host::call(sys::USER, &[])?;
     let unreadable =
         || CallError::Failed(String::from("host framed a reply this guest cannot read"));
     match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
@@ -126,7 +123,7 @@ pub fn user() -> Result<Option<User>, CallError> {
 /// The manifest declares `berm.vouch`. [`CallError::Refused`] in a chain that
 /// already runs for a user, and for an empty subject.
 pub fn vouch(subject: &str) -> Result<(), CallError> {
-    host::call(abi::HOST_VOUCH, subject.as_bytes())?;
+    host::call(sys::VOUCH, subject.as_bytes())?;
     Ok(())
 }
 
@@ -150,14 +147,14 @@ pub fn limit(cpu: u64, read: u64, written: u64, memory: u64) -> Result<(), CallE
     {
         *slot = value.to_le_bytes();
     }
-    host::call(abi::HOST_LIMIT, &bytes)?;
+    host::call(sys::LIMIT, &bytes)?;
     Ok(())
 }
 
 /// The outside client this chain runs for, as an opaque key that names it for
 /// one day, carried into every nested call. `None` when the host supplied none.
 pub fn client() -> Result<Option<String>, CallError> {
-    let reply = host::call(abi::HOST_CLIENT, &[])?;
+    let reply = host::call(sys::CLIENT, &[])?;
     let unreadable =
         || CallError::Failed(String::from("host framed a reply this guest cannot read"));
     match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {

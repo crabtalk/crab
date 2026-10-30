@@ -17,6 +17,12 @@ pub struct Manifest {
     /// The package's version when it was built.
     #[serde(default)]
     pub version: String,
+    /// The `berm-lang` version it was built with.
+    #[serde(default)]
+    pub lang: String,
+    /// The host calls its image imports, sorted.
+    #[serde(default)]
+    pub imports: Vec<String>,
     /// The package's `description`, `homepage` and `repository` from its
     /// `Cargo.toml`.
     #[serde(default)]
@@ -60,6 +66,9 @@ pub struct ServiceRecord {
     pub name: String,
     #[serde(default)]
     pub version: String,
+    /// The `berm-lang` version it was built with.
+    #[serde(default)]
+    pub lang: String,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
@@ -598,6 +607,7 @@ impl TryFrom<&[u8]> for Manifest {
         let ServiceRecord {
             name,
             version,
+            lang,
             description,
             homepage,
             repository,
@@ -615,6 +625,8 @@ impl TryFrom<&[u8]> for Manifest {
             abi_version: ABI_VERSION,
             name,
             version,
+            lang,
+            imports: image.imports()?,
             description,
             homepage,
             repository,

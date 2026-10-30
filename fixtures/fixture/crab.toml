@@ -13,7 +13,11 @@ greeting = { default = "hello", description = "What greet answers" }
 "berm.set" = []
 "berm.call.after" = []
 "berm.http.fetch" = ["127.0.0.1"]
+"berm.http.proxy" = ["127.0.0.1"]
 "berm.vouch" = []
+
+[tools.reach]
+access = "public"
 
 [tools.echo]
 access = "public"

@@ -162,7 +162,10 @@ fn approved(client: &Client, services: BTreeMap<String, DeployRequest>) -> Resul
         RequestStatus::Completed => {}
     }
     if let Some(failure) = &settled.failure {
-        bail!("the approved deploy did not go live: {failure}");
+        match &settled.explain {
+            Some(code) => bail!("the approved deploy did not go live [{code}]: {failure}"),
+            None => bail!("the approved deploy did not go live: {failure}"),
+        }
     }
     for (name, deployed) in &settled.deployed {
         report(client, name, deployed)?;

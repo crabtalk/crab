@@ -335,6 +335,8 @@ impl Declaration {
         let ident = &call.name;
         let docs = doc(&call.docs);
         let konst = konst(call);
+        let raw = format_ident!("{}_raw", konst);
+        let import = format_ident!("{}_import", konst);
 
         let args = call.params.iter().chain(&call.tail).map(|p| {
             let name = &p.name;
@@ -363,7 +365,7 @@ impl Declaration {
             Reply::Nothing => (
                 quote!(),
                 quote!(()),
-                quote!(::berm_lang::host::call(#konst, &request).map(|_| ())),
+                quote!(::berm_lang::host::call(#import, &request).map(|_| ())),
             ),
             // Staged raw: one blob needs no framing to be told apart from the
             // rest of itself, and `fs::read` would pay four bytes per file for
@@ -371,7 +373,7 @@ impl Declaration {
             Reply::One(Ty::Bytes) => (
                 quote!(),
                 quote!(::alloc::vec::Vec<u8>),
-                quote!(::berm_lang::host::call(#konst, &request)),
+                quote!(::berm_lang::host::call(#import, &request)),
             ),
             Reply::One(ty) => {
                 let owned = ty.owned();
@@ -380,7 +382,7 @@ impl Declaration {
                     quote!(),
                     owned,
                     quote! {
-                        let reply = ::berm_lang::host::call(#konst, &request)?;
+                        let reply = ::berm_lang::host::call(#import, &request)?;
                         ::core::result::Result::Ok(#decode)
                     },
                 )
@@ -405,7 +407,7 @@ impl Declaration {
                     },
                     quote!(#ty),
                     quote! {
-                        let reply = ::berm_lang::host::call(#konst, &request)?;
+                        let reply = ::berm_lang::host::call(#import, &request)?;
                         let ::core::result::Result::Ok(parts) =
                             ::berm_lang::abi::wire::fields(&reply)
                         else {
@@ -432,7 +434,25 @@ impl Declaration {
             #reply
 
             #docs
-            pub const #konst: u64 = ::berm_lang::abi::hash(#wire);
+            pub const #konst: &str = #wire;
+
+            #[cfg(target_arch = "wasm32")]
+            #[allow(non_snake_case)]
+            #[link(wasm_import_module = "berm")]
+            unsafe extern "C" {
+                #[link_name = #wire]
+                fn #raw(ptr: usize, len: usize) -> u64;
+            }
+
+            #[allow(non_snake_case)]
+            fn #import(ptr: usize, len: usize) -> u64 {
+                #[cfg(target_arch = "wasm32")]
+                unsafe {
+                    #raw(ptr, len)
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                ::berm_lang::sys::call(#wire, ptr as u64, len as u64)
+            }
 
             #docs
             pub fn #ident(#(#args),*)

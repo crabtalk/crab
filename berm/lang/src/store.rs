@@ -5,8 +5,9 @@
 //! traps them as unknown host calls.
 
 use crate::{
-    abi::{self, wire},
+    abi::wire,
     host::{self, CallError},
+    sys,
 };
 use alloc::{string::String, vec::Vec};
 
@@ -16,7 +17,7 @@ use alloc::{string::String, vec::Vec};
 /// let seen = berm_lang::get("last-run")?.unwrap_or_default();
 /// ```
 pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
-    let reply = host::call(abi::HOST_GET, &wire::request(&[key.as_bytes()]))?;
+    let reply = host::call(sys::GET, &wire::request(&[key.as_bytes()]))?;
     // One field is a value, a stored empty one included; none is an absent key.
     let Ok(fields) = wire::fields(&reply) else {
         return Err(CallError::Failed(String::from(
@@ -28,7 +29,7 @@ pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
 
 /// Write `key`, replacing whatever was there.
 pub fn set(key: &str, value: &[u8]) -> Result<(), CallError> {
-    host::call(abi::HOST_SET, &wire::request(&[key.as_bytes(), value]))?;
+    host::call(sys::SET, &wire::request(&[key.as_bytes(), value]))?;
     Ok(())
 }
 

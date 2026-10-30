@@ -45,7 +45,7 @@ fn docs(attrs: &[syn::Attribute]) -> String {
 ///
 /// [`hosts!`] takes the same declaration and emits what a host registers under.
 /// Each side writes it in its own crate, and drift is caught on the first call:
-/// a renamed call hashes to a number nothing is registered for.
+/// a renamed call is an import nothing is registered for, refused at deploy.
 #[proc_macro]
 pub fn syscalls(input: TokenStream) -> TokenStream {
     parse_macro_input!(input as syscalls::Declaration)

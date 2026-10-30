@@ -6,8 +6,9 @@
 //! manifest declares. The host substitutes it, and this service never holds the value.
 
 use crate::{
-    abi::{self, wire},
+    abi::wire,
     host::{self, CallError},
+    sys,
 };
 use alloc::{string::String, vec::Vec};
 use serde::de::DeserializeOwned;
@@ -56,7 +57,7 @@ pub fn fetch(
     headers: &[(&str, &str)],
     body: &[u8],
 ) -> Result<Response, CallError> {
-    send(abi::HOST_HTTP_FETCH, method, url, headers, body)
+    send(sys::HTTP_FETCH, method, url, headers, body)
 }
 
 /// [`fetch`], through the host's proxy. The host meters the bytes sent and
@@ -67,7 +68,7 @@ pub fn proxy(
     headers: &[(&str, &str)],
     body: &[u8],
 ) -> Result<Response, CallError> {
-    send(abi::HOST_HTTP_PROXY, method, url, headers, body)
+    send(sys::HTTP_PROXY, method, url, headers, body)
 }
 
 /// One request of a batch [`fetch_all`] sends.
@@ -87,23 +88,23 @@ pub struct Request<'a> {
 /// `berm.http.fetch` and given up at its own timeout or the call's deadline,
 /// and answer each in its place: a [`Response`], or why nothing was.
 pub fn fetch_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
-    send_all(abi::HOST_HTTP_FETCH_ALL, requests)
+    send_all(sys::HTTP_FETCH_ALL, requests)
 }
 
 /// [`fetch_all`], through the host's proxy, each request to a host the
 /// manifest declares under `berm.http.proxy`. The host meters the bytes sent
 /// and received against this service as `proxied`.
 pub fn proxy_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
-    send_all(abi::HOST_HTTP_PROXY_ALL, requests)
+    send_all(sys::HTTP_PROXY_ALL, requests)
 }
 
 fn send_all(
-    number: u64,
+    import: impl FnOnce(usize, usize) -> u64,
     requests: &[Request<'_>],
 ) -> Result<Vec<Result<Response, CallError>>, CallError> {
     let framed: Vec<Vec<u8>> = requests.iter().map(frame).collect();
     let fields: Vec<&[u8]> = framed.iter().map(Vec::as_slice).collect();
-    let reply = host::call(number, &wire::request(&fields))?;
+    let reply = host::call(import, &wire::request(&fields))?;
     let answers = wire::fields(&reply).map_err(|_| unreadable())?;
     if answers.len() != requests.len() {
         return Err(unreadable());
@@ -126,7 +127,7 @@ fn send_all(
 }
 
 fn send(
-    number: u64,
+    import: impl FnOnce(usize, usize) -> u64,
     method: &str,
     url: &str,
     headers: &[(&str, &str)],
@@ -140,11 +141,11 @@ fn send(
         timeout: None,
         limit: None,
     });
-    let reply = host::call(number, &request)?;
+    let reply = host::call(import, &request)?;
     response(&wire::fields(&reply).map_err(|_| unreadable())?)
 }
 
-/// `request` as [`abi::HOST_HTTP_FETCH`] frames it.
+/// `request` as [`abi::HTTP_FETCH`] frames it.
 fn frame(request: &Request<'_>) -> Vec<u8> {
     let timeout = request
         .timeout

@@ -30,6 +30,7 @@ fn service() -> Vec<u8> {
 /// The service record, with `tools` as `[tools]` of its `crab.toml` says.
 fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
     serde_json::to_vec(&ServiceRecord {
+        lang: String::new(),
         name: "demo".to_owned(),
         version: "0.1.0".to_owned(),
         description: String::new(),

@@ -60,9 +60,10 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
             service.name
         );
     }
-    let record = ServiceRecord {
+    let mut record = ServiceRecord {
         name: service.name.clone(),
         version: service.version.clone(),
+        lang: String::new(),
         description: service.description.clone().unwrap_or_default(),
         homepage: service.homepage.clone().unwrap_or_default(),
         repository: service.repository.clone().unwrap_or_default(),
@@ -105,6 +106,12 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         .with_context(|| format!("cargo built no image of {}", service.name))?;
     let bytes = fs::read(built).with_context(|| format!("cannot read {}", built.display()))?;
     let kits = kits(&artifacts, &service.manifest_path, &guest)?;
+    record.lang = artifacts
+        .iter()
+        .filter_map(|artifact| artifact.package().ok())
+        .find(|(name, _)| name == "berm-lang")
+        .map(|(_, version)| version)
+        .unwrap_or_default();
 
     let bytes = Image(&bytes).with_section(SERVICE_SECTION, &serde_json::to_vec(&record)?)?;
     let bytes = Image(&bytes).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;

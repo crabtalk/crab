@@ -96,6 +96,7 @@ tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = "5"
+wasmparser = "0.255"
 wasmtime = { version = "48", default-features = false, features = [
     "anyhow",
     "async",
