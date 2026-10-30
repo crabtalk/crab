@@ -176,3 +176,57 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn a_partial_set_keeps_successes_when_another_is_refused() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let image = test::build("berm-fixture")?;
+    let results = host
+        .deploy_partial(&[("acct/one", &image, DATABASE_SIZE), ("acct/two", &image, 0)])
+        .await?;
+    assert!(
+        results
+            .iter()
+            .find(|(name, _)| name == "acct/one")
+            .unwrap()
+            .1
+            .is_ok()
+    );
+    assert!(
+        results
+            .iter()
+            .find(|(name, _)| name == "acct/two")
+            .unwrap()
+            .1
+            .is_err()
+    );
+    assert!(host.host.get("acct/one").is_some());
+    assert!(host.host.get("acct/two").is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_partial_set_keeps_successes_when_another_fails_to_switch() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    host.deploy("acct/one", &test::build("berm-bare")?).await?;
+    let results = host
+        .deploy_partial(&[
+            ("acct/one", &test::build("berm-fixture")?, DATABASE_SIZE),
+            ("acct/two", &test::build("berm-broken")?, DATABASE_SIZE),
+        ])
+        .await?;
+    assert!(
+        results
+            .iter()
+            .find(|(name, _)| name == "acct/two")
+            .unwrap()
+            .1
+            .is_err()
+    );
+    assert_eq!(
+        host.host.get("acct/one").unwrap().manifest.name,
+        "berm-fixture"
+    );
+    assert!(host.host.get("acct/two").is_none());
+    Ok(())
+}

@@ -126,11 +126,20 @@ pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
 /// Request `code` once it is no longer pending, or as it stands after
 /// `timeout` seconds.
 pub fn settled(client: &Client, code: &str, timeout: u64) -> Result<Request> {
+    let mut deploying = false;
     let until = Instant::now() + Duration::from_secs(timeout);
     loop {
         let left = until.saturating_duration_since(Instant::now()).as_secs();
         let request = runtime::wait(client.request(code, left.min(HOLD)))?;
-        if request.status != RequestStatus::Pending || left == 0 {
+        if request.status == RequestStatus::Deploying && !deploying {
+            eprintln!("deploying…");
+            deploying = true;
+        }
+        if !matches!(
+            request.status,
+            RequestStatus::Pending | RequestStatus::Deploying
+        ) || left == 0
+        {
             return Ok(request);
         }
     }
@@ -153,8 +162,10 @@ pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) ->
     }
     match request.status {
         RequestStatus::Completed => Ok(()),
-        RequestStatus::Pending if wait => bail!("still pending after {timeout}s"),
-        RequestStatus::Pending => Ok(()),
+        RequestStatus::Pending | RequestStatus::Deploying if wait => {
+            bail!("still pending after {timeout}s")
+        }
+        RequestStatus::Pending | RequestStatus::Deploying => Ok(()),
         RequestStatus::Declined => bail!("the person declined it"),
         RequestStatus::Expired => bail!("it expired; ask again for a new code"),
     }

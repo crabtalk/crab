@@ -50,7 +50,7 @@ impl Client {
     pub async fn deploy_set(
         &self,
         set: &DeploySetRequest,
-    ) -> Result<BTreeMap<String, Deployed>, Error> {
+    ) -> Result<BTreeMap<String, crate::services::service::DeployResult>, Error> {
         let path = format!("{}/deploys", self.addressed().services());
         self.json(self.at(Method::POST, &path).json(set)).await
     }

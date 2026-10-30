@@ -19,7 +19,8 @@ use berm_host::{Denied, Named, deny};
 use crabtalk_sdk::{
     client::LOCAL,
     services::service::{
-        DeployRequest, DeploySetRequest, Hosts, Secret, SetSecret, Upload, UploadRequest,
+        DeployRequest, DeployResult, DeploySetRequest, Hosts, Secret, SetSecret, Upload,
+        UploadRequest,
     },
 };
 use rmcp::transport::{
@@ -144,6 +145,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
         crons: deploy.crons,
         size: deploy.size.unwrap_or_else(host::database_size),
         stopped: deploy.stopped,
+        check_secrets: true,
         project: deploy.project,
         exempt: Vec::new(),
         vars: deploy.vars,
@@ -207,34 +209,73 @@ async fn upload(
 async fn deploy_set(
     State(node): State<Arc<Node>>,
     Json(set): Json<DeploySetRequest>,
-) -> Result<Json<BTreeMap<String, Deployed>>, Denied> {
+) -> Result<Json<BTreeMap<String, DeployResult>>, Denied> {
     let mut members = Vec::new();
-    for (name, deploy) in set.services {
-        let priced: Vec<String> = deploy.prices.keys().cloned().collect();
-        let deploy = kept(&name, deploy)?;
-        node.priced(&deploy.digest, &priced)
-            .await
-            .map_err(|denied| Denied {
-                message: format!("{name}: {}", denied.message),
-                ..denied
-            })?;
-        members.push((name, deploy));
+    let mut results = BTreeMap::new();
+    for (name, request) in set.services {
+        let prepared = async {
+            super::service::validate(&name)?;
+            let priced = request.prices.keys().cloned().collect::<Vec<_>>();
+            let deploy = kept(&name, request)?;
+            node.priced(&deploy.digest, &priced).await?;
+            Ok::<_, Denied>(deploy)
+        }
+        .await;
+        match prepared {
+            Ok(deploy) => members.push((name, deploy)),
+            Err(denied) if set.partial => {
+                results.insert(
+                    name,
+                    DeployResult::Failed {
+                        failure: denied.message,
+                        explain: denied.explain.map(str::to_owned),
+                    },
+                );
+            }
+            Err(denied) => return Err(denied),
+        }
     }
-    Ok(Json(
-        node.deploy_set(members)
-            .await?
-            .into_iter()
-            .map(|(name, installed, breaks)| {
-                let deployed = Deployed {
+    if set.partial {
+        let replaced = members
+            .iter()
+            .map(|(name, _)| (name.clone(), node.get(name)))
+            .collect::<BTreeMap<_, _>>();
+        for (name, result) in node.host.deploy_partial(members).await? {
+            let result = match result {
+                Ok(installed) => {
+                    let breaks = replaced
+                        .get(&name)
+                        .and_then(Option::as_ref)
+                        .map(|old| old.manifest.breaks(&installed.service.manifest))
+                        .unwrap_or_default();
+                    DeployResult::from(Deployed {
+                        service: installed.service.idl(&name),
+                        breaks: breaks.iter().map(ToString::to_string).collect(),
+                        migrations: installed.migrations,
+                        page: None,
+                    })
+                }
+                Err(denied) => DeployResult::Failed {
+                    failure: denied.message,
+                    explain: denied.explain.map(str::to_owned),
+                },
+            };
+            results.insert(name, result);
+        }
+    } else {
+        for (name, installed, breaks) in node.deploy_set(members).await? {
+            results.insert(
+                name.clone(),
+                DeployResult::from(Deployed {
                     service: installed.service.idl(&name),
                     breaks: breaks.iter().map(ToString::to_string).collect(),
                     migrations: installed.migrations,
                     page: None,
-                };
-                (name, deployed)
-            })
-            .collect(),
-    ))
+                }),
+            );
+        }
+    }
+    Ok(Json(results))
 }
 
 async fn undeploy(

@@ -398,6 +398,9 @@ enum KeyCommand {
         /// Days until it expires; never by default.
         #[arg(long)]
         days: Option<u32>,
+        /// Key permissions; auto allows operations without approval.
+        #[arg(long, default_value = "deploy")]
+        scope: Vec<crabtalk_sdk::account::key::Scope>,
     },
     /// Revoke a key.
     Rm { id: String },
@@ -578,6 +581,15 @@ fn run() -> Result<ExitCode> {
     let yes = args.yes;
     let client = || {
         let client = Client::from(Contexts::load()?.get(args.context.as_deref())?);
+        if yes
+            && client.owner.is_some()
+            && !client
+                .token
+                .as_deref()
+                .is_some_and(|token| token.starts_with("ck_"))
+        {
+            anyhow::bail!("--yes on Cloud requires an API key with auto scope [E0022]");
+        }
         Ok::<_, anyhow::Error>(match &args.org {
             Some(org) => client.owner(Owner::Org(org.clone())),
             None => client,
@@ -756,8 +768,8 @@ fn run() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 KeyCommand::Ls => cmd::key::ls(&client, json)?,
-                KeyCommand::Create { label, days } => {
-                    cmd::key::create(&client, label, *days, json)?
+                KeyCommand::Create { label, days, scope } => {
+                    cmd::key::create(&client, label, *days, scope, json)?
                 }
                 KeyCommand::Rm { id } => cmd::key::rm(&client, id, yes)?,
                 KeyCommand::Roll { id } => cmd::key::roll(&client, id, yes, json)?,

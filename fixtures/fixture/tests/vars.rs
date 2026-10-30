@@ -83,6 +83,7 @@ async fn a_deploy_sets_the_vars_it_names_and_keeps_the_rest() -> Result<()> {
         crons: None,
         size: host::database_size(),
         stopped: false,
+        check_secrets: false,
         project: None,
         exempt: Vec::new(),
         vars,

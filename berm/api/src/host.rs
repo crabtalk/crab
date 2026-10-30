@@ -75,6 +75,9 @@ pub struct Deploy {
     /// Install it stopped, to serve once started.
     #[serde(default)]
     pub stopped: bool,
+    /// Check required secrets here; Fleet checks its own secret store.
+    #[serde(default)]
+    pub check_secrets: bool,
     /// The project it is deployed in: the workspace it came from. `None`
     /// keeps the project it was in. Refused, unless `force`, when the service
     /// is in another project.
@@ -111,6 +114,9 @@ pub struct Checked {
     /// The secrets it names, its kits' included.
     #[serde(default)]
     pub secrets: Vec<String>,
+    /// Required secret names, including those in no credential.
+    #[serde(default)]
+    pub required: Vec<String>,
 }
 
 /// A break of what callers used, and who used it.

@@ -46,3 +46,14 @@ fn a_secret_with_no_pattern_takes_any_value() {
     assert!(deps(None).admits("STRIPE_KEY", "anything").is_ok());
     assert!(deps(Some("^rk_")).admits("LOOSE", "anything").is_ok());
 }
+
+#[test]
+fn unset_includes_only_missing_required_secrets() {
+    let mut deps = deps(None);
+    deps.secrets.push("OPTIONAL".to_owned());
+    let mut optional = deps.credentials["stripe"].clone();
+    optional.optional = true;
+    optional.secrets[0].name = "OPTIONAL".to_owned();
+    deps.credentials.insert("optional".to_owned(), optional);
+    assert_eq!(deps.unset(&["STRIPE_KEY".to_owned()]), ["LOOSE"]);
+}

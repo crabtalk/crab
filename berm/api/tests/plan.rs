@@ -8,6 +8,7 @@ fn checked(calls: &[&str], breaks: Vec<Broken>) -> Checked {
         migrations: Vec::new(),
         breaks,
         secrets: Vec::new(),
+        required: Vec::new(),
     }
 }
 

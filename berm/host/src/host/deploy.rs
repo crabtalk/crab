@@ -2,7 +2,7 @@
 
 use crate::{
     Denied, deny,
-    env::{Env, Images},
+    env::{Env, Images, Secrets},
     host::{self, Host},
     record::{meter, usage},
     state::service,
@@ -11,7 +11,7 @@ use crate::{
 use axum::http::StatusCode;
 use berm::{Service, database::Database};
 use berm_api::{
-    Manifest, Surface,
+    Deps, Manifest, Surface,
     host::{
         Breaking, Broken, Checked, Deploy, Kind, LastUse, MAX_DATABASE_SIZE, MIN_DATABASE_SIZE,
         Outcome,
@@ -26,6 +26,9 @@ const PAST_MOST: &str = "E0013";
 /// The error code a deploy refused for a host call this host does not serve
 /// carries.
 const MISSING_HOST_CALL: &str = "E0020";
+
+/// The error code a deploy refused for a required secret unset carries.
+const SECRETS_UNSET: &str = "E0021";
 
 /// A deploy that went live.
 pub struct Installed {
@@ -63,11 +66,26 @@ impl<E: Env> Host<E> {
             crons,
             size,
             stopped,
+            check_secrets,
             project,
             exempt,
             vars,
         } = deploy;
         let (image, manifest) = self.image(&reference, &digest, size).await?;
+        let unset = match check_secrets {
+            true => self.unset(service, &manifest.deps).await?,
+            false => Vec::new(),
+        };
+        if !unset.is_empty() {
+            return Err(deny(
+                StatusCode::CONFLICT,
+                format!(
+                    "{service}: required secrets are unset: {}",
+                    unset.join(", ")
+                ),
+            )
+            .explained(SECRETS_UNSET));
+        }
         for (var, value) in &vars {
             manifest
                 .deps
@@ -214,6 +232,19 @@ impl<E: Env> Host<E> {
         let (_, manifest) = self
             .image(&deploy.reference, &deploy.digest, deploy.size)
             .await?;
+        if deploy.check_secrets {
+            let unset = self.unset(service, &manifest.deps).await?;
+            if !unset.is_empty() {
+                return Err(deny(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "{service}: required secrets are unset: {}",
+                        unset.join(", ")
+                    ),
+                )
+                .explained(SECRETS_UNSET));
+            }
+        }
         let key = service.to_owned();
         let lock = self
             .deploying
@@ -269,6 +300,7 @@ impl<E: Env> Host<E> {
             migrations,
             breaks,
             secrets: manifest.deps.secrets.clone(),
+            required: manifest.deps.unset(&[]),
         })
     }
 
@@ -353,6 +385,22 @@ impl<E: Env> Host<E> {
                 Ok(None)
             }
         }
+    }
+
+    /// The secrets of `deps` a required credential holds that `service` has
+    /// none of.
+    async fn unset(&self, service: &str, deps: &Deps) -> Result<Vec<String>, Denied> {
+        let set = self
+            .secrets
+            .names(service)
+            .await
+            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+        Ok(deps.unset(&set))
+    }
+
+    /// Start a service explicitly stopped by its owner.
+    pub async fn start(&self, service: &str) -> Result<bool, Denied> {
+        Ok(self.switch(service, true).await?)
     }
 
     /// Refuses `manifest` when it needs a syscall this host does not serve.

@@ -124,6 +124,26 @@ pub struct Measured {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeploySetRequest {
     pub services: BTreeMap<String, DeployRequest>,
+    /// Keep successful services live when another fails.
+    #[serde(default)]
+    pub partial: bool,
+}
+
+/// One service's deploy result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DeployResult {
+    Live(Box<berm_api::Deployed>),
+    Failed {
+        failure: String,
+        explain: Option<String>,
+    },
+}
+
+impl From<berm_api::Deployed> for DeployResult {
+    fn from(deployed: berm_api::Deployed) -> Self {
+        Self::Live(Box::new(deployed))
+    }
 }
 
 /// A file to upload, a seed or an image: its SHA-256 in hex, and its size in

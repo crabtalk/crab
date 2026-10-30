@@ -30,6 +30,7 @@ async fn a_stopped_wake_stays_and_fires_once_started() -> Result<()> {
     assert_eq!(fired[0].0.service, "other/fixture");
     assert_eq!(host.wakes().await?.len(), 2);
 
+    host.grant("acct/fixture", "fixture", "127.0.0.1", "value");
     assert!(host.host.start("acct/fixture").await?);
     let fired = host.fire().await?;
     assert!(fired.iter().any(|(wake, _)| wake.service == "acct/fixture"));
@@ -62,6 +63,7 @@ async fn a_stopped_service_takes_no_calls_until_started() -> Result<()> {
     };
     assert!(failure.contains("stopped"), "{failure}");
 
+    host.grant("acct/inner", "fixture", "127.0.0.1", "value");
     assert!(host.host.start("acct/inner").await?);
     assert!(!host.host.listing("acct/inner").await?.stopped);
     assert!(
@@ -103,6 +105,7 @@ async fn a_service_deployed_stopped_serves_once_started_and_a_deploy_starts_it()
     };
     assert!(call().await.is_err());
 
+    host.grant("acct/fixture", "fixture", "127.0.0.1", "value");
     assert!(host.host.start("acct/fixture").await?);
     assert!(call().await.is_ok());
 

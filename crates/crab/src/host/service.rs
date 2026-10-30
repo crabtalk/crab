@@ -112,7 +112,7 @@ impl Node {
 }
 
 /// A service name is lowercase letters, digits, `-` and `_`.
-fn validate(name: &str) -> Result<(), Denied> {
+pub(super) fn validate(name: &str) -> Result<(), Denied> {
     if name.is_empty() {
         return Err(deny(
             StatusCode::BAD_REQUEST,

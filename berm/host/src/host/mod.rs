@@ -406,18 +406,12 @@ impl<E: Env> Host<E> {
         self.switch(service, false).await
     }
 
-    /// Start `service` stopped by [`Self::stop`] or deployed stopped; wakes
-    /// that came due meanwhile fire. `false` when it is not deployed.
-    pub async fn start(&self, service: &str) -> Result<bool> {
-        self.switch(service, true).await
-    }
-
     /// Whether `service` is stopped.
     pub fn stopped(&self, service: &str) -> bool {
         self.stops.stopped(service)
     }
 
-    async fn switch(&self, service: &str, running: bool) -> Result<bool> {
+    pub(crate) async fn switch(&self, service: &str, running: bool) -> Result<bool> {
         let lock = self
             .deploying
             .lock()

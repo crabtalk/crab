@@ -56,9 +56,20 @@ impl Client {
         services: BTreeMap<String, DeployRequest>,
         context: &str,
     ) -> Result<Request, Error> {
+        self.ask_deploy_with_copy(services, BTreeMap::new(), context)
+            .await
+    }
+
+    pub async fn ask_deploy_with_copy(
+        &self,
+        services: BTreeMap<String, DeployRequest>,
+        copy: BTreeMap<String, BTreeMap<String, String>>,
+        context: &str,
+    ) -> Result<Request, Error> {
         self.ask(&CreateRequest::Deploy {
             account: self.account()?.name().to_owned(),
             services,
+            copy,
             context: context.to_owned(),
         })
         .await

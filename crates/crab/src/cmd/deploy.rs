@@ -3,25 +3,24 @@
 
 use crate::{
     cmd::{dev, inspect, request},
-    fill::Form,
     project, runtime,
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Credential, Deployed, Manifest, digest, project::Project};
+use berm_api::{Deployed, Manifest, digest, project::Project};
 use berm_build::Workspace;
 use berm_oci::{Access, Reference, Registry};
 use clap::Args;
 use crabtalk_sdk::{
     account::request::RequestStatus,
-    client::{Client, Error},
-    services::service::{DeployRequest, DeploySetRequest, Secret, UploadRequest},
+    client::Client,
+    services::service::{DeployRequest, DeploySetRequest, UploadRequest},
 };
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::{self, File},
-    io::{self, IsTerminal, Read},
+    io::Read,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -56,6 +55,9 @@ pub struct Deploy {
     /// `name`, from the registry image it runs; on Cloud.
     #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "image", "registry", "pull"])]
     pub from: Option<String>,
+    /// Provider value for the deploy page, SERVICE:KEY=VALUE; repeatable.
+    #[arg(long = "copy", value_name = "SERVICE:KEY=VALUE")]
+    pub copy: Vec<String>,
 }
 
 /// Deploy the services of the workspace `deploy.dir` is in that it selects,
@@ -72,9 +74,14 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool, yes: bool) -> Result
         force,
         pull,
         from,
+        copy: copy_values,
     } = deploy;
+    let copy_values = copies(copy_values)?;
+    if (yes || client.owner.is_none()) && !copy_values.is_empty() {
+        bail!("--copy supplies values for the Cloud deploy page; deploy without --yes");
+    }
     if let Some(from) = from {
-        return copy(client, from, *force, stopped);
+        return copy(client, from, *force, stopped, yes, copy_values);
     }
     let (image, registry, force, pull) = (image.as_deref(), registry.as_deref(), *force, *pull);
     let workspace = Workspace::read(dir, packages)?;
@@ -123,20 +130,41 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool, yes: bool) -> Result
         services.insert(name, request);
     }
     if client.owner.is_some() && !yes {
-        return approved(client, services);
+        return approved(client, services, copy_values);
     }
     let deployed = match services.pop_first() {
         Some((name, request)) if services.is_empty() => {
             let deployed = runtime::wait(client.deploy(&name, &request))?;
-            BTreeMap::from([(name, deployed)])
+            BTreeMap::from([(
+                name,
+                crabtalk_sdk::services::service::DeployResult::from(deployed),
+            )])
         }
         first => {
             services.extend(first);
-            runtime::wait(client.deploy_set(&DeploySetRequest { services }))?
+            runtime::wait(client.deploy_set(&DeploySetRequest {
+                services,
+                partial: !yes,
+            }))?
         }
     };
     for (name, deployed) in &deployed {
-        report(client, name, deployed)?;
+        match deployed {
+            crabtalk_sdk::services::service::DeployResult::Live(deployed) => {
+                report(client, name, deployed)?
+            }
+            crabtalk_sdk::services::service::DeployResult::Failed { failure, explain } => {
+                eprintln!("{name}: {failure} {}", explain.as_deref().unwrap_or(""))
+            }
+        }
+    }
+    if deployed.values().any(|one| {
+        matches!(
+            one,
+            crabtalk_sdk::services::service::DeployResult::Failed { .. }
+        )
+    }) {
+        bail!("some services did not deploy");
     }
     Ok(())
 }
@@ -145,19 +173,26 @@ pub fn run(client: &Client, deploy: &Deploy, stopped: bool, yes: bool) -> Result
 /// does it as the last line, and wait for them; then report each service the
 /// deploy put live. Fails when they decline, it expires, or it does not go
 /// live.
-fn approved(client: &Client, services: BTreeMap<String, DeployRequest>) -> Result<()> {
-    let asked = runtime::wait(client.ask_deploy(services, ""))?;
+fn approved(
+    client: &Client,
+    services: BTreeMap<String, DeployRequest>,
+    copy: BTreeMap<String, BTreeMap<String, String>>,
+) -> Result<()> {
+    let asked = runtime::wait(client.ask_deploy_with_copy(services, copy, ""))?;
     let minutes = (asked.expires_at - asked.created_at) / 60;
     eprintln!(
-        "a person approves this deploy at the link, signed in, within {minutes} minutes; `--yes` deploys without asking"
+        "a person approves this deploy at the link, signed in, within {minutes} minutes; automation requires a key with auto scope"
     );
     println!("{}", asked.url);
     let settled = request::settled(client, &asked.code, (minutes * 60) as u64)?;
     match settled.status {
         RequestStatus::Pending => bail!("nobody approved the deploy in {minutes} minutes"),
+        RequestStatus::Deploying => {
+            bail!("the deploy is still running; check its page for results")
+        }
         RequestStatus::Declined => bail!("the person declined the deploy"),
         RequestStatus::Expired => {
-            bail!("the deploy expired unapproved; deploy again for a new link")
+            bail!("the deploy request expired; check its page for results before deploying again")
         }
         RequestStatus::Completed => {}
     }
@@ -170,76 +205,75 @@ fn approved(client: &Client, services: BTreeMap<String, DeployRequest>) -> Resul
     for (name, deployed) in &settled.deployed {
         report(client, name, deployed)?;
     }
+    let mut failed = false;
+    for (name, one) in &settled.results {
+        if let crabtalk_sdk::services::service::DeployResult::Failed { failure, explain } = one {
+            eprintln!("{name}: {failure} {}", explain.as_deref().unwrap_or(""));
+            failed = true;
+        }
+    }
+    if failed {
+        bail!("some services did not deploy");
+    }
     Ok(())
 }
 
-/// Deploy `from`, another account's public service as `owner/name`, as the
-/// context's own `name`, from the registry image it runs. A first deploy at a
-/// terminal goes in stopped, asks the person for each credential with a secret
-/// unset, and starts once every secret is set, unless `stopped`.
-fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
+fn copies(values: &[String]) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
+    let mut copy = BTreeMap::<String, BTreeMap<String, String>>::new();
+    for value in values {
+        let (key, value) = value
+            .split_once('=')
+            .context("--copy takes SERVICE:KEY=VALUE")?;
+        let (service, key) = key
+            .split_once(':')
+            .context("--copy takes SERVICE:KEY=VALUE")?;
+        if service.is_empty() || key.is_empty() {
+            bail!("--copy names a service and a key");
+        }
+        if copy
+            .entry(service.to_owned())
+            .or_default()
+            .insert(key.to_owned(), value.to_owned())
+            .is_some()
+        {
+            bail!("--copy repeats {service}:{key}");
+        }
+    }
+    Ok(copy)
+}
+
+/// Deploy another account's registry image through the same approval flow.
+fn copy(
+    client: &Client,
+    from: &str,
+    force: bool,
+    stopped: bool,
+    yes: bool,
+    copy: BTreeMap<String, BTreeMap<String, String>>,
+) -> Result<()> {
     if client.owner.is_none() {
         bail!("--from deploys from a registry, which only Cloud pulls");
     }
-    let Some((_, name)) = from.split_once('/') else {
-        bail!("--from takes another account's service as owner/name, not {from:?}");
-    };
-    let (listing, fresh) = runtime::wait(async {
-        tokio::try_join!(
-            async { Ok(client.listing(from).await?) },
-            first(client, name)
-        )
-    })?;
-    let Some(reference) = listing.reference else {
-        bail!("{from} runs an image uploaded to Cloud, which only its owner deploys");
-    };
-    let ask = fresh && io::stdin().is_terminal() && io::stdout().is_terminal();
+    let (_, name) = from.split_once('/').context("--from takes owner/name")?;
+    let listing = runtime::wait(client.listing(from))?;
+    let reference = listing
+        .reference
+        .context("the source image was uploaded; only its owner can deploy it")?;
     let request = DeployRequest {
         reference,
         force,
         crons: None,
         size: None,
         seed: None,
-        stopped: stopped || ask,
+        stopped,
         project: None,
         prices: BTreeMap::new(),
         vars: BTreeMap::new(),
     };
-    let deployed = runtime::wait(client.deploy(name, &request))?;
-    if ask {
-        let (running, set) =
-            runtime::wait(async { tokio::try_join!(client.runtime(name), client.secrets(name)) })?;
-        let deps = running.deps;
-        let unset = |set: &[Secret]| -> Vec<(String, Credential)> {
-            deps.grouped()
-                .into_iter()
-                .filter(|(_, credential)| {
-                    credential
-                        .secrets
-                        .iter()
-                        .any(|secret| !set.iter().any(|one| one.name == secret.name && one.sent()))
-                })
-                .collect()
-        };
-        let asked = unset(&set);
-        if !asked.is_empty() {
-            Form::new(client, name, asked, &BTreeMap::new())?.run()?;
-        }
-        if !stopped {
-            let ready = unset(&runtime::wait(client.secrets(name))?)
-                .iter()
-                .all(|(_, credential)| credential.optional);
-            match ready {
-                true => {
-                    runtime::wait(client.start(name))?;
-                    eprintln!("started {name}");
-                }
-                false => eprintln!(
-                    "{name} is stopped until its secrets are set: `crab secret fill {name}`, then `crab start {name}`"
-                ),
-            }
-        }
+    if !yes {
+        return approved(client, BTreeMap::from([(name.to_owned(), request)]), copy);
     }
+    let deployed = runtime::wait(client.deploy(name, &request))?;
     report(client, name, &deployed)
 }
 
@@ -358,15 +392,6 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
     for secret in &unset {
         println!("  unset   secret {secret}");
     }
-    if !unset.is_empty() {
-        match client.owner {
-            None => println!("  have a person set them at their terminal: crab secret fill {name}"),
-            Some(_) => println!("  ask a person to set them: crab secret request {name}"),
-        }
-    }
-    if let Some(page) = &deployed.page {
-        println!("  page    {page}");
-    }
     Ok(())
 }
 
@@ -374,8 +399,8 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
 async fn first(client: &Client, name: &str) -> Result<bool> {
     match client.runtime(name).await {
         Ok(_) => Ok(false),
-        Err(Error::Api { status: 404, .. }) => Ok(true),
-        Err(e) => Err(e.into()),
+        Err(crabtalk_sdk::client::Error::Api { status: 404, .. }) => Ok(true),
+        Err(error) => Err(error.into()),
     }
 }
 

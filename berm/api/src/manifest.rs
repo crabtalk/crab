@@ -278,6 +278,17 @@ fn masked() -> bool {
 }
 
 impl Deps {
+    /// Required secrets absent from `set`.
+    pub fn unset(&self, set: &[String]) -> Vec<String> {
+        self.grouped()
+            .into_iter()
+            .filter(|(_, credential)| !credential.optional)
+            .flat_map(|(_, credential)| credential.secrets)
+            .map(|secret| secret.name)
+            .filter(|name| !set.contains(name))
+            .collect()
+    }
+
     /// Refuse setting `var` to `value`: a var `[vars]` does not declare, or
     /// a value past [`Var::BYTES`].
     pub fn settable(&self, var: &str, value: &str) -> Result<()> {

@@ -53,6 +53,9 @@ pub const BUDGET: i64 = 5_000_000;
 pub enum Scope {
     #[serde(rename = "deploy")]
     Deploy,
+    /// Run operations without a person approving them.
+    #[serde(rename = "auto")]
+    Auto,
 }
 
 berm_api::text_enum!(Scope);

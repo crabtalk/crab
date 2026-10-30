@@ -36,11 +36,17 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
 
 /// Mint a deploy key named `label`, expiring after `days` when given. The
 /// token is printed once.
-pub fn create(client: &Client, label: &str, days: Option<u32>, json: bool) -> Result<()> {
+pub fn create(
+    client: &Client,
+    label: &str,
+    days: Option<u32>,
+    scope: &[Scope],
+    json: bool,
+) -> Result<()> {
     let expires_at = days.map(|days| chrono::Utc::now().timestamp() + i64::from(days) * 86_400);
     let created = runtime::wait(client.create_key(&CreateKeyRequest {
         label: label.to_owned(),
-        scope: vec![Scope::Deploy],
+        scope: scope.to_vec(),
         expires_at,
         budget: None,
     }))?;

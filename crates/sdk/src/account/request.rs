@@ -53,6 +53,8 @@ berm_api::text_enum!(Purchase);
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
+    /// Approved and deploying.
+    Deploying,
     /// Paid, the secrets set, the sign-in approved, the deploy approved and
     /// run, whether or not it went live, or the person verified.
     Completed,
@@ -102,7 +104,11 @@ pub enum CreateRequest {
     Deploy {
         account: String,
         services: BTreeMap<String, DeployRequest>,
-        /// What it is for, in the asker's words, shown to the person.
+        /// Provider copy values, by service and key.
+        #[serde(default)]
+        copy: BTreeMap<String, BTreeMap<String, String>>,
+        /// One short sentence describing the change, at most 160 characters.
+        /// Shown to the person; keep setup instructions in credential guides.
         #[serde(default)]
         context: String,
     },
@@ -139,6 +145,9 @@ pub struct Request {
     pub url: String,
     pub kind: RequestKind,
     pub status: RequestStatus,
+    /// When a deploy was approved; absent before approval or for other kinds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<i64>,
     /// The account it is for; none for a sign-in until a person approves it.
     pub account: Option<PublicAccount>,
     pub context: String,
@@ -177,6 +186,11 @@ pub struct Request {
     #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub deployed: BTreeMap<String, Deployed>,
+    #[serde(default)]
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    pub results: BTreeMap<String, crate::services::service::DeployResult>,
+    #[serde(default)]
+    pub asks: BTreeMap<String, Vec<AskedCredential>>,
     /// Why an approved deploy did not go live.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,

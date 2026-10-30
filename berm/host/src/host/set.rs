@@ -105,6 +105,7 @@ impl<E: Env> Host<E> {
                     crons: None,
                     size: row.size,
                     stopped: self.stops.stopped(&service),
+                    check_secrets: false,
                     project: row.project,
                     exempt: Vec::new(),
                     vars: Default::default(),
@@ -138,5 +139,69 @@ impl<E: Env> Host<E> {
             }
         }
         Ok(installed)
+    }
+}
+
+impl<E: Env> Host<E> {
+    /// Check a set together and keep each successful switch independently.
+    pub async fn deploy_partial(
+        &self,
+        members: Vec<(String, Deploy)>,
+    ) -> Result<Vec<(String, Result<Installed, Denied>)>, Denied> {
+        if let Some((first, _)) = members.first()
+            && members
+                .iter()
+                .any(|(name, _)| host::split(name).0 != host::split(first).0)
+        {
+            return Err(deny(
+                StatusCode::BAD_REQUEST,
+                "a set's services are of one scope",
+            ));
+        }
+        let mut checked = BTreeMap::new();
+        let mut results = Vec::new();
+        for (service, deploy) in &members {
+            match self.check(service, deploy.clone(), false).await {
+                Ok(check) => {
+                    checked.insert(host::split(service).1.to_owned(), check);
+                }
+                Err(denied) => results.push((service.clone(), Err(denied))),
+            }
+        }
+        let mut plan;
+        loop {
+            plan = Plan::new(&checked);
+            let refused: Vec<_> = members
+                .iter()
+                .filter(|(service, deploy)| {
+                    !deploy.force && checked.contains_key(host::split(service).1)
+                })
+                .filter_map(|(service, _)| {
+                    plan.breaks
+                        .get(host::split(service).1)
+                        .filter(|breaks| !breaks.is_empty())
+                        .map(|breaks| (service.clone(), Breaking(breaks).to_string()))
+                })
+                .collect();
+            if refused.is_empty() {
+                break;
+            }
+            for (service, reason) in refused {
+                checked.remove(host::split(&service).1);
+                results.push((service, Err(deny(StatusCode::CONFLICT, reason))));
+            }
+        }
+        let mut members = members;
+        for name in &plan.order {
+            let at = members
+                .iter()
+                .position(|(service, _)| host::split(service).1 == name)
+                .expect("planned service");
+            let (service, mut deploy) = members.swap_remove(at);
+            deploy.exempt = plan.exempt.remove(name).unwrap_or_default();
+            let result = self.deploy(&service, deploy, None).await;
+            results.push((service, result));
+        }
+        Ok(results)
     }
 }

@@ -16,6 +16,7 @@
 pub use berm::User;
 
 use crate::{
+    Installed,
     api::outside::Layers,
     env::{Alone, Clock, Edges},
     host::{self, Host},
@@ -260,6 +261,7 @@ impl TestHost {
                     crons: None,
                     size: *size,
                     stopped: false,
+                    check_secrets: false,
                     project: Some(project.to_owned()),
                     exempt: Vec::new(),
                     vars: Default::default(),
@@ -278,6 +280,55 @@ impl TestHost {
         size: u64,
         stopped: bool,
     ) -> Result<Arc<Service>> {
+        Ok(self
+            .installing(service, image, seed, size, stopped, false)
+            .await?
+            .service)
+    }
+
+    /// Deploy a set independently; test images are held before checking.
+    pub async fn deploy_partial(
+        &self,
+        set: &[(&str, &[u8], u64)],
+    ) -> Result<Vec<(String, Result<Installed, crate::Denied>)>> {
+        let mut members = Vec::new();
+        for (service, image, size) in set {
+            let digest = digest::of(image);
+            self.images.0.lock().insert(digest.clone(), image.to_vec());
+            members.push((
+                (*service).to_owned(),
+                Deploy {
+                    reference: format!("test/{service}"),
+                    digest,
+                    force: false,
+                    crons: None,
+                    size: *size,
+                    stopped: false,
+                    check_secrets: false,
+                    project: None,
+                    exempt: Vec::new(),
+                    vars: Default::default(),
+                },
+            ));
+        }
+        Ok(self.host.deploy_partial(members).await?)
+    }
+
+    /// Deploy `image` as `service`, refusing missing required secrets.
+    pub async fn deploy_checked(&self, service: &str, image: &[u8]) -> Result<Installed> {
+        self.installing(service, image, None, DATABASE_SIZE, false, true)
+            .await
+    }
+
+    async fn installing(
+        &self,
+        service: &str,
+        image: &[u8],
+        seed: Option<&Path>,
+        size: u64,
+        stopped: bool,
+        check_secrets: bool,
+    ) -> Result<Installed> {
         let digest = digest::of(image);
         let reference = format!("test/{service}");
         self.images.0.lock().insert(digest.clone(), image.to_vec());
@@ -292,14 +343,14 @@ impl TestHost {
                     crons: None,
                     size,
                     stopped,
+                    check_secrets,
                     project: None,
                     exempt: Vec::new(),
                     vars: Default::default(),
                 },
                 seed,
             )
-            .await?
-            .service)
+            .await?)
     }
 
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
