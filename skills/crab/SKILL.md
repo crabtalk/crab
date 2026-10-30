@@ -55,9 +55,11 @@ Read these before writing code. Paths are relative to the crab repository.
 | Question | Source |
 | --- | --- |
 | The CLI, contexts, `crab.toml` | `crates/crab/README.md` |
-| Tools, `#[tool(...)]` and its `query`, `cron`, `stripe`; `[tools]` in `crab.toml` and its `access`, `title`, `price`, `catalog`; building with `crab build` | https://crab.talk/docs/development/writing, `berm/lang/README.md` |
-| Caller, user, database, HTTP, calls between services | https://crab.talk/docs/development/guest-api |
-| `crab.toml` keys, syscalls, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |
+| A whole working service to start from: its files and the commands that test, build, deploy and call it | https://crab.talk/docs/development/complete-service |
+| `#[tool(...)]` and its `query`, `cron`, `stripe`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crab.talk/docs/development/macros |
+| Every `berm_lang` function and type, with its signature | https://crab.talk/docs/development/api |
+| Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crab.talk/docs/development, as `/docs/development/http` |
+| `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[syscalls]`, secrets, credentials, kits | https://crab.talk/docs/development/crab-toml |
 | `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/guides/local |
 | Deploying to Cloud, images and registries | https://crab.talk/docs/guides/deploy |
 | Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |
