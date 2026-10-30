@@ -75,7 +75,11 @@ pub fn show(service: &Service, runtime: Option<&Runtime>, terms: &Terms) {
     }
     for name in &runtime.deps.secrets {
         let missing = runtime.unresolved.secrets.contains(name);
-        println!("  secret  {name}{}", answered(missing));
+        let note = match missing && runtime.deps.optional(name) {
+            true => "  (optional, not set here)",
+            false => answered(missing),
+        };
+        println!("  secret  {name}{note}");
     }
     for (name, var) in &runtime.deps.vars {
         println!("  var     {name} = {:?}", var.default);

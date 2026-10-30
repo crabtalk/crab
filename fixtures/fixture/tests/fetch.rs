@@ -107,3 +107,61 @@ async fn an_address_is_read_in_its_canonical_form() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn an_optional_secret_once_granted_is_substituted() -> Result<()> {
+    let host = deployed().await?;
+    host.grant("fixture", "spare", "127.0.0.1", "t0ken");
+    host.arrange("GET", URL, 200, "ok");
+    let ran = host
+        .call(
+            "fixture",
+            "fetch",
+            format!(r#"{{"url":"{URL}","header":"Authorization: Bearer {{secret:spare}}"}}"#)
+                .as_bytes(),
+        )
+        .await?;
+    assert!(matches!(ran.result, Output::Done(_)), "{:?}", ran.result);
+    assert_eq!(
+        host.fetched()[0].headers,
+        vec![("Authorization".to_owned(), "Bearer t0ken".to_owned())]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_header_naming_an_unset_optional_secret_is_left_off() -> Result<()> {
+    let host = deployed().await?;
+    host.arrange("GET", URL, 200, "ok");
+    let ran = host
+        .call(
+            "fixture",
+            "fetch",
+            format!(r#"{{"url":"{URL}","header":"Authorization: Bearer {{secret:spare}}"}}"#)
+                .as_bytes(),
+        )
+        .await?;
+    assert!(matches!(ran.result, Output::Done(_)), "{:?}", ran.result);
+    let sent = host.fetched();
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].headers.is_empty(), "{:?}", sent[0].headers);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_body_naming_an_unset_optional_secret_sends_nothing() -> Result<()> {
+    let host = deployed().await?;
+    let ran = host
+        .call(
+            "fixture",
+            "fetch",
+            format!(r#"{{"url":"{URL}","body":"token={{secret:spare}}"}}"#).as_bytes(),
+        )
+        .await?;
+    let Output::Failed(failure) = ran.result else {
+        panic!("an unset optional secret in a body is refused");
+    };
+    assert!(failure.contains("no secret"), "{failure}");
+    assert!(host.fetched().is_empty());
+    Ok(())
+}

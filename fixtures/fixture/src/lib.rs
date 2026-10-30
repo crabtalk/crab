@@ -89,9 +89,10 @@ pub fn wait() -> Result<Wait> {
 #[tool]
 pub fn fetch(
     url: String,
-    /// One `Name: Value` header, which may name `{secret:fixture}`.
+    /// One `Name: Value` header, which may name `{secret:fixture}` or
+    /// `{secret:spare}`.
     header: Option<String>,
-    /// What to post, which may name `{secret:fixture}`.
+    /// What to post, which may name `{secret:fixture}` or `{secret:spare}`.
     body: Option<String>,
 ) -> Result<Fetched> {
     let header = header.as_deref().and_then(|header| {

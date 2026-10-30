@@ -197,26 +197,42 @@ where
     Found: Future<Output = Result<Option<String>>>,
 {
     let mut request = read(at, syscall, request)?;
-    for (_, value) in &mut request.headers {
-        let found = substitute(at, secret, &request.host, value.as_bytes()).await?;
-        if let Some(found) = found {
-            *value = String::from_utf8(found)?;
+    let mut headers = Vec::with_capacity(request.headers.len());
+    for (name, value) in request.headers {
+        match substitute(at, secret, &request.host, value.as_bytes()).await? {
+            Substituted::Untouched => headers.push((name, value)),
+            Substituted::Done(found) => headers.push((name, String::from_utf8(found)?)),
+            Substituted::Unset(_) => {}
         }
     }
-    if let Some(found) = substitute(at, secret, &request.host, &request.body).await? {
-        request.body = found;
+    request.headers = headers;
+    match substitute(at, secret, &request.host, &request.body).await? {
+        Substituted::Untouched => {}
+        Substituted::Done(found) => request.body = found,
+        Substituted::Unset(name) => return Err(ungranted(at, &name, &request.host)),
     }
     send(at.clone(), request).await
 }
 
+/// What [`substitute`] made of a text.
+enum Substituted {
+    /// It names no secret.
+    Untouched,
+    /// Every secret it names replaced by its value.
+    Done(Vec<u8>),
+    /// It names this secret of an optional credential, granted nowhere for
+    /// the request's host.
+    Unset(String),
+}
+
 /// `text` with every `{secret:NAME}` replaced by what `secret` grants the
-/// asking service for `host`, or `None` when it names no secret.
+/// asking service for `host`.
 async fn substitute<R, Found>(
     at: &Callsite,
     secret: &R,
     host: &str,
     text: &[u8],
-) -> Result<Option<Vec<u8>>>
+) -> Result<Substituted>
 where
     R: Fn(Callsite, String, String) -> Found,
     Found: Future<Output = Result<Option<String>>>,
@@ -226,7 +242,7 @@ where
             .position(|w| w == SECRET.as_bytes())
     };
     if opens(text).is_none() {
-        return Ok(None);
+        return Ok(Substituted::Untouched);
     }
     let mut substituted = Vec::with_capacity(text.len());
     let mut rest = text;
@@ -244,18 +260,26 @@ where
             .into());
         }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
-            return Err(Refused(format!(
-                "no secret {name:?} is granted to {} for {host}",
-                at.service
-            ))
-            .into());
+            if at.deps.optional(name) {
+                return Ok(Substituted::Unset(name.to_owned()));
+            }
+            return Err(ungranted(at, name, host));
         };
         substituted.extend_from_slice(&rest[..start]);
         substituted.extend_from_slice(found.as_bytes());
         rest = &after[end + 1..];
     }
     substituted.extend_from_slice(rest);
-    Ok(Some(substituted))
+    Ok(Substituted::Done(substituted))
+}
+
+/// The refusal of a request naming `name`, granted nowhere for `host`.
+fn ungranted(at: &Callsite, name: &str, host: &str) -> anyhow::Error {
+    Refused(format!(
+        "no secret {name:?} is granted to {} for {host}",
+        at.service
+    ))
+    .into()
 }
 
 /// The bytes of `headers`' names and values.

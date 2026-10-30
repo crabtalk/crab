@@ -47,6 +47,7 @@ struct Step {
     /// The hosts its secrets are sent to, as typed: names apart by spaces or
     /// commas.
     hosts: String,
+    optional: bool,
     saved: bool,
 }
 
@@ -123,6 +124,7 @@ impl<'a> Form<'a> {
                     false => credential.title.clone(),
                 },
                 guide: guide::render(&credential.guide),
+                optional: credential.optional,
                 copy: credential
                     .copy
                     .iter()

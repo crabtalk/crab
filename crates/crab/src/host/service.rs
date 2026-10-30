@@ -24,7 +24,11 @@ impl Node {
         for broken in &breaks {
             tracing::warn!(name, "breaks callers: {broken}");
         }
-        let unresolved = self.host.runtime(name).await?.unresolved;
+        let runtime = self.host.runtime(name).await?;
+        let mut unresolved = runtime.unresolved;
+        unresolved
+            .secrets
+            .retain(|secret| !runtime.deps.optional(secret));
         if !unresolved.is_empty() {
             tracing::warn!(name, "nothing here answers to {unresolved}");
         }

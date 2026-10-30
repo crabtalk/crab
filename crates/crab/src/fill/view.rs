@@ -47,6 +47,7 @@ fn status(step: &Step) -> &'static str {
     match (step.saved, step.fields.iter().all(|field| field.set)) {
         (true, _) => "SAVED",
         (false, true) => "SET",
+        (false, false) if step.optional => "OPTIONAL, NOT SET",
         (false, false) => "NOT SET",
     }
 }

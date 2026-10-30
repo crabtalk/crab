@@ -89,3 +89,8 @@ access = "public"
 
 [tools.recurse]
 access = "public"
+
+[credentials.spare]
+title = "Spare token"
+optional = true
+secrets = [{ name = "spare" }]

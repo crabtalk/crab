@@ -319,7 +319,8 @@ enum SecretCommand {
         #[arg(long = "copy", value_parser = cmd::secret::copy)]
         copies: Vec<(String, String)>,
     },
-    /// Ask a person to set a service's unset secrets, or one credential's: a
+    /// Ask a person to set a service's unset required secrets, or one
+    /// credential's, optional or not: a
     /// code whose page they set them at, signed in, so no value passes
     /// through here.
     Request {

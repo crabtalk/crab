@@ -221,6 +221,10 @@ pub struct Credential {
     /// A secret goes only to the hosts the person setting it confirms.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
+    /// Whether the service is called with its secrets unset. A header naming
+    /// an unset one is left off the request; a body naming one is refused.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
     /// In the order the person sets them.
     pub secrets: Vec<CredentialSecret>,
 }
@@ -330,6 +334,7 @@ impl Deps {
                     guide: String::new(),
                     copy: BTreeMap::new(),
                     hosts: Vec::new(),
+                    optional: false,
                     secrets: vec![CredentialSecret {
                         name: name.clone(),
                         label: String::new(),
@@ -380,6 +385,12 @@ impl Deps {
             .iter()
             .find(|(_, credential)| credential.secrets.iter().any(|s| s.name == secret))
             .map(|(id, _)| id.as_str())
+    }
+
+    /// Whether `secret` is in an optional credential.
+    pub fn optional(&self, secret: &str) -> bool {
+        self.credential_of(secret)
+            .is_some_and(|id| self.credentials[id].optional)
     }
 
     /// How `host` is declared under `syscall`, or `None` when it is not.

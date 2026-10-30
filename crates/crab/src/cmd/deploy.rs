@@ -223,7 +223,10 @@ fn copy(client: &Client, from: &str, force: bool, stopped: bool) -> Result<()> {
             Form::new(client, name, asked, &BTreeMap::new())?.run()?;
         }
         if !stopped {
-            match unset(&runtime::wait(client.secrets(name))?).is_empty() {
+            let ready = unset(&runtime::wait(client.secrets(name))?)
+                .iter()
+                .all(|(_, credential)| credential.optional);
+            match ready {
                 true => {
                     runtime::wait(client.start(name))?;
                     eprintln!("started {name}");

@@ -9,6 +9,7 @@ fn deps(pattern: Option<&str>) -> Deps {
         guide: String::new(),
         copy: BTreeMap::new(),
         hosts: Vec::new(),
+        optional: false,
         secrets: vec![CredentialSecret {
             name: "STRIPE_KEY".to_owned(),
             label: "Restricted key".to_owned(),
