@@ -96,12 +96,6 @@ pub(crate) fn calls<E: Env>(
             })
         },
         enter: commit::enter(commits),
-        budget: {
-            let host = host.clone();
-            Arc::new(move |service: &str, tool: &str| {
-                host.upgrade()?.terms.get(service, tool).budget
-            })
-        },
         now,
         remote: {
             let host = host.clone();

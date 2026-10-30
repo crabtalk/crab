@@ -1,9 +1,8 @@
 //! A call's CPU time, metered and bounded.
 
 use anyhow::Result;
-use berm_api::Output;
+use berm_api::{Budget, Output};
 use berm_host::test::{self, TestHost};
-use std::time::Duration;
 
 #[tokio::test]
 async fn a_call_is_metered_the_cpu_it_spent() -> Result<()> {
@@ -23,7 +22,18 @@ async fn a_call_is_metered_the_cpu_it_spent() -> Result<()> {
 
 #[tokio::test]
 async fn a_call_past_its_cpu_budget_is_stopped() -> Result<()> {
-    let host = TestHost::open_with(0, Duration::from_millis(1)).await?;
+    let defaults = berm_host::Config::default();
+    let host = TestHost::open_with(
+        0,
+        berm_host::Config {
+            budget: Budget {
+                cpu: 1_000,
+                ..defaults.budget
+            },
+            ..defaults
+        },
+    )
+    .await?;
     host.deploy("fixture", &test::build("berm-fixture")?)
         .await?;
 

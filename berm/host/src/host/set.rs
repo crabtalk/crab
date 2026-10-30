@@ -45,9 +45,9 @@ impl<E: Env> Host<E> {
                 Ok(check) => {
                     checked.insert(name, check);
                 }
-                Err(Denied(at, reason)) => {
-                    status = at;
-                    refused.insert(name, reason);
+                Err(denied) => {
+                    status = denied.status;
+                    refused.insert(name, denied.message);
                 }
             }
         }
@@ -109,7 +109,7 @@ impl<E: Env> Host<E> {
                     installed.push((service.clone(), one));
                     switched.push((service, before));
                 }
-                Err(Denied(status, reason)) => {
+                Err(denied) => {
                     for (service, before) in switched.into_iter().rev() {
                         let restored = match before {
                             Some(before) => self.deploy(&service, before, None).await.map(drop),
@@ -117,18 +117,18 @@ impl<E: Env> Host<E> {
                                 deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}"))
                             }),
                         };
-                        if let Err(Denied(_, e)) = restored {
+                        if let Err(e) = restored {
                             tracing::error!(service, error = %e, "a set's service was not put back");
                         }
                     }
-                    return Err(deny(
-                        status,
-                        SetFailed {
+                    return Err(Denied {
+                        message: SetFailed {
                             name,
-                            reason: &reason,
+                            reason: &denied.message,
                         }
                         .to_string(),
-                    ));
+                        ..denied
+                    });
                 }
             }
         }

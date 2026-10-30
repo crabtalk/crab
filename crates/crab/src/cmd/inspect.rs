@@ -186,9 +186,10 @@ fn tools<'a>(
         if let Some(held) = terms.tools.get(&tool.name) {
             let budget = held.held.budget;
             println!(
-                "    at most {}µs of CPU, {} rows and {} of memory a call",
+                "    at most {}µs of CPU, {} rows read, {} written and {} of memory a call",
                 budget.cpu,
-                budget.rows,
+                budget.read,
+                budget.written,
                 format::bytes(budget.memory)
             );
             if let Some(metering) = metering {

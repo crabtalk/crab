@@ -3,12 +3,12 @@
 
 use anyhow::Result;
 use berm::{
-    Berm, Calls, Config, Engine, Output, chain,
+    Berm, Budget, Calls, Config, Engine, Output, chain,
     tape::{Answer, Tape, Taping},
 };
 use berm_api::host::{CallPage, Caller, Outcome};
 use berm_host::test::{self, TestHost};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 const URL: &str = "http://127.0.0.1/status";
 
@@ -123,7 +123,18 @@ async fn a_done_call_keeps_no_tape() -> Result<()> {
 
 #[tokio::test]
 async fn a_trapped_call_is_recorded_as_failed_with_its_input_and_tape() -> Result<()> {
-    let host = TestHost::open_with(0, Duration::from_millis(5)).await?;
+    let defaults = berm_host::Config::default();
+    let host = TestHost::open_with(
+        0,
+        berm_host::Config {
+            budget: Budget {
+                cpu: 5_000,
+                ..defaults.budget
+            },
+            ..defaults
+        },
+    )
+    .await?;
     host.deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
     let trapped = host

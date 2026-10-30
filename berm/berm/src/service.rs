@@ -2,17 +2,17 @@
 
 use crate::{
     Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi, chain,
-    engine::{Engine, Image},
+    engine::{self, Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Pool, Running},
     syscall::{
         self,
-        call::{Budgeted, Calls, Enter, Invoked, Now, Ran, Scope},
+        call::{Calls, Enter, Invoked, Now, Ran, Scope},
     },
     tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Callers, Manifest, Output, Runtime, digest, host};
+use berm_api::{Budget, Callers, Manifest, Output, Runtime, digest, host};
 use std::{
     collections::BTreeMap,
     error, fmt,
@@ -43,8 +43,6 @@ pub struct Service {
     tools: BTreeMap<String, Tool>,
     /// What each invocation runs inside.
     enter: Enter,
-    /// Each invocation's budget, by tool.
-    budget: Budgeted,
     /// What `berm.now` answers.
     now: Now,
     /// What the services it calls are told it is named: the issuer of a user
@@ -64,6 +62,8 @@ pub struct Service {
 struct Tool {
     export: ModuleExport,
     query: bool,
+    /// What one invocation of it is held to.
+    budget: Budget,
 }
 
 impl Drop for Service {
@@ -91,11 +91,15 @@ impl Service {
             .exports()
             .filter_map(|(symbol, export)| {
                 let name = symbol.strip_prefix(abi::TOOL_PREFIX)?;
-                let query = manifest
-                    .tools
-                    .iter()
-                    .any(|spec| spec.name == name && spec.query);
-                Some((name.to_owned(), Tool { export, query }))
+                let spec = manifest.tools.iter().find(|spec| spec.name == name);
+                let tool = Tool {
+                    export,
+                    query: spec.is_some_and(|spec| spec.query),
+                    budget: spec
+                        .and_then(|spec| spec.budget)
+                        .map_or(compiled.budget, |limits| limits.over(compiled.budget)),
+                };
+                Some((name.to_owned(), tool))
             })
             .collect();
         if tools.is_empty() {
@@ -105,6 +109,15 @@ impl Service {
             bail!("service declares more than one stripe tool");
         }
 
+        for (name, tool) in &tools {
+            if let Some(key) = engine::past(&tool.budget, &compiled.most) {
+                return Err(engine::PastMost {
+                    tool: name.clone(),
+                    key,
+                }
+                .into());
+            }
+        }
         for tool in &manifest.tools {
             if !tools.contains_key(&tool.name) {
                 bail!(
@@ -142,13 +155,18 @@ impl Service {
             manifest,
             tools,
             enter: calls.enter.clone(),
-            budget: calls.budget.clone(),
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running: Arc::default(),
             pool,
             deadline: engine.deadline,
         })
+    }
+
+    /// What one invocation of `tool` is held to; `None` for a tool it does
+    /// not export.
+    pub fn budget(&self, tool: &str) -> Option<Budget> {
+        self.tools.get(tool).map(|tool| tool.budget)
     }
 
     /// The tools this service exports, as its export table reports them.
@@ -386,12 +404,12 @@ impl Service {
         let Some(Tool {
             export,
             query: declared,
+            budget,
         }) = self.tools.get(tool)
         else {
             bail!("service exports no tool named {tool:?}");
         };
 
-        let budget = (self.budget)(&self.name, tool).unwrap_or(self.image.budget);
         let mut at = Callsite {
             service: self.name.clone(),
             tool: tool.into(),
@@ -412,7 +430,7 @@ impl Service {
             ),
             journal: journal.clone(),
             meters,
-            own: Arc::new(Own::new(budget.rows)),
+            own: Arc::new(Own::new(budget.read, budget.written)),
             #[cfg(feature = "sqlite")]
             database: Arc::default(),
         };
@@ -423,15 +441,11 @@ impl Service {
         });
         let scope = (self.enter)(self, &at).await?;
         // A refusal drops the scope, which undoes what it holds.
-        let largest = self.image.budget.memory;
         let reserved = Held::new(
             self.running.clone(),
             self.pool.clone(),
             self.image.reserve.clone(),
-            match budget.memory {
-                0 => largest,
-                memory => memory.min(largest),
-            },
+            budget.memory,
         )?;
         let own = scope.own();
         if own {

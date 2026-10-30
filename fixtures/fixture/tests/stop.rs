@@ -53,7 +53,7 @@ async fn a_stopped_service_takes_no_calls_until_started() -> Result<()> {
         )
         .await
         .expect_err("a call from outside into a stopped service is refused");
-    assert_eq!(refused.0.as_u16(), 503);
+    assert_eq!(refused.status.as_u16(), 503);
     let nested = host
         .call("acct/fixture", "nest", br#"{"query":"hi"}"#)
         .await?;

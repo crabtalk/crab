@@ -61,11 +61,13 @@ fn the_most_a_run_costs_spends_its_whole_budget() {
     };
     let budget = Budget {
         cpu: 100_100,
-        rows: 1_000,
+        read: 1_000,
+        written: 1_000,
         memory: 16 << 20,
     };
     // In billionths of a micro: 150,000,000 for the run, 2,000,000,000 for
-    // 100,000µs of overage, 1,000,000,000,000 for 1,000 rows written, and
-    // 11,520,000,000 for 16 MiB held 60 s.
-    assert_eq!(metering.most(&budget, 60_000), "1013.67");
+    // 100,000µs of overage, 1,000,000,000 for 1,000 rows read,
+    // 1,000,000,000,000 for 1,000 rows written, and 11,520,000,000 for 16 MiB
+    // held 60 s.
+    assert_eq!(metering.most(&budget, 60_000), "1014.67");
 }

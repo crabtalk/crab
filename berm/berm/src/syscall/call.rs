@@ -5,8 +5,8 @@
 //! embedder's [`Calls::resolve`].
 
 use crate::{
-    Berm, Budget, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Refused, Service, Syscall,
-    abi, clock, wire,
+    Berm, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Refused, Service, Syscall, abi,
+    clock, wire,
 };
 use anyhow::{Result, bail};
 use berm_api::{Output, host::Outcome};
@@ -27,10 +27,6 @@ pub type Named = Arc<dyn Fn(&str) -> String + Send + Sync>;
 /// What an invocation of `service` runs inside, asked with the invocation's
 /// site before it runs: the chain's first call and every nested one.
 pub type Enter = Arc<dyn Fn(&Service, &Callsite) -> Opening + Send + Sync>;
-
-/// The budget of one invocation of `tool` of the service deployed as
-/// `service`. `None` takes the engine's [`crate::Config`].
-pub type Budgeted = Arc<dyn Fn(&str, &str) -> Option<Budget> + Send + Sync>;
 
 /// The pool the service deployed as a name draws its memory from, asked once
 /// as it loads.
@@ -112,7 +108,6 @@ pub struct Calls {
     pub resolve: Resolve,
     pub named: Named,
     pub enter: Enter,
-    pub budget: Budgeted,
     pub now: Now,
     pub called: Reported,
     pub invoked: Invoked,
@@ -138,7 +133,6 @@ impl Calls {
             resolve: Arc::new(|_, target, _| Ok(target.to_owned())),
             named: Arc::new(str::to_owned),
             enter: Arc::new(|_, _| Box::pin(async { Ok(Box::new(Unheld) as Box<dyn Scope>) })),
-            budget: Arc::new(|_, _| None),
             now: Arc::new(clock::now),
             called: Arc::new(|_, _, _, _| {}),
             invoked: Arc::new(|_, _, _, _| {}),
@@ -155,7 +149,6 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
         resolve,
         named,
         enter: _,
-        budget: _,
         now: _,
         called,
         invoked: _,

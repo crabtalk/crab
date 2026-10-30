@@ -122,3 +122,24 @@ fn a_pattern_that_is_not_a_regular_expression_is_refused() {
         "{error}"
     );
 }
+
+#[test]
+fn a_budget_key_of_zero_or_unknown_is_refused() {
+    let budget = |set: &str| {
+        read(&format!(
+            "name = \"app\"\n[tools.search]\nbudget = {{ {set} }}\n"
+        ))
+    };
+    let error = budget("cpu = 5_000, written = 0").unwrap_err();
+    assert!(
+        error.to_string().contains("budget.written is at least 1"),
+        "{error}"
+    );
+    assert!(budget("rows = 10").is_err());
+    let read = budget("written = 100, memory = 16").unwrap();
+    let limits = read.tools["search"].budget.unwrap();
+    assert_eq!(
+        (limits.written, limits.memory, limits.cpu),
+        (Some(100), Some(16), None)
+    );
+}

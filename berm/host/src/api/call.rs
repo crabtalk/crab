@@ -11,7 +11,7 @@ use crate::{
 };
 use axum::http::StatusCode;
 use berm::{
-    Budget, Meters, Refused, Service,
+    Meters, Refused, Service,
     tape::{Recorder, Taping},
 };
 use berm_api::{
@@ -124,9 +124,8 @@ impl<E: Env> Host<E> {
             .collect())
     }
 
-    /// `service`'s terms: each public tool's budget, what its owner set or
-    /// else this host's, its memory this host's most where the owner set none,
-    /// and this host's deadline.
+    /// `service`'s terms: each public tool's budget, and this host's
+    /// deadline.
     pub fn terms(&self, service: &str) -> Result<Terms, Denied> {
         let deployed = self.deployed(service)?;
         let tools = deployed
@@ -134,51 +133,15 @@ impl<E: Env> Host<E> {
             .tools
             .iter()
             .filter(|tool| tool.public)
-            .map(|tool| {
-                let mut budget = self
-                    .terms
-                    .get(service, &tool.name)
-                    .budget
-                    .unwrap_or(self.budget);
-                if budget.memory == 0 {
-                    budget.memory = self.budget.memory;
-                }
-                (tool.name.clone(), ToolTerms { budget })
+            .filter_map(|tool| {
+                let budget = deployed.budget(&tool.name)?;
+                Some((tool.name.clone(), ToolTerms { budget }))
             })
             .collect();
         Ok(Terms {
             tools,
             deadline: self.deadline.as_millis() as u64,
         })
-    }
-
-    /// Set what one invocation of `tool` of `service` may use, from its next
-    /// call. Refused past this host's budget.
-    pub async fn set_budget(
-        &self,
-        service: &str,
-        tool: &str,
-        budget: Budget,
-    ) -> Result<(), Denied> {
-        self.exported(service, tool)?;
-        if budget.cpu == 0
-            || budget.rows == 0
-            || budget.cpu > self.budget.cpu
-            || budget.rows > self.budget.rows
-            || budget.memory > self.budget.memory
-        {
-            return Err(deny(
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "a budget is between 1 and {}µs of CPU, 1 and {} rows, and at most {} bytes of memory",
-                    self.budget.cpu, self.budget.rows, self.budget.memory
-                ),
-            ));
-        }
-        Ok(self
-            .terms
-            .set_budget(&self.store, service, tool, budget)
-            .await?)
     }
 
     /// Call cron tool `tool` of `service` when `cron` fires, from its next
@@ -250,18 +213,6 @@ impl<E: Env> Host<E> {
         }
         let (scope, name) = host::split(service);
         vars::set(&self.store, scope, name, var.to_owned(), value).await?;
-        Ok(())
-    }
-
-    /// Refused unless `service` is deployed and exports `tool`.
-    fn exported(&self, service: &str, tool: &str) -> Result<(), Denied> {
-        let deployed = self.deployed(service)?;
-        if !deployed.tools().any(|exported| exported == tool) {
-            return Err(deny(
-                StatusCode::NOT_FOUND,
-                format!("the service has no tool named {tool:?}"),
-            ));
-        }
         Ok(())
     }
 

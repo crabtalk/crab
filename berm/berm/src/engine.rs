@@ -56,10 +56,15 @@ pub struct Config {
     pub reserved: u64,
     /// The most CPU time one invocation may spend, nested calls excluded.
     pub cpu: Duration,
-    /// The most rows one invocation may read and write together. A row
-    /// syscall made once they are used is refused; the statement that crosses
-    /// the budget runs to its end.
-    pub rows: u64,
+    /// The most rows one invocation may read. A row syscall made once its
+    /// rows read or its rows written are used is refused; the statement that
+    /// crosses either runs to its end.
+    pub read: u64,
+    /// The most rows one invocation may write.
+    pub written: u64,
+    /// What one invocation of a tool whose `crab.toml` sets no budget is held
+    /// to, key by key, each at most the most above.
+    pub budget: Budget,
     /// How long a chain of invocations runs before it is stopped.
     pub deadline: Duration,
 }
@@ -72,7 +77,14 @@ impl Default for Config {
             memory: 128 << 20,
             reserved: 0,
             cpu: Duration::from_millis(100),
-            rows: 1_000_000,
+            read: 1_000_000,
+            written: 1_000_000,
+            budget: Budget {
+                cpu: 100_000,
+                read: 1_000_000,
+                written: 10_000,
+                memory: 128 << 20,
+            },
             deadline: watchdog::TIMEOUT,
         }
     }
@@ -84,14 +96,13 @@ impl Default for Config {
 #[derive(Clone)]
 pub struct Engine {
     wasmtime: wasmtime::Engine,
-    /// [`Config::memory`].
-    memory: usize,
     /// What its invocations reserve, held to [`Config::reserved`].
     pub reserve: Arc<Pool>,
-    /// [`Config::cpu`].
-    cpu: Duration,
-    /// [`Config::rows`].
-    rows: u64,
+    /// [`Config::cpu`], [`Config::read`], [`Config::written`] and
+    /// [`Config::memory`].
+    most: Budget,
+    /// [`Config::budget`].
+    budget: Budget,
     /// [`Config::deadline`].
     pub(crate) deadline: Duration,
 }
@@ -123,12 +134,20 @@ impl Engine {
         tick(&engine);
         let reserve = Arc::new(Pool::default());
         reserve.limit(config.reserved);
+        let most = Budget {
+            cpu: config.cpu.as_micros() as u64,
+            read: config.read,
+            written: config.written,
+            memory: config.memory as u64,
+        };
+        if let Some(key) = past(&config.budget, &most) {
+            bail!("the default budget's {key} is past the most one invocation may use");
+        }
         Ok(Self {
             wasmtime: engine,
-            memory: config.memory,
             reserve,
-            cpu: config.cpu,
-            rows: config.rows,
+            most,
+            budget: config.budget,
             deadline: config.deadline,
         })
     }
@@ -163,7 +182,9 @@ fn tick(engine: &wasmtime::Engine) {
 /// One compiled service, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
-    /// [`Config::cpu`], [`Config::rows`] and [`Config::memory`].
+    /// [`Engine::most`].
+    pub(crate) most: Budget,
+    /// [`Config::budget`].
     pub(crate) budget: Budget,
     /// [`Engine::reserve`].
     pub(crate) reserve: Arc<Pool>,
@@ -179,11 +200,7 @@ impl Image {
     /// Compile `image` against `table`, beside the bytes the image and its
     /// compiled code take.
     pub(crate) fn compile(engine: &Engine, image: &[u8], table: Table) -> Result<(Self, u64)> {
-        let budget = Budget {
-            cpu: engine.cpu.as_micros() as u64,
-            rows: engine.rows,
-            memory: engine.memory as u64,
-        };
+        let (most, budget) = (engine.most, engine.budget);
         let reserve = engine.reserve.clone();
         let engine = engine.wasmtime.clone();
         let module = Module::new(&engine, image)?;
@@ -250,6 +267,7 @@ impl Image {
             memory: module.get_export_index(MEMORY),
             pre: linker.instantiate_pre(&module)?,
             engine,
+            most,
             budget,
             reserve,
         };
@@ -389,3 +407,35 @@ fn memory(caller: &mut Caller<'_, Invocation>) -> Result<Memory> {
     caller.data_mut().memory = Some(memory);
     Ok(memory)
 }
+
+/// The first key of `budget` past `most`, by name.
+pub(crate) fn past(budget: &Budget, most: &Budget) -> Option<&'static str> {
+    [
+        ("cpu", budget.cpu, most.cpu),
+        ("read", budget.read, most.read),
+        ("written", budget.written, most.written),
+        ("memory", budget.memory, most.memory),
+    ]
+    .into_iter()
+    .find_map(|(key, value, most)| (value > most).then_some(key))
+}
+
+/// A deploy refused for a tool whose budget sets `key` past the most one
+/// invocation may use.
+#[derive(Debug)]
+pub struct PastMost {
+    pub tool: String,
+    pub key: &'static str,
+}
+
+impl std::fmt::Display for PastMost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tool {:?}'s budget sets {} past this host's most",
+            self.tool, self.key
+        )
+    }
+}
+
+impl std::error::Error for PastMost {}

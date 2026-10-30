@@ -46,7 +46,6 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     task::{self, Poll},
-    time::Duration,
 };
 use tokio::sync::MutexGuard;
 
@@ -68,13 +67,13 @@ pub struct TestHost {
     secrets: Granted,
     clock: Manual,
     dir: PathBuf,
-    cpu: Duration,
+    config: crate::Config,
 }
 
-/// A host over the state in `dir`, each call spending at most `cpu`.
+/// A host over the state in `dir`, sized by `config`.
 async fn opened(
     dir: &Path,
-    cpu: Duration,
+    config: &crate::Config,
     fetch: &Arranged,
     images: &Given,
     secrets: &Granted,
@@ -82,8 +81,7 @@ async fn opened(
 ) -> Result<Host<Test>> {
     let config = crate::Config {
         databases: dir.join("databases"),
-        cpu,
-        ..crate::Config::default()
+        ..config.clone()
     };
     Host::open(
         &dir.join("host.db"),
@@ -128,11 +126,11 @@ impl TestHost {
     /// A host with nothing deployed, its clock at `now` in milliseconds since
     /// the Unix epoch.
     pub async fn open(now: u64) -> Result<Self> {
-        Self::open_with(now, crate::Config::default().cpu).await
+        Self::open_with(now, crate::Config::default()).await
     }
 
-    /// [`TestHost::open`], each call spending at most `cpu` of CPU.
-    pub async fn open_with(now: u64, cpu: Duration) -> Result<Self> {
+    /// [`TestHost::open`], sized by `config`.
+    pub async fn open_with(now: u64, config: crate::Config) -> Result<Self> {
         static OPENED: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "berm-test-{}-{}",
@@ -143,7 +141,7 @@ impl TestHost {
         std::fs::create_dir_all(&dir)?;
         let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
         let clock = Manual(Arc::new(AtomicU64::new(now)));
-        let host = opened(&dir, cpu, &fetch, &images, &secrets, &clock).await?;
+        let host = opened(&dir, &config, &fetch, &images, &secrets, &clock).await?;
         Ok(Self {
             host,
             fetch,
@@ -151,7 +149,7 @@ impl TestHost {
             secrets,
             clock,
             dir,
-            cpu,
+            config,
         })
     }
 
@@ -160,7 +158,7 @@ impl TestHost {
     pub async fn reopen(&mut self) -> Result<()> {
         self.host = opened(
             &self.dir,
-            self.cpu,
+            &self.config,
             &self.fetch,
             &self.images,
             &self.secrets,

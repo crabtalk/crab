@@ -19,6 +19,10 @@ use berm_api::{
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
+/// The error code a deploy refused for a budget past the host's most
+/// carries.
+const PAST_MOST: &str = "E0013";
+
 /// A deploy that went live.
 pub struct Installed {
     pub service: Arc<Service>,
@@ -127,10 +131,13 @@ impl<E: Env> Host<E> {
                 .filter(|spec| spec.deprecated)
                 .map(|spec| spec.name.clone())
                 .collect();
-            let deployed = self
-                .compile(key.clone(), image)
-                .await
-                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            let deployed = self.compile(key.clone(), image).await.map_err(|e| {
+                let denied = deny(StatusCode::BAD_REQUEST, format!("{e:#}"));
+                match e.downcast_ref::<berm::PastMost>() {
+                    Some(_) => denied.explained(PAST_MOST),
+                    None => denied,
+                }
+            })?;
             service::install(
                 &self.store,
                 scope,

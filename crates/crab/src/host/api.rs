@@ -214,7 +214,10 @@ async fn deploy_set(
         let deploy = kept(&name, deploy)?;
         node.priced(&deploy.digest, &priced)
             .await
-            .map_err(|Denied(status, reason)| deny(status, format!("{name}: {reason}")))?;
+            .map_err(|denied| Denied {
+                message: format!("{name}: {}", denied.message),
+                ..denied
+            })?;
         members.push((name, deploy));
     }
     Ok(Json(

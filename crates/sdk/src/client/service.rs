@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use berm_api::{
-    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Runtime, Service, Setting, VarValue,
+    Cron, Deployed, Listing, Logged, Meter, Output, Runtime, Service, Setting, VarValue,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Body, Method, RequestBuilder};
@@ -116,13 +116,6 @@ impl Client {
     pub async fn tools(&self, name: &str) -> Result<BTreeMap<String, ToolCosted>, Error> {
         let path = format!("{}/calls/tools", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
-    }
-
-    /// Set what one call of `tool` of `name` may use.
-    pub async fn budget(&self, name: &str, tool: &str, budget: Budget) -> Result<(), Error> {
-        let path = format!("{}/tools/{tool}/budget", self.path_of(name));
-        self.ok(self.at(Method::PUT, &path).json(&budget)).await?;
-        Ok(())
     }
 
     /// `name`'s meters over the last 30 days, a day each.

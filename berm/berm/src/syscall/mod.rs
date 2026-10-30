@@ -283,20 +283,22 @@ fn builtins() -> Table {
 /// Lower `invocation`'s budget to what `bytes` holds, as [`abi::HOST_LIMIT`]
 /// reads it.
 fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
-    let [cpu, rows, memory]: [u64; 3] = match bytes.len() {
-        24 => std::array::from_fn(|i| {
+    let [cpu, read, written, memory]: [u64; 4] = match bytes.len() {
+        32 => std::array::from_fn(|i| {
             u64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().expect("eight bytes"))
         }),
-        _ => return Err(Refused(String::from("a limit is three u64s")).into()),
+        _ => return Err(Refused(String::from("a limit is four u64s")).into()),
     };
     if invocation.limited {
         return Err(Refused(String::from("a call lowers its budget once")).into());
     }
     let own = invocation.at.own.clone();
-    let (held_cpu, held_rows) = (invocation.cpu.load(Ordering::Relaxed), own.budget());
-    if cpu > held_cpu || rows > held_rows {
+    let held_cpu = invocation.cpu.load(Ordering::Relaxed);
+    let (held_read, held_written) = own.budget();
+    if cpu > held_cpu || read > held_read || written > held_written {
         return Err(Refused(format!(
-            "a call lowers its budget of {held_cpu}µs of CPU and {held_rows} rows, never raises it"
+            "a call lowers its budget of {held_cpu}µs of CPU, {held_read} rows read and \
+             {held_written} rows written, never raises it"
         ))
         .into());
     }
@@ -306,9 +308,7 @@ fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
     if cpu != 0 {
         invocation.cpu.store(cpu, Ordering::Relaxed);
     }
-    if rows != 0 {
-        own.lower(rows);
-    }
+    own.lower(read, written);
     invocation.limited = true;
     Ok(Vec::new())
 }

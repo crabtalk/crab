@@ -16,7 +16,7 @@ use crate::{
     },
     state::{
         self, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql, stop::Stops,
-        store::Store, terms::Terms,
+        store::Store,
     },
     wake,
 };
@@ -26,7 +26,7 @@ use berm::{
     database::{Database, Databases},
 };
 use berm_api::{
-    Budget, digest,
+    digest,
     host::{self, Used},
 };
 use parking_lot::Mutex;
@@ -115,13 +115,8 @@ pub struct Inner<E: Env> {
     pub(crate) secrets: E::Secrets,
     /// [`Edges::layers`] around the host's own service.
     pub(crate) outside: Outside,
-    /// The most one invocation may use, and what a tool's owner has not set
-    /// takes.
-    pub budget: Budget,
     /// How long a chain of calls runs before it is stopped.
     pub(crate) deadline: Duration,
-    /// Each tool's budget its owner set.
-    pub(crate) terms: Terms,
     /// Held by a deploy of the service keyed by its key.
     deploying: Mutex<HashMap<String, Arc<sync::Mutex<()>>>>,
     /// [`Edges::clock`].
@@ -175,7 +170,9 @@ impl<E: Env> Host<E> {
             memory: config.memory,
             reserved: config.reserved,
             cpu: config.cpu,
-            rows: config.rows,
+            read: config.read,
+            written: config.written,
+            budget: config.budget,
             deadline: config.deadline,
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
@@ -188,8 +185,6 @@ impl<E: Env> Host<E> {
         let used = Counts::new(now.clone(), Table::Usage.last(&store).await?);
         let emitted = logs::Pending::new(now.clone(), Table::Logs.last(&store).await?);
         let metered = Pending::new(now.clone(), Table::Meters.last(&store).await?);
-        let terms = Terms::default();
-        terms.load(&store).await?;
         let chains = (config.instances / (config.depth + 1)).max(1);
         let pools = Arc::new(Pools::new(config.held));
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
@@ -239,13 +234,7 @@ impl<E: Env> Host<E> {
                 images,
                 secrets,
                 outside: layers.layer(Outside::new(Bottom(host.clone()))),
-                budget: Budget {
-                    cpu: config.cpu.as_micros() as u64,
-                    rows: config.rows,
-                    memory: config.memory as u64,
-                },
                 deadline: config.deadline,
-                terms,
                 deploying: Mutex::default(),
                 now,
             }
@@ -406,7 +395,6 @@ impl<E: Env> Host<E> {
         self.berm.remove(service);
         self.databases.remove(service)?;
         let removed = service::remove(&self.store, scope, name).await?;
-        self.terms.forget(service);
         self.stops.mark(service, false);
         Ok(removed)
     }

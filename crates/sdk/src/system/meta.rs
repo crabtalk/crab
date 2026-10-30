@@ -58,13 +58,14 @@ pub struct Metering {
 impl Metering {
     /// The most one run of a tool held to `budget` costs to run, as a decimal
     /// of USD micros, on a host whose chains run at most `deadline`
-    /// milliseconds: its CPU budget spent, every row written, and its memory
-    /// held to the deadline. Bytes proxied and the tool's calls to other
-    /// services are left out.
+    /// milliseconds: its CPU, rows read and rows written budgets spent, and
+    /// its memory held to the deadline. Bytes proxied and the tool's calls to
+    /// other services are left out.
     pub fn most(&self, budget: &Budget, deadline: u64) -> String {
         let meter = Meter {
             runs: 1,
-            written: budget.rows,
+            read: budget.read,
+            written: budget.written,
             held: (budget.memory >> 20) * deadline * 1000,
             ..Meter::default()
         };

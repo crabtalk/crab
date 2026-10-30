@@ -17,6 +17,7 @@ greeting = { default = "hello", description = "What greet answers" }
 
 [tools.echo]
 access = "public"
+budget = { cpu = 10_000, read = 10, written = 10, memory = 16 }
 
 [tools.carry]
 access = "public"

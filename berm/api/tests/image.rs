@@ -3,7 +3,8 @@
 
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use berm_api::{
-    Access, Credential, CredentialSecret, Deps, Image, Kit, Manifest, ServiceRecord, ToolRecord,
+    Access, Credential, CredentialSecret, Deps, Image, Kit, Limits, Manifest, ServiceRecord,
+    ToolRecord,
 };
 use std::collections::BTreeMap;
 
@@ -230,11 +231,16 @@ fn a_secret_in_two_credentials_is_refused() {
 }
 
 #[test]
-fn the_service_record_gives_each_tool_its_access_title_and_catalog() {
+fn the_service_record_gives_each_tool_its_access_title_catalog_and_budget() {
+    let budget = Limits {
+        written: Some(10),
+        ..Limits::default()
+    };
     let record = ToolRecord {
         access: Some(Access::Accounts),
         title: Some("Search the web".to_owned()),
         catalog: Some("web.search".to_owned()),
+        budget: Some(budget),
     };
     let abi = tool("a", "demo") + &tool("b", "demo");
     let service = with_tools(BTreeMap::from([("a".to_owned(), record)]));
@@ -244,7 +250,9 @@ fn the_service_record_gives_each_tool_its_access_title_and_catalog() {
     assert!(a.public && !a.anonymous);
     assert_eq!(a.title.as_deref(), Some("Search the web"));
     assert_eq!(a.catalog.as_deref(), Some("web.search"));
+    assert_eq!(a.budget, Some(budget));
     assert_eq!(manifest.tools[1].access(), None);
+    assert_eq!(manifest.tools[1].budget, None);
 }
 
 #[test]

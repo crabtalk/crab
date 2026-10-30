@@ -196,22 +196,9 @@ enum Command {
         /// `YYYY-MM-DD`.
         on: Option<String>,
     },
-    /// Set the most one call of a tool may use, from its next call; with no
-    /// flags, what its runs of the last 30 days used and the memory budget
-    /// they fit.
-    Budget {
-        name: String,
-        tool: String,
-        /// CPU time, in microseconds.
-        #[arg(long, requires = "rows")]
-        cpu: Option<u64>,
-        #[arg(long, requires = "cpu")]
-        rows: Option<u64>,
-        /// Linear memory, in MiB; omitted is the most the host lets a call
-        /// grow to.
-        #[arg(long, value_name = "MIB", requires = "cpu")]
-        memory: Option<u64>,
-    },
+    /// The most one call of a tool may use, what its runs of the last 30
+    /// days used, and the `budget` for its `crab.toml` they fit.
+    Budget { name: String, tool: String },
     /// A service's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
     Secret(SecretCommand),
@@ -734,18 +721,9 @@ fn run() -> Result<ExitCode> {
             copies,
             r#for,
         }) => cmd::secret::request(&client()?, name, credential.as_deref(), copies, r#for, json)?,
-        Command::Budget {
-            name,
-            tool,
-            cpu,
-            rows,
-            memory,
-        } => match (cpu, rows) {
-            (Some(cpu), Some(rows)) => {
-                cmd::budget::set(&client()?, name, tool, *cpu, *rows, *memory)?
-            }
-            _ => cmd::budget::show(&client()?, &cloud()?, name, tool, json)?,
-        },
+        Command::Budget { name, tool } => {
+            cmd::budget::show(&client()?, &cloud()?, name, tool, json)?
+        }
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {
             action: Some(action),

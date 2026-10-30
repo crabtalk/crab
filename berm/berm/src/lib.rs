@@ -23,7 +23,7 @@ use anyhow::Result;
 pub use berm_abi as abi;
 pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
 pub use berm_codegen::hosts;
-pub use engine::{Config, Engine};
+pub use engine::{Config, Engine, PastMost};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
@@ -36,8 +36,8 @@ use std::{
     time::Instant,
 };
 pub use syscall::call::{
-    Budgeted, Calls, Enter, Invoked, Named, Now, Opening, Pooled, Ran, Reaching, Remote, Reported,
-    Resolve, Scope,
+    Calls, Enter, Invoked, Named, Now, Opening, Pooled, Ran, Reaching, Remote, Reported, Resolve,
+    Scope,
 };
 
 mod bound;
@@ -126,7 +126,8 @@ impl Callsite {
             .add(self.service.clone(), self.tool.clone(), used);
     }
 
-    /// Refused once this invocation has used its budget of rows.
+    /// Refused once this invocation has used its budget of rows read or of
+    /// rows written.
     pub fn rows_left(&self) -> Result<()> {
         self.own.left()
     }

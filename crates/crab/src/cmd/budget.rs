@@ -1,40 +1,16 @@
-//! `crab budget` — the most one call of a tool may use, and what its runs used.
+//! `crab budget` — the most one call of a tool may use, what its runs used,
+//! and the `budget` for its `crab.toml` they fit.
 
 use crate::{format, runtime, terminal};
 use anyhow::Result;
-use berm_api::Budget;
 use crabtalk_sdk::{
     client::Client,
     services::service::{Estimate, Measured},
 };
 
-/// Set `name`'s `tool` to at most `cpu` microseconds, `rows` rows and
-/// `memory` MiB a call; `None` memory is the host's most.
-pub fn set(
-    client: &Client,
-    name: &str,
-    tool: &str,
-    cpu: u64,
-    rows: u64,
-    memory: Option<u64>,
-) -> Result<()> {
-    runtime::wait(client.budget(
-        name,
-        tool,
-        Budget {
-            cpu,
-            rows,
-            memory: memory.map_or(0, |mib| mib << 20),
-        },
-    ))?;
-    let memory = memory.map_or("the host's most".to_owned(), |mib| format!("{mib} MiB"));
-    eprintln!("{name}.{tool}: at most {cpu}µs of CPU, {rows} rows and {memory} of memory a call");
-    Ok(())
-}
-
 /// What `name`'s `tool` used over the last 30 days, its budget when it is
 /// public with what one run costs at most when `cloud` answers with its rates,
-/// and the memory budget its runs fit.
+/// and the `budget` its runs fit.
 pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
     let mut tools = runtime::wait(client.tools(name))?;
     let Some(used) = tools.remove(tool) else {
@@ -49,9 +25,10 @@ pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool)
     if let Some(held) = terms.tools.get(tool) {
         let budget = held.held.budget;
         println!(
-            "  budget       at most {}µs of CPU, {} rows and {} of memory a call",
+            "  budget       at most {}µs of CPU, {} rows read, {} written and {} of memory a call",
             budget.cpu,
-            budget.rows,
+            budget.read,
+            budget.written,
             format::bytes(budget.memory)
         );
         if let Ok(metering) = runtime::wait(cloud.rates()) {
@@ -75,11 +52,12 @@ pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool)
         };
         println!("  {slow:<12} {}", measured(&estimate.slow));
     }
-    if let Some(mib) = used.fits_mib {
+    if let Some(fits) = used.fits {
         println!(
-            "  memory       {} at most; --memory {mib} fits it at 1.5×",
+            "  memory       {} at most",
             format::bytes(used.meter.memory)
         );
+        println!("  fits         budget = {fits}");
     }
     Ok(())
 }

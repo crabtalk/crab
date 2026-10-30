@@ -338,10 +338,12 @@ pub struct ToolCosted {
     /// What its runs use; none before one ended `done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate: Option<Estimate>,
-    /// A memory budget that fits it, in MiB: 1.5× the most linear memory one
-    /// of its own invocations reached, rounded up; none before one ran.
+    /// A budget that fits its runs: 1.5× the CPU time, rows read and rows
+    /// written of its slowest run that ended `done`, and 1.5× the most linear
+    /// memory one of its own invocations reached in MiB, each rounded up;
+    /// none before one ran.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fits_mib: Option<u64>,
+    pub fits: Option<berm_api::Limits>,
 }
 
 /// One deploy of a service, refused and failed ones included.

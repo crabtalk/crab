@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 use berm_api::{
-    Budget, Cron, Listing, Runtime, Service, Setting, Terms, VarValue,
+    Cron, Listing, Runtime, Service, Setting, Terms, VarValue,
     host::{
         CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
         Usage, Wakes,
@@ -62,7 +62,6 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
             "/tools/{tool}",
             post(call::<E>).get(query::<E>).patch(update::<E>),
         )
-        .route("/tools/{tool}/budget", put(budget::<E>))
         .route("/tools/{tool}/cron", put(cron::<E>))
         .route("/vars", get(vars::<E>))
         .route("/vars/{var}", put(var::<E>))
@@ -353,17 +352,6 @@ async fn update<E: Env>(
     Json(update): Json<ToolUpdate>,
 ) -> Result<StatusCode, Denied> {
     host.sunset(&service, &tool, update.sunset).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// Set what one call of a tool may use, from its next call.
-async fn budget<E: Env>(
-    State(host): State<Host<E>>,
-    Extension(Named(service)): Extension<Named>,
-    Path(Tool { tool }): Path<Tool>,
-    Json(budget): Json<Budget>,
-) -> Result<StatusCode, Denied> {
-    host.set_budget(&service, &tool, budget).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

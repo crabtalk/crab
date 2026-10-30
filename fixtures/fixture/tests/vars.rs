@@ -50,7 +50,7 @@ async fn a_var_the_manifest_does_not_declare_is_refused() -> Result<()> {
         .set_var("acct/fixture", "missing", Some("x".to_owned()))
         .await
         .expect_err("an undeclared var is refused");
-    assert_eq!(refused.0.as_u16(), 404);
+    assert_eq!(refused.status.as_u16(), 404);
 
     let too_long = "x".repeat(4097);
     let refused = host
@@ -58,7 +58,7 @@ async fn a_var_the_manifest_does_not_declare_is_refused() -> Result<()> {
         .set_var("acct/fixture", "greeting", Some(too_long))
         .await
         .expect_err("a value past 4096 bytes is refused");
-    assert_eq!(refused.0.as_u16(), 400);
+    assert_eq!(refused.status.as_u16(), 400);
 
     let Output::Failed(failure) = host.call("acct/fixture", "undeclared", b"{}").await?.result
     else {
@@ -106,6 +106,6 @@ async fn a_deploy_sets_the_vars_it_names_and_keeps_the_rest() -> Result<()> {
         .await
         .err()
         .expect("a deploy naming an undeclared var is refused");
-    assert_eq!(refused.0.as_u16(), 400);
+    assert_eq!(refused.status.as_u16(), 400);
     Ok(())
 }

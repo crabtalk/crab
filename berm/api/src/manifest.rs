@@ -1,7 +1,7 @@
 //! What a service says it is, read from its image's [`ABI_SECTION`],
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{Access, DEFAULT_BUFFER, Image, ToolSpec};
+use crate::{Access, DEFAULT_BUFFER, Image, Limits, ToolSpec};
 use anyhow::{Context, Result, bail};
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use regex::Regex;
@@ -89,6 +89,8 @@ pub struct ToolRecord {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<Limits>,
 }
 
 /// A library crate a service links that has a `crab.toml` of its own: its
@@ -584,6 +586,7 @@ impl TryFrom<&[u8]> for Manifest {
                 tool.set_access(record.access);
                 tool.title = record.title;
                 tool.catalog = record.catalog;
+                tool.budget = record.budget;
                 Ok(tool)
             })
             .collect::<Result<Vec<_>>>()?;

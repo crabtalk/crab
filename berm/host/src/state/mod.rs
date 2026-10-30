@@ -17,7 +17,6 @@ pub(crate) mod service;
 pub(crate) mod sql;
 pub(crate) mod stop;
 pub(crate) mod store;
-pub(crate) mod terms;
 pub(crate) mod vars;
 
 /// `berm.get` and `berm.set` for `host`'s services, over the service's own

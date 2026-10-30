@@ -165,17 +165,67 @@ pub struct VarValue {
 }
 
 /// The most one invocation may use: CPU time in microseconds, nested calls
-/// excluded, rows read and written together, and bytes of linear memory.
+/// excluded, rows read, rows written, and bytes of linear memory.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Budget {
     pub cpu: u64,
-    pub rows: u64,
+    pub read: u64,
+    pub written: u64,
     /// Held from the invocation's start to its return, and reserved from the
-    /// host's memory for that long; `0` is the most the host lets one guest
-    /// grow to.
-    #[serde(default)]
+    /// host's memory for that long.
     pub memory: u64,
+}
+
+/// A tool's `budget` in its `crab.toml`: CPU time in microseconds, rows read,
+/// rows written, and memory in MiB. A key left out takes the host's.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Limits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<u64>,
+}
+
+impl Limits {
+    /// `budget` with each key this sets in its place.
+    pub fn over(&self, budget: Budget) -> Budget {
+        Budget {
+            cpu: self.cpu.unwrap_or(budget.cpu),
+            read: self.read.unwrap_or(budget.read),
+            written: self.written.unwrap_or(budget.written),
+            memory: self.memory.map_or(budget.memory, |mib| mib << 20),
+        }
+    }
+
+    /// Each key it sets, by name, memory in MiB.
+    pub fn keys(&self) -> impl Iterator<Item = (&'static str, u64)> {
+        [
+            ("cpu", self.cpu),
+            ("read", self.read),
+            ("written", self.written),
+            ("memory", self.memory),
+        ]
+        .into_iter()
+        .filter_map(|(key, value)| Some((key, value?)))
+    }
+}
+
+impl std::fmt::Display for Limits {
+    /// As `crab.toml` writes it: `{ cpu = 5000, written = 100 }`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let keys: Vec<String> = self
+            .keys()
+            .map(|(key, value)| format!("{key} = {value}"))
+            .collect();
+        write!(f, "{{ {} }}", keys.join(", "))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,6 +263,9 @@ pub struct ToolSpec {
     /// `.`, then the owner's own words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog: Option<String>,
+    /// What its `crab.toml` sets of one call's budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<Limits>,
     /// Called by its host when the cron expression its deploy or its owner
     /// sets fires. A cron tool is not public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -375,4 +428,7 @@ impl std::ops::AddAssign for Meter {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Failed {
     pub error: String,
+    /// The error code explaining it, as `E0013`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explain: Option<String>,
 }

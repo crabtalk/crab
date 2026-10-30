@@ -166,7 +166,7 @@ impl<E: Env> Host<E> {
             headers,
         };
         match self.outside.clone().oneshot(call).await {
-            Err(denied) if denied.0.is_client_error() => refused(denied, caller.as_ref()),
+            Err(denied) if denied.status.is_client_error() => refused(denied, caller.as_ref()),
             answered => answered,
         }
     }

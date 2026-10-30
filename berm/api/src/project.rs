@@ -1,6 +1,6 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Access, Credential, DEFAULT_BUFFER, Deps, ToolRecord, ToolSpec, Var, host};
+use crate::{Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use regex::Regex;
@@ -106,6 +106,9 @@ pub struct Tool {
     /// The catalog job it does, as `company.enrich`.
     #[serde(default)]
     pub catalog: Option<String>,
+    /// What one call may use, each key at least 1.
+    #[serde(default)]
+    pub budget: Option<Limits>,
 }
 
 fn deployed() -> bool {
@@ -138,6 +141,14 @@ impl Project {
                     "{at}: a title is one line of at most {} characters",
                     ToolSpec::TITLE
                 );
+            }
+            if let Some((key, _)) = tool
+                .budget
+                .iter()
+                .flat_map(Limits::keys)
+                .find(|(_, v)| *v == 0)
+            {
+                bail!("{at}: budget.{key} is at least 1");
             }
             if tool.access.is_none() {
                 for (key, set) in [
@@ -245,6 +256,7 @@ impl Project {
                     access: tool.access,
                     title: tool.title.clone(),
                     catalog: tool.catalog.clone(),
+                    budget: tool.budget,
                 };
                 (name.clone(), record)
             })

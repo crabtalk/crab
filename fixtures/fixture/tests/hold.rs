@@ -60,7 +60,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
         )
         .await
         .expect_err("a link into a held scope is refused");
-    assert_eq!(refused.0.as_u16(), 403);
+    assert_eq!(refused.status.as_u16(), 403);
 
     host.host.hold(Vec::new()).await?;
     assert!(matches!(

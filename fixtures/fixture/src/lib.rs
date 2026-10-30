@@ -47,8 +47,8 @@ pub fn spin(rounds: u64) -> Result<u64> {
 /// loops `rounds` times, answering whether lowering it again was refused.
 #[tool]
 pub fn lowered(memory: u64, rounds: u64) -> Result<bool> {
-    berm_lang::limit(0, 0, memory)?;
-    let refused = berm_lang::limit(0, 0, memory).is_err();
+    berm_lang::limit(0, 0, 0, memory)?;
+    let refused = berm_lang::limit(0, 0, 0, memory).is_err();
     core::hint::black_box(spin(rounds)?);
     Ok(refused)
 }
