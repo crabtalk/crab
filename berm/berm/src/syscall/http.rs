@@ -20,6 +20,8 @@ const SECRET: &str = "{secret:";
 /// secret already substituted.
 #[derive(Debug, Clone)]
 pub struct Request {
+    /// What the asking service was deployed as.
+    pub service: String,
     pub method: String,
     pub url: String,
     /// The host `url` names, lowercased, without port or credentials.
@@ -351,6 +353,7 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     };
     let reach = permitted(at, syscall, &host)?;
     Ok(Request {
+        service: at.service.to_string(),
         method,
         host,
         reach,

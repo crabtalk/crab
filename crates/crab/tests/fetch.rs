@@ -14,6 +14,7 @@ use tower::Service;
 
 fn request(host: &str, reach: Reach) -> Request {
     Request {
+        service: "fixture".to_owned(),
         method: "GET".to_owned(),
         url: format!("http://{host}:9/"),
         host: host.trim_matches(['[', ']']).to_owned(),
