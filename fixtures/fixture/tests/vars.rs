@@ -23,6 +23,8 @@ fn done(text: &str) -> Output {
 async fn a_var_reads_its_default_until_its_copy_sets_one() -> Result<()> {
     let host = common::deployed(&["acct/fixture", "other/fixture"]).await?;
     assert_eq!(greeted(&host, "acct/fixture").await?, done("hello"));
+    let idl = host.host.idl("acct/fixture")?;
+    assert_eq!(idl.vars["greeting"].description, "What greet answers");
 
     host.host
         .set_var("acct/fixture", "greeting", Some("hi".to_owned()))

@@ -198,7 +198,7 @@ impl Service {
             buffer: _,
             database: _,
             kits: _,
-            deps: _,
+            deps,
             events: _,
             version,
             description,
@@ -216,6 +216,7 @@ impl Service {
             readme: readme.clone(),
             digest: self.digest.clone(),
             tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
+            vars: deps.vars.clone(),
         }
     }
 

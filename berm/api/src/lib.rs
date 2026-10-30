@@ -63,6 +63,9 @@ pub struct Service {
     pub digest: String,
     /// Its public tools.
     pub tools: Vec<ToolSpec>,
+    /// The settings each deployed copy holds its own value of, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, Var>,
 }
 
 /// How a deployed service runs, for its owners: what [`Service`] leaves out.
