@@ -711,6 +711,9 @@ pub struct RecordsPage {
     pub logs: u64,
     /// At most this many of each.
     pub limit: u32,
+    /// Include replay artifacts and delete them up to the acknowledged call cursor.
+    #[serde(default)]
+    pub replays: bool,
 }
 
 /// A host's written calls and logs past a [`RecordsPage`]'s cursors, each
@@ -719,6 +722,9 @@ pub struct RecordsPage {
 pub struct Records {
     pub calls: Vec<RecordedCall>,
     pub logs: Vec<RecordedLog>,
+    /// A replay size limit cut the page before its call limit.
+    #[serde(default)]
+    pub more: bool,
 }
 
 /// One written call, with the calls it made.
@@ -730,6 +736,10 @@ pub struct RecordedCall {
     #[serde(flatten)]
     pub call: Call,
     pub nested: Vec<NestedCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<CallInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tape: Option<Vec<u8>>,
 }
 
 /// One written log.

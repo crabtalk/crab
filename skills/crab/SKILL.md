@@ -79,3 +79,4 @@ Read these before writing code. Paths are relative to the crab repository.
   ```
 
 - What a service needs from berm or a kit and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.
+- To check a fix against a failed call's tape, run `crab replay <service> <id> --build` in the service crate. It builds locally, prints both digests, and reaches no live services. `--build` and `--on` exclude each other.

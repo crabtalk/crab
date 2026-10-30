@@ -321,7 +321,7 @@ impl<E: Env> Host<E> {
     ///
     /// A call is answered only once every run with a smaller id is written,
     /// and a log is deleted only with the call it was emitted in. A failed
-    /// call's input and tape stay.
+    /// call's input and tape stay unless `page.replays` opts in to pulling them.
     pub async fn records(&self, page: wire::RecordsPage) -> anyhow::Result<wire::Records> {
         records::page(&self.store, page, self.calls.floor()).await
     }

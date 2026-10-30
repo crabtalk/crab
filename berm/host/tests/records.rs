@@ -56,7 +56,14 @@ async fn note(host: &TestHost, word: &str) -> Result<Output> {
 }
 
 async fn records(host: &TestHost, calls: u64, logs: u64, limit: u32) -> Result<Records> {
-    host.host.records(RecordsPage { calls, logs, limit }).await
+    host.host
+        .records(RecordsPage {
+            calls,
+            logs,
+            limit,
+            replays: false,
+        })
+        .await
 }
 
 /// The cursors that store everything in `records`.
@@ -204,5 +211,101 @@ async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
         serde_json::to_value(&kept[0].last)?,
         serde_json::to_value(&written[0].last)?
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn replay_artifacts_are_retried_until_their_cursor_is_acknowledged() -> Result<()> {
+    let host = fixture().await?;
+    note(&host, "fail").await?;
+    host.flush().await?;
+    let first = host
+        .host
+        .records(RecordsPage {
+            calls: 0,
+            logs: 0,
+            limit: 10,
+            replays: true,
+        })
+        .await?;
+    let failed = &first.calls[0];
+    let input = failed.input.as_ref().expect("failed input");
+    assert_eq!(input.tool, "note");
+    assert_eq!(input.args, r#"{"word":"fail"}"#);
+    assert_eq!(
+        input.digest,
+        host.host.call_input(FIXTURE, failed.call.id).await?.digest
+    );
+    let tape = failed.tape.as_ref().expect("failed tape");
+    assert_eq!(tape, &host.host.call_tape(FIXTURE, failed.call.id).await?);
+
+    let retry = host
+        .host
+        .records(RecordsPage {
+            calls: 0,
+            logs: 0,
+            limit: 10,
+            replays: true,
+        })
+        .await?;
+    assert_eq!(retry.calls[0].tape, failed.tape);
+    let (calls, logs) = stored(&first);
+    let next = host
+        .host
+        .records(RecordsPage {
+            calls,
+            logs,
+            limit: 10,
+            replays: true,
+        })
+        .await?;
+    assert!(next.calls.is_empty());
+    assert!(host.host.call_input(FIXTURE, failed.call.id).await.is_err());
+    assert!(host.host.call_tape(FIXTURE, failed.call.id).await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn replay_pages_bound_tapes_without_skipping_the_rest() -> Result<()> {
+    let host = fixture().await?;
+    const URL: &str = "http://127.0.0.1/large-failure";
+    host.arrange("GET", URL, 503, vec![b'x'; 3 << 20]);
+    for _ in 0..3 {
+        host.host
+            .call(
+                FIXTURE,
+                Some(&caller()),
+                "flaky",
+                format!(r#"{{"url":"{URL}"}}"#).into_bytes(),
+                false,
+            )
+            .await?;
+    }
+    host.flush().await?;
+    let first = host
+        .host
+        .records(RecordsPage {
+            calls: 0,
+            logs: 0,
+            limit: 100,
+            replays: true,
+        })
+        .await?;
+    assert!(first.more);
+    assert_eq!(first.calls.len(), 2);
+    let (calls, logs) = stored(&first);
+    let rest = host
+        .host
+        .records(RecordsPage {
+            calls,
+            logs,
+            limit: 100,
+            replays: true,
+        })
+        .await?;
+    assert!(!rest.more);
+    assert_eq!(rest.calls.len(), 1);
+    assert!(rest.calls[0].call.id > calls);
+    assert!(rest.calls[0].tape.is_some());
     Ok(())
 }

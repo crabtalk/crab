@@ -1,7 +1,7 @@
 //! `crab replay` — run a call that failed again: from its tape, or against
 //! another host's state.
 
-use crate::{cmd::call, runtime};
+use crate::{cmd::call, project, runtime};
 use anyhow::{Result, bail};
 use berm::{
     Berm, Calls, Config, Engine, Output, User, abi, chain,
@@ -10,7 +10,7 @@ use berm::{
 };
 use berm_api::digest;
 use crabtalk_sdk::client::Client;
-use std::{process::ExitCode, sync::Arc};
+use std::{fs, path::Path, process::ExitCode, sync::Arc};
 
 /// Leaves by the door `crab call` takes for a tool that failed.
 const FAILED: u8 = 2;
@@ -18,16 +18,24 @@ const FAILED: u8 = 2;
 /// Run `service`'s call `id`, as `from` recorded it, in this process: the
 /// image it ran, its arguments and caller, each syscall answered from its
 /// tape. Its logs are printed here.
-pub fn tape(from: &Client, service: &str, id: u64) -> Result<ExitCode> {
+pub fn tape(from: &Client, service: &str, id: u64, build: Option<&Path>) -> Result<ExitCode> {
     let input = runtime::wait(from.call_input(service, id))?;
     let tape = Tape::try_from(&runtime::wait(from.call_tape(service, id))?[..])?;
-    let bytes = runtime::wait(from.call_image(service, id))?;
-    if input.digest != digest::of(&bytes) {
-        bail!(
-            "the host served an image of another digest than {}",
-            input.digest
-        );
-    }
+    let bytes = if let Some(dir) = build {
+        project::read(dir)?;
+        let image = fs::read(berm_build::build(dir, None)?)?;
+        eprintln!("recorded {}; built {}", input.digest, digest::of(&image));
+        image
+    } else {
+        let image = runtime::wait(from.call_image(service, id))?;
+        if input.digest != digest::of(&image) {
+            bail!(
+                "the host served an image of another digest than {}",
+                input.digest
+            );
+        }
+        image
+    };
     if !tape.complete {
         eprintln!("the tape was cut short; the replay stops where it ends");
     }

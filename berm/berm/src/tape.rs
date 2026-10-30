@@ -186,7 +186,7 @@ impl Playing {
         };
         if entry.syscall != syscall || entry.asked != digest {
             return Some(Err(anyhow::anyhow!(
-                "diverged at syscall {position}: asked {syscall} {}, recorded {} {}",
+                "diverged at syscall {position}: asked {syscall} {}, recorded {} {}; the code took another path",
                 hex::encode(&digest[..6]),
                 entry.syscall,
                 hex::encode(&entry.asked[..6]),

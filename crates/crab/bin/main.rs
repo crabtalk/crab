@@ -116,8 +116,11 @@ enum Command {
         /// The call's id, as `crab calls` lists it.
         id: u64,
         /// The context to run it on, against that host's state.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "build")]
         on: Option<String>,
+        /// Replay against the crate in the current directory, built as `crab build`.
+        #[arg(long)]
+        build: bool,
     },
     /// Show a service's README, tools and their arguments.
     Inspect {
@@ -850,14 +853,24 @@ fn run() -> Result<ExitCode> {
         Command::Upgrade => cmd::upgrade::run(yes)?,
         // The one command whose exit code carries the call's result.
         Command::Call(call) => return cmd::call::run(&client()?, &cloud()?, call),
-        Command::Replay { service, id, on } => {
+        Command::Replay {
+            service,
+            id,
+            on,
+            build,
+        } => {
             return match on {
                 Some(on) => {
                     let on = Contexts::load()?.get(Some(on))?;
                     let cloud = on.cloud();
                     cmd::replay::on(&client()?, &Client::from(on), &cloud, service, *id)
                 }
-                None => cmd::replay::tape(&client()?, service, *id),
+                None => cmd::replay::tape(
+                    &client()?,
+                    service,
+                    *id,
+                    build.then_some(std::path::Path::new(".")),
+                ),
             };
         }
     }
