@@ -996,6 +996,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-pdl"
+version = "0.1.1"
+dependencies = [
+ "berm-api",
+ "berm-build",
+ "berm-lang",
+ "crab-openapi",
+ "url",
+]
+
+[[package]]
 name = "crab-posthog"
 version = "0.1.1"
 dependencies = [

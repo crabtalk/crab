@@ -6,6 +6,7 @@ Each directory is a member of the root Cargo workspace. A service builds both a 
 - [GitHub](github/README.md): repositories, issues, pull requests and releases.
 - [Upstash Redis](upstash/README.md): strings, expiry, counters, pipelines and transactions.
 - [PostHog](posthog/README.md): event capture, feature flags and HogQL queries.
+- [People Data Labs](pdl/README.md): generated person and company enrichment and search.
 - [DataForSEO](dataforseo/README.md): generated keyword metrics, backlinks, rankings and web data tools.
 - [Context.dev](contextdev/README.md): generated brand intelligence, extraction and web tools.
 - [Firecrawl](firecrawl/README.md): bounded scraping, search, mapping and crawl jobs.
