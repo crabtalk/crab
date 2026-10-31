@@ -1,0 +1,21 @@
+[package]
+name = "crab-osv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "OSV package vulnerability queries and advisory lookup"
+readme = "README.md"
+
+[lib]
+name = "osv"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+url.workspace = true

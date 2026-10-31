@@ -1,0 +1,13 @@
+name = "osv"
+buffer = 1048576
+[syscalls]
+"berm.http.fetch" = ["api.osv.dev"]
+[tools.query]
+access = "public"
+title = "Query vulnerabilities"
+[tools.query_batch]
+access = "public"
+title = "Query batch"
+[tools.advisory]
+access = "public"
+title = "Read advisory"

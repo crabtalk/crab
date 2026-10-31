@@ -20,8 +20,8 @@ pub const FILE: &str = "crab.toml";
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
-    /// The kit's ID, 32 lowercase hex digits, which its applied migrations are
-    /// kept under. A kit keeping tables declares one; a service declares none.
+    /// A linked package's migration ID, 32 lowercase hex digits. A reusable
+    /// stateful service declares one alongside its deployment name.
     #[serde(default)]
     pub id: Option<String>,
     /// What the kit's applied migrations were kept under before `id`: the
@@ -206,11 +206,10 @@ impl Project {
         Ok(project)
     }
 
-    /// The name a service deploys as, refused when it names none or
-    /// declares a kit's `id`.
+    /// The name a service deploys as. A reusable service may also declare a migration ID.
     pub fn name(&self) -> Result<&str> {
         if self.id.is_some() || !self.formerly.is_empty() {
-            bail!("only a kit declares an id or formerly");
+            self.check_dependency()?;
         }
         self.name
             .as_deref()

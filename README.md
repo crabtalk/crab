@@ -45,6 +45,8 @@ Open-source services deploy on their own or link into another service with `defa
 - [GitHub](services/github/README.md): repositories, issues, pull requests and releases.
 - [Upstash Redis](services/upstash/README.md): strings, expiry, counters, pipelines and transactions.
 - [PostHog](services/posthog/README.md): events, feature flags and analytics queries.
+- [OSV](services/osv/README.md): package vulnerabilities and advisory lookup.
+- [Release watch](services/release-watch/README.md): retained release and vulnerability observations.
 
 ## Libraries
 

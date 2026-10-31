@@ -15,3 +15,4 @@ resend = { package = "crab-resend", path = "../../services/resend", default-feat
 github = { package = "crab-github", path = "../../services/github", default-features = false }
 upstash = { package = "crab-upstash", path = "../../services/upstash", default-features = false }
 posthog = { package = "crab-posthog", path = "../../services/posthog", default-features = false }
+release-watch = { package = "crab-release-watch", path = "../../services/release-watch", default-features = false }

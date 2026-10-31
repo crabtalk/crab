@@ -18,6 +18,7 @@ pub fn inspect(
     /// PostHog user identifier.
     distinct_id: String,
 ) -> Result<String> {
+    let watched = release_watch::watches()?;
     let repository = github::repository(&owner, &repo)?;
     let delivery = resend::retrieve(&email)?;
     let cache = upstash::Redis::new(&redis_url)?.get("status")?;
@@ -29,6 +30,6 @@ pub fn inspect(
         "{}: {}; cache={cache:?}; flags={}",
         repository.full_name,
         delivery.last_event,
-        flags.flags.len()
+        flags.flags.len() + watched.len()
     ))
 }

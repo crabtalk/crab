@@ -154,3 +154,27 @@ fn linked_services_validate_migration_identity_without_rejecting_deployment_sett
     let missing = read("[database]\nmigrations = \"migrations\"\n").unwrap();
     assert!(missing.check_dependency().is_err());
 }
+
+#[test]
+fn stateful_services_can_deploy_and_link_with_a_stable_migration_identity() {
+    let service = read(
+        r#"name = "watch"
+id = "732e70b4fd594e91a94da0f60f50a948"
+[database]
+migrations = "migrations"
+"#,
+    )
+    .unwrap();
+    assert_eq!(service.name().unwrap(), "watch");
+    service.check_dependency().unwrap();
+    assert!(
+        read(
+            r#"name = "watch"
+id = "invalid"
+"#
+        )
+        .unwrap()
+        .name()
+        .is_err()
+    );
+}
