@@ -11,12 +11,20 @@ use oas3::{
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, env, fs, path::PathBuf};
+use std::{cell::Cell, collections::BTreeSet, env, fs, path::PathBuf};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ParameterShape {
+    Scalar,
+    Array,
+    Object,
+}
 
 pub(crate) struct Document {
     spec: Spec,
     source: Value,
     path: PathBuf,
+    next_schema_id: Cell<usize>,
 }
 
 impl Document {
@@ -36,7 +44,12 @@ impl Document {
             _ => return Err(Self::error("expected OpenAPI 3.0 or 3.1")),
         }
         let spec = serde_json::from_value(source.clone()).map_err(Self::error)?;
-        Ok(Self { spec, source, path })
+        Ok(Self {
+            spec,
+            source,
+            path,
+            next_schema_id: Cell::new(0),
+        })
     }
 
     pub fn generate(&self, config: &Config) -> syn::Result<TokenStream> {
@@ -201,14 +214,22 @@ impl Document {
                     )));
                 }
                 let raw = self.schema(raw, &mut Vec::new())?;
-                let array = Self::parameter_shape(&raw)
+                let shape = Self::parameter_shape(&raw)
                     .map_err(|error| Self::error(format!("{}: {error}", parameter.name)))?;
                 let expected_style = if location == ParameterIn::Query {
                     ParameterStyle::Form
                 } else {
                     ParameterStyle::Simple
                 };
-                if parameter.style.is_some_and(|style| style != expected_style)
+                let style = parameter.style.unwrap_or(expected_style);
+                let deep = style == ParameterStyle::DeepObject
+                    && location == ParameterIn::Query
+                    && shape == ParameterShape::Object
+                    && parameter.explode == Some(true);
+                let object = shape == ParameterShape::Object;
+                if (!deep && style != expected_style)
+                    || (object
+                        && (location != ParameterIn::Query || parameter.explode == Some(false)))
                     || parameter.allow_reserved == Some(true)
                 {
                     return Err(Self::error(format!(
@@ -216,7 +237,9 @@ impl Document {
                         parameter.name
                     )));
                 }
-                if location == ParameterIn::Path && (parameter.required != Some(true) || array) {
+                if location == ParameterIn::Path
+                    && (parameter.required != Some(true) || shape != ParameterShape::Scalar)
+                {
                     return Err(Self::error("path parameters must be required scalars"));
                 }
                 let wire = &parameter.name;
@@ -234,22 +257,36 @@ impl Document {
                 let value = quote!(::berm_lang::serde_json::to_value(value)?);
                 let write = if location == ParameterIn::Query {
                     let explode = parameter.explode.unwrap_or(true);
-                    quote! {
-                        let value = #value;
-                        if let Some(values) = value.as_array() {
-                            if #explode {
-                                for value in values { url.query_pairs_mut().append_pair(#wire, &__crab_openapi_scalar(value)?); }
-                            } else {
-                                let values = values.iter().map(|value| {
-                                    __crab_openapi_scalar(value).map(|value| ::url::form_urlencoded::byte_serialize(value.as_bytes()).collect::<::alloc::string::String>())
-                                }).collect::<::berm_lang::Result<::alloc::vec::Vec<_>>>()?;
-                                let key = ::url::form_urlencoded::byte_serialize(#wire.as_bytes()).collect::<::alloc::string::String>();
-                                let previous = url.query().unwrap_or("");
-                                let separator = if previous.is_empty() { "" } else { "&" };
-                                let query = ::alloc::format!("{previous}{separator}{key}={}", values.join(","));
-                                url.set_query(Some(&query));
+                    if shape == ParameterShape::Object {
+                        quote! {
+                            let value = #value;
+                            if let Some(values) = value.as_object() {
+                                for (key, value) in values {
+                                    if !value.is_null() {
+                                        let key = if #deep { ::alloc::format!("{}[{}]", #wire, key) } else { key.clone() };
+                                        url.query_pairs_mut().append_pair(&key, &__crab_openapi_scalar(value)?);
+                                    }
+                                }
                             }
-                        } else if !value.is_null() { url.query_pairs_mut().append_pair(#wire, &__crab_openapi_scalar(&value)?); }
+                        }
+                    } else {
+                        quote! {
+                            let value = #value;
+                            if let Some(values) = value.as_array() {
+                                if #explode {
+                                    for value in values { url.query_pairs_mut().append_pair(#wire, &__crab_openapi_scalar(value)?); }
+                                } else {
+                                    let values = values.iter().map(|value| {
+                                        __crab_openapi_scalar(value).map(|value| ::url::form_urlencoded::byte_serialize(value.as_bytes()).collect::<::alloc::string::String>())
+                                    }).collect::<::berm_lang::Result<::alloc::vec::Vec<_>>>()?;
+                                    let key = ::url::form_urlencoded::byte_serialize(#wire.as_bytes()).collect::<::alloc::string::String>();
+                                    let previous = url.query().unwrap_or("");
+                                    let separator = if previous.is_empty() { "" } else { "&" };
+                                    let query = ::alloc::format!("{previous}{separator}{key}={}", values.join(","));
+                                    url.set_query(Some(&query));
+                                }
+                            } else if !value.is_null() { url.query_pairs_mut().append_pair(#wire, &__crab_openapi_scalar(&value)?); }
+                        }
                     }
                 } else if location == ParameterIn::Header {
                     quote! {
@@ -393,7 +430,7 @@ impl Document {
         ))
     }
 
-    fn parameter_shape(schema: &Value) -> syn::Result<bool> {
+    fn parameter_shape(schema: &Value) -> syn::Result<ParameterShape> {
         if let Some(variants) = schema["allOf"].as_array() {
             let mut shape = None;
             for variant in variants {
@@ -437,10 +474,37 @@ impl Document {
             }
         }
         match schema["type"].as_str() {
-            Some("string" | "integer" | "number" | "boolean") => Ok(false),
-            Some("array") if !Self::parameter_shape(&schema["items"])? => Ok(true),
+            Some("string" | "integer" | "number" | "boolean") => Ok(ParameterShape::Scalar),
+            Some("array") if Self::parameter_shape(&schema["items"])? == ParameterShape::Scalar => {
+                Ok(ParameterShape::Array)
+            }
+            Some("object") => {
+                for property in schema["properties"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|map| map.values())
+                    .chain(
+                        schema
+                            .get("additionalProperties")
+                            .filter(|value| value.is_object()),
+                    )
+                {
+                    if Self::parameter_shape(property)? != ParameterShape::Scalar {
+                        return Err(Self::error("object parameters must have scalar properties"));
+                    }
+                }
+                if schema["additionalProperties"] == true
+                    || (schema.get("properties").is_none()
+                        && schema.get("additionalProperties").is_none())
+                {
+                    return Err(Self::error(
+                        "object parameters must declare scalar properties",
+                    ));
+                }
+                Ok(ParameterShape::Object)
+            }
             _ => Err(Self::error(
-                "parameters must be scalars or arrays of scalars",
+                "parameters must be scalars, scalar arrays or flat objects",
             )),
         }
     }
@@ -465,23 +529,33 @@ impl Document {
         Ok(resolved)
     }
 
-    fn schema(&self, value: &Value, stack: &mut Vec<String>) -> syn::Result<Value> {
+    fn schema(&self, value: &Value, stack: &mut Vec<(String, String, bool)>) -> syn::Result<Value> {
         let mut value = value.clone();
         if let Some(reference) = value["$ref"].as_str() {
             let reference = reference.to_owned();
-            if stack.contains(&reference) {
-                return Err(Self::error(format!("recursive schema {reference}")));
+            if let Some((_, id, recursive)) =
+                stack.iter_mut().find(|(seen, _, _)| seen == &reference)
+            {
+                *recursive = true;
+                value["$ref"] = Value::String(id.clone());
+                return Ok(value);
             }
             let pointer = reference
                 .strip_prefix('#')
                 .ok_or_else(|| Self::error("external schema references are not supported"))?;
-            stack.push(reference.clone());
+            let index = self.next_schema_id.get();
+            self.next_schema_id.set(index + 1);
+            let id = format!("urn:crab-openapi:schema:{index}");
+            stack.push((reference.clone(), id.clone(), false));
             let target = self
                 .source
                 .pointer(pointer)
                 .ok_or_else(|| Self::error(format!("unresolved schema {reference}")))?;
-            let target = self.schema(target, stack)?;
-            stack.pop();
+            let mut target = self.schema(target, stack)?;
+            let (_, _, recursive) = stack.pop().unwrap();
+            if recursive {
+                target["$id"] = Value::String(id);
+            }
             value.as_object_mut().unwrap().remove("$ref");
             if value.as_object().unwrap().is_empty() {
                 return Ok(target);

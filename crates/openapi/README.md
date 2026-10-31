@@ -28,7 +28,7 @@ Invoke once at the crate root. The consuming crate needs `berm-lang`, `url` and 
 - `base_url: "https://example.com"` overrides the operation, path or document server. Otherwise the first applicable server is used.
 - Spec files are compiler-tracked through `include_str!`; generation performs no network requests.
 
-Supported requests use scalar path parameters occupying whole segments, form query parameters (scalars or scalar arrays), simple headers and JSON bodies. Local component references are resolved. External or recursive references, cookie parameters, server templates, other parameter encodings and deprecated operations produce compile errors.
+Supported requests use scalar path parameters occupying whole segments, form query parameters (scalars, scalar arrays or exploded flat objects), deepObject query parameters (flat objects), simple headers and JSON bodies. Local component references are resolved. Recursive schema branches retain JSON values and scoped JSON Schema references. External references, cookie parameters, server templates, other parameter encodings and deprecated operations produce compile errors.
 
 Closed objects generate Rust structs; maps generate `BTreeMap`. Open objects with named properties, unions and nullable values retain `serde_json::Value`. Imported schema constraints remain in tool metadata; generated serde code checks Rust types, not every JSON Schema constraint. Provider-specific body-level error handling remains with the caller.
 

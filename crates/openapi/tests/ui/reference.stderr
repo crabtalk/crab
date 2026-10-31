@@ -1,4 +1,4 @@
-error: POST /items: recursive schema #/components/schemas/Cycle
+error: POST /items: external schema references are not supported
  --> tests/ui/reference.rs:6:28
   |
 6 |     operations: { example: "POST /items" },

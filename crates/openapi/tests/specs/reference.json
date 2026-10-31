@@ -16,7 +16,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Cycle"
+                "$ref": "https://example.com/schema.json"
               }
             }
           }
@@ -31,7 +31,7 @@
         "type": "object",
         "properties": {
           "child": {
-            "$ref": "#/components/schemas/Cycle"
+            "$ref": "https://example.com/schema.json"
           }
         }
       }

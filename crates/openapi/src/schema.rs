@@ -15,7 +15,9 @@ pub(crate) struct Types {
 impl Types {
     pub fn ty(&mut self, name: &str, schema: &Value) -> syn::Result<TokenStream> {
         let value = quote!(::berm_lang::serde_json::Value);
-        if schema.get("anyOf").is_some()
+        if schema.get("$id").is_some()
+            || schema.get("$ref").is_some()
+            || schema.get("anyOf").is_some()
             || schema.get("oneOf").is_some()
             || schema.get("allOf").is_some()
             || schema["type"].is_array()
