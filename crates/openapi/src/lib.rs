@@ -1,9 +1,10 @@
-//! Compile a local OpenAPI 3.1 document into berm service APIs and tools.
+//! Compile a local OpenAPI 3.0 or 3.1 document into berm service APIs and tools.
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 mod config;
 mod document;
 mod schema;
+mod v30;
 
 /// Generate `api`, `types` and, unless disabled, `tools` modules.
 /// Paths are relative to the consuming crate's manifest directory.

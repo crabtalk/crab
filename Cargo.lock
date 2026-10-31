@@ -910,6 +910,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-firecrawl"
+version = "0.1.1"
+dependencies = [
+ "berm-api",
+ "berm-build",
+ "berm-lang",
+ "crab-openapi",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "crab-github"
 version = "0.1.1"
 dependencies = [
@@ -941,6 +953,7 @@ dependencies = [
  "berm-lang",
  "heck",
  "oas3",
+ "openapiv3",
  "proc-macro2",
  "quote",
  "serde_json",
@@ -2759,6 +2772,17 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "openapiv3"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c8d427828b22ae1fff2833a03d8486c2c881367f1c336349f307f321e7f4d05"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "openssl-probe"

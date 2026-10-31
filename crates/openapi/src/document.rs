@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     schema::{self, Types},
+    v30,
 };
 use heck::ToUpperCamelCase;
 use oas3::{
@@ -24,13 +25,18 @@ impl Document {
             .join(config.spec.value());
         let source =
             fs::read_to_string(&path).map_err(|e| syn::Error::new(config.spec.span(), e))?;
-        let spec = oas3::from_json(&source).map_err(|e| syn::Error::new(config.spec.span(), e))?;
-        let source: Value = serde_json::from_str(&source).map_err(Self::error)?;
-        let document = Self { spec, source, path };
-        if !document.spec.openapi.starts_with("3.1.") {
-            return Err(Self::error("expected OpenAPI 3.1"));
+        let mut source: Value = serde_json::from_str(&source).map_err(Self::error)?;
+        match source["openapi"].as_str() {
+            Some(version) if version.starts_with("3.0.") => {
+                let _: openapiv3::OpenAPI =
+                    serde_json::from_value(source.clone()).map_err(Self::error)?;
+                v30::normalize(&mut source)?;
+            }
+            Some(version) if version.starts_with("3.1.") => {}
+            _ => return Err(Self::error("expected OpenAPI 3.0 or 3.1")),
         }
-        Ok(document)
+        let spec = serde_json::from_value(source.clone()).map_err(Self::error)?;
+        Ok(Self { spec, source, path })
     }
 
     pub fn generate(&self, config: &Config) -> syn::Result<TokenStream> {

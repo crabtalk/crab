@@ -1,0 +1,107 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dialect",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://example.com"
+    }
+  ],
+  "paths": {
+    "/echo": {
+      "post": {
+        "parameters": [
+          {
+            "name": "ratio",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 1,
+              "exclusiveMaximum": false
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Payload"
+              },
+              "example": {
+                "nullable": true,
+                "exclusiveMinimum": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Echo",
+            "headers": {
+              "X-Count": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Label": {
+        "type": "string",
+        "minLength": 2
+      },
+      "Payload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "label"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 8
+          },
+          "label": {
+            "$ref": "#/components/schemas/Label",
+            "nullable": true,
+            "minLength": 99
+          },
+          "literal": {
+            "type": "object",
+            "example": {
+              "nullable": true,
+              "exclusiveMinimum": false,
+              "schema": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "x-fixture": {
+              "type": "number",
+              "exclusiveMinimum": true,
+              "nullable": true
+            }
+          },
+          "nullable": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
