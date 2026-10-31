@@ -1,0 +1,31 @@
+[package]
+name = "crab-dataforseo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "DataForSEO keyword metrics, backlinks, rankings and web data tools"
+readme = "README.md"
+
+[lib]
+name = "dataforseo"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+crab-openapi.workspace = true
+url.workspace = true
+
+[build-dependencies]
+serde_yaml_ng.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+berm-build.workspace = true
+
+[dev-dependencies]
+berm-api.workspace = true
+berm-build.workspace = true

@@ -390,11 +390,21 @@ impl Document {
         let description = operation
             .summary
             .as_deref()
-            .or(operation.description.as_deref())
+            .filter(|text| !text.trim().is_empty())
+            .or_else(|| {
+                operation
+                    .description
+                    .as_deref()
+                    .filter(|text| !text.trim().is_empty())
+            })
             .unwrap_or(selector);
         let client = &config.client;
         let mutable_headers =
             (!headers.is_empty() || operation.request_body.is_some()).then(|| quote!(mut));
+        let response = config.response.as_ref().map_or_else(
+            || quote!(Ok(response)),
+            |handler| quote!(#handler(response)),
+        );
         let function = quote! {
             #[doc = #description]
             pub fn #name(input: &types::#input) -> ::berm_lang::Result<::berm_lang::serde_json::Value> {
@@ -409,7 +419,8 @@ impl Document {
                 let body = #body;
                 let headers: ::alloc::vec::Vec<(&str, &str)> = headers.iter().map(|(k,v)| (k.as_str(), v.as_str())).collect();
                 let response = ::berm_lang::http::Client { name: client.name, headers: &headers }.request(#method, url.as_str(), &body)?;
-                if response.body.is_empty() { Ok(::berm_lang::serde_json::Value::Null) } else { response.read(client.name) }
+                let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
+                #response
             }
         };
         let tool = quote! {

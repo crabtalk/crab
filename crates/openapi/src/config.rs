@@ -7,6 +7,7 @@ pub(crate) struct Config {
     pub spec: LitStr,
     pub spec_env: Option<LitStr>,
     pub client: Path,
+    pub response: Option<Path>,
     pub base_url: Option<LitStr>,
     pub tools: bool,
     pub tools_cfg: Option<Meta>,
@@ -17,6 +18,7 @@ impl Parse for Config {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let (mut spec, mut client, mut base_url, mut tools, mut operations) =
             (None, None, None, None, None);
+        let mut response = None;
         let mut tools_cfg = None;
         let mut spec_env = None;
         while !input.is_empty() {
@@ -42,6 +44,7 @@ impl Parse for Config {
                     }
                 }
                 "client" if client.is_none() => client = Some(input.parse()?),
+                "response" if response.is_none() => response = Some(input.parse()?),
                 "base_url" if base_url.is_none() => base_url = Some(input.parse()?),
                 "tools" if tools.is_none() => {
                     if input.peek(LitBool) {
@@ -85,6 +88,7 @@ impl Parse for Config {
             spec_env,
             client: client.ok_or_else(|| syn::Error::new(span, "missing client"))?,
             base_url,
+            response,
             tools: tools.unwrap_or(true),
             tools_cfg,
             operations: operations.ok_or_else(|| syn::Error::new(span, "missing operations"))?,

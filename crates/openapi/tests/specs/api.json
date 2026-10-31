@@ -24,7 +24,7 @@
         "responses":{"201":{"description":"Created"}}
       }
     },
-    "/ping":{"get":{"responses":{"204":{"description":"Empty"}}}},
+    "/ping":{"get":{"summary":"","description":"  ","responses":{"204":{"description":"Empty"}}}},
     "/optional":{"post":{"requestBody":{"content":{"application/json":{"schema":{"type":["string","null"]}}}},"responses":{"200":{"description":"Echo"}}}}
   },
   "components":{

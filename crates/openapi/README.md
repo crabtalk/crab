@@ -25,6 +25,7 @@ Invoke once at the crate root. The consuming crate needs `berm-lang`, `url` and 
 - `api::fetch_video(&types::FetchVideoInput)` returns the complete upstream JSON response. Empty responses return JSON null; HTTP failures use the shared client's errors.
 - Inputs group parameters under `path`, `query`, `headers` and `body`. Optional fields use `Option`; schema defaults remain upstream defaults.
 - `tools::fetch_video(input)` exposes the API through `#[tool]`. Set `tools: false` for API-only bindings. Use `tools: cfg(feature = "tools")` to gate the tool module on the consuming crate's feature.
+- `response: crate::response::check` optionally processes decoded JSON with `fn(Value) -> berm_lang::Result<Value>`. HTTP failures are handled before this function runs; an empty successful response passes JSON null.
 - `base_url: "https://example.com"` overrides the operation, path or document server. Otherwise the first applicable server is used.
 - Spec files are compiler-tracked through `include_str!`; generation performs no network requests.
 
