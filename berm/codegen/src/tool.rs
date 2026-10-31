@@ -248,7 +248,7 @@ impl Tool {
         quote! {
             #[doc = #doc]
             #[allow(deprecated)]
-            #[unsafe(no_mangle)]
+            #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
             pub extern "C" fn #symbol() {
                 ::berm_lang::dispatch::run(
                     |args: &[u8]| -> ::berm_lang::Result<::berm_lang::__private::Vec<u8>> {
