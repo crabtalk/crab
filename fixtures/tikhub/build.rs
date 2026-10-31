@@ -1,5 +1,6 @@
+use berm_build::source;
 use serde_json::Value;
-use std::{env, fs, path::PathBuf, process::Command};
+use std::{env, fs, path::PathBuf};
 
 const SPEC_URL: &str = "https://raw.githubusercontent.com/TikHub/TikHub-API-Python-SDK/1ede56bcc53f8c037744cbe2b70c93541b5cf840/spec/openapi.json";
 const UNTYPED_LIMIT: &str = "/api/v1/bilibili/web/fetch_hot_search";
@@ -19,28 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo::rerun-if-changed=build.rs");
     let output = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let original = output.join("upstream.json");
-    if !original.exists() {
-        let download = output.join("upstream.download");
-        let status = Command::new("curl")
-            .args([
-                "--fail",
-                "--location",
-                "--silent",
-                "--show-error",
-                "--retry",
-                "2",
-                "--max-time",
-                "60",
-                "--output",
-            ])
-            .arg(&download)
-            .arg(SPEC_URL)
-            .status()?;
-        if !status.success() {
-            return Err("TikHub spec download failed".into());
-        }
-        fs::rename(download, &original)?;
-    }
+    source::download(SPEC_URL, &original)?;
     let mut spec: Value = serde_json::from_slice(&fs::read(original)?)?;
     for pointer in INVALID_EXAMPLES {
         let schema = spec

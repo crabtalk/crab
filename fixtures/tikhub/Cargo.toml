@@ -14,6 +14,7 @@ crab-openapi.workspace = true
 url.workspace = true
 
 [build-dependencies]
+berm-build.workspace = true
 serde_json = { workspace = true, features = ["std"] }
 
 [dev-dependencies]

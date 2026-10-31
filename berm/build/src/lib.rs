@@ -27,6 +27,8 @@ use std::{
 
 pub use workspace::Workspace;
 
+pub mod source;
+
 mod artifact;
 mod metadata;
 mod toolchain;
