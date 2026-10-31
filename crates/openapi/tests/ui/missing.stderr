@@ -1,0 +1,5 @@
+error: GET /missing: path not found
+ --> tests/ui/missing.rs:6:28
+  |
+6 |     operations: { example: "GET /missing" },
+  |                            ^^^^^^^^^^^^^^

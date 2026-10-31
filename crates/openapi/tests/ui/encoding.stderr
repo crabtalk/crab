@@ -1,0 +1,5 @@
+error: GET /items/{itemId}: q: unsupported parameter encoding
+ --> tests/ui/encoding.rs:6:28
+  |
+6 |     operations: { example: "GET /items/{itemId}" },
+  |                            ^^^^^^^^^^^^^^^^^^^^^

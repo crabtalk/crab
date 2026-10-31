@@ -18,6 +18,8 @@ pub trait Schema {
 pub enum Shape {
     /// Any JSON value, including null and nested objects.
     Any,
+    /// A complete, valid JSON Schema literal.
+    Json(&'static str),
     String,
     Boolean,
     Number,
@@ -132,6 +134,15 @@ const fn shape_into(sink: &mut Sink, shape: &Shape, description: &str) {
             }
             sink.put("}");
             return;
+        }
+        Shape::Json(json) => {
+            if description.is_empty() {
+                sink.put(json);
+                return;
+            }
+            sink.put(r#"{"allOf":["#);
+            sink.put(json);
+            sink.put("]");
         }
         Shape::Optional { inner } => return shape_into(sink, inner, description),
         Shape::String => sink.put(r#"{"type":"string""#),

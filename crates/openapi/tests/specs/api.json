@@ -1,0 +1,35 @@
+{
+  "openapi":"3.1.0",
+  "info":{"title":"Example","version":"1"},
+  "servers":[{"url":"https://example.com/v1/"}],
+  "paths":{
+    "/items/{itemId}":{
+      "parameters":[{"name":"itemId","in":"path","required":true,"schema":{"type":"string"}},{"$ref":"#/components/parameters/Limit"}],
+      "get":{
+        "summary":"Read an item",
+        "parameters":[
+          {"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":5}},
+          {"name":"tag","in":"query","schema":{"type":"array","items":{"type":"string"}}},
+          {"name":"fields","in":"query","explode":false,"schema":{"type":"array","items":{"type":"string"}}},
+          {"name":"X-Region","in":"header","schema":{"type":"string","enum":["us","eu"]}},
+          {"name":"sort_order","in":"query","schema":{"$ref":"#/components/schemas/SortOrder","description":"Ordering"}}
+        ],
+        "responses":{"200":{"description":"Item"}}
+      }
+    },
+    "/items":{
+      "post":{
+        "summary":"Create an item",
+        "requestBody":{"$ref":"#/components/requestBodies/Item"},
+        "responses":{"201":{"description":"Created"}}
+      }
+    },
+    "/ping":{"get":{"responses":{"204":{"description":"Empty"}}}},
+    "/optional":{"post":{"requestBody":{"content":{"application/json":{"schema":{"type":["string","null"]}}}},"responses":{"200":{"description":"Echo"}}}}
+  },
+  "components":{
+    "parameters":{"Limit":{"name":"limit","in":"query","schema":{"type":"integer","maximum":100}}},
+    "requestBodies":{"Item":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Item"}}}}},
+    "schemas":{"SortOrder":{"type":"string","enum":["newest","oldest"]},"Item":{"type":"object","additionalProperties":false,"required":["displayName"],"properties":{"displayName":{"type":"string","minLength":1},"type":{"type":"string","enum":["video","post"]},"note":{"anyOf":[{"type":"string"},{"type":"null"}]}}}}
+  }
+}
