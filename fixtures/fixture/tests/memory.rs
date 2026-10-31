@@ -13,13 +13,13 @@ const PAGE: u64 = 64 << 10;
 #[tokio::test]
 async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let program = host
+    let service = host
         .deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
     host.call("acct/fixture", "carry", b"{}").await?;
-    let memory = host.host().memory("acct");
+    let memory = host.host.memory("acct");
     assert_eq!(memory.limit, 0);
-    assert_eq!(memory.loaded, program.bytes());
+    assert_eq!(memory.loaded, service.bytes);
     assert_eq!(memory.running, 0);
     Ok(())
 }
@@ -27,19 +27,19 @@ async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> 
 #[tokio::test]
 async fn a_call_past_the_limit_fails() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let program = host
+    let service = host
         .deploy("acct/fixture", &test::build("berm-fixture")?)
         .await?;
-    host.host()
-        .limit(HashMap::from([("acct".to_owned(), program.bytes() + PAGE)]));
+    host.host
+        .limit(HashMap::from([("acct".to_owned(), service.bytes + PAGE)]));
     let failed = match host.call("acct/fixture", "carry", b"{}").await {
         Ok(ran) => format!("{:?}", ran.result),
         Err(e) => format!("{e:#}"),
     };
     assert!(failed.contains("past its limit"), "{failed}");
-    assert_eq!(host.host().memory("acct").running, 0);
+    assert_eq!(host.host.memory("acct").running, 0);
 
-    host.host().limit(HashMap::new());
+    host.host.limit(HashMap::new());
     host.call("acct/fixture", "carry", b"{}").await?;
     Ok(())
 }
@@ -48,8 +48,8 @@ async fn a_call_past_the_limit_fails() -> Result<()> {
 async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
     let host = TestHost::open(0).await?;
     let image = test::build("berm-fixture")?;
-    let bytes = host.deploy("acct/fixture", &image).await?.bytes();
-    host.host()
+    let bytes = host.deploy("acct/fixture", &image).await?.bytes;
+    host.host
         .limit(HashMap::from([("acct".to_owned(), bytes + PAGE)]));
     host.deploy("acct/fixture", &image).await?;
     let Err(refused) = host.deploy("acct/inner", &image).await else {
@@ -59,36 +59,42 @@ async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
         format!("{refused:#}").contains("past its limit"),
         "{refused:#}"
     );
-    assert_eq!(host.host().memory("acct").loaded, bytes);
+    assert_eq!(host.host.memory("acct").loaded, bytes);
     host.deploy("other/fixture", &image).await?;
     Ok(())
 }
 
-/// `budget` of memory on `tool`, the host's CPU and rows kept.
-async fn budget(host: &TestHost, tool: &str, memory: u64) -> Result<()> {
+/// A host whose tools that set no budget hold `memory`.
+async fn holding(memory: u64) -> Result<TestHost> {
     let defaults = berm_host::Config::default();
-    host.host()
-        .set_budget(
-            "fixture",
-            tool,
-            Budget {
-                cpu: defaults.cpu.as_micros() as u64,
-                rows: defaults.rows,
+    let host = TestHost::open_with(
+        0,
+        berm_host::Config {
+            budget: Budget {
                 memory,
+                ..defaults.budget
             },
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
+            ..defaults
+        },
+    )
+    .await?;
+    host.deploy("fixture", &test::build("berm-fixture")?)
+        .await?;
+    Ok(host)
 }
 
 #[tokio::test]
 async fn a_call_is_metered_its_budget_not_what_it_used() -> Result<()> {
-    let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
-        .await?;
-    let unset = host.call("fixture", "carry", b"{}").await?.meter;
-    budget(&host, "carry", 2 << 20).await?;
-    let budgeted = host.call("fixture", "carry", b"{}").await?.meter;
+    let unset = holding(berm_host::Config::default().budget.memory)
+        .await?
+        .call("fixture", "carry", b"{}")
+        .await?
+        .meter;
+    let budgeted = holding(2 << 20)
+        .await?
+        .call("fixture", "carry", b"{}")
+        .await?
+        .meter;
     assert!(unset.memory > 0 && unset.held > 0, "{unset:?}");
     assert_eq!(unset.memory, budgeted.memory);
     assert!(budgeted.held * 8 < unset.held, "{unset:?} {budgeted:?}");
@@ -97,10 +103,7 @@ async fn a_call_is_metered_its_budget_not_what_it_used() -> Result<()> {
 
 #[tokio::test]
 async fn a_call_past_its_memory_budget_fails() -> Result<()> {
-    let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
-        .await?;
-    budget(&host, "carry", PAGE).await?;
+    let host = holding(PAGE).await?;
     let trapped = host.call("fixture", "carry", b"{}").await.unwrap_err();
     assert!(
         format!("{trapped:#}").contains(&format!("budget of {PAGE}")),
@@ -110,12 +113,31 @@ async fn a_call_past_its_memory_budget_fails() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_memory_budget_past_the_hosts_is_refused() -> Result<()> {
-    let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
-        .await?;
-    let past = berm_host::Config::default().memory as u64 + 1;
-    assert!(budget(&host, "carry", past).await.is_err());
+async fn a_budget_past_the_hosts_most_is_refused() -> Result<()> {
+    let defaults = berm_host::Config::default();
+    let host = TestHost::open_with(
+        0,
+        berm_host::Config {
+            memory: 8 << 20,
+            budget: Budget {
+                memory: 8 << 20,
+                ..defaults.budget
+            },
+            ..defaults
+        },
+    )
+    .await?;
+    let Err(refused) = host.deploy("fixture", &test::build("berm-fixture")?).await else {
+        panic!("echo's budget of 16 MiB is past the host's 8 MiB");
+    };
+    assert!(
+        format!("{refused:#}").contains("\"echo\"'s budget sets memory past"),
+        "{refused:#}"
+    );
+    let denied = refused
+        .downcast_ref::<berm_host::Denied>()
+        .expect("a refusal");
+    assert_eq!(denied.explain, Some("E0013"));
     Ok(())
 }
 
@@ -150,10 +172,7 @@ async fn a_call_lowers_its_memory_once_and_is_metered_the_lower_after() -> Resul
 
 #[tokio::test]
 async fn a_call_cannot_raise_its_memory_or_lower_it_below_what_it_holds() -> Result<()> {
-    let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
-        .await?;
-    budget(&host, "lowered", 4 << 20).await?;
+    let host = holding(4 << 20).await?;
     for memory in [8 << 20, PAGE] {
         let ran = host
             .call(

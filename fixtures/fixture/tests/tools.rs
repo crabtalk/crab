@@ -23,7 +23,15 @@ fn probe_allocates() {
 }
 
 #[test]
-fn nest_forwards_what_the_other_program_answered() {
+fn greet_answers_the_var_the_test_arranged() {
+    test::var("greeting", "yo");
+    let out = test::call(berm_fixture::berm_tool_greet, b"").unwrap();
+    assert_eq!(out, br#""yo""#);
+    test::forget();
+}
+
+#[test]
+fn nest_forwards_what_the_other_service_answered() {
     test::answer("inner", "echo", Ok(br#"{"query":"pong"}"#));
     let out = test::call(berm_fixture::berm_tool_nest, br#"{"query":"hi"}"#).unwrap();
     assert_eq!(out, br#"{"query":"pong"}"#);
@@ -38,11 +46,11 @@ fn nest_tells_a_refusal_from_a_failure() {
         "inner",
         "echo",
         Err(CallError::Refused(
-            "no program named \"inner\" is deployed".into(),
+            "no service named \"inner\" is deployed".into(),
         )),
     );
     let error = test::call(berm_fixture::berm_tool_nest, br#"{"query":"hi"}"#).unwrap_err();
-    assert_eq!(error, "refused: no program named \"inner\" is deployed");
+    assert_eq!(error, "refused: no service named \"inner\" is deployed");
 
     test::answer(
         "inner",

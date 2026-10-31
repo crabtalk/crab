@@ -1,9 +1,9 @@
-//! A program's or a kit's project file, beside its `Cargo.toml`. Its name is
-//! its build tool's to choose.
+//! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Credential, DEFAULT_BUFFER, Deps, host};
+use crate::{Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
+use regex::Regex;
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
@@ -11,28 +11,31 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// The project file. A program's names its service; a kit's declares only `id`,
-/// `formerly`, `secrets`, `[credentials]`, `programs`, `[syscalls]` and
+/// What the project file is called.
+pub const FILE: &str = "crab.toml";
+
+/// The project file. A service's names it; a kit's declares only `id`,
+/// `formerly`, `secrets`, `[credentials]`, `calls`, `[syscalls]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
-    /// The kit's ID, 32 lowercase hex digits, which its applied migrations are
-    /// kept under. A kit keeping tables declares one; a program declares none.
+    /// A linked package's migration ID, 32 lowercase hex digits. A reusable
+    /// stateful service declares one alongside its deployment name.
     #[serde(default)]
     pub id: Option<String>,
     /// What the kit's applied migrations were kept under before `id`: the
     /// package names it had.
     #[serde(default)]
     pub formerly: Vec<String>,
-    /// The service the program deploys as.
+    /// The name it deploys as.
     #[serde(default)]
     pub name: Option<String>,
     /// The public registry repository the image is published to and Cloud
     /// pulls it from, without a tag. Absent, a deploy uploads the image.
     #[serde(default)]
     pub image: Option<String>,
-    /// Whether the program is deployed: `false` keeps it out of a
+    /// Whether the service is deployed: `false` keeps it out of a
     /// workspace's deploys, and refuses deploying it.
     #[serde(default = "deployed")]
     pub deploy: bool,
@@ -40,10 +43,9 @@ pub struct Project {
     /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
-    /// Each public tool's price a call on Cloud, by name, in USD as a decimal
-    /// string: `search = "0.002"`.
+    /// What it says of each tool, by name.
     #[serde(default)]
-    pub prices: BTreeMap<String, String>,
+    pub tools: BTreeMap<String, Tool>,
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
@@ -51,9 +53,9 @@ pub struct Project {
     /// to get them, by id.
     #[serde(default)]
     pub credentials: BTreeMap<String, Credential>,
-    /// Programs it calls by name.
+    /// Services it calls by name.
     #[serde(default)]
-    pub programs: Vec<String>,
+    pub calls: Vec<String>,
     /// The most bytes a call's arguments, and a tool's result, may hold;
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
@@ -63,6 +65,9 @@ pub struct Project {
     /// the call alone.
     #[serde(default)]
     pub syscalls: BTreeMap<String, Vec<String>>,
+    /// Settings each deployed copy sets its own value of, by name.
+    #[serde(default)]
+    pub vars: BTreeMap<String, Var>,
     #[serde(default)]
     pub database: Database,
 }
@@ -81,6 +86,29 @@ pub struct Database {
     /// A directory of `*.sql` migrations, relative to `crab.toml`, applied in
     /// name order.
     pub migrations: Option<PathBuf>,
+}
+
+/// One tool's table in `[tools]` of `crab.toml`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tool {
+    /// Who may call it; absent, it is internal.
+    #[serde(default)]
+    pub access: Option<Access>,
+    /// Its short display name, at most [`ToolSpec::TITLE`] characters on one
+    /// line.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Its price a call on Cloud, in USD micros: `2_000` is $0.002. A deploy
+    /// carries it.
+    #[serde(default)]
+    pub price: Option<u64>,
+    /// The catalog job it does, as `company.enrich`.
+    #[serde(default)]
+    pub catalog: Option<String>,
+    /// What one call may use, each key at least 1.
+    #[serde(default)]
+    pub budget: Option<Limits>,
 }
 
 fn deployed() -> bool {
@@ -104,7 +132,70 @@ impl Project {
             }
             seen.push(&secret.name);
         }
+        for (name, tool) in &project.tools {
+            let at = format!("{}: tools.{name}", path.display());
+            if let Some(title) = &tool.title
+                && (title.chars().count() > ToolSpec::TITLE || title.contains(['\n', '\r']))
+            {
+                bail!(
+                    "{at}: a title is one line of at most {} characters",
+                    ToolSpec::TITLE
+                );
+            }
+            if let Some((key, _)) = tool
+                .budget
+                .iter()
+                .flat_map(Limits::keys)
+                .find(|(_, v)| *v == 0)
+            {
+                bail!("{at}: budget.{key} is at least 1");
+            }
+            if tool.access.is_none() {
+                for (key, set) in [
+                    ("price", tool.price.is_some()),
+                    ("catalog", tool.catalog.is_some()),
+                ] {
+                    if set {
+                        bail!("{at} sets {key} on an internal tool; give it access");
+                    }
+                }
+            }
+        }
+        if project.vars.len() > Var::MAX {
+            bail!(
+                "{} declares {} vars, past the {}",
+                path.display(),
+                project.vars.len(),
+                Var::MAX
+            );
+        }
+        for (name, var) in &project.vars {
+            if !Var::name(name) {
+                bail!(
+                    "{}: vars.{name} is not 1 to 64 ASCII letters, digits or `_`",
+                    path.display()
+                );
+            }
+            if var.default.len() > Var::BYTES {
+                bail!(
+                    "{}: vars.{name}'s default is past {} bytes",
+                    path.display(),
+                    Var::BYTES
+                );
+            }
+        }
         for (id, credential) in &project.credentials {
+            for secret in &credential.secrets {
+                if let Some(pattern) = &secret.pattern
+                    && let Err(e) = Regex::new(pattern)
+                {
+                    bail!(
+                        "{}: credentials.{id}: {}'s pattern is not a regular expression: {e}",
+                        path.display(),
+                        secret.name
+                    );
+                }
+            }
             if let Some(host) = credential.hosts.iter().find(|host| !Credential::host(host)) {
                 bail!(
                     "{}: credentials.{id} suggests {host:?}, not a host named in full",
@@ -115,26 +206,28 @@ impl Project {
         Ok(project)
     }
 
-    /// The service a program deploys as, refused when it names none or
-    /// declares a kit's `id`.
+    /// The name a service deploys as. A reusable service may also declare a migration ID.
     pub fn name(&self) -> Result<&str> {
         if self.id.is_some() || !self.formerly.is_empty() {
-            bail!("only a kit declares an id or formerly");
+            self.check_dependency()?;
         }
         self.name
             .as_deref()
-            .context("a program names its service: `name = \"…\"`")
+            .context("a service names itself: `name = \"…\"`")
     }
 
     /// What it reaches for once it runs. One keeping a database calls
-    /// `berm.sql`.
+    /// `berm.sql`, and one declaring vars `berm.var`.
     pub fn deps(&self) -> Deps {
         let mut syscalls = self.syscalls.clone();
         if self.database.migrations.is_some() {
             syscalls.entry("berm.sql".to_owned()).or_default();
         }
+        if !self.vars.is_empty() {
+            syscalls.entry("berm.var".to_owned()).or_default();
+        }
         Deps {
-            programs: self.programs.clone(),
+            calls: self.calls.clone(),
             syscalls,
             secrets: self
                 .secrets
@@ -148,7 +241,25 @@ impl Project {
                 .cloned()
                 .collect(),
             credentials: self.credentials.clone(),
+            vars: self.vars.clone(),
         }
+    }
+
+    /// What the build writes of each tool into the service record: all but
+    /// its price.
+    pub fn records(&self) -> BTreeMap<String, ToolRecord> {
+        self.tools
+            .iter()
+            .map(|(name, tool)| {
+                let record = ToolRecord {
+                    access: tool.access,
+                    title: tool.title.clone(),
+                    catalog: tool.catalog.clone(),
+                    budget: tool.budget,
+                };
+                (name.clone(), record)
+            })
+            .collect()
     }
 
     /// The most bytes a call's arguments, and a tool's result, may hold.
@@ -156,29 +267,35 @@ impl Project {
         self.buffer.unwrap_or(DEFAULT_BUFFER)
     }
 
-    /// Refuse what only a program declares, for a kit's `crab.toml`.
+    /// Refuse what only a service declares, for a kit's `crab.toml`.
     pub fn check_kit(&self) -> Result<()> {
-        let program_only = [
+        let service_only = [
             ("name", self.name.is_some()),
             ("image", self.image.is_some()),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
-            ("prices", !self.prices.is_empty()),
+            ("tools", !self.tools.is_empty()),
             ("buffer", self.buffer.is_some()),
+            ("vars", !self.vars.is_empty()),
             ("database.size", self.database.size.is_some()),
             ("database.seed", self.database.seed.is_some()),
         ];
-        let declared: Vec<&str> = program_only
+        let declared: Vec<&str> = service_only
             .iter()
             .filter(|(_, set)| *set)
             .map(|(key, _)| *key)
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit declares only id, formerly, secrets, [credentials], programs, [syscalls] and [database] migrations, not {}",
+                "a kit declares only id, formerly, secrets, [credentials], calls, [syscalls] and [database] migrations, not {}",
                 declared.join(", ")
             );
         }
+        self.check_dependency()
+    }
+
+    /// Validate a linked package's migration identity. Deployment settings stay with its own image.
+    pub fn check_dependency(&self) -> Result<()> {
         match &self.id {
             None if self.database.migrations.is_some() => {
                 bail!("a kit keeping tables declares its id")

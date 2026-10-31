@@ -1,12 +1,7 @@
-//! [`Kind`], [`Source`] and [`Outcome`] in SQLite, as the text serde names
-//! them.
+//! [`Kind`], [`Source`] and [`Outcome`] in SQLite, in their text form.
 
 use crate::host::{Kind, Outcome, Source};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use serde::{
-    Deserialize,
-    de::value::{Error, StrDeserializer},
-};
 
 impl ToSql for Kind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
@@ -16,7 +11,10 @@ impl ToSql for Kind {
 
 impl FromSql for Kind {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        named(value)
+        value
+            .as_str()?
+            .parse()
+            .map_err(|error: String| FromSqlError::Other(error.into()))
     }
 }
 
@@ -28,7 +26,10 @@ impl ToSql for Source {
 
 impl FromSql for Source {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        named(value)
+        value
+            .as_str()?
+            .parse()
+            .map_err(|error: String| FromSqlError::Other(error.into()))
     }
 }
 
@@ -40,12 +41,9 @@ impl ToSql for Outcome {
 
 impl FromSql for Outcome {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        named(value)
+        value
+            .as_str()?
+            .parse()
+            .map_err(|error: String| FromSqlError::Other(error.into()))
     }
-}
-
-/// The value serde names as `value`'s text.
-fn named<'de, T: Deserialize<'de>>(value: ValueRef<'_>) -> FromSqlResult<T> {
-    T::deserialize(StrDeserializer::<Error>::new(value.as_str()?))
-        .map_err(|error| FromSqlError::Other(error.into()))
 }

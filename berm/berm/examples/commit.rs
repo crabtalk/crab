@@ -13,8 +13,8 @@
 
 use anyhow::{Context, Result, ensure};
 use berm::{
-    Berm, Calls, Changes, Config, Engine, Output, storage,
-    syscall::{after, call, emit, store},
+    Berm, Calls, Changes, Config, Engine, Output,
+    syscall::{after, emit, store},
 };
 use parking_lot::Mutex;
 use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
@@ -42,23 +42,18 @@ async fn main() -> Result<()> {
     })?;
     let committed = Committed::default();
     let reading = committed.clone();
-    let mut syscalls = store::programs(
+    let mut syscalls = store::services(
         move |at, key| {
             std::future::ready(Ok(reading
                 .lock()
-                .get(&(at.program.to_string(), key))
+                .get(&(at.service.to_string(), key))
                 .cloned()))
         },
         |_, _, _| async { Ok(false) },
     );
-    syscalls.push(emit::programs(|_, _| async { Ok(false) }));
-    syscalls.push(after::programs(|_, _| async { Ok(()) }));
-    let berm = Berm::new(
-        &engine,
-        Calls::by_name(call::DEFAULT_CALL_DEPTH),
-        syscalls,
-        storage::Memory::new(),
-    );
+    syscalls.push(emit::services(|_, _| async { Ok(false) }));
+    syscalls.push(after::services(|_, _| async { Ok(()) }));
+    let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), syscalls);
     berm.deploy("outer", &image)?;
     berm.deploy("inner", &image)?;
 
@@ -150,7 +145,7 @@ fn said(changes: &Changes) -> Vec<String> {
     let writes = changes.writes.iter().map(|write| {
         format!(
             "write {} {} {}",
-            write.program,
+            write.service,
             write.key,
             String::from_utf8_lossy(&write.value)
         )
@@ -158,7 +153,7 @@ fn said(changes: &Changes) -> Vec<String> {
     let logs = changes.logs.iter().map(|log| {
         format!(
             "log {} [{}] {}",
-            log.program,
+            log.service,
             log.topics.join(","),
             log.data
         )
@@ -170,7 +165,7 @@ fn commit(committed: &Committed, changes: &Changes) {
     let mut committed = committed.lock();
     for write in &changes.writes {
         committed.insert(
-            (write.program.to_string(), write.key.clone()),
+            (write.service.to_string(), write.key.clone()),
             write.value.clone(),
         );
     }

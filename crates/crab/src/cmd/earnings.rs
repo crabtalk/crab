@@ -2,14 +2,14 @@
 //! month each, what is owed and the payouts; `connect` and `dashboard` open
 //! the account's Stripe Connect pages.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{account::billing::Earned, client::Client};
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let earnings = utils::wait(client.earnings())?;
+    let earnings = runtime::wait(client.earnings())?;
     if json {
-        return utils::json(&earnings);
+        return terminal::json(&earnings);
     }
     if earnings.months.is_empty() {
         println!("no priced calls yet");
@@ -69,7 +69,7 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
 
 /// Open Stripe's onboarding for the account's payout account.
 pub fn connect(client: &Client) -> Result<()> {
-    if !utils::open(&utils::wait(client.earnings_connect())?.url) {
+    if !terminal::open(&runtime::wait(client.earnings_connect())?.url) {
         eprintln!("open the URL above in a browser");
     }
     Ok(())
@@ -77,7 +77,7 @@ pub fn connect(client: &Client) -> Result<()> {
 
 /// Open the payout account's Stripe Express dashboard.
 pub fn dashboard(client: &Client) -> Result<()> {
-    if !utils::open(&utils::wait(client.earnings_dashboard())?.url) {
+    if !terminal::open(&runtime::wait(client.earnings_dashboard())?.url) {
         eprintln!("open the URL above in a browser");
     }
     Ok(())

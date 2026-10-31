@@ -4,7 +4,7 @@
 use anyhow::{Context, Result};
 use berm::readers::Readers;
 use parking_lot::Mutex;
-use rusqlite::{Connection, Transaction};
+use rusqlite::Connection;
 use std::{path::Path, sync::Arc, time::Duration};
 
 /// Each entry moves the schema one version on; `user_version` counts how many
@@ -58,6 +58,13 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0032.sql"),
     include_str!("migrations/0033.sql"),
     include_str!("migrations/0034.sql"),
+    include_str!("migrations/0035.sql"),
+    include_str!("migrations/0036.sql"),
+    include_str!("migrations/0037.sql"),
+    include_str!("migrations/0038.sql"),
+    include_str!("migrations/0039.sql"),
+    include_str!("migrations/0040.sql"),
+    include_str!("migrations/0041.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.
@@ -70,9 +77,6 @@ pub struct Store {
 
 /// Statements each connection keeps prepared.
 const PREPARED: usize = 64;
-
-/// Rows [`Store::each`] writes in one transaction.
-const CHUNK: usize = 512;
 
 impl Store {
     /// Open the state file at `path`, creating it and its directory, and run
@@ -112,30 +116,6 @@ impl Store {
     ) -> Result<T> {
         let conn = self.writer.clone();
         Ok(tokio::task::spawn_blocking(move || work(&mut conn.lock())).await??)
-    }
-
-    /// Write each of `rows` with `write`, [`CHUNK`] rows to a transaction,
-    /// other writes running between them.
-    pub(crate) async fn each<R: Send + 'static>(
-        &self,
-        rows: Vec<R>,
-        write: impl Fn(&Transaction<'_>, R) -> rusqlite::Result<()> + Send + Sync + 'static,
-    ) -> Result<()> {
-        let write = Arc::new(write);
-        let mut rows = rows.into_iter().peekable();
-        while rows.peek().is_some() {
-            let chunk: Vec<R> = rows.by_ref().take(CHUNK).collect();
-            let write = write.clone();
-            self.run(move |conn| {
-                let tx = conn.transaction()?;
-                for row in chunk {
-                    write(&tx, row)?;
-                }
-                tx.commit()
-            })
-            .await?;
-        }
-        Ok(())
     }
 
     /// Run `work` against one read-only connection, in one read transaction,

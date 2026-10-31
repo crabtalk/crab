@@ -3,13 +3,13 @@
 
 use crate::{
     client::{Client, Error},
-    sandbox::service::{
+    services::service::{
         Billing, Costed, DeployRequest, DeploySetRequest, Deployment, Hosts, MeteredDay, Secret,
         SetSecret, Terms, ToolCosted, Upload, UploadRequest, Visibility,
     },
 };
 use berm_api::{
-    Budget, Cron, Deployed, Listing, Logged, Meter, Output, Program, Runtime,
+    Cron, Deployed, Listing, Logged, Meter, Output, Runtime, Service, Setting, VarValue,
     host::{self, CallInput, Caller, Crons, Live, ToolUpdate, Wakes},
 };
 use reqwest::{Body, Method, RequestBuilder};
@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 impl Client {
     /// Every service the account runs.
-    pub async fn list(&self) -> Result<Vec<Program>, Error> {
+    pub async fn list(&self) -> Result<Vec<Service>, Error> {
         self.json(self.at(Method::GET, &self.addressed().services()))
             .await
     }
@@ -28,7 +28,7 @@ impl Client {
         self.json(self.at(Method::GET, &self.path_of(name))).await
     }
 
-    pub async fn inspect(&self, name: &str) -> Result<Program, Error> {
+    pub async fn inspect(&self, name: &str) -> Result<Service, Error> {
         let path = format!("{}/idl", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
     }
@@ -50,7 +50,7 @@ impl Client {
     pub async fn deploy_set(
         &self,
         set: &DeploySetRequest,
-    ) -> Result<BTreeMap<String, Deployed>, Error> {
+    ) -> Result<BTreeMap<String, crate::services::service::DeployResult>, Error> {
         let path = format!("{}/deploys", self.addressed().services());
         self.json(self.at(Method::POST, &path).json(set)).await
     }
@@ -86,21 +86,21 @@ impl Client {
         self.ok(request).await.map(drop)
     }
 
-    /// Call `tool` of `program`, as `caller` on a local host, which takes it
+    /// Call `tool` of `service`, as `caller` on a local host, which takes it
     /// unverified.
     pub async fn call(
         &self,
-        program: &str,
+        service: &str,
         tool: &str,
         arguments: Vec<u8>,
         caller: Option<&Caller>,
     ) -> Result<(Output, Option<Meter>), Error> {
-        if self.owner.is_none() && program.contains('/') {
+        if self.owner.is_none() && service.contains('/') {
             return Err(Error::Host(
                 "the local host has no accounts: call its services by name alone",
             ));
         }
-        let path = format!("{}/tools/{tool}", self.path_of(program));
+        let path = format!("{}/tools/{tool}", self.path_of(service));
         let request = self.as_caller(self.at(Method::POST, &path).body(arguments), caller)?;
         self.answered(request).await
     }
@@ -116,13 +116,6 @@ impl Client {
     pub async fn tools(&self, name: &str) -> Result<BTreeMap<String, ToolCosted>, Error> {
         let path = format!("{}/calls/tools", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
-    }
-
-    /// Set what one call of `tool` of `name` may use.
-    pub async fn budget(&self, name: &str, tool: &str, budget: Budget) -> Result<(), Error> {
-        let path = format!("{}/tools/{tool}/budget", self.path_of(name));
-        self.ok(self.at(Method::PUT, &path).json(&budget)).await?;
-        Ok(())
     }
 
     /// `name`'s meters over the last 30 days, a day each.
@@ -149,6 +142,23 @@ impl Client {
         let path = format!("{}/tools/{tool}/cron", self.path_of(name));
         let body = Cron {
             cron: cron.map(str::to_owned),
+        };
+        self.ok(self.at(Method::PUT, &path).json(&body)).await?;
+        Ok(())
+    }
+
+    /// Each var of `name`'s `[vars]`, with the value it holds, for its owners.
+    pub async fn vars(&self, name: &str) -> Result<Vec<Setting>, Error> {
+        let path = format!("{}/vars", self.path_of(name));
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// Set `name`'s var `var` to `value`, read from its next call; `None`
+    /// returns it to its default.
+    pub async fn set_var(&self, name: &str, var: &str, value: Option<&str>) -> Result<(), Error> {
+        let path = format!("{}/vars/{var}", self.path_of(name));
+        let body = VarValue {
+            value: value.map(str::to_owned),
         };
         self.ok(self.at(Method::PUT, &path).json(&body)).await?;
         Ok(())

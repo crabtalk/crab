@@ -1,0 +1,21 @@
+[package]
+name = "crab-resend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Resend email sending and delivery status for berm services"
+readme = "README.md"
+
+[lib]
+name = "resend"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+url.workspace = true

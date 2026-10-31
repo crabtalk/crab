@@ -1,57 +1,43 @@
-//! `crab budget` — the most one call of a tool may use, and what its runs used.
+//! `crab budget` — the most one call of a tool may use, what its runs used,
+//! and the `budget` for its `crab.toml` they fit.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
-use berm_api::Budget;
-use crabtalk_sdk::{client::Client, sandbox::service::Measured};
-
-/// Set `name`'s `tool` to at most `cpu` microseconds, `rows` rows and
-/// `memory` MiB a call; `None` memory is the host's most.
-pub fn set(
-    client: &Client,
-    name: &str,
-    tool: &str,
-    cpu: u64,
-    rows: u64,
-    memory: Option<u64>,
-) -> Result<()> {
-    utils::wait(client.budget(
-        name,
-        tool,
-        Budget {
-            cpu,
-            rows,
-            memory: memory.map_or(0, |mib| mib << 20),
-        },
-    ))?;
-    let memory = memory.map_or("the host's most".to_owned(), |mib| format!("{mib} MiB"));
-    eprintln!("{name}.{tool}: at most {cpu}µs of CPU, {rows} rows and {memory} of memory a call");
-    Ok(())
-}
+use crabtalk_sdk::{
+    client::Client,
+    services::service::{Estimate, Measured},
+};
 
 /// What `name`'s `tool` used over the last 30 days, its budget when it is
-/// public, and the memory budget its runs fit.
-pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
-    let mut tools = utils::wait(client.tools(name))?;
+/// public with what one run costs at most when `cloud` answers with its rates,
+/// and the `budget` its runs fit.
+pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
+    let mut tools = runtime::wait(client.tools(name))?;
     let Some(used) = tools.remove(tool) else {
         println!("{name}.{tool} was not called in the last 30 days");
         return Ok(());
     };
     if json {
-        return utils::json(&used);
+        return terminal::json(&used);
     }
-    let terms = utils::wait(client.terms(name))?;
+    let terms = runtime::wait(client.terms(name))?;
     println!("{name}.{tool}");
-    if let Some(terms) = terms.tools.get(tool) {
-        let budget = terms.held.budget;
-        let memory = match budget.memory {
-            0 => "the host's most".to_owned(),
-            bytes => format::bytes(bytes),
-        };
+    if let Some(held) = terms.tools.get(tool) {
+        let budget = held.held.budget;
         println!(
-            "  budget       at most {}µs of CPU, {} rows and {memory} of memory a call",
-            budget.cpu, budget.rows
+            "  budget       at most {}µs of CPU, {} rows read, {} written and {} of memory a call",
+            budget.cpu,
+            budget.read,
+            budget.written,
+            format::bytes(budget.memory)
         );
+        if let Ok(metering) = runtime::wait(cloud.rates()) {
+            let most = metering.most(&budget, terms.deadline);
+            println!(
+                "  most         {} to run, its calls to other services aside",
+                format::usd(most.parse().unwrap_or(0.0))
+            );
+        }
     }
     if let Some(estimate) = &used.estimate {
         println!(
@@ -59,13 +45,19 @@ pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
             format::count(estimate.runs)
         );
         println!("  typical      {}", measured(&estimate.typical));
-        println!("  slow (p99)   {}", measured(&estimate.slow));
+        let slow = if estimate.runs >= Estimate::P99 {
+            "slow (p99)"
+        } else {
+            "slowest"
+        };
+        println!("  {slow:<12} {}", measured(&estimate.slow));
     }
-    if let Some(mib) = used.fits_mib {
+    if let Some(fits) = used.fits {
         println!(
-            "  memory       {} at most; --memory {mib} fits it at 1.5×",
+            "  memory       {} at most",
             format::bytes(used.meter.memory)
         );
+        println!("  fits         budget = {fits}");
     }
     Ok(())
 }
@@ -74,11 +66,12 @@ pub fn show(client: &Client, name: &str, tool: &str, json: bool) -> Result<()> {
 fn measured(m: &Measured) -> String {
     let cost = m.cost_micros_decimal.parse::<f64>().unwrap_or(0.0);
     format!(
-        "{} ms, {}µs of CPU, {} rows read, {} written, {} to run",
+        "{} ms, {}µs of CPU, {} rows read, {} written, {:.1} MiB-s held, {} to run",
         m.ms,
         m.cpu,
         format::count(m.read),
         format::count(m.written),
+        m.held as f64 / 1e6,
         format::usd(cost)
     )
 }

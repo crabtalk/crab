@@ -1,4 +1,4 @@
-//! What a program invocation costs.
+//! What a service invocation costs.
 //!
 //! RFC 0205 puts an instance per invocation on the critical path for every tool
 //! call, so this measures the parts that decide whether that holds: compiling
@@ -11,7 +11,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use berm::{Berm, Calls, Config, Engine, Program, storage};
+use berm::{Berm, Calls, Config, Engine, Service};
 use std::{
     fs,
     path::PathBuf,
@@ -26,7 +26,7 @@ const ROUNDS: usize = 1000;
 async fn main() -> Result<()> {
     // Only the guest's own log; wasmtime is chatty at info.
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new("warn,program=info"))
+        .with_env_filter(tracing_subscriber::EnvFilter::new("warn,service=info"))
         .init();
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -51,28 +51,28 @@ async fn main() -> Result<()> {
     let warm = time(|| compile(&cache, &image))?;
     println!("compile (warm cache):{warm:>12.3?}");
 
-    let program = compile(&cache, &image)?;
-    println!("manifest:              {:?}", program.manifest());
+    let service = compile(&cache, &image)?;
+    println!("manifest:              {:?}", service.manifest);
 
     println!(
         "heap probe:            {:?}",
-        program.call(None, "probe", b"".to_vec()).await?.result
+        service.call(None, "probe", b"".to_vec()).await?.result
     );
 
     // A payload in the range a real tool call carries.
     let args = format!(r#"{{"query":"{}"}}"#, "x".repeat(256));
-    let echoed = Result::from(program.call(None, "echo", args.as_bytes()).await?.result)
+    let echoed = Result::from(service.call(None, "echo", args.as_bytes()).await?.result)
         .map_err(anyhow::Error::msg)?;
     assert_eq!(echoed, args, "round trip lost the payload");
     println!(
         "failure path:          {:?}",
-        Result::from(program.call(None, "boom", b"".to_vec()).await?.result,).unwrap_err()
+        Result::from(service.call(None, "boom", b"".to_vec()).await?.result,).unwrap_err()
     );
 
     let mut chatty = Vec::with_capacity(ROUNDS);
     for _ in 0..ROUNDS {
         let start = Instant::now();
-        let _ = program.call(None, "chatty", b"".to_vec()).await?;
+        let _ = service.call(None, "chatty", b"".to_vec()).await?;
         chatty.push(start.elapsed());
     }
     chatty.sort();
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
     let mut samples = Vec::with_capacity(ROUNDS);
     for _ in 0..ROUNDS {
         let start = Instant::now();
-        let _ = program.call(None, "echo", args.as_bytes()).await?;
+        let _ = service.call(None, "echo", args.as_bytes()).await?;
         samples.push(start.elapsed());
     }
     samples.sort();
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
         let mut samples = Vec::with_capacity(ROUNDS);
         for _ in 0..ROUNDS {
             let start = Instant::now();
-            let _ = program.call(None, tool, args.to_vec()).await?;
+            let _ = service.call(None, tool, args.to_vec()).await?;
             samples.push(start.elapsed());
         }
         samples.sort();
@@ -117,10 +117,9 @@ async fn main() -> Result<()> {
         );
     }
 
-    // `carry` never allocates and `echo` does, so the flat delta above would be
-    // the heap's first use rather than the parse. `probe` allocates without
-    // parsing, which tells the two apart — and it costs the same for one byte
-    // as for four thousand, so what is priced is the first use, not the bytes.
+    // `carry` never allocates and `echo` does, so the flat delta above includes
+    // the heap's first use. `probe` allocates without parsing, and costs the
+    // same for one byte as for four thousand.
     println!(
         "  alloc, no parse:     {:>10.3?}",
         p50("probe", b"")
@@ -145,12 +144,12 @@ async fn main() -> Result<()> {
 }
 
 /// Compiling a guest, reusing whatever the previous run left behind.
-fn compile(dir: &std::path::Path, image: &[u8]) -> Result<Arc<Program>> {
+fn compile(dir: &std::path::Path, image: &[u8]) -> Result<Arc<Service>> {
     let engine = Engine::new(&Config {
         cache_dir: Some(dir.to_path_buf()),
         ..Config::default()
     })?;
-    Berm::new(&engine, Calls::by_name(0), vec![], storage::Memory::new()).deploy("fixture", image)
+    Berm::new(&engine, Calls::by_name(0), vec![]).deploy("fixture", image)
 }
 
 fn time<T>(f: impl FnOnce() -> Result<T>) -> Result<Duration> {

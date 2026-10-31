@@ -1,7 +1,7 @@
 //! `crab request` — what the account asked a person to do, by its code: where
 //! it stands, or once it is no longer pending.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::request::{Purchase, Request, RequestKind, RequestStatus},
@@ -28,7 +28,7 @@ pub fn asked(request: &Request, json: bool) -> Result<()> {
             request: &'a Request,
             next: Next<'a>,
         }
-        return utils::json(&Asked {
+        return terminal::json(&Asked {
             request,
             next: Next {
                 command: &wait,
@@ -55,6 +55,31 @@ pub fn asked(request: &Request, json: bool) -> Result<()> {
 fn describe(request: &Request) -> String {
     if request.kind == RequestKind::Login {
         return "sign crab in".to_owned();
+    }
+    if request.kind == RequestKind::Verify {
+        return "verify on GitHub, signed in".to_owned();
+    }
+    if request.kind == RequestKind::Deploy {
+        let services: Vec<&str> = request.deploys.keys().map(String::as_str).collect();
+        return format!("approve deploying {}, signed in", services.join(", "));
+    }
+    if let Some(access) = &request.access {
+        let mut asked: Vec<String> = access
+            .services
+            .iter()
+            .map(|granted| format!("call {}", granted.service))
+            .collect();
+        if let Some(budget) = access.budget {
+            asked.push(format!("spend {} a day", format::usd(budget as f64)));
+        }
+        return format!(
+            "let key {} {}, signed in",
+            access.label,
+            asked.join(" and ")
+        );
+    }
+    if request.kind == RequestKind::Grant {
+        return "let a key spend, signed in".to_owned();
     }
     if request.kind == RequestKind::Secret {
         let asked: Vec<&str> = request
@@ -85,9 +110,9 @@ fn describe(request: &Request) -> String {
 
 /// End request `code` now, and print it.
 pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
-    let request = utils::wait(client.expire_request(code))?;
+    let request = runtime::wait(client.expire_request(code))?;
     if json {
-        return utils::json(&request);
+        return terminal::json(&request);
     }
     println!(
         "{}  {}  {}",
@@ -98,21 +123,35 @@ pub fn expire(client: &Client, code: &str, json: bool) -> Result<()> {
     Ok(())
 }
 
+/// Request `code` once it is no longer pending, or as it stands after
+/// `timeout` seconds.
+pub fn settled(client: &Client, code: &str, timeout: u64) -> Result<Request> {
+    let mut deploying = false;
+    let until = Instant::now() + Duration::from_secs(timeout);
+    loop {
+        let left = until.saturating_duration_since(Instant::now()).as_secs();
+        let request = runtime::wait(client.request(code, left.min(HOLD)))?;
+        if request.status == RequestStatus::Deploying && !deploying {
+            eprintln!("deploying…");
+            deploying = true;
+        }
+        if !matches!(
+            request.status,
+            RequestStatus::Pending | RequestStatus::Deploying
+        ) || left == 0
+        {
+            return Ok(request);
+        }
+    }
+}
+
 /// Where request `code` stands. With `wait`, once it is no longer pending,
 /// giving up after `timeout` seconds. Fails unless it completed or, without
 /// `wait`, is still pending.
 pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) -> Result<()> {
-    let until = Instant::now() + Duration::from_secs(timeout);
-    let request = loop {
-        let left = until.saturating_duration_since(Instant::now()).as_secs();
-        let hold = if wait { left.min(HOLD) } else { 0 };
-        let request = utils::wait(client.request(code, hold))?;
-        if request.status != RequestStatus::Pending || hold == 0 {
-            break request;
-        }
-    };
+    let request = settled(client, code, if wait { timeout } else { 0 })?;
     if json {
-        utils::json(&request)?;
+        terminal::json(&request)?;
     } else {
         println!(
             "{}  {}  {}",
@@ -123,8 +162,10 @@ pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) ->
     }
     match request.status {
         RequestStatus::Completed => Ok(()),
-        RequestStatus::Pending if wait => bail!("still pending after {timeout}s"),
-        RequestStatus::Pending => Ok(()),
+        RequestStatus::Pending | RequestStatus::Deploying if wait => {
+            bail!("still pending after {timeout}s")
+        }
+        RequestStatus::Pending | RequestStatus::Deploying => Ok(()),
         RequestStatus::Declined => bail!("the person declined it"),
         RequestStatus::Expired => bail!("it expired; ask again for a new code"),
     }

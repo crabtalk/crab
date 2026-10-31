@@ -2,9 +2,9 @@
 //! running services on a laptop and on a fleet's node.
 
 use crate::Layers;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use berm::{
-    Meter,
+    Meter, clock,
     syscall::http::{Request, Response},
 };
 use berm_api::host::{Link, Reply, Used};
@@ -44,7 +44,7 @@ pub struct Edges<E: Env> {
     pub clock: E::Clock,
 }
 
-/// A program's bytes for a deploy.
+/// A service's bytes for a deploy.
 pub trait Images: Send + Sync + 'static {
     /// The image `digest` names, published as `reference`.
     fn pull(&self, reference: &str, digest: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
@@ -66,6 +66,19 @@ pub trait Peers: Send + Sync + 'static {
 
     /// Hand `peer` the uses counted here of services it runs.
     fn ship(&self, peer: &str, used: &[Used]) -> impl Future<Output = Result<()>> + Send;
+}
+
+/// No peers: every service runs here, and no route names one.
+pub struct Alone;
+
+impl Peers for Alone {
+    async fn link(&self, peer: &str, _: &str, _: &str, _: Vec<u8>, _: Link) -> Result<Reply> {
+        bail!("no peer {peer:?}")
+    }
+
+    async fn ship(&self, peer: &str, _: &[Used]) -> Result<()> {
+        bail!("no peer {peer:?}")
+    }
 }
 
 /// What `{secret:NAME}` in a fetch header stands for.
@@ -115,6 +128,6 @@ pub struct System;
 
 impl Clock for System {
     fn now(&self) -> u64 {
-        berm::syscall::call::system_now()
+        clock::now()
     }
 }

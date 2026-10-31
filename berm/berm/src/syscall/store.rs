@@ -1,7 +1,7 @@
-//! `berm.get` and `berm.set` — a program's own bytes, surviving its invocations.
+//! `berm.get` and `berm.set` — a service's own bytes, surviving its invocations.
 //!
-//! Neither door takes a program. The keyspace is whichever one is asking, read
-//! off the [`Callsite`], so another program's keys are not refused — a guest
+//! Neither door takes a service. The keyspace is whichever one is asking, read
+//! off the [`Callsite`], so another service's keys are not refused — a guest
 //! has no way to name them.
 //!
 //! The host takes a write through the closure below, or leaves it to the
@@ -19,7 +19,7 @@ use std::{future::Future, sync::Arc};
 ///
 /// `read` answers `None` for a key never written. The guest is suspended
 /// until it resolves.
-pub fn programs<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
+pub fn services<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
 where
     R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
@@ -30,10 +30,10 @@ where
     let get = move |at: Callsite, request: Vec<u8>| {
         let read = read.clone();
         async move {
-            let fields = wire::fields(&request)?;
+            let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
             at.rows_left()?;
-            let value = match at.journal.read(&at.program, key) {
+            let value = match at.journal.read(&at.service, key) {
                 Some(held) => Some(held),
                 None => read(at.clone(), key.to_owned()).await?,
             };
@@ -45,7 +45,7 @@ where
             // than bare, so a stored empty value is not read as one that was
             // never written.
             Ok(match value {
-                Some(value) => wire::frame(&[&value]),
+                Some(value) => abi::wire::request(&[&value]),
                 None => Vec::new(),
             })
         }
@@ -53,7 +53,7 @@ where
     let set = move |at: Callsite, request: Vec<u8>| {
         let write = write.clone();
         async move {
-            let fields = wire::fields(&request)?;
+            let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
             let Some(value) = fields.get(1) else {
                 bail!("request has no value");
@@ -63,7 +63,7 @@ where
             }
             at.rows_left()?;
             if !write(at.clone(), key.to_owned(), value.to_vec()).await? {
-                at.journal.write(&at.program, key, value)?;
+                at.journal.write(&at.service, key, value)?;
             }
             at.meter(Meter {
                 written: 1,

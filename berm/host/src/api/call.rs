@@ -6,16 +6,16 @@ use crate::{
     env::{Env, Images, Secrets},
     host::{self, Host},
     record::{calls, logs, meter, records, usage},
-    state::service,
+    state::{service, vars},
     wake::{cron, table},
 };
 use axum::http::StatusCode;
 use berm::{
-    Budget, Meters, Program, Refused,
+    Meters, Refused, Service,
     tape::{Recorder, Taping},
 };
 use berm_api::{
-    Deps, Listing, Logged, Meter, Output, Terms, ToolTerms,
+    Deps, Listing, Logged, Meter, Output, Setting, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
 };
 use std::{
@@ -28,31 +28,39 @@ use std::{
 /// The most logs or calls one page answers.
 const MAX_PAGE: i64 = 1000;
 
+/// The error code a webhook for a tool that takes none carries.
+const NO_WEBHOOK_TOOL: &str = "E0014";
+
+/// The error code an event for a stopped or held service carries.
+const PAUSED: &str = "E0018";
+
+/// The error code an event for an account at its memory limit carries.
+const NO_MEMORY: &str = "E0019";
+
 impl<E: Env> Host<E> {
     /// `service`'s IDL.
-    pub fn idl(&self, service: &str) -> Result<berm_api::Program, Denied> {
-        let program = self.deployed(service)?;
-        Ok(program.idl(host::split(service).1))
+    pub fn idl(&self, service: &str) -> Result<berm_api::Service, Denied> {
+        let deployed = self.deployed(service)?;
+        Ok(deployed.idl(host::split(service).1))
     }
 
     /// `service` as anyone it is visible to sees it.
     pub async fn listing(&self, service: &str) -> Result<Listing, Denied> {
-        let program = self.idl(service)?;
+        let idl = self.idl(service)?;
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         let served = meter::served(
             &self.store,
             scope,
             Some(name),
             self.today(),
-            self.meters.days(i32::MIN),
+            self.meters.days_of(scope, Some(name), i32::MIN),
         )
         .await?
         .remove(name)
         .unwrap_or_default();
         let row = service::row(&self.store, scope, name).await?;
         Ok(Listing {
-            program,
+            service: idl,
             served,
             stopped: self.stops.stopped(service),
             reference: row.as_ref().and_then(service::Row::registry),
@@ -64,17 +72,17 @@ impl<E: Env> Host<E> {
     /// answers to: services neither deployed here nor routed to a peer, and
     /// secrets not granted it. Secrets that cannot be read grant nothing.
     pub async fn runtime(&self, service: &str) -> Result<berm_api::Runtime, Denied> {
-        let program = self.deployed(service)?;
+        let deployed = self.deployed(service)?;
         let scope = host::split(service).0;
-        let deps = &program.manifest().deps;
+        let deps = &deployed.manifest.deps;
         let granted = self.secrets.names(service).await.unwrap_or_default();
         let project = service::row(&self.store, scope, host::split(service).1)
             .await?
             .and_then(|row| row.project);
         Ok(berm_api::Runtime {
             unresolved: Deps {
-                programs: deps
-                    .programs
+                calls: deps
+                    .calls
                     .iter()
                     .filter(|name| {
                         let key = host::join(scope, name);
@@ -84,6 +92,7 @@ impl<E: Env> Host<E> {
                     .collect(),
                 syscalls: Default::default(),
                 credentials: Default::default(),
+                vars: Default::default(),
                 secrets: deps
                     .secrets
                     .iter()
@@ -92,32 +101,31 @@ impl<E: Env> Host<E> {
                     .collect(),
             },
             project,
-            ..program.runtime()
+            ..deployed.runtime()
         })
     }
 
     /// Every service in `scope` this host runs, as anyone it is visible to
     /// sees it.
     pub async fn listings(&self, scope: &str) -> Result<Vec<Listing>, Denied> {
-        let _reading = self.flushing.read().await;
         let mut served = meter::served(
             &self.store,
             scope,
             None,
             self.today(),
-            self.meters.days(i32::MIN),
+            self.meters.days_of(scope, None, i32::MIN),
         )
         .await?;
         let mut rows = service::scoped(&self.store, scope).await?;
         Ok(self
             .list(scope)
             .into_iter()
-            .map(|(name, program)| {
+            .map(|(name, deployed)| {
                 let row = rows.remove(&name);
                 Listing {
-                    program: program.idl(&name),
+                    service: deployed.idl(&name),
                     served: served.remove(&name).unwrap_or_default(),
-                    stopped: self.stops.stopped(&program.name),
+                    stopped: self.stops.stopped(&deployed.name),
                     reference: row.as_ref().and_then(service::Row::registry),
                     project: row.and_then(|row| row.project),
                 }
@@ -125,55 +133,24 @@ impl<E: Env> Host<E> {
             .collect())
     }
 
-    /// `service`'s terms: each public tool's budget, what its owner set or
-    /// else this host's.
+    /// `service`'s terms: each public tool's budget, and this host's
+    /// deadline.
     pub fn terms(&self, service: &str) -> Result<Terms, Denied> {
-        let program = self.deployed(service)?;
-        let tools = program
-            .manifest()
+        let deployed = self.deployed(service)?;
+        let tools = deployed
+            .manifest
             .tools
             .iter()
             .filter(|tool| tool.public)
-            .map(|tool| {
-                let set = self.terms.get(service, &tool.name);
-                (
-                    tool.name.clone(),
-                    ToolTerms {
-                        budget: set.budget.unwrap_or(self.budget),
-                    },
-                )
+            .filter_map(|tool| {
+                let budget = deployed.budget(&tool.name)?;
+                Some((tool.name.clone(), ToolTerms { budget }))
             })
             .collect();
-        Ok(Terms { tools })
-    }
-
-    /// Set what one invocation of `tool` of `service` may use, from its next
-    /// call. Refused past this host's budget.
-    pub async fn set_budget(
-        &self,
-        service: &str,
-        tool: &str,
-        budget: Budget,
-    ) -> Result<(), Denied> {
-        self.exported(service, tool)?;
-        if budget.cpu == 0
-            || budget.rows == 0
-            || budget.cpu > self.budget.cpu
-            || budget.rows > self.budget.rows
-            || budget.memory > self.budget.memory
-        {
-            return Err(deny(
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "a budget is between 1 and {}µs of CPU, 1 and {} rows, and at most {} bytes of memory",
-                    self.budget.cpu, self.budget.rows, self.budget.memory
-                ),
-            ));
-        }
-        Ok(self
-            .terms
-            .set_budget(&self.store, service, tool, budget)
-            .await?)
+        Ok(Terms {
+            tools,
+            deadline: self.deadline.as_millis() as u64,
+        })
     }
 
     /// Call cron tool `tool` of `service` when `cron` fires, from its next
@@ -203,15 +180,48 @@ impl<E: Env> Host<E> {
         Ok(())
     }
 
-    /// Refused unless `service` is deployed and exports `tool`.
-    fn exported(&self, service: &str, tool: &str) -> Result<(), Denied> {
-        let program = self.deployed(service)?;
-        if !program.tools().any(|exported| exported == tool) {
+    /// Each var of `service`'s `[vars]`, with the value it holds.
+    pub async fn vars(&self, service: &str) -> Result<Vec<Setting>, Denied> {
+        let deployed = self.deployed(service)?;
+        let (scope, name) = host::split(service);
+        let mut held = vars::list(&self.store, scope, name).await?;
+        Ok(deployed
+            .manifest
+            .deps
+            .vars
+            .iter()
+            .map(|(var, declared)| Setting {
+                name: var.clone(),
+                description: declared.description.clone(),
+                default: declared.default.clone(),
+                value: held.remove(var),
+            })
+            .collect())
+    }
+
+    /// Set `service`'s value of `var`, read from its next call; `None`
+    /// returns it to its default. Kept until a deploy sets another or its
+    /// `[vars]` drops the var.
+    pub async fn set_var(
+        &self,
+        service: &str,
+        var: &str,
+        value: Option<String>,
+    ) -> Result<(), Denied> {
+        let deployed = self.deployed(service)?;
+        let deps = &deployed.manifest.deps;
+        if !deps.vars.contains_key(var) {
             return Err(deny(
                 StatusCode::NOT_FOUND,
-                format!("the service has no tool named {tool:?}"),
+                format!("the service has no var named {var:?}"),
             ));
         }
+        if let Some(value) = &value {
+            deps.settable(var, value)
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+        }
+        let (scope, name) = host::split(service);
+        vars::set(&self.store, scope, name, var.to_owned(), value).await?;
         Ok(())
     }
 
@@ -244,7 +254,6 @@ impl<E: Env> Host<E> {
         days: Option<Range<i32>>,
     ) -> Result<Vec<Usage>, Denied> {
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         let mut used = usage::read(
             &self.store,
             scope,
@@ -254,9 +263,9 @@ impl<E: Env> Host<E> {
             self.usage.unsaved(service),
         )
         .await?;
-        if let Some(program) = self.get(service) {
+        if let Some(deployed) = self.get(service) {
             for row in used.iter_mut().filter(|row| row.kind == Kind::Tool) {
-                row.public = Some(program.public(&row.item));
+                row.public = Some(deployed.public(&row.item));
             }
         }
         Ok(used)
@@ -272,7 +281,6 @@ impl<E: Env> Host<E> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         page.limit = page.limit.clamp(1, MAX_PAGE);
-        let _reading = self.flushing.read().await;
         let logs = logs::read(
             &self.store,
             scope,
@@ -292,7 +300,6 @@ impl<E: Env> Host<E> {
     pub async fn crons(&self, service: &str) -> Result<wire::Crons, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         Ok(wire::Crons {
             crons: table::crons(&self.store, scope, name, self.unsaved(service)).await?,
             held: self.holds.holds(scope),
@@ -303,7 +310,6 @@ impl<E: Env> Host<E> {
     pub async fn armed(&self, service: &str) -> Result<wire::Wakes, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         Ok(wire::Wakes {
             wakes: table::armed(&self.store, scope, name, self.unsaved(service)).await?,
             held: self.holds.holds(scope),
@@ -315,9 +321,8 @@ impl<E: Env> Host<E> {
     ///
     /// A call is answered only once every run with a smaller id is written,
     /// and a log is deleted only with the call it was emitted in. A failed
-    /// call's input and tape stay.
+    /// call's input and tape stay unless `page.replays` opts in to pulling them.
     pub async fn records(&self, page: wire::RecordsPage) -> anyhow::Result<wire::Records> {
-        let _reading = self.flushing.read().await;
         records::page(&self.store, page, self.calls.floor()).await
     }
 
@@ -331,7 +336,6 @@ impl<E: Env> Host<E> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         page.limit = page.limit.clamp(1, MAX_PAGE);
-        let _reading = self.flushing.read().await;
         let calls: Vec<wire::Call> = calls::read(
             &self.store,
             scope,
@@ -359,7 +363,6 @@ impl<E: Env> Host<E> {
         mut page: wire::CallPage,
     ) -> Result<(Vec<wire::ServiceCall>, Option<String>), Denied> {
         page.limit = page.limit.clamp(1, MAX_PAGE);
-        let _reading = self.flushing.read().await;
         let unsaved = calls::Unsaved {
             ran: self.calls.unsaved_in(scope),
             emitted: self.logs.unsaved_in(scope),
@@ -391,7 +394,6 @@ impl<E: Env> Host<E> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         let (page, bucket) = self.ranged(page);
-        let _reading = self.flushing.read().await;
         Ok(calls::stats(
             &self.store,
             scope,
@@ -411,7 +413,6 @@ impl<E: Env> Host<E> {
         page: wire::CallPage,
     ) -> Result<wire::CallStats, Denied> {
         let (page, bucket) = self.ranged(page);
-        let _reading = self.flushing.read().await;
         let unsaved = calls::Unsaved {
             ran: self.calls.unsaved_in(scope),
             emitted: self.logs.unsaved_in(scope),
@@ -441,7 +442,6 @@ impl<E: Env> Host<E> {
     ) -> Result<Vec<wire::NestedCall>, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         calls::nested(&self.store, scope, name, id, self.calls.unsaved(service))
             .await?
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such call"))
@@ -450,7 +450,6 @@ impl<E: Env> Host<E> {
     pub async fn call_input(&self, service: &str, id: u64) -> Result<wire::CallInput, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         match calls::input(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
             Some(Some(input)) => Ok(input),
             Some(None) => Err(deny(
@@ -485,7 +484,6 @@ impl<E: Env> Host<E> {
     pub async fn call_tape(&self, service: &str, id: u64) -> Result<Vec<u8>, Denied> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         match calls::tape(&self.store, scope, name, id, self.calls.unsaved(service)).await? {
             Some(Some(tape)) => Ok(tape),
             Some(None) => Err(deny(
@@ -505,10 +503,10 @@ impl<E: Env> Host<E> {
         args: Vec<u8>,
         link: Link,
     ) -> Result<Reply, Denied> {
-        let program = self.get(service).ok_or_else(|| {
+        let deployed = self.get(service).ok_or_else(|| {
             deny(
                 StatusCode::NOT_FOUND,
-                format!("no program named {service:?} is deployed"),
+                format!("no service named {service:?} is deployed"),
             )
         })?;
         let refused = |message: String| {
@@ -528,21 +526,21 @@ impl<E: Env> Host<E> {
         if self.stops.stopped(service) {
             return refused(format!("{service} is stopped"));
         }
-        if !program.public(tool) {
+        if !deployed.public(tool) {
             return refused(format!("{service} has no public tool named {tool:?}"));
         }
-        if link.caller.is_some() && !program.reached_by_programs(tool) {
-            return refused(format!("{service}.{tool} takes no calls from programs"));
+        if link.caller.is_some() && !deployed.reached_by_services(tool) {
+            return refused(format!("{service}.{tool} takes no calls from services"));
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let meters = Arc::new(Meters::default());
-        let outcome = program
+        let outcome = deployed
             .link(
                 berm::Link {
                     caller: link
                         .caller
                         .as_deref()
-                        .map(|caller| berm::Caller::Program(caller.into())),
+                        .map(|caller| berm::Caller::Service(caller.into())),
                     user: link.user.as_ref().map(host::user),
                     client: link.client.as_deref().map(Into::into),
                     depth: link.depth,
@@ -551,7 +549,7 @@ impl<E: Env> Host<E> {
                     stack: link
                         .stack
                         .iter()
-                        .map(|program| Arc::from(program.as_str()))
+                        .map(|service| Arc::from(service.as_str()))
                         .collect(),
                 },
                 tool,
@@ -597,13 +595,11 @@ impl<E: Env> Host<E> {
     }
 
     /// Call `service`'s `#[tool(stripe)]` tool with `event`, a Stripe event as its
-    /// daemon took it, with no caller, and commit what it did. The host reads
-    /// none of the event; the daemon verifies it. A held scope's services take
-    /// none, and a tool's failure is a `500` carrying its message.
+    /// daemon took it.
     pub async fn stripe(&self, service: &str, event: Vec<u8>) -> Result<(), Denied> {
-        let program = self.deployed(service)?;
-        let Some(tool) = program
-            .manifest()
+        let deployed = self.deployed(service)?;
+        let Some(tool) = deployed
+            .manifest
             .tools
             .iter()
             .find(|spec| spec.stripe)
@@ -614,43 +610,70 @@ impl<E: Env> Host<E> {
                 "the service has no stripe tool",
             ));
         };
+        self.deliver(service, deployed, tool, Source::Stripe, event)
+            .await
+    }
+
+    /// Call `service`'s `#[tool(webhook)]` tool `tool` with `event`, a webhook's
+    /// body as its daemon verified it.
+    pub async fn webhook(&self, service: &str, tool: &str, event: Vec<u8>) -> Result<(), Denied> {
+        let deployed = self.deployed(service)?;
+        if !deployed
+            .manifest
+            .tools
+            .iter()
+            .any(|spec| spec.webhook && spec.name == tool)
+        {
+            return Err(deny(
+                StatusCode::NOT_FOUND,
+                format!("the service has no webhook tool {tool:?}"),
+            )
+            .explained(NO_WEBHOOK_TOOL));
+        }
+        self.deliver(service, deployed, tool.to_owned(), Source::Webhook, event)
+            .await
+    }
+
+    /// Run `tool` with `event` as its daemon took it, with no caller, and commit
+    /// what it did. The host reads none of the event; the daemon verifies it. A
+    /// held scope's services take none, and a tool's failure is a `500` carrying
+    /// its message.
+    async fn deliver(
+        &self,
+        service: &str,
+        deployed: Arc<Service>,
+        tool: String,
+        source: Source,
+        event: Vec<u8>,
+    ) -> Result<(), Denied> {
         let paused = match () {
             _ if self.holds.holds(host::split(service).0) => Some("held"),
             _ if self.stops.stopped(service) => Some("stopped"),
             _ => None,
         };
         if let Some(paused) = paused {
-            self.usage.record(
-                service,
-                Kind::Tool,
-                &tool,
-                Source::Stripe,
-                "",
-                Outcome::Refused,
-            );
+            self.usage
+                .record(service, Kind::Tool, &tool, source, "", Outcome::Refused);
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("{service} is {paused}"),
-            ));
+            )
+            .explained(PAUSED));
         }
         if self.pools.pool(host::split(service).0).full() {
             return Err(deny(
                 StatusCode::TOO_MANY_REQUESTS,
                 "the account holds as much memory as it may; retry",
-            ));
+            )
+            .explained(NO_MEMORY));
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
         let recorder = Recorder::default();
-        let input = wire::CallInput {
-            tool: tool.clone(),
-            args: String::from_utf8_lossy(&event).into_owned(),
-            caller: None,
-            digest: format!("sha256:{}", program.digest),
-        };
+        let kept = event.clone();
         let invoked = self
             .invoke(
-                &program,
+                &deployed,
                 started.id,
                 None,
                 None,
@@ -665,16 +688,17 @@ impl<E: Env> Host<E> {
             Err(_) => Outcome::Failed,
         };
         self.usage
-            .record(service, Kind::Tool, &tool, Source::Stripe, "", outcome);
+            .record(service, Kind::Tool, &tool, source, "", outcome);
         self.calls.record(
             service,
             started,
             &tool,
-            Source::Stripe,
+            source,
             "",
             outcome,
             invoked.as_ref().ok(),
-            Some(input),
+            (outcome == Outcome::Failed)
+                .then(|| calls::ran_with(&tool, kept, None, &deployed.digest)),
             (outcome == Outcome::Failed)
                 .then(|| recorder.tape())
                 .as_ref(),
@@ -689,7 +713,6 @@ impl<E: Env> Host<E> {
     /// Every service's meters on yesterday and today.
     pub async fn recent(&self) -> Result<Vec<(String, Metered)>, Denied> {
         let since = self.today() - 1;
-        let _reading = self.flushing.read().await;
         Ok(meter::since(&self.store, since, self.meters.days(since)).await?)
     }
 
@@ -698,34 +721,30 @@ impl<E: Env> Host<E> {
         self.deployed(service)?;
         let (scope, name) = host::split(service);
         let today = self.today();
-        let _reading = self.flushing.read().await;
         let unsaved = self
             .meters
-            .days(today - usage::WINDOW)
-            .into_iter()
-            .filter(|day| day.service == service)
-            .collect();
+            .days_of(scope, Some(name), today - usage::WINDOW);
         Ok(meter::read(&self.store, scope, name, today, unsaved).await?)
     }
 
     /// What `service` is using now.
     pub async fn live(&self, service: &str) -> Result<wire::Live, Denied> {
-        let program = self.deployed(service)?;
+        let deployed = self.deployed(service)?;
         let (scope, name) = host::split(service);
         let now = usage::seconds(&self.now);
         let day = now.div_euclid(86_400) as i32;
-        let mut used = meter::used(&self.store, scope, name, day).await?;
-        used += self.meters.unsaved(service, day);
+        let unsaved = self.meters.days_of(scope, Some(name), i32::MIN);
+        let used = meter::used(&self.store, scope, name, day, unsaved).await?;
         let elapsed = (now - day as i64 * 86_400).max(1) as f64;
         let count = |total: u64, on: u64| wire::Count {
             total,
             per_second: on as f64 / elapsed,
         };
-        let (running, memory) = program.running.now();
+        let (running, memory) = deployed.running.now();
         Ok(wire::Live {
             running,
             memory,
-            stored: meter::stored(&self.store, service, &self.databases, program.bytes()).await?,
+            stored: meter::stored(&self.store, service, &self.databases, deployed.bytes).await?,
             cpu: count(used.all.cpu, used.on.cpu),
             read: count(used.all.read, used.on.read),
             written: count(used.all.written, used.on.written),
@@ -748,9 +767,25 @@ impl<E: Env> Host<E> {
         self.pools.replace(limits);
     }
 
-    /// The memory `scope`'s services hold now, and its limit.
+    /// The memory `scope`'s services hold now, each and together, and its
+    /// limit.
     pub fn memory(&self, scope: &str) -> wire::Memory {
-        self.pools.pool(scope).now()
+        let services = self
+            .list(scope)
+            .into_iter()
+            .map(|(name, deployed)| {
+                let (_, running) = deployed.running.now();
+                let held = wire::Held {
+                    loaded: deployed.bytes,
+                    running,
+                };
+                (name, held)
+            })
+            .collect();
+        wire::Memory {
+            services,
+            ..self.pools.pool(scope).now()
+        }
     }
 
     /// Hold `scopes` in place of the scopes held. A held scope's services fire
@@ -770,11 +805,11 @@ impl<E: Env> Host<E> {
 
     /// Add uses a peer counted of services this host runs.
     pub async fn record(&self, used: Vec<Used>) -> Result<(), Denied> {
-        Ok(usage::write(&self.store, used).await?)
+        Ok(usage::record(&self.store, used).await?)
     }
 
-    /// The program `service` runs now.
-    pub(crate) fn deployed(&self, service: &str) -> Result<Arc<Program>, Denied> {
+    /// The service `service` runs now.
+    pub(crate) fn deployed(&self, service: &str) -> Result<Arc<Service>, Denied> {
         self.get(service)
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))
     }

@@ -49,15 +49,20 @@ async fn fixture() -> Result<TestHost> {
 async fn note(host: &TestHost, word: &str) -> Result<Output> {
     let args = format!(r#"{{"word":"{word}"}}"#).into_bytes();
     let (_, output) = host
-        .host()
+        .host
         .call(FIXTURE, Some(&caller()), "note", args, false)
         .await?;
     Ok(output)
 }
 
 async fn records(host: &TestHost, calls: u64, logs: u64, limit: u32) -> Result<Records> {
-    host.host()
-        .records(RecordsPage { calls, logs, limit })
+    host.host
+        .records(RecordsPage {
+            calls,
+            logs,
+            limit,
+            replays: false,
+        })
         .await
 }
 
@@ -110,7 +115,7 @@ async fn records_answers_past_the_cursors_and_deletes_up_to_them() -> Result<()>
     assert!(words(&rest.logs)[0].contains("three"));
 
     // What was stored is gone from the host, and what was not is still there.
-    let (written, _) = host.host().calls(FIXTURE, page()).await?;
+    let (written, _) = host.host.calls(FIXTURE, page()).await?;
     assert_eq!(written.len(), 1);
     assert_eq!(written[0].id, rest.calls[0].call.id);
     assert_eq!(host.logs(FIXTURE, None).await?.len(), 1);
@@ -118,7 +123,7 @@ async fn records_answers_past_the_cursors_and_deletes_up_to_them() -> Result<()>
     let (calls, logs) = stored(&rest);
     let none = records(&host, calls, logs, 10).await?;
     assert!(none.calls.is_empty() && none.logs.is_empty());
-    assert!(host.host().calls(FIXTURE, page()).await?.0.is_empty());
+    assert!(host.host.calls(FIXTURE, page()).await?.0.is_empty());
     assert!(host.logs(FIXTURE, None).await?.is_empty());
     Ok(())
 }
@@ -154,16 +159,16 @@ async fn a_failed_calls_replay_outlives_its_deletion() -> Result<()> {
     let id = failed.calls[0].call.id;
     let (calls, logs) = stored(&failed);
     records(&host, calls, logs, 10).await?;
-    assert!(host.host().calls(FIXTURE, page()).await?.0.is_empty());
+    assert!(host.host.calls(FIXTURE, page()).await?.0.is_empty());
 
-    let input = host.host().call_input(FIXTURE, id).await?;
+    let input = host.host.call_input(FIXTURE, id).await?;
     assert_eq!(input.tool, "note");
     assert_eq!(input.args, r#"{"word":"fail"}"#);
     assert_eq!(
         input.caller.map(|caller| caller.id).as_deref(),
         Some("acct")
     );
-    host.host().call_tape(FIXTURE, id).await?;
+    host.host.call_tape(FIXTURE, id).await?;
     Ok(())
 }
 
@@ -178,16 +183,16 @@ async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
         200,
         r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title></channel></rss>"#,
     );
-    host.host()
+    host.host
         .set_cron("feed", "tick", Some("* * * * *".to_owned()))
         .await?;
     let wakes = host.wakes().await?;
     host.set_now(wakes[0].1);
     assert_eq!(host.fire().await?.len(), 1);
 
-    let unsaved = host.host().crons("feed").await?.crons;
+    let unsaved = host.host.crons("feed").await?.crons;
     host.flush().await?;
-    let written = host.host().crons("feed").await?.crons;
+    let written = host.host.crons("feed").await?.crons;
     let last = written[0].last.clone().expect("the tick ran");
     assert_eq!(last.tool, "tick");
     assert_eq!(
@@ -199,12 +204,108 @@ async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
     assert_eq!(pulled.calls.len(), 1);
     let (calls, logs) = stored(&pulled);
     records(&host, calls, logs, 10).await?;
-    assert!(host.host().calls("feed", page()).await?.0.is_empty());
+    assert!(host.host.calls("feed", page()).await?.0.is_empty());
 
-    let kept = host.host().crons("feed").await?.crons;
+    let kept = host.host.crons("feed").await?.crons;
     assert_eq!(
         serde_json::to_value(&kept[0].last)?,
         serde_json::to_value(&written[0].last)?
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn replay_artifacts_are_retried_until_their_cursor_is_acknowledged() -> Result<()> {
+    let host = fixture().await?;
+    note(&host, "fail").await?;
+    host.flush().await?;
+    let first = host
+        .host
+        .records(RecordsPage {
+            calls: 0,
+            logs: 0,
+            limit: 10,
+            replays: true,
+        })
+        .await?;
+    let failed = &first.calls[0];
+    let input = failed.input.as_ref().expect("failed input");
+    assert_eq!(input.tool, "note");
+    assert_eq!(input.args, r#"{"word":"fail"}"#);
+    assert_eq!(
+        input.digest,
+        host.host.call_input(FIXTURE, failed.call.id).await?.digest
+    );
+    let tape = failed.tape.as_ref().expect("failed tape");
+    assert_eq!(tape, &host.host.call_tape(FIXTURE, failed.call.id).await?);
+
+    let retry = host
+        .host
+        .records(RecordsPage {
+            calls: 0,
+            logs: 0,
+            limit: 10,
+            replays: true,
+        })
+        .await?;
+    assert_eq!(retry.calls[0].tape, failed.tape);
+    let (calls, logs) = stored(&first);
+    let next = host
+        .host
+        .records(RecordsPage {
+            calls,
+            logs,
+            limit: 10,
+            replays: true,
+        })
+        .await?;
+    assert!(next.calls.is_empty());
+    assert!(host.host.call_input(FIXTURE, failed.call.id).await.is_err());
+    assert!(host.host.call_tape(FIXTURE, failed.call.id).await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn replay_pages_bound_tapes_without_skipping_the_rest() -> Result<()> {
+    let host = fixture().await?;
+    const URL: &str = "http://127.0.0.1/large-failure";
+    host.arrange("GET", URL, 503, vec![b'x'; 3 << 20]);
+    for _ in 0..3 {
+        host.host
+            .call(
+                FIXTURE,
+                Some(&caller()),
+                "flaky",
+                format!(r#"{{"url":"{URL}"}}"#).into_bytes(),
+                false,
+            )
+            .await?;
+    }
+    host.flush().await?;
+    let first = host
+        .host
+        .records(RecordsPage {
+            calls: 0,
+            logs: 0,
+            limit: 100,
+            replays: true,
+        })
+        .await?;
+    assert!(first.more);
+    assert_eq!(first.calls.len(), 2);
+    let (calls, logs) = stored(&first);
+    let rest = host
+        .host
+        .records(RecordsPage {
+            calls,
+            logs,
+            limit: 100,
+            replays: true,
+        })
+        .await?;
+    assert!(!rest.more);
+    assert_eq!(rest.calls.len(), 1);
+    assert!(rest.calls[0].call.id > calls);
+    assert!(rest.calls[0].tape.is_some());
     Ok(())
 }

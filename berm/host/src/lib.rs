@@ -1,7 +1,7 @@
 //! The host every berm daemon runs: the services it holds, the state they
 //! commit, and the calls into them. A daemon builds a [`Host`] over its own
 //! [`Env`], authenticates its callers, nests [`router`] under the path it names
-//! services by and serves its own routes beside it; everything a program
+//! services by and serves its own routes beside it; everything a service
 //! observes is the host's.
 
 use axum::{
@@ -17,7 +17,7 @@ pub use api::{
     serve::{Named, Scoped, router, scope_router},
 };
 pub use config::Config;
-pub use env::{Clock, Edges, Env, Images, Observe, Peers, Secrets, System};
+pub use env::{Alone, Clock, Edges, Env, Images, Observe, Peers, Secrets, System};
 pub use host::{Host, Installed};
 pub use images::Stored;
 pub use state::store::Store;
@@ -35,17 +35,40 @@ mod wake;
 
 /// A refusal the caller can read, as `{"error": message}`.
 pub fn deny(status: StatusCode, message: impl Into<String>) -> Denied {
-    Denied(status, message.into())
+    Denied {
+        status,
+        message: message.into(),
+        explain: None,
+    }
 }
 
 #[derive(Debug)]
-pub struct Denied(pub StatusCode, pub String);
+pub struct Denied {
+    pub status: StatusCode,
+    pub message: String,
+    /// The error code explaining it, as `E0013`.
+    pub explain: Option<&'static str>,
+}
+
+impl Denied {
+    /// It, explained by `code`.
+    pub fn explained(self, code: &'static str) -> Self {
+        Self {
+            explain: Some(code),
+            ..self
+        }
+    }
+}
 
 impl IntoResponse for Denied {
     fn into_response(self) -> axum::response::Response {
-        let mut response = (self.0, Json(Failed { error: self.1 })).into_response();
+        let failed = Failed {
+            error: self.message,
+            explain: self.explain.map(str::to_owned),
+        };
+        let mut response = (self.status, Json(failed)).into_response();
         // Only a tool answers `405`, and every tool takes `POST`.
-        if self.0 == StatusCode::METHOD_NOT_ALLOWED {
+        if self.status == StatusCode::METHOD_NOT_ALLOWED {
             response
                 .headers_mut()
                 .insert(header::ALLOW, HeaderValue::from_static("POST"));
@@ -56,7 +79,7 @@ impl IntoResponse for Denied {
 
 impl fmt::Display for Denied {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.1)
+        f.write_str(&self.message)
     }
 }
 

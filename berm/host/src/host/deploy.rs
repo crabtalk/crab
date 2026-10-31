@@ -2,16 +2,16 @@
 
 use crate::{
     Denied, deny,
-    env::{Env, Images},
+    env::{Env, Images, Secrets},
     host::{self, Host},
     record::{meter, usage},
     state::service,
     wake::{cron, table},
 };
 use axum::http::StatusCode;
-use berm::{Program, database::Database};
+use berm::{Service, database::Database};
 use berm_api::{
-    Manifest, Surface,
+    Deps, Manifest, Surface,
     host::{
         Breaking, Broken, Checked, Deploy, Kind, LastUse, MAX_DATABASE_SIZE, MIN_DATABASE_SIZE,
         Outcome,
@@ -19,9 +19,20 @@ use berm_api::{
 };
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
+/// The error code a deploy refused for a budget past the host's most
+/// carries.
+const PAST_MOST: &str = "E0013";
+
+/// The error code a deploy refused for a host call this host does not serve
+/// carries.
+const MISSING_HOST_CALL: &str = "E0020";
+
+/// The error code a deploy refused for a required secret unset carries.
+const SECRETS_UNSET: &str = "E0021";
+
 /// A deploy that went live.
 pub struct Installed {
-    pub program: Arc<Program>,
+    pub service: Arc<Service>,
     /// The migrations it applied, a kit's as `{kit}/{name}`.
     pub migrations: Vec<String>,
 }
@@ -29,13 +40,13 @@ pub struct Installed {
 impl<E: Env> Host<E> {
     /// Run the index entry `deploy` names as `service`. Refused when it
     /// needs a syscall this host does not serve, or, unless `force`, when it
-    /// breaks a public tool or event of the program
+    /// breaks a public tool or event of the service
     /// it replaces that a caller used, with a call that was done, in the last
     /// [`usage::WINDOW`] days, but by the services `exempt` names. Refused too
     /// when its `size` is outside
     /// [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`] or below what its
     /// database holds. A refused deploy leaves the database held to the size
-    /// it was. A program whose image this host cannot read, such as one built
+    /// it was. A service whose image this host cannot read, such as one built
     /// against another ABI, is replaced as on a first deploy.
     ///
     /// `seed`, a SQLite file on the databases' filesystem, starts the
@@ -55,10 +66,32 @@ impl<E: Env> Host<E> {
             crons,
             size,
             stopped,
+            check_secrets,
             project,
             exempt,
+            vars,
         } = deploy;
         let (image, manifest) = self.image(&reference, &digest, size).await?;
+        let unset = match check_secrets {
+            true => self.unset(service, &manifest.deps).await?,
+            false => Vec::new(),
+        };
+        if !unset.is_empty() {
+            return Err(deny(
+                StatusCode::CONFLICT,
+                format!(
+                    "{service}: required secrets are unset: {}",
+                    unset.join(", ")
+                ),
+            )
+            .explained(SECRETS_UNSET));
+        }
+        for (var, value) in &vars {
+            manifest
+                .deps
+                .settable(var, value)
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{service}: {e:#}")))?;
+        }
 
         // The row is read under the lock, so the breaks are against what the
         // service runs, and the row is written only once the image has
@@ -120,10 +153,16 @@ impl<E: Env> Host<E> {
                 .filter(|spec| spec.deprecated)
                 .map(|spec| spec.name.clone())
                 .collect();
-            let program = self
-                .compile(key.clone(), image)
-                .await
-                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            let deployed = self.compile(key.clone(), image).await.map_err(|e| {
+                let denied = deny(StatusCode::BAD_REQUEST, format!("{e:#}"));
+                if e.downcast_ref::<berm::PastMost>().is_some() {
+                    denied.explained(PAST_MOST)
+                } else if e.downcast_ref::<berm::MissingHostCall>().is_some() {
+                    denied.explained(MISSING_HOST_CALL)
+                } else {
+                    denied
+                }
+            })?;
             service::install(
                 &self.store,
                 scope,
@@ -137,12 +176,14 @@ impl<E: Env> Host<E> {
                 crons,
                 stopped,
                 project,
+                manifest.deps.vars.keys().cloned().collect(),
+                vars,
                 (self.now)() as i64,
             )
             .await?;
             self.stops.mark(&key, stopped);
             Ok(Installed {
-                program,
+                service: deployed,
                 migrations,
             })
         }
@@ -159,19 +200,16 @@ impl<E: Env> Host<E> {
         {
             tracing::error!(service, error = %e, "the refused seed stays");
         }
-        if let Ok(Installed { program, .. }) = &installed {
+        if let Ok(Installed {
+            service: deployed, ..
+        }) = &installed
+        {
             self.waking.notify_one();
             // Stored bytes are otherwise sampled once a day, so a service
             // deployed or seeded after the day's sample would read as before.
             let today = self.today();
-            if let Err(e) = meter::sample(
-                &self.store,
-                service,
-                &self.databases,
-                program.bytes(),
-                today,
-            )
-            .await
+            if let Err(e) =
+                meter::sample(&self.store, service, &self.databases, deployed.bytes, today).await
             {
                 tracing::warn!(service, "sampling stored bytes failed: {e:#}");
             }
@@ -194,6 +232,19 @@ impl<E: Env> Host<E> {
         let (_, manifest) = self
             .image(&deploy.reference, &deploy.digest, deploy.size)
             .await?;
+        if deploy.check_secrets {
+            let unset = self.unset(service, &manifest.deps).await?;
+            if !unset.is_empty() {
+                return Err(deny(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "{service}: required secrets are unset: {}",
+                        unset.join(", ")
+                    ),
+                )
+                .explained(SECRETS_UNSET));
+            }
+        }
         let key = service.to_owned();
         let lock = self
             .deploying
@@ -245,15 +296,17 @@ impl<E: Env> Host<E> {
         }
         Ok(Checked {
             version: manifest.version.clone(),
-            calls: manifest.deps.programs.clone(),
+            calls: manifest.deps.calls.clone(),
             migrations,
             breaks,
+            secrets: manifest.deps.secrets.clone(),
+            required: manifest.deps.unset(&[]),
         })
     }
 
     /// The image `digest` names and its manifest, refused when `size` is
     /// outside [`MIN_DATABASE_SIZE`]..=[`MAX_DATABASE_SIZE`], the image is not
-    /// a program or it needs a syscall this host does not serve.
+    /// a service or it needs a syscall this host does not serve.
     async fn image(
         &self,
         reference: &str,
@@ -273,7 +326,7 @@ impl<E: Env> Host<E> {
             .pull(reference, digest)
             .await
             .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-        let manifest = Manifest::from_image(&image)
+        let manifest = Manifest::try_from(image.as_slice())
             .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
         self.served(&manifest)?;
         Ok((image, manifest))
@@ -308,30 +361,46 @@ impl<E: Env> Host<E> {
         ))
     }
 
-    /// The program `service` runs, none when it runs none or one this host
+    /// The service `service` runs, none when it runs none or one this host
     /// cannot read, such as one built against another ABI. Read under its
     /// deploy lock.
-    async fn current(&self, service: &str) -> Result<Option<Arc<Program>>, Denied> {
+    async fn current(&self, service: &str) -> Result<Option<Arc<Service>>, Denied> {
         let (scope, name) = host::split(service);
         let Some(row) = service::row(&self.store, scope, name).await? else {
             return Ok(None);
         };
         let (reference, digest) = (row.reference.clone(), row.digest.clone());
         match self.load(row).await {
-            Ok(program) => Ok(Some(program)),
+            Ok(deployed) => Ok(Some(deployed)),
             Err(e) => {
                 let image = self
                     .images
                     .pull(&reference, &digest)
                     .await
                     .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-                if Manifest::from_image(&image).is_ok() {
+                if Manifest::try_from(image.as_slice()).is_ok() {
                     return Err(deny(StatusCode::BAD_GATEWAY, format!("{e:#}")));
                 }
-                tracing::warn!(service, "replacing a program this host cannot read: {e:#}");
+                tracing::warn!(service, "replacing a service this host cannot read: {e:#}");
                 Ok(None)
             }
         }
+    }
+
+    /// The secrets of `deps` a required credential holds that `service` has
+    /// none of.
+    async fn unset(&self, service: &str, deps: &Deps) -> Result<Vec<String>, Denied> {
+        let set = self
+            .secrets
+            .names(service)
+            .await
+            .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
+        Ok(deps.unset(&set))
+    }
+
+    /// Start a service explicitly stopped by its owner.
+    pub async fn start(&self, service: &str) -> Result<bool, Denied> {
+        Ok(self.switch(service, true).await?)
     }
 
     /// Refuses `manifest` when it needs a syscall this host does not serve.
@@ -409,19 +478,18 @@ impl<E: Env> Host<E> {
         Ok(cron_tools)
     }
 
-    /// How `manifest` breaks a public tool or event of `current`, the program
+    /// How `manifest` breaks a public tool or event of `current`, the service
     /// `service` runs, that a caller used, with a call that was done, in the
     /// last [`usage::WINDOW`] days, with each caller and its last call.
     async fn broken(
         &self,
         service: &str,
-        current: &Program,
+        current: &Service,
         manifest: &Manifest,
     ) -> Result<Vec<Broken>, Denied> {
         let (scope, name) = host::split(service);
-        let _reading = self.flushing.read().await;
         let mut breaks = Vec::new();
-        for broken in current.manifest().breaks(manifest) {
+        for broken in current.manifest.breaks(manifest) {
             let of = match &broken.surface {
                 Surface::Tool(tool) => (Kind::Tool, tool.as_str(), Outcome::Done),
                 Surface::Event(event) => (Kind::Event, event.as_str(), Outcome::Done),

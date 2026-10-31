@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// A copy of `service`'s database on `host`, at `to`.
 fn snapshot(host: &TestHost, service: &str, to: &Path) -> Result<PathBuf> {
     let _ = std::fs::remove_file(to);
-    Connection::open(host.host().databases.path(service))?
+    Connection::open(host.host.databases.path(service))?
         .execute("VACUUM INTO ?1", [to.to_string_lossy()])?;
     Ok(to.to_owned())
 }
@@ -86,7 +86,7 @@ async fn a_seed_the_image_does_not_migrate_is_deleted() -> Result<()> {
         format!("{error:#}").contains("migration 0001_words was applied"),
         "{error:#}"
     );
-    assert!(!host.host().databases.path("keeper").exists());
+    assert!(!host.host.databases.path("keeper").exists());
     host.deploy("keeper", &image).await?;
     assert_eq!(count(&host, "keeper").await?, "0");
     Ok(())
@@ -110,7 +110,7 @@ async fn a_seeded_service_is_measured_at_its_seed() -> Result<()> {
 
     let host = TestHost::open(0).await?;
     host.seeded("keeper", &image, Some(&seed)).await?;
-    let meters = host.host().meters("keeper").await?;
+    let meters = host.host.meters("keeper").await?;
     let stored = meters.last().map_or(0, |day| day.stored);
     assert!(stored >= size, "{stored} stored of a {size}-byte seed");
     Ok(())

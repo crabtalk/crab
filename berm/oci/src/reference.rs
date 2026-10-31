@@ -1,6 +1,7 @@
 //! Where an image lives.
 
 use anyhow::{Context, Result, bail};
+use berm_api::digest;
 use std::{fmt, str::FromStr};
 
 /// `ghcr.io/org/name:tag`, or `…@sha256:…`.
@@ -15,8 +16,7 @@ impl FromStr for Reference {
     type Err = anyhow::Error;
 
     /// Docker's rule: the first segment is a registry when it looks like a
-    /// host. Unlike Docker, an unqualified name is refused rather than sent to
-    /// a default registry — berm has no reason to pick one.
+    /// host. A name with no registry is refused.
     fn from_str(text: &str) -> Result<Self> {
         let (registry, rest) = text
             .split_once('/')
@@ -27,11 +27,8 @@ impl FromStr for Reference {
             None => rest.rsplit_once(':').unwrap_or((rest, "latest")),
         };
 
-        // A host is case-insensitive and a repository has to be lowercase, so
-        // both are folded rather than refused: a GitHub org spelled with
-        // capitals names the same package either way, and asking someone to
-        // retype it would buy nothing. The tag is left alone — its grammar
-        // admits uppercase, and `:V1` is a different tag from `:v1`.
+        // The registry and repository are folded to lowercase. The tag is left
+        // alone: `:V1` is a different tag from `:v1`.
         let registry = registry.to_ascii_lowercase();
         let repository = repository.to_ascii_lowercase();
 
@@ -117,7 +114,7 @@ fn host(text: &str) -> bool {
 
 impl fmt::Display for Reference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let held = if self.reference.starts_with("sha256:") {
+        let held = if self.reference.starts_with(digest::PREFIX) {
             '@'
         } else {
             ':'

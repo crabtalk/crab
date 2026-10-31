@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 use berm_api::{
-    Budget, Cron, Listing, Program, Runtime, Terms,
+    Cron, Listing, Runtime, Service, Setting, Terms, VarValue,
     host::{
         CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
         Usage, Wakes,
@@ -62,8 +62,10 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
             "/tools/{tool}",
             post(call::<E>).get(query::<E>).patch(update::<E>),
         )
-        .route("/tools/{tool}/budget", put(budget::<E>))
         .route("/tools/{tool}/cron", put(cron::<E>))
+        .route("/tools/{tool}/webhook", post(webhook::<E>))
+        .route("/vars", get(vars::<E>))
+        .route("/vars/{var}", put(var::<E>))
         .route("/stripe", post(stripe::<E>))
         .with_state(host)
 }
@@ -79,7 +81,7 @@ async fn listing<E: Env>(
 async fn idl<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
-) -> Result<Json<Program>, Denied> {
+) -> Result<Json<Service>, Denied> {
     Ok(Json(host.idl(&service)?))
 }
 
@@ -259,8 +261,8 @@ async fn wakes<E: Env>(
     Ok(Json(host.armed(&service).await?))
 }
 
-/// Run one tool. `POST` because an invocation is not idempotent, and the body
-/// is the argument object byte for byte as the program will read it.
+/// Run one tool. The body is the argument object byte for byte as the service
+/// will read it.
 async fn call<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
@@ -280,6 +282,12 @@ async fn call<E: Env>(
 #[derive(Deserialize)]
 struct Tool {
     tool: String,
+}
+
+/// The var a route names, among the daemon's own path parameters.
+#[derive(Deserialize)]
+struct Var {
+    var: String,
 }
 
 /// The call a path names, beside whatever names its service.
@@ -337,6 +345,18 @@ async fn stripe<E: Env>(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Hand a webhook to the service's `#[tool(webhook)]` tool `tool`, the body byte
+/// for byte as it was sent.
+async fn webhook<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(Tool { tool }): Path<Tool>,
+    event: Bytes,
+) -> Result<StatusCode, Denied> {
+    host.webhook(&service, &tool, event.to_vec()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Set or clear a deprecated tool's sunset.
 async fn update<E: Env>(
     State(host): State<Host<E>>,
@@ -348,18 +368,24 @@ async fn update<E: Env>(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Set what one call of a tool may use, from its next call.
-async fn budget<E: Env>(
+/// Set a cron tool's expression, until a deploy's config sets another.
+async fn vars<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
-    Path(Tool { tool }): Path<Tool>,
-    Json(budget): Json<Budget>,
+) -> Result<Json<Vec<Setting>>, Denied> {
+    Ok(Json(host.vars(&service).await?))
+}
+
+async fn var<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(Var { var }): Path<Var>,
+    Json(VarValue { value }): Json<VarValue>,
 ) -> Result<StatusCode, Denied> {
-    host.set_budget(&service, &tool, budget).await?;
+    host.set_var(&service, &var, value).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Set a cron tool's expression, until a deploy's config sets another.
 async fn cron<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,

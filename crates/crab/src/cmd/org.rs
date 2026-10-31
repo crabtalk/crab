@@ -1,6 +1,6 @@
 //! `crab org` — orgs, their members and invitations.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{
     account::org::{
@@ -11,9 +11,9 @@ use crabtalk_sdk::{
 };
 
 pub fn ls(client: &Client, json: bool) -> Result<()> {
-    let orgs = utils::wait(client.orgs())?;
+    let orgs = runtime::wait(client.orgs())?;
     if json {
-        return utils::json(&orgs);
+        return terminal::json(&orgs);
     }
     for org in &orgs {
         println!(
@@ -27,23 +27,23 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
 }
 
 pub fn create(client: &Client, handle: &str, name: Option<&str>, json: bool) -> Result<()> {
-    let created = utils::wait(client.create_org(&CreateOrgRequest {
+    let created = runtime::wait(client.create_org(&CreateOrgRequest {
         name: name.unwrap_or(handle).to_owned(),
         handle: handle.to_owned(),
         tier: None,
         client: None,
     }))?;
     if json {
-        return utils::json(&created);
+        return terminal::json(&created);
     }
     eprintln!("org {handle} made; you own it");
     Ok(())
 }
 
 pub fn info(client: &Client, org: &str, json: bool) -> Result<()> {
-    let view = utils::wait(client.org(org))?;
+    let view = runtime::wait(client.org(org))?;
     if json {
-        return utils::json(&view);
+        return terminal::json(&view);
     }
     let account = &view.account;
     println!(
@@ -60,7 +60,7 @@ pub fn info(client: &Client, org: &str, json: bool) -> Result<()> {
 }
 
 pub fn update(client: &Client, org: &str, handle: Option<&str>, name: Option<&str>) -> Result<()> {
-    utils::wait(client.update_org(
+    runtime::wait(client.update_org(
         org,
         &UpdateOrgRequest {
             handle: handle.map(str::to_owned),
@@ -73,16 +73,16 @@ pub fn update(client: &Client, org: &str, handle: Option<&str>, name: Option<&st
 }
 
 pub fn rm(client: &Client, org: &str, yes: bool) -> Result<()> {
-    utils::confirm(yes, &format!("delete org {org} and everything it owns"))?;
-    utils::wait(client.delete_org(org))?;
+    terminal::confirm(yes, &format!("delete org {org} and everything it owns"))?;
+    runtime::wait(client.delete_org(org))?;
     eprintln!("deleted {org}");
     Ok(())
 }
 
 pub fn members(client: &Client, org: &str, json: bool) -> Result<()> {
-    let members = utils::wait(client.members(org))?;
+    let members = runtime::wait(client.members(org))?;
     if json {
-        return utils::json(&members);
+        return terminal::json(&members);
     }
     for member in &members {
         println!(
@@ -103,7 +103,7 @@ fn role(owner: bool) -> Role {
 
 pub fn add(client: &Client, org: &str, email: &str, owner: bool) -> Result<()> {
     let role = role(owner);
-    utils::wait(client.add_member(
+    runtime::wait(client.add_member(
         org,
         &AddMemberRequest {
             email: email.to_owned(),
@@ -116,20 +116,20 @@ pub fn add(client: &Client, org: &str, email: &str, owner: bool) -> Result<()> {
 
 pub fn set_role(client: &Client, org: &str, member: &str, owner: bool) -> Result<()> {
     let role = role(owner);
-    utils::wait(client.update_member(org, member, &UpdateMemberRequest { role }))?;
+    runtime::wait(client.update_member(org, member, &UpdateMemberRequest { role }))?;
     eprintln!("{member} is {role} of {org}");
     Ok(())
 }
 
 pub fn remove(client: &Client, org: &str, member: &str, yes: bool) -> Result<()> {
-    utils::confirm(yes, &format!("remove {member} from {org}"))?;
-    utils::wait(client.remove_member(org, member))?;
+    terminal::confirm(yes, &format!("remove {member} from {org}"))?;
+    runtime::wait(client.remove_member(org, member))?;
     eprintln!("removed {member} from {org}");
     Ok(())
 }
 
 pub fn invite(client: &Client, org: &str, email: &str, owner: bool, json: bool) -> Result<()> {
-    let invite = utils::wait(client.invite(
+    let invite = runtime::wait(client.invite(
         org,
         &InviteRequest {
             email: email.to_owned(),
@@ -137,7 +137,7 @@ pub fn invite(client: &Client, org: &str, email: &str, owner: bool, json: bool) 
         },
     ))?;
     if json {
-        return utils::json(&invite);
+        return terminal::json(&invite);
     }
     println!("{}", invite.token);
     eprintln!("send {email} the token above; `crab invites accept <token>` joins {org}");
@@ -145,9 +145,9 @@ pub fn invite(client: &Client, org: &str, email: &str, owner: bool, json: bool) 
 }
 
 pub fn invites(client: &Client, org: &str, json: bool) -> Result<()> {
-    let invites = utils::wait(client.invites(org))?;
+    let invites = runtime::wait(client.invites(org))?;
     if json {
-        return utils::json(&invites);
+        return terminal::json(&invites);
     }
     for invite in &invites {
         println!(
@@ -162,7 +162,7 @@ pub fn invites(client: &Client, org: &str, json: bool) -> Result<()> {
 }
 
 pub fn uninvite(client: &Client, org: &str, token: &str) -> Result<()> {
-    utils::wait(client.revoke_invite(org, token))?;
+    runtime::wait(client.revoke_invite(org, token))?;
     eprintln!("revoked the invitation");
     Ok(())
 }

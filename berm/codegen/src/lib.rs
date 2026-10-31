@@ -1,21 +1,37 @@
-//! `#[tool]` — turns a function into a tool of a loadable program.
+//! `#[tool]` — turns a function into a tool of a loadable service.
 //!
 //! `#[tool]`, `#[derive(Schema)]`, `#[event]` and `#[error_code]` go on items
-//! anywhere in the program's crate.
+//! anywhere in the service's crate.
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemFn, parse_macro_input};
+use syn::{DeriveInput, Expr, ExprLit, ItemFn, Lit, parse_macro_input};
 
 mod declare;
 mod schema;
 mod syscalls;
 mod tool;
-mod utils;
 
-/// The custom section `#[tool]` and `#[event]` write their records to.
-const ABI_SECTION: &str = ".berm.abi";
+/// A doc comment, joined into one line.
+fn docs(attrs: &[syn::Attribute]) -> String {
+    let mut description = String::new();
+    for attribute in attrs {
+        if attribute.path().is_ident("doc")
+            && let syn::Meta::NameValue(pair) = &attribute.meta
+            && let Expr::Lit(ExprLit {
+                lit: Lit::Str(line),
+                ..
+            }) = &pair.value
+        {
+            if !description.is_empty() {
+                description.push(' ');
+            }
+            description.push_str(line.value().trim());
+        }
+    }
+    description.trim().to_owned()
+}
 
-/// Declare the syscalls a program may call, emitting a stub for each.
+/// Declare the syscalls a service may call, emitting a stub for each.
 ///
 /// ```ignore
 /// berm_lang::syscalls! {
@@ -29,7 +45,7 @@ const ABI_SECTION: &str = ".berm.abi";
 ///
 /// [`hosts!`] takes the same declaration and emits what a host registers under.
 /// Each side writes it in its own crate, and drift is caught on the first call:
-/// a renamed call hashes to a number nothing is registered for.
+/// a renamed call is an import nothing is registered for, refused at deploy.
 #[proc_macro]
 pub fn syscalls(input: TokenStream) -> TokenStream {
     parse_macro_input!(input as syscalls::Declaration)
@@ -37,19 +53,19 @@ pub fn syscalls(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Typed calls, types and events for another program, from its IDL.
+/// Typed calls, types and events for another service, from its IDL.
 ///
 /// ```ignore
-/// berm_lang::declare_program!(hn);
+/// berm_lang::declare_service!(hn);
 ///
 /// let lanes = hn::calls::lanes()?;
 /// ```
 ///
-/// Reads `idls/hn.json`, the IDL of the program deployed as `hn`, from the crate's
+/// Reads `idls/hn.json`, the IDL of the service deployed as `hn`, from the crate's
 /// directory or the nearest ancestor that has one. A call takes the tool's
 /// arguments in the IDL's key order, an optional one as an `Option`.
 #[proc_macro]
-pub fn declare_program(input: TokenStream) -> TokenStream {
+pub fn declare_service(input: TokenStream) -> TokenStream {
     let name = parse_macro_input!(input as syn::Ident);
     declare::expand(&name)
         .unwrap_or_else(syn::Error::into_compile_error)
@@ -65,13 +81,13 @@ pub fn hosts(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Make a function a tool of the program its crate builds.
+/// Make a function a tool of the service its crate builds.
 ///
 /// ```ignore
 /// use berm_lang::{Result, tool};
 ///
 /// /// Greets `name`.
-/// #[tool(public)]
+/// #[tool]
 /// pub fn greet(
 ///     /// Who to greet.
 ///     name: String,
@@ -84,28 +100,19 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// properties of its arguments, each a `Schema` type, and a parameter's doc
 /// comment is its description. It returns `berm_lang::Result<T>`: `T` is its
 /// reply, written as JSON, and `()` replies nothing. It is exported as
-/// `berm_tool_<name>`.
-///
-/// **A tool is internal unless marked `public`.** An internal tool is only
-/// called by the host, for the program's own wakes, crons and Stripe events. A
-/// `public` tool can be called by any account the host authenticates and any
-/// program allowed to reach this one, with arguments the caller chooses.
-/// `berm_lang::caller()` says who called. `callers(services)` limits a public
-/// tool to programs, `callers(accounts)` to callers from outside. `anonymous`
-/// lets a call from outside with no caller reach a public tool. `query` marks
-/// it read-only: the host refuses its writes, logs and wakes. `#[deprecated]`
-/// on a tool marks it so in the manifest.
-///
-/// `cron` marks a tool its host calls when the cron expression its deploy or
-/// its owner sets fires. A cron tool takes no parameters and is not `public`.
-///
-/// `stripe` marks the tool its host calls with each Stripe event its daemon
-/// takes for the program: the event object is the argument object, so the
-/// tool's parameters are the event's fields it reads. A program has at most
-/// one, and it is not `public`.
-///
-/// Its record names the package it is compiled in. An image holding a tool of
-/// a package other than the program's is refused.
+/// `berm_tool_<name>`. Who may call it is `access` in its `[tools]` table of
+/// `crab.toml`, which the build writes into the manifest; without one it is
+/// internal, only called by the host for the service's own wakes, crons,
+/// Stripe events and webhooks. `query` marks it read-only: the host refuses its writes,
+/// logs and wakes. `cron` marks a tool its host calls when the cron
+/// expression its deploy or its owner sets fires; it takes no parameters.
+/// `stripe` marks the one tool its host calls with each Stripe event its
+/// daemon takes for the service, the event object as the argument object.
+/// `webhook` marks a tool its host calls with each webhook its daemon verified
+/// for that tool, the body as the argument object. A tool is at most one of
+/// `cron`, `stripe` and `webhook`, and none of them takes `access`. `#[deprecated]` marks a
+/// tool so in the manifest. An image holding a tool of a package other than
+/// the service's is refused.
 #[proc_macro_attribute]
 pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {
     let mut options = tool::Options::default();
@@ -130,7 +137,7 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 }
 
 /// A typed log, emitted with `berm_lang::emit!` under the struct's name and
-/// listed in the program's manifest. Its doc comment is what a reader of the
+/// listed in the service's manifest. Its doc comment is what a reader of the
 /// logs is told it means; `#[deprecated]` marks it so in the manifest.
 #[proc_macro_attribute]
 pub fn event(args: TokenStream, item: TokenStream) -> TokenStream {
@@ -140,7 +147,7 @@ pub fn event(args: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// An enum of a program's failures. Each variant takes `#[msg("…")]`, the
+/// An enum of a service's failures. Each variant takes `#[msg("…")]`, the
 /// message a tool failing with it answers, and converts into
 /// `berm_lang::Error`.
 #[proc_macro_attribute]

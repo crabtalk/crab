@@ -4,7 +4,7 @@
 //! off it. A local host answers Cloud's service paths for one account,
 //! [`LOCAL`], and none of its account routes.
 
-use crate::error::{ApiError, ErrorResponse};
+use crate::error::{ApiError, ErrorResponse, RequestLink};
 use reqwest::{Method, RequestBuilder, Response, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, de::DeserializeOwned};
 use std::{fmt, time::Duration};
@@ -50,6 +50,10 @@ pub enum Error {
         message: String,
         /// When the condition self-resolves, in Unix seconds.
         reset_at: Option<i64>,
+        /// The error code explaining it, as `E0001`.
+        explain: Option<String>,
+        /// The request a person completes to lift the refusal.
+        request: Option<Box<RequestLink>>,
     },
     /// The call does not apply to this kind of host.
     Host(&'static str),
@@ -183,16 +187,25 @@ impl Error {
     /// sent one, the plain envelope where it sent that, and the body verbatim
     /// when it is neither.
     pub(crate) fn refusal(status: StatusCode, body: String) -> Self {
-        let (code, message, reset_at) = match serde_json::from_str::<Refusal>(&body) {
-            Ok(Refusal::Structured(e)) => (Some(e.error.code), e.error.message, e.error.reset_at),
-            Ok(Refusal::Plain(e)) => (None, e.error, None),
-            Err(_) => (None, body, None),
-        };
+        let (code, message, reset_at, explain, request) =
+            match serde_json::from_str::<Refusal>(&body) {
+                Ok(Refusal::Structured(e)) => (
+                    Some(e.error.code),
+                    e.error.message,
+                    e.error.reset_at,
+                    e.error.explain,
+                    None,
+                ),
+                Ok(Refusal::Plain(e)) => (None, e.error, None, e.explain, e.request.map(Box::new)),
+                Err(_) => (None, body, None, None, None),
+            };
         Self::Api {
             status: status.as_u16(),
             code,
             message,
             reset_at,
+            explain,
+            request,
         }
     }
 
@@ -226,13 +239,20 @@ impl fmt::Display for Error {
             Self::Transport(_) => f.write_str("cannot reach the host"),
             Self::Api {
                 status,
-                code: Some(code),
+                code,
                 message,
+                explain,
                 ..
-            } => write!(f, "{status} {code}: {message}"),
-            Self::Api {
-                status, message, ..
-            } => write!(f, "{status}: {message}"),
+            } => {
+                write!(f, "{status}")?;
+                if let Some(explain) = explain {
+                    write!(f, " [{explain}]")?;
+                }
+                if let Some(code) = code {
+                    write!(f, " {code}")?;
+                }
+                write!(f, ": {message}")
+            }
             Self::Host(e) => f.write_str(e),
             Self::Decode(e) => write!(f, "decoding the response: {e}"),
         }

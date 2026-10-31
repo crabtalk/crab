@@ -1,8 +1,8 @@
 //! A robots.txt, read as RFC 9309 says: the group for a crawler's token, else
 //! the group for `*`, its rules matched longest first, `allow` winning a tie.
 
-use alloc::{format, string::String, vec::Vec};
-use url::Url;
+use alloc::{borrow::Cow, string::String, vec::Vec};
+use url::{Position, Url};
 
 /// What a crawler reads out of a robots.txt.
 #[derive(Default)]
@@ -48,7 +48,7 @@ impl Robots {
                 if value.is_empty() {
                     continue;
                 }
-                let rule = (is("allow"), encoded(value));
+                let rule = (is("allow"), encoded(value).into_owned());
                 if agents.iter().any(|agent| agent.eq_ignore_ascii_case(token)) {
                     named.push(rule.clone());
                 }
@@ -63,10 +63,7 @@ impl Robots {
 
     /// Whether the crawler may fetch `url`, matched by its path and query.
     pub fn allows(&self, url: &Url) -> bool {
-        let path = encoded(&match url.query() {
-            Some(query) => format!("{}?{query}", url.path()),
-            None => String::from(url.path()),
-        });
+        let path = encoded(&url[Position::BeforePath..Position::AfterQuery]);
         self.rules
             .iter()
             .filter(|(_, pattern)| matches(pattern.as_bytes(), path.as_bytes()))
@@ -77,26 +74,38 @@ impl Robots {
 
 /// `text` with each octet outside ASCII percent-encoded and the hex digits of
 /// each `%XX` already in it uppercased, as RFC 9309 §2.2.2 compares paths.
-fn encoded(text: &str) -> String {
+fn encoded(text: &str) -> Cow<'_, str> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let bytes = text.as_bytes();
-    let mut encoded = String::with_capacity(text.len());
-    for (at, &byte) in bytes.iter().enumerate() {
-        // Whether `byte` is a hex digit of a `%XX` begun one or two before.
-        let escaped = (1..=2).any(|back| {
-            at.checked_sub(back).is_some_and(|start| {
-                bytes[start] == b'%'
-                    && bytes
-                        .get(start + 1..start + 3)
-                        .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit))
-            })
-        });
-        match byte {
-            0x80.. => encoded.push_str(&format!("%{byte:02X}")),
-            _ if escaped => encoded.push(char::from(byte.to_ascii_uppercase())),
-            _ => encoded.push(char::from(byte)),
-        }
+    if bytes.iter().all(|&byte| byte.is_ascii() && byte != b'%') {
+        return Cow::Borrowed(text);
     }
-    encoded
+    let mut encoded = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while let Some(&byte) = bytes.get(at) {
+        match byte {
+            0x80.. => encoded.extend([
+                b'%',
+                HEX[usize::from(byte >> 4)],
+                HEX[usize::from(byte & 15)],
+            ]),
+            b'%' if bytes
+                .get(at + 1..at + 3)
+                .is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit)) =>
+            {
+                encoded.extend([
+                    b'%',
+                    bytes[at + 1].to_ascii_uppercase(),
+                    bytes[at + 2].to_ascii_uppercase(),
+                ]);
+                at += 2;
+            }
+            _ => encoded.push(byte),
+        }
+        at += 1;
+    }
+    // Every byte pushed is ASCII.
+    Cow::Owned(String::from_utf8(encoded).unwrap_or_default())
 }
 
 /// Whether `pattern`, with `*` for any run and a final `$` for the end,

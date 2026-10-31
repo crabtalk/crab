@@ -112,10 +112,7 @@ pub fn unescape(s: &str) -> String {
 /// assert_eq!(crab_html::title("<title> Fish &amp;\n chips </title>").as_deref(), Some("Fish & chips"));
 /// ```
 pub fn title(html: &str) -> Option<String> {
-    let open = find_ignore_case(html, "<title")?;
-    let start = open + tag_end(&html[open..]) + 1;
-    let end = start + find_ignore_case(html.get(start..)?, "</title")?;
-    collapse(&unescape(&html[start..end]))
+    scan(html, true, &[]).title
 }
 
 /// The `content` of the first `<meta>` whose `property` or `name` is
@@ -127,24 +124,82 @@ pub fn title(html: &str) -> Option<String> {
 /// assert_eq!(crab_html::meta(page, "og:title").as_deref(), Some("Fish & chips"));
 /// ```
 pub fn meta(html: &str, property: &str) -> Option<String> {
+    scan(html, false, &[property]).metas.pop().flatten()
+}
+
+/// What [`title`] and [`meta`] answer of a page, read in one pass.
+pub struct Head {
+    pub title: Option<String>,
+    /// What [`meta`] answers for each property asked, in the order asked.
+    pub metas: Vec<Option<String>>,
+}
+
+/// [`title`] and [`meta`] for each of `properties` of `html`, read in one pass
+/// that ends once each is found.
+///
+/// ```
+/// let page = r#"<title>Fish</title><meta name="description" content="Chips">"#;
+/// let head = crab_html::head(page, &["og:title", "description"]);
+/// assert_eq!(head.title.as_deref(), Some("Fish"));
+/// assert_eq!(head.metas, [None, Some(String::from("Chips"))]);
+/// ```
+pub fn head(html: &str, properties: &[&str]) -> Head {
+    scan(html, true, properties)
+}
+
+/// [`head`], reading the title only when `titled`.
+fn scan(html: &str, titled: bool, properties: &[&str]) -> Head {
+    let bytes = html.as_bytes();
+    let mut head = Head {
+        title: None,
+        metas: properties.iter().map(|_| None).collect(),
+    };
+    let mut titled = titled;
+    let mut wanted = properties.len();
+    // Where the next `<meta` may start: past the last one's tag.
+    let mut metas_from = 0;
     let mut at = 0;
-    while let Some(found) = find_ignore_case(&html[at..], "<meta") {
-        let start = at + found + "<meta".len();
-        let end = start + tag_end(&html[start..]);
-        at = end;
-        let tag = &html[start..end];
-        let named = ["property", "name"].iter().any(|key| {
-            attribute(tag, key).is_some_and(|value| value.eq_ignore_ascii_case(property))
-        });
-        if !named {
+    while titled || wanted > 0 {
+        let Some(found) = bytes[at..].iter().position(|&b| b == b'<') else {
+            break;
+        };
+        let mark = at + found;
+        at = mark + 1;
+        let rest = &bytes[mark..];
+        if titled && starts_ignore_case(rest, "<title") {
+            titled = false;
+            let start = mark + tag_end(&html[mark..]) + 1;
+            head.title = html.get(start..).and_then(|inner| {
+                let end = start + find_ignore_case(inner, "</title")?;
+                collapse(&unescape(&html[start..end]))
+            });
+        }
+        if wanted == 0 || mark < metas_from || !starts_ignore_case(rest, "<meta") {
             continue;
         }
-        let content = collapse(&unescape(attribute(tag, "content").unwrap_or_default()));
-        if content.is_some() {
-            return content;
+        let start = mark + "<meta".len();
+        let end = start + tag_end(&html[start..]);
+        metas_from = end;
+        let tag = &html[start..end];
+        let mut content = None;
+        for (property, found) in properties.iter().zip(&mut head.metas) {
+            let named = found.is_none()
+                && ["property", "name"].iter().any(|key| {
+                    attribute(tag, key).is_some_and(|value| value.eq_ignore_ascii_case(property))
+                });
+            if !named {
+                continue;
+            }
+            let content = content.get_or_insert_with(|| {
+                collapse(&unescape(attribute(tag, "content").unwrap_or_default()))
+            });
+            if content.is_some() {
+                *found = content.clone();
+                wanted -= 1;
+            }
         }
     }
-    None
+    head
 }
 
 /// A link on a page: its `href` with entities decoded, and its text.
@@ -273,9 +328,28 @@ fn tag_end(s: &str) -> usize {
 /// The offset of the first match of `needle`, an ASCII lowercase string, in
 /// `s`, ASCII case ignored.
 fn find_ignore_case(s: &str, needle: &str) -> Option<usize> {
-    s.as_bytes()
-        .windows(needle.len())
-        .position(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+    let bytes = s.as_bytes();
+    let first = *needle.as_bytes().first()?;
+    let mut at = 0;
+    while let Some(found) = bytes[at..]
+        .iter()
+        .position(|b| b.eq_ignore_ascii_case(&first))
+    {
+        let mark = at + found;
+        if starts_ignore_case(&bytes[mark..], needle) {
+            return Some(mark);
+        }
+        at = mark + 1;
+    }
+    None
+}
+
+/// Whether `bytes` starts with `prefix`, an ASCII lowercase string, ASCII case
+/// ignored.
+fn starts_ignore_case(bytes: &[u8], prefix: &str) -> bool {
+    bytes
+        .get(..prefix.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(prefix.as_bytes()))
 }
 
 /// The offset of the first `<name` or `</name` in `s`, `name` an ASCII

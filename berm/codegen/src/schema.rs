@@ -1,7 +1,7 @@
 //! `#[derive(Schema)]`: a type's JSON Schema, and the serde impls that read
 //! and write it as that schema says.
 
-use crate::{ABI_SECTION, utils};
+use berm_abi::ABI_SECTION;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, ext::IdentExt};
@@ -26,7 +26,10 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
             };
             let shapes = fields.named.iter().map(|field| {
                 let name = field.ident.as_ref().expect("named").unraw().to_string();
-                let description = utils::escape(&utils::docs(&field.attrs));
+                let description = match crate::docs(&field.attrs) {
+                    docs if docs.is_empty() => docs,
+                    docs => serde_json::Value::from(docs).to_string(),
+                };
                 let ty = &field.ty;
                 quote! {
                     ::berm_lang::schema::Field {
@@ -129,7 +132,7 @@ pub fn event(mut item: syn::ItemStruct) -> syn::Result<TokenStream> {
         true => r#","deprecated":true"#,
         false => "",
     };
-    let description = utils::docs(&item.attrs);
+    let description = crate::docs(&item.attrs);
     if description.is_empty() {
         return Err(syn::Error::new_spanned(
             &item.ident,
@@ -139,8 +142,8 @@ pub fn event(mut item: syn::ItemStruct) -> syn::Result<TokenStream> {
     let ident = &item.ident;
     let name = ident.to_string();
     let head = format!(
-        r#"{{"event":{{"name":"{name}","description":"{}","fields":"#,
-        utils::escape(&description)
+        r#"{{"event":{{"name":"{name}","description":{},"fields":"#,
+        serde_json::Value::from(description)
     );
     let tail = format!("{deprecated}}}}}");
 

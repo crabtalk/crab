@@ -148,7 +148,12 @@ impl Service<Request> for Fetch {
                 })
                 .collect();
             let cut = request.limit.map(|limit| limit.min(MAX_BODY));
-            let mut body = Vec::new();
+            let capacity = response.content_length().map_or(0, |length| {
+                usize::try_from(length)
+                    .unwrap_or(usize::MAX)
+                    .min(cut.unwrap_or(MAX_BODY))
+            });
+            let mut body = Vec::with_capacity(capacity);
             while let Some(chunk) = response.chunk().await? {
                 if body.len() + chunk.len() > cut.unwrap_or(MAX_BODY) {
                     let Some(cut) = cut else {

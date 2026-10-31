@@ -1,5 +1,5 @@
-//! An incremental crawler as a kit: the domains its program watches, each
-//! site's robots.txt and sitemaps, and the pages of the kinds the program
+//! An incremental crawler as a kit: the domains its service watches, each
+//! site's robots.txt and sitemaps, and the pages of the kinds the service
 //! names, fetched on its schedule into its database. Its tables are
 //! `crawl_sites`, `crawl_urls` and `crawl_pages`.
 //!
@@ -42,7 +42,7 @@ pub struct Schedule {
     /// HTML costs about 114 wasm instructions a byte to read (measured
     /// 2026-10-21), about 11ns of CPU at 10,000 instructions a microsecond.
     pub html: usize,
-    /// Bytes of HTML a page is read for, unless its program listed it with
+    /// Bytes of HTML a page is read for, unless its service listed it with
     /// its own. A page listed with more than the tick's HTML has left is left
     /// due, unless it is the tick's first, which is read past `html`.
     pub page: usize,

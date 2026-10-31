@@ -37,6 +37,16 @@ pub struct Site {
     pub urls: Result<Vec<Listed>, String>,
 }
 
+impl Site {
+    /// Whether `robots` holds all of the robots.txt read: shorter than any
+    /// text cut at [`ROBOTS`] bytes.
+    pub fn whole(&self) -> bool {
+        self.robots
+            .as_ref()
+            .is_none_or(|text| text.len() + 3 < ROBOTS)
+    }
+}
+
 /// A site being read.
 struct Reading<'a> {
     domain: &'a str,

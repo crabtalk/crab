@@ -15,7 +15,7 @@ pub(crate) struct Wake {
     pub scope: String,
     /// The service that armed it.
     pub name: String,
-    pub program: String,
+    pub service: String,
     pub tool: String,
     pub args: String,
     pub armed: i64,
@@ -76,23 +76,23 @@ pub(crate) async fn arm(
     store: &Store,
     scope: &str,
     name: &str,
-    program: &str,
+    service: &str,
     tool: &str,
     args: &str,
     due: i64,
 ) -> Result<()> {
-    let row = [scope, name, program, tool, args].map(str::to_owned);
+    let row = [scope, name, service, tool, args].map(str::to_owned);
     store
         .run(move |conn| {
-            let [scope, name, program, tool, args] = row;
+            let [scope, name, service, tool, args] = row;
             conn.execute(
-                "INSERT INTO service_wakes (scope, name, program, tool, args, due)
+                "INSERT INTO service_wakes (scope, name, service, tool, args, due)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT (scope, name, slot) DO UPDATE
-                    SET program = excluded.program, tool = excluded.tool,
+                    SET service = excluded.service, tool = excluded.tool,
                         args = excluded.args, due = excluded.due,
                         armed = service_wakes.armed + 1, failures = 0",
-                params![scope, name, program, tool, args, due],
+                params![scope, name, service, tool, args, due],
             )?;
             Ok(())
         })
@@ -113,13 +113,13 @@ pub(crate) async fn claim(store: &Store, now: i64, lease: i64, limit: i64) -> Re
                                      AND (scope, name) NOT IN
                                          (SELECT scope, name FROM services WHERE stopped = 1)
                                    ORDER BY due LIMIT ?3)
-                  RETURNING scope, name, program, tool, args, armed, slot",
+                  RETURNING scope, name, service, tool, args, armed, slot",
             )?;
             let rows = statement.query_map(params![now, lease, limit], |row| {
                 Ok(Wake {
                     scope: row.get(0)?,
                     name: row.get(1)?,
-                    program: row.get(2)?,
+                    service: row.get(2)?,
                     tool: row.get(3)?,
                     args: row.get(4)?,
                     armed: row.get(5)?,
@@ -194,6 +194,7 @@ pub(crate) async fn crons(
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
         .read(move |conn| {
+            let unsaved = unsaved.resolve(conn)?;
             let caller = host::join(&scope, &name);
             // The last run, as `calls::call` reads one.
             let mut statement = conn.prepare_cached(
@@ -226,31 +227,32 @@ pub(crate) async fn crons(
         .await
 }
 
-/// The wakes armed to call a tool of `scope/program` that have not run,
+/// The wakes armed to call a tool of `scope/service` that have not run,
 /// soonest first, each with the last run its armer made of its tool, written
 /// or in `unsaved`. A wake that is running is due when its lease ends.
 pub(crate) async fn armed(
     store: &Store,
     scope: &str,
-    program: &str,
+    service: &str,
     unsaved: Unsaved,
 ) -> Result<Vec<wire::Wake>> {
-    let (scope, program) = (scope.to_owned(), program.to_owned());
+    let (scope, service) = (scope.to_owned(), service.to_owned());
     store
         .read(move |conn| {
+            let unsaved = unsaved.resolve(conn)?;
             let mut statement = conn.prepare_cached(&format!(
                 "SELECT {COLUMNS}, w.tool, w.args, w.due, w.name, w.failures
                    FROM service_wakes w
                    LEFT JOIN service_calls c ON c.id = (
                         SELECT MAX(id) FROM service_calls
-                         WHERE scope = w.scope AND name = w.program AND tool = w.tool
+                         WHERE scope = w.scope AND name = w.service AND tool = w.tool
                            AND source = 'service'
                            AND caller = IIF(w.scope = '', w.name, w.scope || '/' || w.name))
-                  WHERE w.scope = ?1 AND w.program = ?2 AND w.slot = '' AND w.due IS NOT NULL
+                  WHERE w.scope = ?1 AND w.service = ?2 AND w.slot = '' AND w.due IS NOT NULL
                   ORDER BY w.due",
                 COLUMNS = calls::COLUMNS
             ))?;
-            let rows = statement.query_map(params![scope, program], |row| {
+            let rows = statement.query_map(params![scope, service], |row| {
                 let last = match row.get::<_, Option<i64>>(0)? {
                     Some(_) => Some(calls::call(row)?),
                     None => None,
@@ -281,7 +283,7 @@ pub(crate) async fn wakes(store: &Store) -> Result<Vec<(Wake, i64)>> {
     store
         .read(|conn| {
             let mut statement = conn.prepare(
-                "SELECT scope, name, program, tool, args, armed, slot, due
+                "SELECT scope, name, service, tool, args, armed, slot, due
                    FROM service_wakes
                   WHERE due IS NOT NULL
                   ORDER BY due",
@@ -291,7 +293,7 @@ pub(crate) async fn wakes(store: &Store) -> Result<Vec<(Wake, i64)>> {
                     Wake {
                         scope: row.get(0)?,
                         name: row.get(1)?,
-                        program: row.get(2)?,
+                        service: row.get(2)?,
                         tool: row.get(3)?,
                         args: row.get(4)?,
                         armed: row.get(5)?,

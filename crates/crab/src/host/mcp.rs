@@ -1,9 +1,9 @@
-//! One MCP endpoint over every deployed program: `search`, `call`, and each
-//! program's README and IDL as a resource, as [`crabtalk_sdk::mcp`] lays them out. A
-//! call carries no caller, so only `#[tool(anonymous)]` tools are found or
+//! One MCP endpoint over every deployed service: `search`, `call`, and each
+//! service's README and IDL as a resource, as [`crabtalk_sdk::mcp`] lays them out. A
+//! call carries no caller, so only `access = "anonymous"` tools are found or
 //! called.
 
-use crate::host::Service;
+use crate::host::Node;
 use berm_api::Output;
 use crabtalk_sdk::mcp::{self, Found};
 use rmcp::{
@@ -18,19 +18,19 @@ use rmcp::{
 };
 use std::sync::Arc;
 
-/// The most programs a search answers.
+/// The most services a search answers.
 const FOUND: usize = 10;
 
 pub struct Mcp {
-    service: Arc<Service>,
+    node: Arc<Node>,
 }
 
 impl Mcp {
-    pub fn new(service: Arc<Service>) -> Self {
-        Self { service }
+    pub fn new(node: Arc<Node>) -> Self {
+        Self { node }
     }
 
-    /// The running programs with a tool that takes anonymous calls, each
+    /// The running services with a tool that takes anonymous calls, each
     /// with those tools, matching `query`'s words: best first, a word in the
     /// name counting most, then in the description, then in a tool.
     fn search(&self, query: &str) -> Vec<Found> {
@@ -43,18 +43,19 @@ impl Mcp {
                 .count()
         };
         let mut found: Vec<(usize, Found)> = self
-            .service
+            .node
             .list()
             .iter()
-            .filter(|deployed| !self.service.host.stopped(&deployed.name))
+            .filter(|deployed| !self.node.host.stopped(&deployed.name))
             .filter_map(|deployed| {
-                let manifest = deployed.manifest();
+                let manifest = &deployed.manifest;
                 let tools: Vec<mcp::Tool> = manifest
                     .tools
                     .iter()
                     .filter(|tool| tool.anonymous)
                     .map(|tool| mcp::Tool {
                         name: tool.name.clone(),
+                        title: tool.title.clone(),
                         description: tool.description.clone(),
                         price: None,
                     })
@@ -63,7 +64,10 @@ impl Mcp {
                     + 2 * count(&manifest.description)
                     + tools
                         .iter()
-                        .map(|tool| count(&format!("{} {}", tool.name, tool.description)))
+                        .map(|tool| {
+                            let title = tool.title.as_deref().unwrap_or_default();
+                            count(&format!("{} {title} {}", tool.name, tool.description))
+                        })
                         .sum::<usize>();
                 (score > 0 && !tools.is_empty()).then(|| {
                     let found = Found {
@@ -92,8 +96,7 @@ impl ServerHandler for Mcp {
             .enable_resources()
             .build();
 
-        // Named here rather than from rmcp's build environment, which would
-        // report rmcp.
+        // crab's own name; rmcp's build environment would report rmcp.
         ServerInfo::new(capabilities)
             .with_server_info(Implementation::new(
                 env!("CARGO_PKG_NAME"),
@@ -147,24 +150,24 @@ impl ServerHandler for Mcp {
                 ));
             }
         }
-        let program = field("service")?;
+        let service = field("service")?;
         let tool = field("tool")?;
-        if program.contains('/') {
+        if service.contains('/') {
             return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "the local host has no accounts: name a service it runs",
             )]));
         }
         if !self
-            .service
-            .get(program)
+            .node
+            .get(service)
             .is_some_and(|deployed| deployed.reached_anonymously(tool))
         {
             return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "{program} has no tool named {tool:?} that takes anonymous calls"
+                "{service} has no tool named {tool:?} that takes anonymous calls"
             ))]));
         }
 
-        // A program reads its arguments as the JSON its manifest advertised a
+        // A service reads its arguments as the JSON its manifest advertised a
         // schema for, so the object goes across as it arrived.
         let input = arguments
             .get("input")
@@ -173,12 +176,11 @@ impl ServerHandler for Mcp {
         let args = serde_json::to_vec(&input)
             .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
 
-        match self.service.call(program, tool, args).await {
+        match self.node.call(service, tool, args).await {
             Ok(Output::Done(result)) => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
-            // The program ran and reported failure. That is a tool result the
-            // model should see and react to, not a protocol error.
+            // The service ran and reported failure: a tool result.
             Ok(Output::Failed(failure)) => {
                 Ok(CallToolResult::error(vec![ContentBlock::text(failure)]))
             }
@@ -205,11 +207,11 @@ impl ServerHandler for Mcp {
     ) -> Result<ReadResourceResult, McpError> {
         let not_found = || McpError::resource_not_found(request.uri.clone(), None);
         let name = mcp::service(&request.uri).ok_or_else(not_found)?;
-        let program = self.service.host.idl(name).map_err(|_| not_found())?;
-        let idl = serde_json::to_string(&program)
+        let service = self.node.host.idl(name).map_err(|_| not_found())?;
+        let idl = serde_json::to_string(&service)
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
         Ok(ReadResourceResult::new(vec![
-            ResourceContents::text(program.readme, request.uri.clone())
+            ResourceContents::text(service.readme, request.uri.clone())
                 .with_mime_type("text/markdown"),
             ResourceContents::text(idl, request.uri).with_mime_type("application/json"),
         ]))

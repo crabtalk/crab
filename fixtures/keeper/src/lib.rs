@@ -2,7 +2,8 @@
 //! in the database beside its own `words` table.
 //!
 //! `put` writes a word every way the database takes one, `count` reads the
-//! table back, and `relay` calls both on `inner`. It uses `berm-kit`, whose
+//! table back, `hook` writes the word a webhook carries, and `relay` calls
+//! `put` and `count` on `inner`. It uses `berm-kit`, whose
 //! table `note` writes to.
 
 #![cfg_attr(target_arch = "wasm32", no_std)]
@@ -14,7 +15,7 @@ use berm_lang::{Result, Schema, tool};
 
 /// Inserts `word` into `words`, writes it under `last` and emits it under
 /// the topic `put`.
-#[tool(public)]
+#[tool]
 pub fn put(word: String) -> Result<()> {
     let params = berm_lang::json::to(&[&word])?;
     berm_lang::sql("INSERT INTO words (word) VALUES (?)", &params)?;
@@ -23,8 +24,16 @@ pub fn put(word: String) -> Result<()> {
     Ok(())
 }
 
+/// Inserts the `word` a webhook carries into `words`.
+#[tool(webhook)]
+pub fn hook(word: String) -> Result<()> {
+    let params = berm_lang::json::to(&[&word])?;
+    berm_lang::sql("INSERT INTO words (word) VALUES (?)", &params)?;
+    Ok(())
+}
+
 /// Answers how many rows `words` holds.
-#[tool(query, public)]
+#[tool(query)]
 pub fn count() -> Result<u64> {
     let answer = berm_lang::sql("SELECT COUNT(*) FROM words", "[]")?;
     let Counted { rows } = berm_lang::json::from(&answer)?;
@@ -36,14 +45,14 @@ pub fn count() -> Result<u64> {
 }
 
 /// Adds `text` to `berm-kit`'s table, and answers how many notes it holds.
-#[tool(public)]
+#[tool]
 pub fn note(text: String) -> Result<u64> {
     berm_kit::note(&text)
 }
 
 /// Writes `word` under `last`, calls `put` on `inner` with it, then `count`
 /// on `inner`, and answers what `count` did.
-#[tool(public)]
+#[tool]
 pub fn relay(word: String) -> Result<u64> {
     berm_lang::set("last", word.as_bytes())?;
     let args = format!(r#"{{"word":{}}}"#, berm_lang::json::to(&word)?);

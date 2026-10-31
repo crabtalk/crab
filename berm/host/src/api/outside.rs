@@ -4,8 +4,8 @@
 use crate::{
     Denied, deny,
     env::Env,
-    host::{self, Host},
-    record::usage,
+    host::{self, Host, Inner},
+    record::{calls, usage},
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use berm::{
@@ -14,15 +14,16 @@ use berm::{
 };
 use berm_api::{
     Output,
-    host::{self as wire, CallInput, Caller, Kind, Outcome, Source},
+    host::{self as wire, Caller, Kind, Outcome, Source},
 };
 use std::{
     future::Future,
     pin::Pin,
+    sync::Weak,
     task::{Context, Poll},
 };
 use tower::{
-    Layer, Service, ServiceExt,
+    Service, ServiceExt,
     util::{BoxCloneSyncService, BoxCloneSyncServiceLayer},
 };
 
@@ -96,9 +97,9 @@ impl<E: Env> Host<E> {
         caller: Option<Caller>,
         headers: HeaderMap,
     ) -> Result<Called, Denied> {
-        let program = self.deployed(service)?;
-        let Some(spec) = program
-            .manifest()
+        let deployed = self.deployed(service)?;
+        let Some(spec) = deployed
+            .manifest
             .tools
             .iter()
             .find(|spec| spec.name == tool && spec.public)
@@ -137,7 +138,7 @@ impl<E: Env> Host<E> {
             );
             Err(denied)
         };
-        if !program.reached_by_accounts(tool) {
+        if !deployed.reached_by_accounts(tool) {
             return refused(
                 deny(
                     StatusCode::FORBIDDEN,
@@ -164,9 +165,8 @@ impl<E: Env> Host<E> {
             client: None,
             headers,
         };
-        let bottom = Outside::new(Bottom(self.clone()));
-        match self.layers.layer(bottom).oneshot(call).await {
-            Err(denied) if denied.0.is_client_error() => refused(denied, caller.as_ref()),
+        match self.outside.clone().oneshot(call).await {
+            Err(denied) if denied.status.is_client_error() => refused(denied, caller.as_ref()),
             answered => answered,
         }
     }
@@ -181,11 +181,11 @@ impl<E: Env> Host<E> {
             client,
             ..
         } = call;
-        let program = self
+        let deployed = self
             .get(&service)
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
-        let deprecated = program
-            .manifest()
+        let deprecated = deployed
+            .manifest
             .tools
             .iter()
             .any(|spec| spec.name == tool && spec.deprecated);
@@ -227,16 +227,12 @@ impl<E: Env> Host<E> {
         };
         let started = self.calls.start();
         let recorder = Recorder::default();
-        let input = CallInput {
-            tool: tool.clone(),
-            args: String::from_utf8_lossy(&args).into_owned(),
-            caller: caller.clone(),
-            digest: format!("sha256:{}", program.digest),
-        };
+        let kept = args.clone();
+        let input = |args| calls::ran_with(&tool, args, caller.clone(), &deployed.digest);
         let (source, who) = counted(caller.as_ref());
         let invoked = self
             .invoke(
-                &program,
+                &deployed,
                 started.id,
                 caller
                     .as_ref()
@@ -265,7 +261,7 @@ impl<E: Env> Host<E> {
                     who,
                     Outcome::Failed,
                     None,
-                    Some(input),
+                    Some(input(kept)),
                     Some(&recorder.tape()),
                 );
                 return Err(deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")));
@@ -291,7 +287,7 @@ impl<E: Env> Host<E> {
             who,
             outcome,
             Some(&invoked),
-            Some(input),
+            failed.then(|| input(kept)),
             failed.then(|| recorder.tape()).as_ref(),
         );
         headers.insert(
@@ -308,7 +304,7 @@ impl<E: Env> Host<E> {
 }
 
 /// The host's own service, at the bottom of the daemon's layers.
-struct Bottom<E: Env>(Host<E>);
+pub(crate) struct Bottom<E: Env>(pub(crate) Weak<Inner<E>>);
 
 impl<E: Env> Clone for Bottom<E> {
     fn clone(&self) -> Self {
@@ -326,8 +322,8 @@ impl<E: Env> Service<Call> for Bottom<E> {
     }
 
     fn call(&mut self, call: Call) -> Self::Future {
-        let host = self.0.clone();
-        Box::pin(async move { host.run(call).await })
+        let host = host::alive(&self.0).map(Host);
+        Box::pin(async move { host?.run(call).await })
     }
 }
 

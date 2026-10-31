@@ -16,7 +16,7 @@ path = "bin/main.rs"
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-base64.workspace = true
+base64 = { workspace = true, features = ["std"] }
 berm.workspace = true
 berm-api.workspace = true
 berm-build.workspace = true
@@ -32,7 +32,6 @@ ratatui.workspace = true
 regex.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp.workspace = true
-rpassword.workspace = true
 rusqlite.workspace = true
 self_update.workspace = true
 serde = { workspace = true, features = ["std"] }

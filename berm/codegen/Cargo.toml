@@ -1,6 +1,6 @@
 [package]
 name = "berm-codegen"
-description = "Proc-macro codegen for berm programs"
+description = "Proc-macro codegen for berm services"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -14,6 +14,7 @@ categories = ["development-tools::procedural-macro-helpers", "wasm"]
 proc-macro = true
 
 [dependencies]
+berm-abi.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 serde_json = { workspace = true, features = ["std"] }

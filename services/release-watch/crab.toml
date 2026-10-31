@@ -1,0 +1,22 @@
+name = "release-watch"
+id = "732e70b4fd594e91a94da0f60f50a948"
+buffer = 1048576
+[database]
+migrations = "migrations"
+[crons]
+tick = "*/15 * * * *"
+[tools.follow]
+access = "public"
+title = "Follow package"
+[tools.unfollow]
+access = "public"
+title = "Unfollow package"
+[tools.watches]
+access = "public"
+title = "Watches"
+[tools.changes]
+access = "public"
+title = "Changes"
+[tools.refresh]
+access = "public"
+title = "Refresh watch"

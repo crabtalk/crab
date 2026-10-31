@@ -1,19 +1,19 @@
 //! What `#[tool]`'s exports call around a tool.
 
-use crate::{Error, abi};
+use crate::{Error, host};
 use alloc::{format, vec, vec::Vec};
 
 /// Read this invocation's arguments, run `tool` on them and hand the host what
 /// it answered or why it failed.
 pub fn run(tool: impl FnOnce(&[u8]) -> Result<Vec<u8>, Error>) {
-    let mut arguments = vec![0; abi::args_len()];
-    let length = abi::read_args(&mut arguments);
+    let mut arguments = vec![0; host::args_len()];
+    let length = host::read_args(&mut arguments);
     if length != arguments.len() {
-        return abi::fail(b"the host handed arguments of a different length");
+        return host::fail(b"the host handed arguments of a different length");
     }
     match tool(&arguments) {
-        Ok(reply) => abi::done(&reply),
-        Err(error) => abi::fail(error.message.as_bytes()),
+        Ok(reply) => host::done(&reply),
+        Err(error) => host::fail(error.message.as_bytes()),
     }
 }
 

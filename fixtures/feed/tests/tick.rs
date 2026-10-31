@@ -70,8 +70,8 @@ async fn logged(host: &TestHost, topic: &str) -> Result<Vec<Value>> {
 #[tokio::test]
 async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    let program = host.deploy("feed", &test::build("berm-feed")?).await?;
-    let manifest = program.manifest();
+    let service = host.deploy("feed", &test::build("berm-feed")?).await?;
+    let manifest = &service.manifest;
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "crabkit-lake");
     for syscall in ["berm.get", "berm.set", "berm.sql"] {
@@ -92,7 +92,7 @@ async fn a_tick_stores_new_items_once() -> Result<()> {
     let host = deployed().await?;
     host.arrange("GET", FEED, 200, feed(&[B, A]));
     // As `[crons]` in a crab.toml would set it.
-    host.host()
+    host.host
         .set_cron("feed", "tick", Some("* * * * *".to_owned()))
         .await?;
     let wakes = host.wakes().await?;
@@ -136,7 +136,7 @@ async fn a_failed_fetch_is_logged_and_retried_when_next_due() -> Result<()> {
     let failed = logged(&host, "FetchFailed").await?;
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0]["of"], FEED);
-    assert_eq!(failed[0]["error"], format!("{FEED} answered 503"));
+    assert_eq!(failed[0]["error"], format!("{FEED}: status 503"));
     assert_eq!(count(&host).await?, 0);
 
     // Not due again until the refetch interval passes.

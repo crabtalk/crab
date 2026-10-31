@@ -1,7 +1,7 @@
-//! `crab usage` — what a program used, a day each; with no program, what the
+//! `crab usage` — what a service used, a day each; with no service, what the
 //! account's services used and how much of its plan.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use berm_api::host::Memory;
 use crabtalk_sdk::{
@@ -12,9 +12,9 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
-    let meters = utils::wait(client.meters(name))?;
+    let meters = runtime::wait(client.meters(name))?;
     if json {
-        return utils::json(&meters);
+        return terminal::json(&meters);
     }
     if meters.is_empty() {
         println!("nothing used in the last 30 days");
@@ -66,9 +66,9 @@ struct Sum {
 
 /// The account's services over the last 30 days, and its plan this period.
 pub fn account(client: &Client, json: bool) -> Result<()> {
-    let usage = utils::wait(client.services_usage())?;
-    let period = utils::wait(client.period())?;
-    let memory = utils::wait(client.memory())?;
+    let (usage, period, memory) = runtime::wait(async {
+        tokio::try_join!(client.services_usage(), client.period(), client.memory())
+    })?;
     let services: BTreeMap<String, Sum> = usage
         .into_iter()
         .map(|(name, days)| {
@@ -88,7 +88,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
             period: &'a Period,
             memory: &'a Memory,
         }
-        return utils::json(&Account {
+        return terminal::json(&Account {
             services: &services,
             period: &period,
             memory: &memory,

@@ -35,7 +35,7 @@ fn github_exchanges_the_code_and_reads_the_user() {
         "code=c0de&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&client_id={secret:GITHUB_CLIENT_ID}&client_secret={secret:GITHUB_CLIENT_SECRET}"
     );
     assert_eq!(fetched[1].header("Authorization"), Some("Bearer gho_1"));
-    assert_eq!(fetched[1].header("User-Agent"), Some("crabkit-auth"));
+    assert_eq!(fetched[1].header("User-Agent"), Some("crabtalk-github"));
 }
 
 #[test]
@@ -95,5 +95,6 @@ fn a_refused_user_fails_with_its_status() {
     test::respond("POST", GITHUB_TOKEN, 200, br#"{"access_token":"gho_1"}"#);
     test::respond("GET", GITHUB_USER, 401, br#"{"message":"Bad credentials"}"#);
     let failure = Identity::github("c0de", REDIRECT).err().expect("a refusal");
-    assert_eq!(failure.message, "GitHub answered 401 for the user");
+    assert!(failure.message.contains("401"));
+    assert!(failure.message.contains("Bad credentials"));
 }

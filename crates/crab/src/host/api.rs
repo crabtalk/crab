@@ -1,10 +1,10 @@
 //! The control API: what a UI or a CLI drives the service with.
 //!
 //! Resource-shaped, on one endpoint, for the reason dockerd is: the clients are
-//! a UI, a CLI and `curl`, and a program is a resource. The MCP endpoint that
+//! a UI, a CLI and `curl`, and a service is a resource. The MCP endpoint that
 //! agents reach sits on the same server at `/mcp`.
 
-use crate::host::{Service, mcp::Mcp};
+use crate::host::{Node, mcp::Mcp};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -14,12 +14,13 @@ use axum::{
     response::Response,
     routing::{get, post, put},
 };
-use berm_api::{Deployed, Program as Wire, host};
+use berm_api::{Deployed, Service as Wire, digest, host};
 use berm_host::{Denied, Named, deny};
 use crabtalk_sdk::{
     client::LOCAL,
-    sandbox::service::{
-        DeployRequest, DeploySetRequest, Hosts, Secret, SetSecret, Upload, UploadRequest,
+    services::service::{
+        DeployRequest, DeployResult, DeploySetRequest, Hosts, Secret, SetSecret, Upload,
+        UploadRequest,
     },
 };
 use rmcp::transport::{
@@ -28,23 +29,22 @@ use rmcp::transport::{
 use serde::Deserialize;
 use std::{collections::BTreeMap, sync::Arc};
 
-impl Service {
+impl Node {
     /// The control API, at Cloud's paths for the one account [`LOCAL`], and
     /// MCP, at `/mcp`.
     pub fn router(self: Arc<Self>) -> Router {
-        let service = self;
-        // `route_service` rather than `nest_service`: MCP Streamable HTTP is one
-        // path taking POST, GET and DELETE, and nesting can drop the `Host` header
-        // the transport validates against.
+        let node = self;
+        // MCP Streamable HTTP is one path taking POST, GET and DELETE, and
+        // `nest_service` can drop the `Host` header the transport validates.
         let mcp = StreamableHttpService::new(
             {
-                let service = service.clone();
-                move || Ok(Mcp::new(service.clone()))
+                let node = node.clone();
+                move || Ok(Mcp::new(node.clone()))
             },
             Arc::new(LocalSessionManager::default()),
             Default::default(),
         );
-        let program = berm_host::router(service.host.clone())
+        let service = berm_host::router(node.host.clone())
             .merge(
                 Router::new()
                     .route("/", put(deploy).delete(undeploy))
@@ -55,7 +55,7 @@ impl Service {
                     .route("/secrets", get(secrets))
                     .route("/secrets/{secret}", put(set_secret).delete(revoke_secret))
                     .route("/secrets/{secret}/hosts", put(set_secret_hosts))
-                    .with_state(service.clone()),
+                    .with_state(node.clone()),
             )
             .route_layer(middleware::from_fn(named));
 
@@ -65,19 +65,19 @@ impl Service {
                 &format!("/users/{LOCAL}/services/deploys"),
                 post(deploy_set),
             )
-            .with_state(service)
-            .nest(&format!("/services/{LOCAL}/{{name}}"), program)
+            .with_state(node)
+            .nest(&format!("/services/{LOCAL}/{{name}}"), service)
             .route_service("/mcp", mcp)
     }
 }
 
-/// The program a request names.
+/// The service a request names.
 #[derive(Deserialize)]
 struct Name {
     name: String,
 }
 
-/// Name the program a request is for, and the caller it is made as, from
+/// Name the service a request is for, and the caller it is made as, from
 /// [`host::CALLER`], unverified.
 async fn named(
     Path(Name { name }): Path<Name>,
@@ -97,32 +97,27 @@ async fn named(
     Ok(next.run(request).await)
 }
 
-async fn list(State(service): State<Arc<Service>>) -> Json<Vec<Wire>> {
-    Json(
-        service
-            .list()
-            .iter()
-            .map(|one| one.idl(&one.name))
-            .collect(),
-    )
+async fn list(State(node): State<Arc<Node>>) -> Json<Vec<Wire>> {
+    Json(node.list().iter().map(|one| one.idl(&one.name)).collect())
 }
 
-/// Deploy under `name` the image uploaded through `POST /services/local/{name}/image` that the body
-/// names by its digest. `PUT` because the name is the address and redeploying
-/// the same name replaces what is there.
+/// Deploy under `name` the image uploaded through
+/// `POST /services/local/{name}/image` that the body names by its digest.
+/// Redeploying the same name replaces what is there.
 async fn deploy(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
     Json(deploy): Json<DeployRequest>,
 ) -> Result<Json<Deployed>, Denied> {
     let priced: Vec<String> = deploy.prices.keys().cloned().collect();
     let deploy = kept(&name, deploy)?;
-    service.priced(&deploy.digest, &priced).await?;
-    let (deployed, breaks) = service.deploy(&name, deploy).await?;
+    node.priced(&deploy.digest, &priced).await?;
+    let (deployed, breaks) = node.deploy(&name, deploy).await?;
     Ok(Json(Deployed {
-        program: deployed.program.idl(&name),
+        service: deployed.service.idl(&name),
         breaks: breaks.iter().map(ToString::to_string).collect(),
         migrations: deployed.migrations,
+        page: None,
     }))
 }
 
@@ -135,7 +130,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
             "a seed starts a service on Cloud; the local host's own database is where one is made",
         ));
     }
-    if !deploy.reference.starts_with("sha256:") {
+    if !deploy.reference.starts_with(digest::PREFIX) {
         return Err(deny(
             StatusCode::BAD_REQUEST,
             format!(
@@ -150,8 +145,10 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
         crons: deploy.crons,
         size: deploy.size.unwrap_or_else(host::database_size),
         stopped: deploy.stopped,
+        check_secrets: true,
         project: deploy.project,
         exempt: Vec::new(),
+        vars: deploy.vars,
     })
 }
 
@@ -159,7 +156,7 @@ fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
 /// by its digest, `sha256:` and the `sha256` here: none when it is kept
 /// already.
 async fn image(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
     headers: HeaderMap,
     Json(upload): Json<UploadRequest>,
@@ -175,7 +172,7 @@ async fn image(
             "`sha256` is a SHA-256 in lowercase hex",
         ));
     }
-    if service.holds(&format!("sha256:{}", upload.sha256)).await {
+    if node.holds(&digest::prefixed(&upload.sha256)).await {
         return Ok(Json(Upload { upload: None }));
     }
     let host = headers
@@ -192,100 +189,141 @@ async fn image(
 
 /// Keep the image in the body, refused when its SHA-256 is not `sha256`.
 async fn upload(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Path((_, sha256)): Path<(String, String)>,
     image: Bytes,
 ) -> Result<StatusCode, Denied> {
-    let digest = service.keep(&image).await?;
-    if digest != format!("sha256:{sha256}") {
+    let kept = node.keep(&image).await?;
+    let named = digest::prefixed(&sha256);
+    if kept != named {
         return Err(deny(
             StatusCode::BAD_REQUEST,
-            format!("the image uploaded is {digest}, not sha256:{sha256}"),
+            format!("the image uploaded is {kept}, not {named}"),
         ));
     }
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Deploy a set of programs together, each named by the digest of an image
+/// Deploy a set of services together, each named by the digest of an image
 /// uploaded through `POST /services/local/{name}/image`.
 async fn deploy_set(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Json(set): Json<DeploySetRequest>,
-) -> Result<Json<BTreeMap<String, Deployed>>, Denied> {
+) -> Result<Json<BTreeMap<String, DeployResult>>, Denied> {
     let mut members = Vec::new();
-    for (name, deploy) in set.services {
-        let priced: Vec<String> = deploy.prices.keys().cloned().collect();
-        let deploy = kept(&name, deploy)?;
-        service
-            .priced(&deploy.digest, &priced)
-            .await
-            .map_err(|Denied(status, reason)| deny(status, format!("{name}: {reason}")))?;
-        members.push((name, deploy));
+    let mut results = BTreeMap::new();
+    for (name, request) in set.services {
+        let prepared = async {
+            super::service::validate(&name)?;
+            let priced = request.prices.keys().cloned().collect::<Vec<_>>();
+            let deploy = kept(&name, request)?;
+            node.priced(&deploy.digest, &priced).await?;
+            Ok::<_, Denied>(deploy)
+        }
+        .await;
+        match prepared {
+            Ok(deploy) => members.push((name, deploy)),
+            Err(denied) if set.partial => {
+                results.insert(
+                    name,
+                    DeployResult::Failed {
+                        failure: denied.message,
+                        explain: denied.explain.map(str::to_owned),
+                    },
+                );
+            }
+            Err(denied) => return Err(denied),
+        }
     }
-    Ok(Json(
-        service
-            .deploy_set(members)
-            .await?
-            .into_iter()
-            .map(|(name, installed, breaks)| {
-                let deployed = Deployed {
-                    program: installed.program.idl(&name),
+    if set.partial {
+        let replaced = members
+            .iter()
+            .map(|(name, _)| (name.clone(), node.get(name)))
+            .collect::<BTreeMap<_, _>>();
+        for (name, result) in node.host.deploy_partial(members).await? {
+            let result = match result {
+                Ok(installed) => {
+                    let breaks = replaced
+                        .get(&name)
+                        .and_then(Option::as_ref)
+                        .map(|old| old.manifest.breaks(&installed.service.manifest))
+                        .unwrap_or_default();
+                    DeployResult::from(Deployed {
+                        service: installed.service.idl(&name),
+                        breaks: breaks.iter().map(ToString::to_string).collect(),
+                        migrations: installed.migrations,
+                        page: None,
+                    })
+                }
+                Err(denied) => DeployResult::Failed {
+                    failure: denied.message,
+                    explain: denied.explain.map(str::to_owned),
+                },
+            };
+            results.insert(name, result);
+        }
+    } else {
+        for (name, installed, breaks) in node.deploy_set(members).await? {
+            results.insert(
+                name.clone(),
+                DeployResult::from(Deployed {
+                    service: installed.service.idl(&name),
                     breaks: breaks.iter().map(ToString::to_string).collect(),
                     migrations: installed.migrations,
-                };
-                (name, deployed)
-            })
-            .collect(),
-    ))
+                    page: None,
+                }),
+            );
+        }
+    }
+    Ok(Json(results))
 }
 
 async fn undeploy(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
 ) -> Result<StatusCode, Denied> {
-    found(service.undeploy(&name).await?, &name)
+    found(node.undeploy(&name).await?, &name)
 }
 
 async fn start(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
 ) -> Result<StatusCode, Denied> {
-    found(service.run(&name, true).await?, &name)
+    found(node.run(&name, true).await?, &name)
 }
 
 async fn stop(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
 ) -> Result<StatusCode, Denied> {
-    found(service.run(&name, false).await?, &name)
+    found(node.run(&name, false).await?, &name)
 }
 
-/// `204` when the program `name` was deployed, else `404`.
+/// `204` when the service `name` was deployed, else `404`.
 fn found(deployed: bool, name: &str) -> Result<StatusCode, Denied> {
     match deployed {
         true => Ok(StatusCode::NO_CONTENT),
         false => Err(deny(
             StatusCode::NOT_FOUND,
-            format!("no program named {name:?} is deployed"),
+            format!("no service named {name:?} is deployed"),
         )),
     }
 }
 
-/// The secret a path names, beside the program.
+/// The secret a path names, beside the service.
 #[derive(Deserialize)]
 struct SecretName {
     secret: String,
 }
 
-/// The program's secrets, by name; a value is never read back.
+/// The service's secrets, by name; a value is never read back.
 async fn secrets(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
 ) -> Result<Json<Vec<Secret>>, Denied> {
-    service
-        .get(&name)
-        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such program"))?;
-    let listed = service.secrets.list(&name).map_err(internal)?;
+    node.get(&name)
+        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
+    let listed = node.secrets.list(&name).map_err(internal)?;
     Ok(Json(
         listed
             .into_iter()
@@ -298,20 +336,25 @@ async fn secrets(
     ))
 }
 
-/// Set one of the program's secrets. A set secret's value is changed only by
+/// Set one of the service's secrets. A set secret's value is changed only by
 /// revoking it and setting it again.
 async fn set_secret(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
     Path(SecretName { secret }): Path<SecretName>,
     Json(body): Json<SetSecret>,
 ) -> Result<StatusCode, Denied> {
-    service
+    let service = node
         .get(&name)
-        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such program"))?;
+        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
     body.check(&secret)
         .map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
-    match service
+    service
+        .manifest
+        .deps
+        .admits(&secret, &body.value)
+        .map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
+    match node
         .secrets
         .set(&name, &secret, &body.value, &body.hosts)
         .map_err(internal)?
@@ -324,15 +367,15 @@ async fn set_secret(
     }
 }
 
-/// Send one of the program's secrets to these hosts alone.
+/// Send one of the service's secrets to these hosts alone.
 async fn set_secret_hosts(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
     Path(SecretName { secret }): Path<SecretName>,
     Json(body): Json<Hosts>,
 ) -> Result<StatusCode, Denied> {
     Hosts::check(&body.hosts).map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
-    match service
+    match node
         .secrets
         .set_hosts(&name, &secret, &body.hosts)
         .map_err(internal)?
@@ -342,13 +385,13 @@ async fn set_secret_hosts(
     }
 }
 
-/// Revoke one of the program's secrets.
+/// Revoke one of the service's secrets.
 async fn revoke_secret(
-    State(service): State<Arc<Service>>,
+    State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
     Path(SecretName { secret }): Path<SecretName>,
 ) -> Result<StatusCode, Denied> {
-    match service.secrets.remove(&name, &secret).map_err(internal)? {
+    match node.secrets.remove(&name, &secret).map_err(internal)? {
         true => Ok(StatusCode::NO_CONTENT),
         false => Err(deny(StatusCode::NOT_FOUND, "no secret of that name")),
     }

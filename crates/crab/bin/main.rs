@@ -1,10 +1,9 @@
 use anyhow::Result;
-use berm_api::host::{Caller, User};
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, request::Purchase},
-    client::{Client, Owner},
+    client::{Client, Error, Owner},
 };
 use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 
@@ -12,7 +11,7 @@ use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
 #[command(
     name = "crab",
     version,
-    about = "Run the local host, deploy and inspect programs on it or Cloud, and run a Cloud account"
+    about = "Run the local host, deploy and inspect services on it or Cloud, and run a Cloud account"
 )]
 struct Args {
     /// The context to talk to, in place of the one in use.
@@ -72,7 +71,7 @@ enum Command {
     },
     /// Where `crab` is talking, as whom, and on which plan.
     Status,
-    /// Run the local host: deploy programs to it and serve their tools over
+    /// Run the local host: deploy services to it and serve their tools over
     /// HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`.
     #[command(args_conflicts_with_subcommands = true)]
     Dev {
@@ -84,82 +83,70 @@ enum Command {
         #[arg(short, long)]
         detach: bool,
     },
-    /// Scaffold a program crate.
+    /// Scaffold a service crate.
     New { name: String },
-    /// List deployed programs.
+    /// List deployed services.
     Ls,
-    /// Build the program in a directory and print the path of its image.
+    /// Build the service in a directory and print the path of its image.
     Build {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
     /// Build services and deploy each as its `crab.toml` names it, replacing
     /// whatever holds the name, and serve it: the one whose directory this is,
-    /// or at a workspace's root every one not saying `deploy = false`.
+    /// or at a workspace's root every one not saying `deploy = false`. On
+    /// Cloud it waits for a person to approve it at the link it prints last;
+    /// `--yes` deploys without asking.
     Deploy(cmd::deploy::Deploy),
     /// `crab deploy`, installing each stopped, to serve once started.
     Push(cmd::deploy::Deploy),
-    /// Serve stopped programs again: those named, or the services `crab
-    /// deploy` would deploy here.
+    /// Serve stopped services again: those named, or those `crab deploy`
+    /// would deploy here.
     Start { names: Vec<String> },
-    /// Stop serving programs, keeping what they committed: those named, or the
-    /// services `crab deploy` would deploy here.
+    /// Stop serving services, keeping what they committed: those named, or
+    /// those `crab deploy` would deploy here.
     Stop { names: Vec<String> },
-    /// Call one of a program's tools.
-    Call {
-        /// The service: a name on the context's account, or `owner/name` on
-        /// Cloud for another account's public service.
-        program: String,
-        tool: String,
-        /// The argument object. Read from stdin when omitted.
-        arguments: Option<String>,
-        /// On the local host, the caller the program is told called it.
-        #[arg(long)]
-        caller: Option<String>,
-        /// On the local host, the end user's issuer the program is told it is called for.
-        #[arg(long, requires = "user", requires = "caller")]
-        issuer: Option<String>,
-        /// On the local host, the end user's subject the program is told it is called
-        /// for.
-        #[arg(long, requires = "issuer")]
-        user: Option<String>,
-    },
+    /// Call one of a service's tools.
+    Call(cmd::call::Call),
     /// Run a call that failed again, read from the context in use: here, the
     /// image it ran answered from its tape, or with `--on` on that context's
     /// host, against its state.
     Replay {
-        program: String,
+        service: String,
         /// The call's id, as `crab calls` lists it.
         id: u64,
         /// The context to run it on, against that host's state.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "build")]
         on: Option<String>,
+        /// Replay against the crate in the current directory, built as `crab build`.
+        #[arg(long)]
+        build: bool,
     },
-    /// Show a program's README, tools and their arguments.
+    /// Show a service's README, tools and their arguments.
     Inspect {
         /// The service: a name on the context's account, or `owner/name` on
         /// Cloud for another account's public service.
         name: String,
     },
-    /// Write a deployed program's IDL, which `declare_program!` reads.
+    /// Write a deployed service's IDL, which `declare_service!` reads.
     Idl {
         name: String,
         /// Where to write `{name}.json`.
         #[arg(long, default_value = "idls")]
         out: PathBuf,
     },
-    /// Remove programs and what they committed: those named, or the services
-    /// `crab deploy` would deploy here.
+    /// Remove services and what they committed: those named, or those `crab
+    /// deploy` would deploy here.
     Rm { names: Vec<String> },
-    /// Print what a program emitted, oldest first.
+    /// Print what a service emitted, oldest first.
     Logs {
         name: String,
         /// Only logs after this sequence number.
         #[arg(long, default_value_t = 0)]
         after: u64,
     },
-    /// What a program used over the last 30 days, a day each; with no
-    /// program, what the account's services used and how much of its plan.
+    /// What a service used over the last 30 days, a day each; with no
+    /// service, what the account's services used and how much of its plan.
     Usage { name: Option<String> },
     /// A service's calls over the last 30 days, newest first, on Cloud.
     Calls {
@@ -187,10 +174,13 @@ enum Command {
         #[command(subcommand)]
         action: Option<EarningsCommand>,
     },
-    /// A program's cron tools: listed, set, stopped.
+    /// A service's cron tools: listed, set, stopped.
     #[command(subcommand)]
     Cron(CronCommand),
-    /// The wakes armed to call a program's tools.
+    /// A service's vars: listed, set, returned to their defaults.
+    #[command(subcommand)]
+    Var(VarCommand),
+    /// The wakes armed to call a service's tools.
     Wakes { name: String },
     /// A service's last 100 deploys on Cloud, newest first, refused and
     /// failed ones included.
@@ -209,23 +199,10 @@ enum Command {
         /// `YYYY-MM-DD`.
         on: Option<String>,
     },
-    /// Set the most one call of a tool may use, from its next call; with no
-    /// flags, what its runs of the last 30 days used and the memory budget
-    /// they fit.
-    Budget {
-        name: String,
-        tool: String,
-        /// CPU time, in microseconds.
-        #[arg(long, requires = "rows")]
-        cpu: Option<u64>,
-        #[arg(long, requires = "cpu")]
-        rows: Option<u64>,
-        /// Linear memory, in MiB; omitted is the most the host lets a call
-        /// grow to.
-        #[arg(long, value_name = "MIB", requires = "cpu")]
-        memory: Option<u64>,
-    },
-    /// A program's secrets on Cloud: set, listed by name, revoked.
+    /// The most one call of a tool may use, what its runs of the last 30
+    /// days used, and the `budget` for its `crab.toml` they fit.
+    Budget { name: String, tool: String },
+    /// A service's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
     Secret(SecretCommand),
     /// The account's plan, credit and payments; with no subcommand, where it
@@ -252,6 +229,8 @@ enum Command {
     Plans,
     /// What use past a plan's included amounts costs.
     Rates,
+    /// What an error code means and what to do about it, as `E0001`.
+    Explain { code: String },
     /// Name the hosts `crab` talks to, and pick one.
     #[command(subcommand)]
     Context(ContextCommand),
@@ -267,7 +246,7 @@ enum Shown {
 
 #[derive(Subcommand)]
 enum CronCommand {
-    /// List a program's cron tools, each with its expression and next run.
+    /// List a service's cron tools, each with its expression and next run.
     Ls { name: String },
     /// Set a cron tool's expression, five fields in UTC, from its next firing.
     Set {
@@ -280,8 +259,22 @@ enum CronCommand {
 }
 
 #[derive(Subcommand)]
+enum VarCommand {
+    /// List a service's vars, each with the value it holds or its default.
+    Ls { name: String },
+    /// Set a var, read from the service's next call.
+    Set {
+        name: String,
+        var: String,
+        value: String,
+    },
+    /// Return a var to its default.
+    Unset { name: String, var: String },
+}
+
+#[derive(Subcommand)]
 enum SecretCommand {
-    /// Set a secret of a program, its value read from stdin and sent only to
+    /// Set a secret of a service, its value read from stdin and sent only to
     /// the hosts given, or to none. A set secret's value is changed only by
     /// revoking it and setting it again.
     Put {
@@ -292,7 +285,7 @@ enum SecretCommand {
         #[arg(long = "host")]
         hosts: Vec<String>,
     },
-    /// Send a secret of a program to these hosts alone, replacing those it
+    /// Send a secret of a service to these hosts alone, replacing those it
     /// had.
     Hosts {
         name: String,
@@ -302,13 +295,13 @@ enum SecretCommand {
         #[arg(long = "host", required = true)]
         hosts: Vec<String>,
     },
-    /// List a program's secrets, by name, with the hosts each is sent to.
+    /// List a service's secrets, by name, with the hosts each is sent to.
     Ls { name: String },
-    /// Revoke a secret of a program.
+    /// Revoke a secret of a service.
     Rm { name: String, secret: String },
-    /// Set a program's credentials at this terminal, typed by the person
-    /// here: in the workspace's secrets.toml against the local host, on the
-    /// account against Cloud. Refused when not run at a terminal.
+    /// Set a service's credentials at this terminal, typed by the person
+    /// here: in `secrets.toml` under the local host's root against the local
+    /// host, on the account against Cloud. Refused when not run at a terminal.
     Fill {
         name: String,
         /// A value the credentials have the person enter at the provider,
@@ -316,7 +309,8 @@ enum SecretCommand {
         #[arg(long = "copy", value_parser = cmd::secret::copy)]
         copies: Vec<(String, String)>,
     },
-    /// Ask a person to set a program's unset secrets, or one credential's: a
+    /// Ask a person to set a service's unset required secrets, or one
+    /// credential's, optional or not: a
     /// code whose page they set them at, signed in, so no value passes
     /// through here.
     Request {
@@ -353,8 +347,13 @@ enum BillingCommand {
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Verify the account on GitHub, which lets it deploy on Hobby.
-    Verify,
+    /// Verify the account on GitHub, which lets it deploy on Hobby: here when
+    /// the check passes, else a code whose page the person verifies at.
+    Verify {
+        /// What it is for, shown to the person who verifies.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
     /// Ask a person to buy credit: a code whose page takes the amount.
     Credit {
         /// What it is for, shown to the person who pays.
@@ -402,9 +401,35 @@ enum KeyCommand {
         /// Days until it expires; never by default.
         #[arg(long)]
         days: Option<u32>,
+        /// Key permissions; auto allows operations without approval.
+        #[arg(long, default_value = "deploy")]
+        scope: Vec<crabtalk_sdk::account::key::Scope>,
     },
     /// Revoke a key.
     Rm { id: String },
+    /// Replace a key's token, keeping its scope, budget, grants and expiry.
+    /// The new token is printed once; the old one stops working at once.
+    Roll { id: String },
+    /// Ask an owner of the account to let the key `crab` signs in with call
+    /// other accounts' priced services, or spend more a day. Prints the link
+    /// to send them.
+    Ask {
+        /// A priced service to call, `{owner}/{name}`.
+        #[arg(long = "service")]
+        services: Vec<String>,
+        /// USD a UTC day the key may spend on tool prices.
+        #[arg(long)]
+        budget: Option<u32>,
+        /// What it is for, shown to them.
+        #[arg(long, default_value = "")]
+        context: String,
+    },
+    /// Let a key call another account's priced service, `{owner}/{name}`.
+    Grant { id: String, service: String },
+    /// Stop a key calling another account's priced service.
+    Ungrant { id: String, service: String },
+    /// Set the USD a key may spend on tool prices in a UTC day.
+    Budget { id: String, usd: u32 },
 }
 
 #[derive(Arguments)]
@@ -419,7 +444,7 @@ struct AppFields {
     /// An identity provider whose tokens name its users, `ISSUER=AUDIENCE`.
     #[arg(long = "issuer")]
     issuers: Vec<String>,
-    /// Calls with no token reach the services' `#[tool(anonymous)]` tools.
+    /// Calls with no token reach the services' `access = "anonymous"` tools.
     #[arg(long)]
     anonymous: bool,
 }
@@ -529,17 +554,52 @@ enum ContextCommand {
     Rm { name: String },
 }
 
-fn main() -> Result<ExitCode> {
+fn main() -> ExitCode {
+    let e = match run() {
+        Ok(code) => return code,
+        Err(e) => e,
+    };
+    eprintln!("Error: {e:?}");
+    let refusal = e.chain().find_map(|cause| match cause.downcast_ref() {
+        Some(Error::Api {
+            explain, request, ..
+        }) => Some((explain, request)),
+        _ => None,
+    });
+    if let Some((_, Some(request))) = refusal {
+        eprintln!(
+            "\nSend {} to a person who can approve it; `crab request {} --wait` returns once they do.",
+            request.url, request.code
+        );
+    }
+    if let Some((Some(code), _)) = refusal {
+        eprintln!("\nFor more information about this error, try `crab explain {code}`.");
+    }
+    ExitCode::FAILURE
+}
+
+fn run() -> Result<ExitCode> {
     let args = Args::parse();
     let json = args.json || !std::io::stdout().is_terminal();
     let yes = args.yes;
     let client = || {
         let client = Client::from(Contexts::load()?.get(args.context.as_deref())?);
+        if yes
+            && client.owner.is_some()
+            && !client
+                .token
+                .as_deref()
+                .is_some_and(|token| token.starts_with("ck_"))
+        {
+            anyhow::bail!("--yes on Cloud requires an API key with auto scope [E0022]");
+        }
         Ok::<_, anyhow::Error>(match &args.org {
             Some(org) => client.owner(Owner::Org(org.clone())),
             None => client,
         })
     };
+    // The Cloud whose rates price the context's calls.
+    let cloud = || Ok::<_, anyhow::Error>(Contexts::load()?.get(args.context.as_deref())?.cloud());
 
     match &args.command {
         Command::Login {
@@ -597,11 +657,11 @@ fn main() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false)?,
-        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true)?,
+        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false, yes)?,
+        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true, yes)?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
-        Command::Inspect { name } => cmd::inspect::run(&client()?, name, json)?,
+        Command::Inspect { name } => cmd::inspect::run(&client()?, &cloud()?, name, json)?,
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
         Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,
         Command::Logs { name, after } => cmd::logs::run(&client()?, name, *after, json)?,
@@ -634,6 +694,13 @@ fn main() -> Result<ExitCode> {
         }
         Command::Cron(CronCommand::Stop { name, tool }) => {
             cmd::cron::set(&client()?, name, tool, None)?
+        }
+        Command::Var(VarCommand::Ls { name }) => cmd::var::ls(&client()?, name, json)?,
+        Command::Var(VarCommand::Set { name, var, value }) => {
+            cmd::var::set(&client()?, name, var, Some(value))?
+        }
+        Command::Var(VarCommand::Unset { name, var }) => {
+            cmd::var::set(&client()?, name, var, None)?
         }
         Command::Wakes { name } => cmd::wakes::run(&client()?, name, json)?,
         Command::Deploys { name } => cmd::deploys::run(&client()?, name, json)?,
@@ -668,19 +735,10 @@ fn main() -> Result<ExitCode> {
             credential,
             copies,
             r#for,
-        }) => cmd::secret::ask(&client()?, name, credential.as_deref(), copies, r#for, json)?,
-        Command::Budget {
-            name,
-            tool,
-            cpu,
-            rows,
-            memory,
-        } => match (cpu, rows) {
-            (Some(cpu), Some(rows)) => {
-                cmd::budget::set(&client()?, name, tool, *cpu, *rows, *memory)?
-            }
-            _ => cmd::budget::show(&client()?, name, tool, json)?,
-        },
+        }) => cmd::secret::request(&client()?, name, credential.as_deref(), copies, r#for, json)?,
+        Command::Budget { name, tool } => {
+            cmd::budget::show(&client()?, &cloud()?, name, tool, json)?
+        }
         Command::Billing { action: None } => cmd::billing::status(&client()?, json)?,
         Command::Billing {
             action: Some(action),
@@ -690,7 +748,7 @@ fn main() -> Result<ExitCode> {
                 BillingCommand::Plan { slug, r#for } => {
                     cmd::billing::ask(&client, Purchase::Plan, Some(slug), r#for, json)?
                 }
-                BillingCommand::Verify => cmd::billing::verify(&client, json)?,
+                BillingCommand::Verify { r#for } => cmd::billing::verify(&client, r#for, json)?,
                 BillingCommand::Credit { r#for } => {
                     cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }
@@ -713,10 +771,19 @@ fn main() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 KeyCommand::Ls => cmd::key::ls(&client, json)?,
-                KeyCommand::Create { label, days } => {
-                    cmd::key::create(&client, label, *days, json)?
+                KeyCommand::Create { label, days, scope } => {
+                    cmd::key::create(&client, label, *days, scope, json)?
                 }
                 KeyCommand::Rm { id } => cmd::key::rm(&client, id, yes)?,
+                KeyCommand::Roll { id } => cmd::key::roll(&client, id, yes, json)?,
+                KeyCommand::Ask {
+                    services,
+                    budget,
+                    context,
+                } => cmd::key::ask(&client, services, *budget, context, json)?,
+                KeyCommand::Grant { id, service } => cmd::key::grant(&client, id, service)?,
+                KeyCommand::Ungrant { id, service } => cmd::key::ungrant(&client, id, service)?,
+                KeyCommand::Budget { id, usd } => cmd::key::budget(&client, id, *usd, json)?,
             }
         }
         Command::App(action) => {
@@ -782,42 +849,28 @@ fn main() -> Result<ExitCode> {
         } => cmd::invites::accept(&client()?, token)?,
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
+        Command::Explain { code } => cmd::explain::run(&client()?, code, json)?,
         Command::Upgrade => cmd::upgrade::run(yes)?,
-        // The one command whose exit code carries a result rather than a
-        // verdict on berm.
-        Command::Call {
-            program,
-            tool,
-            arguments,
-            caller,
-            issuer,
-            user,
+        // The one command whose exit code carries the call's result.
+        Command::Call(call) => return cmd::call::run(&client()?, &cloud()?, call),
+        Command::Replay {
+            service,
+            id,
+            on,
+            build,
         } => {
-            let caller = caller.as_ref().map(|id| Caller {
-                id: id.clone(),
-                app: None,
-                user: issuer
-                    .clone()
-                    .zip(user.clone())
-                    .map(|(issuer, subject)| User { issuer, subject }),
-                client: None,
-                agent: None,
-            });
-            return cmd::call::run(
-                &client()?,
-                program,
-                tool,
-                arguments.as_deref(),
-                caller.as_ref(),
-            );
-        }
-        Command::Replay { program, id, on } => {
             return match on {
                 Some(on) => {
-                    let on = Client::from(Contexts::load()?.get(Some(on))?);
-                    cmd::replay::on(&client()?, &on, program, *id)
+                    let on = Contexts::load()?.get(Some(on))?;
+                    let cloud = on.cloud();
+                    cmd::replay::on(&client()?, &Client::from(on), &cloud, service, *id)
                 }
-                None => cmd::replay::tape(&client()?, program, *id),
+                None => cmd::replay::tape(
+                    &client()?,
+                    service,
+                    *id,
+                    build.then_some(std::path::Path::new(".")),
+                ),
             };
         }
     }

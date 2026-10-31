@@ -3,7 +3,7 @@
 use crate::{
     account::billing::PublicPlan,
     client::{Client, Error},
-    system::meta::{Metering, VersionInfo},
+    system::meta::{Explanation, Metering, VersionInfo},
 };
 use reqwest::Method;
 
@@ -19,13 +19,19 @@ impl Client {
         self.json(self.at(Method::GET, "/meta/plans")).await
     }
 
+    /// What error code `code` means, as `E0001`.
+    pub async fn explain(&self, code: &str) -> Result<Explanation, Error> {
+        self.json(self.at(Method::GET, &format!("/meta/errors/{code}")))
+            .await
+    }
+
     /// What metering costs a service's owner.
     pub async fn rates(&self) -> Result<Metering, Error> {
         self.json(self.at(Method::GET, "/meta/rates")).await
     }
 
-    /// Whether the deployment is serving. Answered by status code alone, so a
-    /// `503` is a `false` rather than an [`Error`].
+    /// Whether the deployment is serving, by status code alone: a `503` is
+    /// `false`.
     pub async fn health(&self) -> Result<bool, Error> {
         self.probe(self.at(Method::GET, "/meta/health")).await
     }

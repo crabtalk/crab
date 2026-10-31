@@ -1,6 +1,6 @@
 # Crawl
 
-An incremental crawler for berm programs: the domains a program watches, each site's robots.txt and sitemaps, and the pages of the kinds the program names, fetched on its schedule into its database and recrawled when they change.
+An incremental crawler for berm services: the domains a service watches, each site's robots.txt and sitemaps, and the pages of the kinds the service names, fetched on its schedule into its database and recrawled when they change.
 
 ## Using it
 
@@ -11,7 +11,7 @@ crabkit = { version = "0.1", features = ["crawl"] }
 
 The kit is also the crate `crabkit-crawl` on its own.
 
-The kit's `crab.toml` declares `"berm.http.fetch" = ["*"]` and its migrations, which give the program `berm.sql`; they reach the program's manifest when the program links the kit. The local host refuses a host matched only by a pattern when it resolves to an address that is not public.
+The kit's `crab.toml` declares `"berm.http.fetch" = ["*"]` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the kit. The local host refuses a host matched only by a pattern when it resolves to an address that is not public.
 
 ```rust,ignore
 use berm_lang::{Result, tool};

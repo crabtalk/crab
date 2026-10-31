@@ -1,6 +1,6 @@
 //! `crab rates` — what use past the included amounts costs.
 
-use crate::utils;
+use crate::{runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{client::Client, system::meta};
 
@@ -10,9 +10,9 @@ fn per_million(rate: u64) -> String {
 }
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let metering = utils::wait(client.rates())?;
+    let metering = runtime::wait(client.rates())?;
     if json {
-        return utils::json(&metering);
+        return terminal::json(&metering);
     }
     let rates = &metering.rates;
     println!("runs          {}", per_million(rates.runs));

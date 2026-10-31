@@ -1,5 +1,5 @@
 //! The reference kit: a secret, a host under `berm.http.fetch`, and a table,
-//! for each program that depends on it.
+//! for each service that depends on it.
 
 #![no_std]
 

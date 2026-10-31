@@ -10,10 +10,10 @@
 pub use berm_api;
 
 pub mod account;
+pub mod catalog;
 #[cfg(feature = "client")]
 pub mod client;
 pub mod error;
 pub mod mcp;
-pub mod sandbox;
+pub mod services;
 pub mod system;
-pub mod utils;

@@ -1,16 +1,16 @@
-//! A program's own SQLite database, for a host serving `berm.sql`.
+//! A service's own SQLite database, for a host serving `berm.sql`.
 //!
-//! One file per program, under the directory [`Databases`] opens them in. An
-//! invocation of a program keeping one, unless a query, holds the database's
-//! writer for its whole run inside one transaction, which its program's SQL and
-//! `berm.set` write into. A call back into a program the chain
+//! One file per service, under the directory [`Databases`] opens them in. An
+//! invocation of a service keeping one, unless a query, holds the database's
+//! writer for its whole run inside one transaction, which its service's SQL and
+//! `berm.set` write into. A call back into a service the chain
 //! already holds runs inside that transaction. A `query` reads the last commit
 //! on a pooled read-only connection, or through the writer when its chain
 //! holds it.
-//! The program's SQL cannot reach the tables named `_berm_*`, where the host
-//! keeps the program's `berm.get`/`berm.set` state and the migrations applied.
+//! The service's SQL cannot reach the tables named `_berm_*`, where the host
+//! keeps the service's `berm.get`/`berm.set` state and the migrations applied.
 
-use crate::{Callsite, Program, database::lock::Graph, readers::Readers, syscall::sql::Statement};
+use crate::{Callsite, Service, database::lock::Graph, readers::Readers, syscall::sql::Statement};
 use anyhow::{Context, Result, anyhow, bail};
 use berm_api::Sequence;
 pub use lock::Held;
@@ -18,11 +18,11 @@ pub use query::Answer;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     collections::HashMap,
-    fs,
+    fmt, fs,
     future::Future,
     io::ErrorKind,
     path::{Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::{Arc, OnceLock, atomic::AtomicU64, mpsc},
     thread,
     time::Duration,
 };
@@ -40,7 +40,7 @@ const SCHEMA: &str = "
         PRIMARY KEY (kit, name));";
 
 /// `_berm_migrations` as it was before kits, keyed by name alone, rebuilt
-/// keyed by kit and name, its rows the program's own.
+/// keyed by kit and name, its rows the service's own.
 const REKEY: &str = "
     ALTER TABLE _berm_migrations RENAME TO _berm_migrations_unkeyed;
     CREATE TABLE _berm_migrations (
@@ -51,10 +51,14 @@ const REKEY: &str = "
         SELECT '', name, sql, applied_at FROM _berm_migrations_unkeyed ORDER BY rowid;
     DROP TABLE _berm_migrations_unkeyed;";
 
+/// What [`Callsite::database`] keeps for an invocation: `None` for a service
+/// keeping no database.
+pub(crate) type Kept = OnceLock<Option<Arc<Database>>>;
+
 /// Work for the writer's thread, on the one connection that writes.
 type Job = Box<dyn FnOnce(&mut Connection) + Send>;
 
-/// Every program's database, opened on first use at `{dir}/{program}.sqlite`.
+/// Every service's database, opened on first use at `{dir}/{service}.sqlite`.
 pub struct Databases {
     dir: PathBuf,
     open: parking_lot::Mutex<HashMap<String, Arc<Database>>>,
@@ -70,66 +74,66 @@ impl Databases {
         }
     }
 
-    /// `program`'s database.
-    pub fn get(&self, program: &str) -> Result<Arc<Database>> {
+    /// `service`'s database.
+    pub fn get(&self, service: &str) -> Result<Arc<Database>> {
         let mut open = self.open.lock();
-        if let Some(database) = open.get(program) {
+        if let Some(database) = open.get(service) {
             return Ok(database.clone());
         }
         let database = Arc::new(Database::open(
-            &self.path(program),
-            program.into(),
+            &self.path(service),
+            service.into(),
             self.graph.clone(),
         )?);
-        open.insert(program.to_owned(), database.clone());
+        open.insert(service.to_owned(), database.clone());
         Ok(database)
     }
 
-    /// Where `program`'s database file is.
-    pub fn path(&self, program: &str) -> PathBuf {
-        self.dir.join(format!("{program}.sqlite"))
+    /// Where `service`'s database file is.
+    pub fn path(&self, service: &str) -> PathBuf {
+        self.dir.join(format!("{service}.sqlite"))
     }
 
-    /// Where `program`'s database's write-ahead log is.
-    pub fn wal(&self, program: &str) -> PathBuf {
-        self.dir.join(format!("{program}.sqlite-wal"))
+    /// Where `service`'s database's write-ahead log is.
+    pub fn wal(&self, service: &str) -> PathBuf {
+        self.dir.join(format!("{service}.sqlite-wal"))
     }
 
-    /// Where `program`'s database's shared-memory index is.
-    pub fn shm(&self, program: &str) -> PathBuf {
-        self.dir.join(format!("{program}.sqlite-shm"))
+    /// Where `service`'s database's shared-memory index is.
+    pub fn shm(&self, service: &str) -> PathBuf {
+        self.dir.join(format!("{service}.sqlite-shm"))
     }
 
-    /// Make the SQLite file at `seed` `program`'s database, moving it into
+    /// Make the SQLite file at `seed` `service`'s database, moving it into
     /// place. `seed` is on the same filesystem as the databases. Refused when
-    /// `program` has a database, open or on disk.
-    pub fn seed(&self, program: &str, seed: &Path) -> Result<()> {
+    /// `service` has a database, open or on disk.
+    pub fn seed(&self, service: &str, seed: &Path) -> Result<()> {
         let open = self.open.lock();
-        let path = self.path(program);
-        if open.contains_key(program) || path.exists() {
-            bail!("{program} has a database, and a seed only starts one");
+        let path = self.path(service);
+        if open.contains_key(service) || path.exists() {
+            bail!("{service} has a database, and a seed only starts one");
         }
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
-        for stale in [self.wal(program), self.shm(program)] {
+        for stale in [self.wal(service), self.shm(service)] {
             remove(&stale)?;
         }
         fs::rename(seed, &path)
             .with_context(|| format!("moving {} to {}", seed.display(), path.display()))
     }
 
-    /// Close `program`'s database and delete its files. Refused while
+    /// Close `service`'s database and delete its files. Refused while
     /// anything but this holds it open: an invocation's [`Held`] holds it.
     /// Blocks until the writer has run the jobs it was sent.
-    pub fn remove(&self, program: &str) -> Result<()> {
+    pub fn remove(&self, service: &str) -> Result<()> {
         let closing = {
             let mut open = self.open.lock();
-            match open.remove(program).map(Arc::try_unwrap) {
+            match open.remove(service).map(Arc::try_unwrap) {
                 Some(Ok(database)) => Some(database),
                 Some(Err(database)) => {
-                    open.insert(program.to_owned(), database);
-                    bail!("{program}'s database is in use");
+                    open.insert(service.to_owned(), database);
+                    bail!("{service}'s database is in use");
                 }
                 None => None,
             }
@@ -137,22 +141,22 @@ impl Databases {
         if let Some(database) = closing {
             database.close();
         }
-        let path = self.path(program);
-        for file in [self.wal(program), self.shm(program), path] {
+        let path = self.path(service);
+        for file in [self.wal(service), self.shm(service), path] {
             remove(&file)?;
         }
         Ok(())
     }
 
-    /// What an invocation of `program` at `at` holds: a savepoint on each
-    /// database its chain holds the writer of, and, for a program keeping a
+    /// What an invocation of `service` at `at` holds: a savepoint on each
+    /// database its chain holds the writer of, and, for a service keeping a
     /// database whose writer the chain does not hold, unless a query, that
     /// writer. Waiting for a writer ends at the chain's deadline, and is
     /// refused when the chain holding it waits, through others or itself, on
     /// one this chain holds.
     pub fn enter(
         &self,
-        program: &Program,
+        service: &Service,
         at: &Callsite,
     ) -> impl Future<Output = Result<Held>> + Send + 'static {
         let mut held: Vec<Arc<Database>> = Vec::new();
@@ -168,9 +172,9 @@ impl Databases {
                 }
             }
             drop(open);
-            if program.manifest().keeps_database() {
+            if service.manifest.keeps_database() {
                 taking = self
-                    .get(&program.name)
+                    .get(&service.name)
                     .map(|database| Some(database).filter(|database| !database.holds(at.chain)));
             }
         }
@@ -196,6 +200,26 @@ impl Databases {
     }
 }
 
+impl Callsite {
+    /// The database of the service at this site, as `resolve` answers it on
+    /// the invocation's first ask and kept for the rest of the invocation. An
+    /// `Err` is not kept.
+    pub fn database(
+        &self,
+        resolve: impl FnOnce() -> Option<Result<Arc<Database>>>,
+    ) -> Option<Result<Arc<Database>>> {
+        if let Some(kept) = self.database.get() {
+            return kept.clone().map(Ok);
+        }
+        let resolved = match resolve() {
+            Some(Err(error)) => return Some(Err(error)),
+            Some(Ok(database)) => Some(database),
+            None => None,
+        };
+        self.database.get_or_init(|| resolved).clone().map(Ok)
+    }
+}
+
 /// Delete `path`, when there is one.
 fn remove(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
@@ -206,17 +230,27 @@ fn remove(path: &Path) -> Result<()> {
     }
 }
 
-/// One program's database.
+/// One service's database.
 pub struct Database {
     readers: Arc<Readers>,
-    /// The program it is the database of.
+    /// The service it is the database of.
     name: Arc<str>,
     /// The writer's thread, which owns the writing connection.
     jobs: mpsc::Sender<Job>,
     writer: thread::JoinHandle<()>,
     /// Held by the call writing or a migration.
     writing: Arc<Mutex<()>>,
+    /// The chain holding the writer, [`lock::FREE`] for none.
+    holder: AtomicU64,
     graph: Arc<parking_lot::Mutex<Graph>>,
+}
+
+impl fmt::Debug for Database {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Database")
+            .field("name", &self.name)
+            .finish()
+    }
 }
 
 impl Database {
@@ -257,6 +291,7 @@ impl Database {
             jobs,
             writer,
             writing: Arc::new(Mutex::new(())),
+            holder: AtomicU64::new(lock::FREE),
             graph,
         })
     }
@@ -300,13 +335,13 @@ impl Database {
         .await
     }
 
-    /// Run the program's statement inside the transaction `chain` holds.
+    /// Run the service's statement inside the transaction `chain` holds.
     pub async fn exec(&self, chain: u64, statement: Statement) -> Result<Answer> {
         self.held(chain)?;
         on(&self.jobs, move |conn| query::run(conn, &statement, false)).await
     }
 
-    /// Run the program's statement, refusing one that writes: inside the
+    /// Run the service's statement, refusing one that writes: inside the
     /// transaction `chain` holds, or against the last commit.
     pub async fn read(&self, chain: u64, statement: Statement) -> Result<Answer> {
         if self.holds(chain) {
@@ -317,7 +352,7 @@ impl Database {
             .await
     }
 
-    /// The program's `key`: inside the transaction `chain` holds, or as last
+    /// The service's `key`: inside the transaction `chain` holds, or as last
     /// committed.
     pub async fn get(&self, chain: u64, key: String) -> Result<Option<Vec<u8>>> {
         let state = |conn: &Connection, key: String| -> Result<Option<Vec<u8>>> {
@@ -335,7 +370,7 @@ impl Database {
         self.readers.with(move |conn| state(conn, key)).await
     }
 
-    /// Set the program's `key` inside the transaction `chain` holds.
+    /// Set the service's `key` inside the transaction `chain` holds.
     pub async fn set(&self, chain: u64, key: String, value: Vec<u8>) -> Result<()> {
         self.held(chain)?;
         on(&self.jobs, move |conn| {
@@ -359,7 +394,7 @@ impl Database {
 
     /// Apply the migrations not yet applied, in one transaction, answering
     /// their names, a kit's as `{kit}/{name}`. Each sequence is applied under
-    /// its kit, `""` the program's own, its migrations kept under a former key
+    /// its kit, `""` the service's own, its migrations kept under a former key
     /// moved under its kit first. Refused, with nothing applied, when a kit's
     /// applied migrations are kept under more than one of its keys, are not
     /// the first of its sequence, unchanged, or when one fails.

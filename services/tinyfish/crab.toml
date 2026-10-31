@@ -1,0 +1,56 @@
+name = "tinyfish"
+buffer = 8388608
+
+[syscalls]
+"berm.http.fetch" = ["agent.tinyfish.ai", "api.search.tinyfish.ai", "api.fetch.tinyfish.ai"]
+
+[credentials.tinyfish]
+title = "TinyFish API key"
+guide = "Create an API key at https://agent.tinyfish.ai. Availability, daily allowances and usage charges depend on your TinyFish account and wallet."
+hosts = ["agent.tinyfish.ai", "api.search.tinyfish.ai", "api.fetch.tinyfish.ai"]
+secrets = [{ name = "TINYFISH_API_KEY", label = "API key" }]
+
+[tools.search]
+access = "public"
+title = "Search the web"
+catalog = "web.search"
+
+[tools.search_news]
+access = "public"
+title = "Search recent news"
+catalog = "web.search.news"
+
+[tools.search_publications]
+access = "public"
+title = "Search research publications"
+catalog = "web.search.publications"
+
+[tools.fetch]
+access = "public"
+title = "Fetch clean page content"
+catalog = "web.extract"
+
+[tools.run]
+access = "public"
+title = "Run a browser agent"
+catalog = "web.agent.run"
+
+[tools.run_status]
+access = "public"
+title = "Check a browser-agent run"
+catalog = "web.agent.run.status"
+
+[tools.run_cancel]
+access = "public"
+title = "Cancel a browser-agent run"
+catalog = "web.agent.run.cancel"
+
+[tools.step_screenshot]
+access = "public"
+title = "Retrieve a step screenshot"
+catalog = "web.agent.step.screenshot"
+
+[tools.step_html]
+access = "public"
+title = "Retrieve step HTML"
+catalog = "web.agent.step.html"

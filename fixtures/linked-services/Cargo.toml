@@ -1,0 +1,18 @@
+[package]
+name = "berm-linked-services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+berm-lang.workspace = true
+auth.workspace = true
+resend = { package = "crab-resend", path = "../../services/resend", default-features = false }
+github = { package = "crab-github", path = "../../services/github", default-features = false }
+upstash = { package = "crab-upstash", path = "../../services/upstash", default-features = false }
+posthog = { package = "crab-posthog", path = "../../services/posthog", default-features = false }
+release-watch = { package = "crab-release-watch", path = "../../services/release-watch", default-features = false }

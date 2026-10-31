@@ -1,4 +1,4 @@
-# The service this program deploys as.
+# The name it deploys as.
 name = "__NAME__"
 # The public registry repository the image is published to, tagged with the
 # crate's version on each deploy. Without it, a deploy uploads the image to
@@ -6,14 +6,32 @@ name = "__NAME__"
 # image = "ghcr.io/<you>/__NAME__"
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
-# Programs it calls by name.
-# programs = ["inner"]
+# Services it calls by name.
+# calls = ["inner"]
 # The most bytes a call's arguments, and a tool's result, may hold.
 # buffer = 16384
+
+# Each tool's table; every key is optional.
+[tools.echo]
+# Who may call it: "public", "anonymous" (public, and callable with no
+# caller), or restricted to "accounts" or "services". Absent, it is internal:
+# only its host calls it.
+access = "public"
+# Its short display name, at most 60 characters on one line.
+# title = "Echo a query"
+# Its price a call on Cloud, in USD micros: 2_000 is $0.002, at least 100.
+# price = 2_000
+# The catalog job it does: a listed platform, `.`, then the job.
+# catalog = "web.search"
 
 # Syscalls it makes beyond the ABI's own, each beside what it reaches.
 # [syscalls]
 # "berm.http.fetch" = ["example.com"]
+
+# Settings each deployed copy holds its own value of, read through
+# `berm_lang::var`.
+# [vars]
+# keywords = { default = "rust, wasm", description = "Words to watch" }
 
 # [database]
 # What its database may hold.

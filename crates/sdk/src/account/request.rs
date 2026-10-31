@@ -1,9 +1,12 @@
 //! `/requests` — what an account asks a person to do, handed to them as a
-//! short code: pay for a purchase, set secrets of a service, or sign a device
-//! in as them.
+//! short code: pay for a purchase, set secrets of a service, sign a device in
+//! as them, approve a deploy, verify on GitHub, or let an API key spend.
 
-use crate::{account::org::PublicAccount, utils::text_enum};
-use berm_api::Credential;
+use crate::{
+    account::{key::KeyService, org::PublicAccount},
+    services::service::DeployRequest,
+};
+use berm_api::{Credential, Deployed, Manifest};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -18,9 +21,17 @@ pub enum RequestKind {
     Secret,
     /// Sign a device in as the person: RFC 8628's device grant.
     Login,
+    /// Approve a deploy of the account's services, which runs as the person
+    /// approving it.
+    Deploy,
+    /// Verify the person on GitHub, which lets their account deploy on Hobby.
+    Verify,
+    /// Let an API key call other accounts' priced services, or spend more in a
+    /// day.
+    Grant,
 }
 
-text_enum!(RequestKind { Payment => "payment", Secret => "secret", Login => "login" });
+berm_api::text_enum!(RequestKind);
 
 /// What a payment request buys.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -33,7 +44,7 @@ pub enum Purchase {
     Credit,
 }
 
-text_enum!(Purchase { Plan => "plan", Credit => "credit" });
+berm_api::text_enum!(Purchase);
 
 /// Where a request stands.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -42,7 +53,10 @@ text_enum!(Purchase { Plan => "plan", Credit => "credit" });
 pub enum RequestStatus {
     /// Waiting on the person.
     Pending,
-    /// Paid, the secrets set, or the sign-in approved.
+    /// Approved and deploying.
+    Deploying,
+    /// Paid, the secrets set, the sign-in approved, the deploy approved and
+    /// run, whether or not it went live, or the person verified.
     Completed,
     /// The person declined it.
     Declined,
@@ -50,12 +64,7 @@ pub enum RequestStatus {
     Expired,
 }
 
-text_enum!(RequestStatus {
-    Pending => "pending",
-    Completed => "completed",
-    Declined => "declined",
-    Expired => "expired"
-});
+berm_api::text_enum!(RequestStatus);
 
 /// What to ask a person, at `POST /requests`, for the account `account` names
 /// by handle or id.
@@ -90,19 +99,55 @@ pub enum CreateRequest {
         #[serde(default)]
         context: String,
     },
+    /// Deploy the account's services together, by name, once a person
+    /// approves; as `POST /orgs/{org}/services/deploys` deploys them.
+    Deploy {
+        account: String,
+        services: BTreeMap<String, DeployRequest>,
+        /// Provider copy values, by service and key.
+        #[serde(default)]
+        copy: BTreeMap<String, BTreeMap<String, String>>,
+        /// One short sentence describing the change, at most 160 characters.
+        /// Shown to the person; keep setup instructions in credential guides.
+        #[serde(default)]
+        context: String,
+    },
+    /// Verify the person `account` names on GitHub. It completes once they
+    /// are verified, by its page or any other way.
+    Verify {
+        account: String,
+        /// What it is for, in the asker's words, shown to the person.
+        #[serde(default)]
+        context: String,
+    },
+    /// Let the key making the request call `services`, each as `owner/name`,
+    /// or spend `budget` USD micros a UTC day, once an owner of its account
+    /// approves.
+    Grant {
+        #[serde(default)]
+        services: Vec<String>,
+        #[serde(default)]
+        budget: Option<i64>,
+        /// What it is for, in the asker's words, shown to the person.
+        #[serde(default)]
+        context: String,
+    },
 }
 
 /// A request, as the person who opens its code sees it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
-    /// What a person types at `/pay`, `/secrets` or `/device`, as
-    /// `WDJB-MJHT`.
+    /// What a person types at `/pay`, `/secrets`, `/device`, `/deploy` or
+    /// `/verify`, as `WDJB-MJHT`.
     pub code: String,
     /// The page that opens it.
     pub url: String,
     pub kind: RequestKind,
     pub status: RequestStatus,
+    /// When a deploy was approved; absent before approval or for other kinds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<i64>,
     /// The account it is for; none for a sign-in until a person approves it.
     pub account: Option<PublicAccount>,
     pub context: String,
@@ -129,6 +174,53 @@ pub struct Request {
     /// declined, its code or error on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redirect: Option<String>,
+    /// What a deploy request deploys, by service.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deploys: BTreeMap<String, DeployRequest>,
+    /// What each image a deploy request deploys says it is, by service, read
+    /// from the image when it was asked.
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub manifests: BTreeMap<String, Manifest>,
+    /// Each service an approved deploy put live, by name.
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deployed: BTreeMap<String, Deployed>,
+    #[serde(default)]
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    pub results: BTreeMap<String, crate::services::service::DeployResult>,
+    #[serde(default)]
+    pub asks: BTreeMap<String, Vec<AskedCredential>>,
+    /// Why an approved deploy did not go live.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
+    /// The error code explaining `failure`, as `E0020`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explain: Option<String>,
+    /// The account is a person's on Hobby, not verified: a deploy request is
+    /// refused when approved until they verify.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unverified: bool,
+    /// What a grant request asks for its key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<Access>,
+}
+
+/// What a grant request asks for one API key, beside what the key holds now.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Access {
+    /// The key's label.
+    pub label: String,
+    pub hint: String,
+    /// The priced services it asks to call.
+    pub services: Vec<KeyService>,
+    /// The daily budget it asks for, in USD micros.
+    pub budget: Option<i64>,
+    /// Its daily budget now, in USD micros.
+    pub current: i64,
+    /// What it spent on tool prices today, UTC, in USD micros.
+    pub spent: i64,
 }
 
 /// A credential a secret request asks for, as its service declared it when
@@ -209,8 +301,7 @@ pub struct AskedSecret {
     pub label: String,
     /// Never shown once set.
     pub masked: bool,
-    /// A regular expression a value is expected to match; a value that does
-    /// not is warned about, never refused.
+    /// A regular expression a value must match.
     #[serde(default)]
     pub pattern: Option<String>,
     pub set: bool,

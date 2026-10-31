@@ -3,28 +3,30 @@
 //! scope, and a service reaches services by name within its own.
 
 use crate::{
-    api::outside::Layers,
+    api::outside::{Bottom, Outside},
     config::Config,
     env::{Clock, Edges, Env, Images, Peers},
     host::fetch::Door,
     record::{
-        calls, logs,
+        calls,
+        flight::Table,
+        logs,
         meter::{self, Meters as Pending},
         usage::{self, Counts},
     },
     state::{
         self, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql, stop::Stops,
-        store::Store, terms::Terms,
+        store::Store,
     },
     wake,
 };
 use anyhow::{Context, Result};
 use berm::{
-    Berm, Engine, Now, Pool, Program, User,
+    Berm, Engine, Now, Pool, Service, User,
     database::{Database, Databases},
 };
 use berm_api::{
-    Budget,
+    digest,
     host::{self, Used},
 };
 use parking_lot::Mutex;
@@ -39,9 +41,10 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{self, Notify, RwLock, Semaphore},
+    sync::{self, Notify, Semaphore},
     task, time,
 };
+use tower::Layer;
 
 pub use deploy::Installed;
 pub(crate) use invoke::Invoked;
@@ -51,11 +54,10 @@ mod fetch;
 mod invoke;
 mod nest;
 mod set;
-mod storage;
 
 /// Every service, compiled and callable.
 #[derive(Clone)]
-pub struct Host<E: Env>(Arc<Inner<E>>);
+pub struct Host<E: Env>(pub(crate) Arc<Inner<E>>);
 
 impl<E: Env> Deref for Host<E> {
     type Target = Inner<E>;
@@ -91,9 +93,11 @@ pub struct Inner<E: Env> {
     pub(crate) logs: logs::Pending,
     /// Meters not yet written.
     pub(crate) meters: Pending,
-    /// Held to write what is pending, and shared to read it beside what is
-    /// written.
-    pub(crate) flushing: RwLock<()>,
+    /// Held by a flush.
+    flushing: sync::Mutex<()>,
+    /// Held by a flush from writing what it took to dropping it from memory.
+    #[cfg(feature = "test")]
+    pub(crate) landing: sync::Mutex<()>,
     /// The last day stored bytes were sampled, in days since the Unix epoch.
     sampled: AtomicI32,
     /// The databases of the services that keep one.
@@ -109,13 +113,10 @@ pub struct Inner<E: Env> {
     pub(crate) peers: E::Peers,
     pub(crate) images: E::Images,
     pub(crate) secrets: E::Secrets,
-    /// [`Edges::layers`].
-    pub(crate) layers: Layers,
-    /// The most one invocation may use, and what a tool's owner has not set
-    /// takes.
-    pub budget: Budget,
-    /// Each tool's budget its owner set.
-    pub(crate) terms: Terms,
+    /// [`Edges::layers`] around the host's own service.
+    pub(crate) outside: Outside,
+    /// How long a chain of calls runs before it is stopped.
+    pub(crate) deadline: Duration,
     /// Held by a deploy of the service keyed by its key.
     deploying: Mutex<HashMap<String, Arc<sync::Mutex<()>>>>,
     /// [`Edges::clock`].
@@ -128,12 +129,12 @@ impl<E: Env> Inner<E> {
         self.chains - self.gate.available_permits()
     }
 
-    /// The database of `program`, when it is deployed and keeps one.
-    pub(crate) fn kept(&self, program: &str) -> Option<Result<Arc<Database>>> {
+    /// The database of `service`, when it is deployed and keeps one.
+    pub(crate) fn kept(&self, service: &str) -> Option<Result<Arc<Database>>> {
         self.berm
-            .get(program)
-            .filter(|program| keeps(program))
-            .map(|_| self.databases.get(program))
+            .get(service)
+            .filter(|service| keeps(service))
+            .map(|_| self.databases.get(service))
     }
 }
 
@@ -169,14 +170,21 @@ impl<E: Env> Host<E> {
             memory: config.memory,
             reserved: config.reserved,
             cpu: config.cpu,
-            rows: config.rows,
+            read: config.read,
+            written: config.written,
+            budget: config.budget,
             deadline: config.deadline,
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
         let commits = Commits::new(store.clone(), databases.clone());
-        let ran = calls::Pending::new(now.clone(), calls::newest(&store).await?);
-        let terms = Terms::default();
-        terms.load(&store).await?;
+        let ran = calls::Pending::new(
+            now.clone(),
+            calls::newest(&store).await?,
+            Table::Calls.last(&store).await?,
+        );
+        let used = Counts::new(now.clone(), Table::Usage.last(&store).await?);
+        let emitted = logs::Pending::new(now.clone(), Table::Logs.last(&store).await?);
+        let metered = Pending::new(now.clone(), Table::Meters.last(&store).await?);
         let chains = (config.instances / (config.depth + 1)).max(1);
         let pools = Arc::new(Pools::new(config.held));
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
@@ -185,7 +193,8 @@ impl<E: Env> Host<E> {
                 fetch::syscall(host, fetch, Door::FetchAll),
             ];
             if let Some(proxy) = proxy {
-                syscalls.push(fetch::syscall(host, proxy, Door::Proxy));
+                syscalls.push(fetch::syscall(host, proxy.clone(), Door::Proxy));
+                syscalls.push(fetch::syscall(host, proxy, Door::ProxyAll));
             }
             syscalls.extend(state::syscalls(host));
             syscalls.push(logs::syscall(host));
@@ -199,7 +208,7 @@ impl<E: Env> Host<E> {
                 now.clone(),
                 pools.clone(),
             );
-            let berm = Berm::new(&engine, calls, syscalls, Arc::new(Unrecorded));
+            let berm = Berm::new(&engine, calls, syscalls);
             Inner {
                 store,
                 berm,
@@ -208,11 +217,13 @@ impl<E: Env> Host<E> {
                 pools,
                 reserve: engine.reserve.clone(),
                 waking: Notify::new(),
-                usage: Counts::new(now.clone()),
+                usage: used,
                 calls: ran,
-                logs: logs::Pending::new(now.clone()),
-                meters: Pending::new(now.clone()),
-                flushing: RwLock::default(),
+                logs: emitted,
+                meters: metered,
+                flushing: sync::Mutex::default(),
+                #[cfg(feature = "test")]
+                landing: sync::Mutex::default(),
                 sampled: AtomicI32::default(),
                 databases,
                 commits,
@@ -222,13 +233,8 @@ impl<E: Env> Host<E> {
                 peers,
                 images,
                 secrets,
-                layers,
-                budget: Budget {
-                    cpu: config.cpu.as_micros() as u64,
-                    rows: config.rows,
-                    memory: config.memory as u64,
-                },
-                terms,
+                outside: layers.layer(Outside::new(Bottom(host.clone()))),
+                deadline: config.deadline,
                 deploying: Mutex::default(),
                 now,
             }
@@ -266,9 +272,9 @@ impl<E: Env> Host<E> {
             let key = join(&row.scope, &row.name);
             let size = row.size;
             match self.load(row).await {
-                Ok(program) => {
-                    tracing::debug!(service = key, digest = %program.digest, "loaded");
-                    if keeps(&program)
+                Ok(service) => {
+                    tracing::debug!(service = key, digest = %service.digest, "loaded");
+                    if keeps(&service)
                         && let Err(e) = async { self.databases.get(&key)?.limit(size).await }.await
                     {
                         tracing::error!(service = key, "limiting its database failed: {e:#}");
@@ -279,14 +285,14 @@ impl<E: Env> Host<E> {
         }
     }
 
-    /// The program a `services` row names, pulled and compiled unless it
+    /// The service a `services` row names, pulled and compiled unless it
     /// already runs that digest.
-    async fn load(&self, row: service::Row) -> Result<Arc<Program>> {
+    async fn load(&self, row: service::Row) -> Result<Arc<Service>> {
         let key = join(&row.scope, &row.name);
-        if let Some(program) = self.berm.get(&key)
-            && row.digest.strip_prefix("sha256:") == Some(program.digest.as_str())
+        if let Some(service) = self.berm.get(&key)
+            && row.digest.strip_prefix(digest::PREFIX) == Some(service.digest.as_str())
         {
-            return Ok(program);
+            return Ok(service);
         }
         let image = self.images.pull(&row.reference, &row.digest).await?;
         self.compile(key, image).await
@@ -295,24 +301,40 @@ impl<E: Env> Host<E> {
     /// Write what was counted: uses of services this host runs here, and the
     /// rest to the peer each runs on.
     pub(crate) async fn flush(&self) -> Result<()> {
+        let _flushing = self.flushing.lock().await;
+        let (used, rest) = self
+            .usage
+            .take(|used| self.berm.get(&used.service).is_some());
         let mut remote: HashMap<String, Vec<Used>> = HashMap::new();
-        {
-            let _writing = self.flushing.write().await;
-            let mut local = Vec::new();
-            for used in self.usage.take() {
-                if self.berm.get(&used.service).is_some() {
-                    local.push(used);
-                } else if let Some(peer) = self.routes.peer(&used.service) {
-                    remote.entry(peer).or_default().push(used);
-                }
+        for used in rest {
+            if let Some(peer) = self.routes.peer(&used.service) {
+                remote.entry(peer).or_default().push(used);
             }
-            usage::write(&self.store, local).await?;
-            // Every log of a run taken is taken after it, and written before.
-            let ran = self.calls.take();
-            logs::write(&self.store, self.logs.take_all(), (self.now)()).await?;
-            calls::write(&self.store, ran, (self.now)()).await?;
-            meter::write(&self.store, self.meters.take()).await?;
         }
+        // Every log of a run taken is taken after it, and written before.
+        let ran = self.calls.take();
+        let emitted = self.logs.take_all();
+        let metered = self.meters.take();
+        let generations = (
+            used.generation,
+            ran.generation,
+            emitted.generation,
+            metered.generation,
+        );
+        let now = (self.now)();
+        let written = [
+            usage::write(&self.store, used).await,
+            logs::write(&self.store, emitted, now).await,
+            calls::write(&self.store, ran, now).await,
+            meter::write(&self.store, metered).await,
+        ];
+        #[cfg(feature = "test")]
+        let _landing = self.landing.lock().await;
+        self.usage.land(generations.0);
+        self.calls.land(generations.1);
+        self.logs.land(generations.2);
+        self.meters.land(generations.3);
+        written.into_iter().collect::<Result<()>>()?;
         for (peer, used) in remote {
             if let Err(e) = self.peers.ship(&peer, &used).await {
                 tracing::warn!(peer, "handing over service usage failed: {e:#}");
@@ -320,12 +342,12 @@ impl<E: Env> Host<E> {
         }
         let today = self.today();
         if self.sampled.swap(today, Ordering::Relaxed) != today {
-            for program in self.berm.list() {
+            for service in self.berm.list() {
                 meter::sample(
                     &self.store,
-                    &program.name,
+                    &service.name,
                     &self.databases,
-                    program.bytes(),
+                    service.bytes,
                     today,
                 )
                 .await?;
@@ -334,8 +356,7 @@ impl<E: Env> Host<E> {
         Ok(())
     }
 
-    /// `service`'s runs and logs not yet written. Read under
-    /// [`Inner::flushing`].
+    /// `service`'s runs and logs not yet written.
     pub(crate) fn unsaved(&self, service: &str) -> calls::Unsaved {
         calls::Unsaved {
             ran: self.calls.unsaved(service),
@@ -343,19 +364,19 @@ impl<E: Env> Host<E> {
         }
     }
 
-    /// The program `service` runs.
-    pub fn get(&self, service: &str) -> Option<Arc<Program>> {
+    /// The service `service` runs.
+    pub fn get(&self, service: &str) -> Option<Arc<Service>> {
         self.berm.get(service)
     }
 
     /// Every service in `scope` this host runs, by its name within it.
-    pub fn list(&self, scope: &str) -> Vec<(String, Arc<Program>)> {
+    pub fn list(&self, scope: &str) -> Vec<(String, Arc<Service>)> {
         self.berm
             .list()
             .into_iter()
-            .filter_map(|program| {
-                let (within, name) = split(&program.name);
-                (within == scope).then(|| (name.to_owned(), program.clone()))
+            .filter_map(|service| {
+                let (within, name) = split(&service.name);
+                (within == scope).then(|| (name.to_owned(), service.clone()))
             })
             .collect()
     }
@@ -371,10 +392,9 @@ impl<E: Env> Host<E> {
             .clone();
         let _deploying = lock.lock().await;
         let (scope, name) = split(service);
-        self.berm.remove(service)?;
+        self.berm.remove(service);
         self.databases.remove(service)?;
         let removed = service::remove(&self.store, scope, name).await?;
-        self.terms.forget(service);
         self.stops.mark(service, false);
         Ok(removed)
     }
@@ -386,18 +406,12 @@ impl<E: Env> Host<E> {
         self.switch(service, false).await
     }
 
-    /// Start `service` stopped by [`Self::stop`] or deployed stopped; wakes
-    /// that came due meanwhile fire. `false` when it is not deployed.
-    pub async fn start(&self, service: &str) -> Result<bool> {
-        self.switch(service, true).await
-    }
-
     /// Whether `service` is stopped.
     pub fn stopped(&self, service: &str) -> bool {
         self.stops.stopped(service)
     }
 
-    async fn switch(&self, service: &str, running: bool) -> Result<bool> {
+    pub(crate) async fn switch(&self, service: &str, running: bool) -> Result<bool> {
         let lock = self
             .deploying
             .lock()
@@ -418,7 +432,7 @@ impl<E: Env> Host<E> {
     }
 
     /// Compile an image into the runtime, off the async workers.
-    async fn compile(&self, key: String, image: Vec<u8>) -> Result<Arc<Program>> {
+    async fn compile(&self, key: String, image: Vec<u8>) -> Result<Arc<Service>> {
         let berm = self.berm.clone();
         task::spawn_blocking(move || berm.deploy(&key, &image))
             .await
@@ -431,9 +445,9 @@ pub(crate) fn alive<E: Env>(host: &Weak<Inner<E>>) -> Result<Arc<Inner<E>>> {
     host.upgrade().context("the host is closed")
 }
 
-/// Whether `program` keeps a database.
-pub(crate) fn keeps(program: &Program) -> bool {
-    program.manifest().keeps_database()
+/// Whether `service` keeps a database.
+pub(crate) fn keeps(service: &Service) -> bool {
+    service.manifest.keeps_database()
 }
 
 /// How often counted uses are written.
@@ -460,7 +474,3 @@ pub(crate) fn user(user: &host::User) -> User {
         subject: user.subject.as_str().into(),
     }
 }
-
-/// The runtime's records, kept nowhere: `services` and the images are where a
-/// deploy is recorded, and [`Host::boot`] restores from them.
-struct Unrecorded;

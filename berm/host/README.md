@@ -18,7 +18,8 @@ running a service's built image under the real engine. Fetches answer what the
 test arranged, the clock stands where the test set it, and the test fires the
 wakes the service armed.
 
-`Config` controls instance capacity, instruction and database-row budgets,
+`Config` controls instance capacity, the most and the default budget of CPU,
+rows read, rows written and memory,
 call depth, the compiled-code cache, and the database directory. See
 [`crab dev`](../../crates/crab) for a daemon using this host.
 

@@ -1,7 +1,7 @@
 [package]
 name = "crabkit-neon"
 version.workspace = true
-description = "Neon's SQL over HTTP for berm programs: parameterized statements and transactions through berm.http.fetch."
+description = "Neon's SQL over HTTP for berm services: parameterized statements and transactions through berm.http.fetch."
 edition.workspace = true
 authors.workspace = true
 license.workspace = true

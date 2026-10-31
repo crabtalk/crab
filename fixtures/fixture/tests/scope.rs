@@ -35,7 +35,7 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
         agent: None,
     };
     for service in ["acct/fixture", "acct/inner", "other/fixture"] {
-        host.host()
+        host.host
             .call(
                 service,
                 Some(&caller),
@@ -50,14 +50,14 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
         if written {
             host.flush().await?;
         }
-        let (calls, _) = host.host().scope_calls("acct", page(None, None)).await?;
+        let (calls, _) = host.host.scope_calls("acct", page(None, None)).await?;
         let services: Vec<&str> = calls.iter().map(|ran| ran.service.as_str()).collect();
         assert_eq!(services, ["inner", "fixture"], "written: {written}");
         assert!(calls[0].call.id > calls[1].call.id);
     }
 
     let (calls, _) = host
-        .host()
+        .host
         .scope_calls("acct", page(Some("fixture"), None))
         .await?;
     assert_eq!(calls.len(), 1);
@@ -65,7 +65,7 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
 
     let below = calls[0].call.id;
     let (calls, _) = host
-        .host()
+        .host
         .scope_calls("acct", page(None, Some(below)))
         .await?;
     assert!(calls.is_empty());
@@ -86,7 +86,7 @@ async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
     };
     for word in ["Order-42", "other"] {
         let args = format!(r#"{{"word":"{word}"}}"#);
-        host.host()
+        host.host
             .call(
                 "acct/fixture",
                 Some(&caller),
@@ -102,7 +102,7 @@ async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
             host.flush().await?;
         }
         let found = |q: &str| {
-            let host = host.host().clone();
+            let host = host.host.clone();
             let page = CallPage {
                 q: Some(q.to_owned()),
                 ..page(None, None)
@@ -145,7 +145,7 @@ async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
         "acct/inner",
         "other/fixture",
     ] {
-        host.host()
+        host.host
             .call(
                 service,
                 Some(&caller),
@@ -160,10 +160,7 @@ async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
         if written {
             host.flush().await?;
         }
-        let stats = host
-            .host()
-            .scope_call_stats("acct", page(None, None))
-            .await?;
+        let stats = host.host.scope_call_stats("acct", page(None, None)).await?;
         let counted: u64 = stats.buckets.iter().flat_map(|b| b.outcomes.values()).sum();
         assert_eq!(counted, 3, "written: {written}");
         assert_eq!(stats.tools.get("echo"), Some(&3));
@@ -172,7 +169,7 @@ async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
 
         // A facet drops its own filter: the services still count each other.
         let one = host
-            .host()
+            .host
             .scope_call_stats("acct", page(Some("inner"), None))
             .await?;
         let counted: u64 = one.buckets.iter().flat_map(|b| b.outcomes.values()).sum();

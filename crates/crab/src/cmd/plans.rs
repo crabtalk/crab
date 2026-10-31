@@ -1,13 +1,13 @@
 //! `crab plans` — the plans the deployment sells, and what each includes.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let plans = utils::wait(client.plans())?;
+    let plans = runtime::wait(client.plans())?;
     if json {
-        return utils::json(&plans);
+        return terminal::json(&plans);
     }
     for plan in &plans {
         let price = plan.price_micros.map_or_else(

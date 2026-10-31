@@ -1,2 +1,20 @@
 name = "account"
 deploy = false
+
+[tools.github]
+access = "anonymous"
+
+[tools.google]
+access = "anonymous"
+
+[tools.link_github]
+access = "anonymous"
+
+[tools.link_google]
+access = "anonymous"
+
+[tools.account]
+access = "anonymous"
+
+[tools.sign_out]
+access = "anonymous"

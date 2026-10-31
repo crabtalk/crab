@@ -1,7 +1,7 @@
 //! What `#[tool]` expands a function into: the function, its record in the
 //! `.berm.abi` section, and the export the host calls.
 
-use crate::{ABI_SECTION, utils};
+use berm_abi::{ABI_SECTION, ABI_VERSION, TOOL_PREFIX};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -12,25 +12,17 @@ use syn::{
 /// JSON Schema for a tool that takes no parameters.
 const DEFAULT_PARAMETERS: &str = r#"{"type":"object"}"#;
 
-/// Prefix on every tool's exported symbol, so a tool called `init` or
-/// `describe` cannot collide with the exports the ABI reserves.
-const TOOL_PREFIX: &str = "berm_tool_";
-
 /// What `#[tool(...)]` says of the function.
 #[derive(Default)]
 pub(crate) struct Options {
     /// `query`: the tool may not write, emit or arm a wake.
     query: bool,
-    /// `public`: callers from outside and other programs may reach it.
-    public: bool,
-    /// `anonymous`: a call from outside with no caller may reach it.
-    anonymous: bool,
-    /// `callers(services)` or `callers(accounts)`.
-    callers: Option<String>,
     /// `cron`.
     cron: bool,
     /// `stripe`.
     stripe: bool,
+    /// `webhook`.
+    webhook: bool,
 }
 
 impl Options {
@@ -38,27 +30,13 @@ impl Options {
     pub(crate) fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         let flag = match &meta.path {
             path if path.is_ident("query") => &mut self.query,
-            path if path.is_ident("public") => &mut self.public,
-            path if path.is_ident("anonymous") => &mut self.anonymous,
             path if path.is_ident("cron") => &mut self.cron,
             path if path.is_ident("stripe") => &mut self.stripe,
-            path if path.is_ident("callers") => {
-                let content;
-                syn::parenthesized!(content in meta.input);
-                let kind: syn::Ident = content.parse()?;
-                if kind != "services" && kind != "accounts" {
-                    return Err(syn::Error::new(
-                        kind.span(),
-                        "expected `services` or `accounts`",
-                    ));
-                }
-                self.callers = Some(kind.to_string());
-                return Ok(());
-            }
+            path if path.is_ident("webhook") => &mut self.webhook,
             _ => {
-                return Err(meta.error(
-                    "unknown option (expected `public`, `anonymous`, `query`, `cron`, `stripe` or `callers(...)`)",
-                ));
+                return Err(
+                    meta.error("unknown option (expected `query`, `cron`, `stripe` or `webhook`)")
+                );
             }
         };
         *flag = true;
@@ -104,7 +82,7 @@ impl Tool {
     /// Read `function` as a tool, stripping the doc comments off its
     /// parameters, which the compiler does not take.
     fn read(options: Options, function: &mut ItemFn) -> syn::Result<Self> {
-        let description = utils::docs(&function.attrs);
+        let description = crate::docs(&function.attrs);
         let deprecated = function
             .attrs
             .iter()
@@ -128,7 +106,7 @@ impl Tool {
                     "a tool's parameter is a plain name — it is the argument's key",
                 ));
             };
-            let description = utils::docs(&typed.attrs);
+            let description = crate::docs(&typed.attrs);
             typed.attrs.retain(|a| !a.path().is_ident("doc"));
             params.push(Param {
                 ident: pattern.ident.clone(),
@@ -138,34 +116,15 @@ impl Tool {
         }
 
         let ident = &function.sig.ident;
-        if options.cron && options.public {
+        if [options.cron, options.stripe, options.webhook]
+            .into_iter()
+            .filter(|set| *set)
+            .count()
+            > 1
+        {
             return Err(syn::Error::new_spanned(
                 ident,
-                "a cron tool is called by its host, and cannot be `public`",
-            ));
-        }
-        if options.stripe && options.public {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "a stripe tool is called by its host, and cannot be `public`",
-            ));
-        }
-        if options.stripe && options.cron {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "a tool is `cron` or `stripe`, not both",
-            ));
-        }
-        if options.anonymous && !options.public {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "an `anonymous` tool is called from outside, and must be `public`",
-            ));
-        }
-        if options.anonymous && options.callers.as_deref() == Some("services") {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "an `anonymous` tool is called from outside, and cannot be `callers(services)`",
+                "a tool is at most one of `cron`, `stripe` and `webhook`",
             ));
         }
         if options.cron && !params.is_empty() {
@@ -197,16 +156,19 @@ impl Tool {
         };
         let mut out = Pieces::default();
         out.text(&format!(
-            r#"{{"tool":{{"name":"{}","description":"{}","parameters":"#,
-            utils::escape(&self.name),
-            utils::escape(&self.description),
+            r#"{{"tool":{{"name":{},"description":{},"parameters":"#,
+            serde_json::Value::from(self.name.as_str()),
+            serde_json::Value::from(self.description.as_str()),
         ));
         match self.params.is_empty() {
             true => out.text(DEFAULT_PARAMETERS),
             false => {
                 let fields = self.params.iter().map(|param| {
                     let name = param.ident.unraw().to_string();
-                    let description = utils::escape(&param.description);
+                    let description = match param.description.is_empty() {
+                        true => String::new(),
+                        false => serde_json::Value::from(param.description.as_str()).to_string(),
+                    };
                     let ty = &param.ty;
                     quote! {
                         ::berm_lang::schema::Field {
@@ -229,32 +191,23 @@ impl Tool {
         for (set, key) in [
             (options.query, "query"),
             (self.deprecated, "deprecated"),
-            (options.public, "public"),
-            (options.anonymous, "anonymous"),
+            (options.cron, "cron"),
+            (options.stripe, "stripe"),
+            (options.webhook, "webhook"),
         ] {
             if set {
                 out.text(&format!(r#","{key}":true"#));
             }
         }
-        if let Some(kind) = &options.callers {
-            out.text(&format!(r#","callers":"{kind}""#));
-        }
-        for (set, key) in [(options.cron, "cron"), (options.stripe, "stripe")] {
-            if set {
-                out.text(&format!(r#","{key}":true"#));
-            }
-        }
-        out.text(r#"},"abi_version":"#);
-        out.flush();
-        out.pieces.push(quote!(::berm_lang::schema::Piece::Text(
-            ::berm_lang::ABI_VERSION_TEXT
-        )));
-        out.text(&format!(r#","crate":"{}"}}"#, utils::escape(&krate)));
+        out.text(&format!(
+            r#"}},"abi_version":{ABI_VERSION},"crate":{}}}"#,
+            serde_json::Value::from(krate)
+        ));
         out.flush();
         let pieces = out.pieces;
         Ok(quote! {
-            // What this tool is, as a section rather than an export: the host
-            // reads it out of the image without compiling or running anything.
+            // This tool's record, in a custom section the host reads without
+            // compiling or running the image.
             const _: () = {
                 const PIECES: &[::berm_lang::schema::Piece] = &[#(#pieces),*];
                 #[used]
@@ -295,7 +248,7 @@ impl Tool {
         quote! {
             #[doc = #doc]
             #[allow(deprecated)]
-            #[unsafe(no_mangle)]
+            #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
             pub extern "C" fn #symbol() {
                 ::berm_lang::dispatch::run(
                     |args: &[u8]| -> ::berm_lang::Result<::berm_lang::__private::Vec<u8>> {

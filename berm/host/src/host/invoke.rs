@@ -2,19 +2,19 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::Result;
-use berm::{ByTool, Meter, Meters, Program, User, tape::Taping};
+use berm::{ByTool, Meter, Meters, Service, User, chain, tape::Taping};
 use berm_api::{Output, host::NestedCall};
 use std::sync::Arc;
 
 impl<E: Env> Host<E> {
-    /// Run `tool` on `program` as the first link of a chain, as call `call`,
+    /// Run `tool` on `service` as the first link of a chain, as call `call`,
     /// and commit what it wrote. A writing call into a service with a database
     /// commits that database when it returns. What the chain emits is kept
     /// beside `call` whatever it returns.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn invoke(
         &self,
-        program: &Program,
+        deployed: &Service,
         call: u64,
         caller: Option<&str>,
         user: Option<User>,
@@ -24,9 +24,9 @@ impl<E: Env> Host<E> {
         taping: Taping,
     ) -> Result<Invoked> {
         let meters = Arc::new(Meters::default());
-        let chain = berm::chain();
+        let chain = chain::next();
         self.logs.started(chain, call);
-        let outcome = program
+        let outcome = deployed
             .call_as(
                 caller.map(Into::into),
                 user,
@@ -43,7 +43,7 @@ impl<E: Env> Host<E> {
         let meters = meters.take();
         let own = meters
             .iter()
-            .filter(|((service, _), _)| *service == program.name)
+            .filter(|((service, _), _)| *service == deployed.name)
             .fold(Meter::default(), |mut own, (_, used)| {
                 own += *used;
                 own
@@ -86,7 +86,7 @@ impl<E: Env> Host<E> {
 /// How a call ended.
 pub(crate) struct Invoked {
     pub result: Output,
-    /// `result` is [`Output::Failed`] because the tool refused its caller.
+    /// The tool refused its caller; `result` is then [`Output::Failed`].
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,

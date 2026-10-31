@@ -1,6 +1,10 @@
 //! The `services` table and what a service's calls commit beside it.
 
-use crate::{images::Stored, state::store::Store, wake::cron};
+use crate::{
+    images::Stored,
+    state::{self, store::Store},
+    wake::cron,
+};
 use anyhow::Result;
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::collections::{BTreeMap, HashMap};
@@ -130,6 +134,8 @@ pub(crate) async fn install(
     crons: Option<BTreeMap<String, String>>,
     stopped: bool,
     project: Option<String>,
+    declared_vars: Vec<String>,
+    vars: BTreeMap<String, String>,
     now: i64,
 ) -> Result<()> {
     let row = [scope, name, reference, digest, version].map(str::to_owned);
@@ -163,6 +169,7 @@ pub(crate) async fn install(
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;
             schedule(&tx, &scope, &name, &cron_tools, declared.as_deref())?;
+            state::vars::deploy(&tx, &scope, &name, &declared_vars, &vars)?;
             tx.commit()
         })
         .await
@@ -252,7 +259,7 @@ fn schedule(
             for Declared { tool, cron, due } in declared {
                 tx.execute(
                     "INSERT INTO service_wakes
-                            (scope, name, slot, program, tool, args, due, cron, declared)
+                            (scope, name, slot, service, tool, args, due, cron, declared)
                      VALUES (?1, ?2, ?3, ?2, ?3, '', ?5, ?4, ?4)
                      ON CONFLICT (scope, name, slot) DO UPDATE
                         SET due = IIF(service_wakes.cron IS excluded.cron,
@@ -265,7 +272,7 @@ fn schedule(
         None => {
             for tool in cron_tools {
                 tx.execute(
-                    "INSERT INTO service_wakes (scope, name, slot, program, tool, args)
+                    "INSERT INTO service_wakes (scope, name, slot, service, tool, args)
                      VALUES (?1, ?2, ?3, ?2, ?3, '')
                      ON CONFLICT (scope, name, slot) DO NOTHING",
                     params![scope, name, tool],

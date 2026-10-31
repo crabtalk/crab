@@ -86,7 +86,7 @@ fn a_transaction_sends_its_statements_in_one_request() {
             {"fields":[{"name":"count","dataTypeID":20}],"rows":[["3"]],"command":"SELECT","rowCount":1,"rowAsArray":true}
         ]}"#,
     );
-    let answers = neon()
+    let mut answers = neon()
         .transaction(&[
             Statement::new("INSERT INTO items (title) VALUES ($1)", &("first",)).unwrap(),
             Statement::new("SELECT COUNT(*) FROM items", &[(); 0]).unwrap(),
@@ -103,7 +103,7 @@ fn a_transaction_sends_its_statements_in_one_request() {
     );
     assert_eq!(answers[0].command, "INSERT");
     assert_eq!(answers[0].row_count, Some(1));
-    assert_eq!(answers[1].rows::<(u64,)>().unwrap(), [(3,)]);
+    assert_eq!(answers.remove(1).rows::<(u64,)>().unwrap(), [(3,)]);
 }
 
 #[test]

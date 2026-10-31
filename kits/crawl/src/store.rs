@@ -25,7 +25,7 @@ pub struct Watched {
     pub failed: u64,
 }
 
-/// A URL a site's sitemaps list, of a kind its program names.
+/// A URL a site's sitemaps list, of a kind its service names.
 #[derive(Schema)]
 pub struct Listed {
     pub url: String,
@@ -60,7 +60,7 @@ pub struct Due {
     pub lastmod: Option<String>,
     pub etag: Option<String>,
     pub modified: Option<String>,
-    /// The bytes of HTML its program listed it to be read for.
+    /// The bytes of HTML its service listed it to be read for.
     pub bytes: Option<usize>,
 }
 
@@ -109,6 +109,7 @@ pub(crate) fn sites_due(
 /// the last, or the last kept with the sitemaps' failure as its error, and
 /// only the URLs its robots.txt still allows. Answers the bytes written.
 pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallError> {
+    let last = robots(domain)?;
     berm_lang::rows::<()>(
         "UPDATE crawl_sites SET robots = ?, signal = ?, read = ?, failures = 0, error = ?
           WHERE domain = ?",
@@ -126,14 +127,26 @@ pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallErr
             &(domain,),
         )?;
         berm_lang::rows::<()>(
-            "INSERT INTO crawl_urls (url, domain, kind, lastmod)
-             SELECT value ->> 0, ?1, value ->> 1, value ->> 2 FROM json_each(?2) WHERE true
-             ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod",
+            "INSERT INTO crawl_urls (url, domain, kind, lastmod, due)
+             SELECT j.value ->> 0, ?1, j.value ->> 1, j.value ->> 2,
+                    CASE WHEN p.url IS NULL THEN 0
+                         WHEN j.value ->> 2 IS NULL THEN p.fetched
+                         WHEN j.value ->> 2 IS NOT p.lastmod THEN 0 END
+               FROM json_each(?2) AS j LEFT JOIN crawl_pages p ON p.url = j.value ->> 0
+              WHERE true
+             ON CONFLICT (url) DO UPDATE SET kind = excluded.kind, lastmod = excluded.lastmod,
+                                             due = excluded.due",
             &(domain, urls),
         )?;
     }
-    let disallowed: Vec<String> =
-        berm_lang::rows::<(String,)>("SELECT url FROM crawl_urls WHERE domain = ?", &(domain,))?
+    // A sitemap's URLs were checked against this robots.txt as read, and the
+    // rest against `last` as stored, which reads as this one when whole.
+    if last != site.robots || !site.whole() {
+        let statement = match site.urls {
+            Ok(_) => "SELECT url FROM crawl_urls WHERE domain = ? AND listed = 1",
+            Err(_) => "SELECT url FROM crawl_urls WHERE domain = ?",
+        };
+        let disallowed: Vec<String> = berm_lang::rows::<(String,)>(statement, &(domain,))?
             .into_iter()
             .filter_map(|(url,)| {
                 Url::parse(&url)
@@ -141,10 +154,11 @@ pub(crate) fn read(domain: &str, now: u64, site: &Site) -> Result<usize, CallErr
                     .then_some(url)
             })
             .collect();
-    berm_lang::rows::<()>(
-        "DELETE FROM crawl_urls WHERE url IN (SELECT value FROM json_each(?))",
-        &(&disallowed,),
-    )?;
+        berm_lang::rows::<()>(
+            "DELETE FROM crawl_urls WHERE url IN (SELECT value FROM json_each(?))",
+            &(&disallowed,),
+        )?;
+    }
     let urls: usize = site
         .urls
         .iter()
@@ -186,8 +200,10 @@ pub(crate) fn list(
 ) -> Result<usize, CallError> {
     let bytes = bytes.map(|bytes| bytes as u64);
     let new = berm_lang::rows::<(u8,)>(
-        "INSERT INTO crawl_urls (url, domain, kind, listed, bytes)
-         SELECT value ->> 0, ?1, value ->> 1, 1, ?3 FROM json_each(?2) WHERE true
+        "INSERT INTO crawl_urls (url, domain, kind, listed, bytes, due)
+         SELECT j.value ->> 0, ?1, j.value ->> 1, 1, ?3, coalesce(p.fetched, 0)
+           FROM json_each(?2) AS j LEFT JOIN crawl_pages p ON p.url = j.value ->> 0
+          WHERE true
          ON CONFLICT (url) DO NOTHING RETURNING 1",
         &(domain, urls, bytes),
     )?
@@ -201,28 +217,34 @@ pub(crate) fn list(
 }
 
 /// Up to `limit` pages due on sites read, those of sites watched first before
-/// the rest, a site's least recently fetched before any site's next: never
-/// fetched, their URL's `lastmod` changed since, or with no `lastmod` and last
-/// fetched at `before` or earlier.
+/// the rest, a site's soonest due before any site's next: never fetched or
+/// their URL's `lastmod` changed since, then those with no `lastmod` last
+/// fetched at `before` or earlier, least recently fetched first.
 pub(crate) fn pages_due(before: u64, limit: usize) -> Result<Vec<Due>, CallError> {
     berm_lang::rows::<Due>(
         "SELECT u.url, u.domain, u.kind, u.lastmod, p.etag, p.modified, u.bytes
-           FROM crawl_urls u JOIN crawl_sites s ON s.domain = u.domain
+           FROM crawl_sites s
+                JOIN crawl_urls u ON u.url IN (SELECT url FROM crawl_urls
+                                                WHERE domain = s.domain AND due <= ?1
+                                                ORDER BY due LIMIT ?2)
                 LEFT JOIN crawl_pages p ON p.url = u.url
           WHERE s.read > 0
-            AND (p.url IS NULL
-                 OR (u.lastmod IS NOT NULL AND u.lastmod IS NOT p.lastmod)
-                 OR (u.lastmod IS NULL AND p.fetched <= ?))
           ORDER BY s.first DESC,
-                   row_number() OVER (PARTITION BY u.domain ORDER BY p.fetched NULLS FIRST),
-                   p.fetched NULLS FIRST
-          LIMIT ?",
+                   row_number() OVER (PARTITION BY u.domain ORDER BY u.due),
+                   u.due
+          LIMIT ?2",
         &(before, limit as u64),
     )
 }
 
 /// Store what fetching `due` at `now` found. Answers the bytes written.
 pub(crate) fn fetched(due: &Due, now: u64, fetched: &Fetched) -> Result<usize, CallError> {
+    berm_lang::rows::<()>(
+        "UPDATE crawl_urls SET due = CASE WHEN lastmod IS NULL THEN ?1
+                                          WHEN lastmod IS NOT ?2 THEN 0 END
+          WHERE url = ?3",
+        &(now, &due.lastmod, &due.url),
+    )?;
     match fetched {
         Fetched::Unchanged => {
             berm_lang::rows::<()>(

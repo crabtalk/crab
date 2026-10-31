@@ -2,7 +2,7 @@
 
 use crate::{
     context::{self, Context, Contexts},
-    utils,
+    terminal,
 };
 use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::client::Owner;
@@ -97,7 +97,7 @@ pub fn ls(json: bool) -> Result<()> {
                 current: name == current,
             })
             .collect();
-        return utils::json(&listed);
+        return terminal::json(&listed);
     }
     for (name, at) in rows {
         let mark = if name == current { "*" } else { " " };

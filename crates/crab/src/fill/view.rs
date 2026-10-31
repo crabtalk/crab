@@ -47,6 +47,7 @@ fn status(step: &Step) -> &'static str {
     match (step.saved, step.fields.iter().all(|field| field.set)) {
         (true, _) => "SAVED",
         (false, true) => "SET",
+        (false, false) if step.optional => "OPTIONAL, NOT SET",
         (false, false) => "NOT SET",
     }
 }
@@ -148,10 +149,7 @@ fn step(form: &Form, frame: &mut Frame, area: Rect) {
     for (row, field) in step.fields.iter().enumerate() {
         let area = areas[1 + copies + row];
         let focused = form.focus == copies + row;
-        frame.render_widget(
-            Paragraph::new(self::field(field, &step.title, focused)),
-            area,
-        );
+        frame.render_widget(Paragraph::new(self::field(field, focused)), area);
         if focused {
             let x = area.x + 2 + shown(field).chars().count() as u16;
             frame.set_cursor_position((x.min(area.right().saturating_sub(1)), area.y + 1));
@@ -223,7 +221,7 @@ fn hosts(step: &Step, focused: bool) -> Text<'_> {
 
 /// A field: its label, the secret's name beside it when they differ, and
 /// what is typed under them.
-fn field<'a>(field: &'a Field, title: &str, focused: bool) -> Text<'a> {
+fn field<'a>(field: &'a Field, focused: bool) -> Text<'a> {
     let mut label = vec![Span::styled(
         field.label(),
         Style::default().add_modifier(Modifier::BOLD),
@@ -253,10 +251,7 @@ fn field<'a>(field: &'a Field, title: &str, focused: bool) -> Text<'a> {
     ];
     if field.off() {
         lines.push(Line::styled(
-            format!(
-                "Doesn't look like {title}'s {}. It can still be saved.",
-                field.label()
-            ),
+            format!("Doesn't look like a {}; it can't be saved.", field.label()),
             Style::default().fg(ACCENT),
         ));
     }

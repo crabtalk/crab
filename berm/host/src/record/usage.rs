@@ -2,12 +2,16 @@
 //! day and written in batches to `service_usage` on the host the service runs
 //! on.
 
-use crate::{host, state::store::Store};
+use crate::{
+    host,
+    record::flight::{Flight, Table, Taken, Unflushed},
+    state::store::Store,
+};
 use anyhow::Result;
 use berm::Now;
 use berm_api::host::{self as wire, Kind, Outcome, Source, Usage, Used};
 use parking_lot::Mutex;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, Transaction, params};
 use std::{collections::HashMap, mem, ops::Range};
 
 /// Days of usage a deploy and `/usage` look back over.
@@ -27,13 +31,16 @@ struct Key {
 /// Counts not yet written: calls and the last call's epoch seconds.
 pub(crate) struct Counts {
     pending: Mutex<HashMap<Key, (i64, i64)>>,
+    flight: Mutex<Flight<Used>>,
     now: Now,
 }
 
 impl Counts {
-    pub(crate) fn new(now: Now) -> Self {
+    /// Counting after `flushed`, the last generation written.
+    pub(crate) fn new(now: Now, flushed: u64) -> Self {
         Self {
             pending: Mutex::default(),
+            flight: Mutex::new(Flight::new(Table::Usage, flushed)),
             now,
         }
     }
@@ -65,22 +72,34 @@ impl Counts {
         *last = now;
     }
 
-    /// Take what is pending, as rows.
-    pub(crate) fn take(&self) -> Vec<Used> {
-        mem::take(&mut *self.pending.lock())
+    /// Take what is pending, as rows: those `here` takes held in flight
+    /// until [`Counts::land`], and the rest.
+    pub(crate) fn take(&self, here: impl Fn(&Used) -> bool) -> (Taken<Used>, Vec<Used>) {
+        let mut pending = self.pending.lock();
+        let (local, rest) = mem::take(&mut *pending)
             .into_iter()
             .map(|(key, (calls, last))| key.row(calls, last))
-            .collect()
+            .partition(here);
+        (self.flight.lock().take(local), rest)
+    }
+
+    /// Drop what generation `generation` took.
+    pub(crate) fn land(&self, generation: u64) {
+        let _pending = self.pending.lock();
+        self.flight.lock().land(generation);
     }
 
     /// What `service` used that is not yet written, as rows.
-    pub(crate) fn unsaved(&self, service: &str) -> Vec<Used> {
-        self.pending
-            .lock()
+    pub(crate) fn unsaved(&self, service: &str) -> Unflushed<Used> {
+        let pending = self.pending.lock();
+        let rows = pending
             .iter()
             .filter(|(key, _)| key.service == service)
             .map(|(key, (calls, last))| key.clone().row(*calls, *last))
-            .collect()
+            .collect();
+        self.flight
+            .lock()
+            .unflushed(|used| used.service == service, rows)
     }
 }
 
@@ -100,36 +119,52 @@ impl Key {
     }
 }
 
-/// Add `used` to what is recorded. Uses of a service this host does not run
-/// are dropped.
-pub(crate) async fn write(store: &Store, used: Vec<Used>) -> Result<()> {
+/// Add `used`, uses a peer counted, to what is recorded.
+pub(crate) async fn record(store: &Store, used: Vec<Used>) -> Result<()> {
     store
-        .each(used, |tx, used| {
-            let (scope, name) = host::split(&used.service);
-            tx.prepare_cached(
-                "INSERT INTO service_usage
-                        (scope, name, kind, item, source, caller, outcome, day, calls, last)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
-                  WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
-                 ON CONFLICT (scope, name, kind, item, source, caller, outcome, day)
-                 DO UPDATE SET calls = service_usage.calls + excluded.calls,
-                               last = MAX(service_usage.last, excluded.last)",
-            )?
-            .execute(params![
-                scope,
-                name,
-                used.kind,
-                used.item,
-                used.source,
-                used.caller,
-                used.outcome,
-                used.day,
-                used.calls,
-                used.last
-            ])?;
-            Ok(())
+        .run(move |conn| {
+            let tx = conn.transaction()?;
+            used.iter().try_for_each(|used| add(&tx, used))?;
+            tx.commit()
         })
         .await
+}
+
+/// Add what a flush took to what is recorded.
+pub(crate) async fn write(store: &Store, taken: Taken<Used>) -> Result<()> {
+    taken
+        .write(store, |tx, used| {
+            used.iter().try_for_each(|used| add(tx, used))
+        })
+        .await
+}
+
+/// Add `used` to what is recorded. Uses of a service this host does not run
+/// are dropped.
+fn add(tx: &Transaction<'_>, used: &Used) -> rusqlite::Result<()> {
+    let (scope, name) = host::split(&used.service);
+    tx.prepare_cached(
+        "INSERT INTO service_usage
+                (scope, name, kind, item, source, caller, outcome, day, calls, last)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+          WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
+         ON CONFLICT (scope, name, kind, item, source, caller, outcome, day)
+         DO UPDATE SET calls = service_usage.calls + excluded.calls,
+                       last = MAX(service_usage.last, excluded.last)",
+    )?
+    .execute(params![
+        scope,
+        name,
+        used.kind,
+        used.item,
+        used.source,
+        used.caller,
+        used.outcome,
+        used.day,
+        used.calls,
+        used.last
+    ])?;
+    Ok(())
 }
 
 /// The last [`WINDOW`] days through the one `now`, in epoch seconds, falls on,
@@ -149,7 +184,7 @@ pub(crate) async fn read(
     name: &str,
     of: Option<(Kind, &str, Outcome)>,
     days: Range<i32>,
-    unsaved: Vec<Used>,
+    unsaved: Unflushed<Used>,
 ) -> Result<Vec<Usage>> {
     let (kind, item, outcome) = of.map_or((None, None, None), |(kind, item, outcome)| {
         (Some(kind), Some(item.to_owned()), Some(outcome))
@@ -182,7 +217,7 @@ pub(crate) async fn read(
                 },
             )?;
             let mut usage = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-            for used in unsaved {
+            for used in unsaved.resolve(conn)? {
                 if !days.contains(&used.day)
                     || kind.is_some_and(|kind| {
                         (kind, item.as_deref(), outcome)

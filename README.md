@@ -22,15 +22,33 @@ A service is a Rust library crate with a `crab.toml` beside its `Cargo.toml`. A 
 use berm_lang::{Result, tool};
 
 /// Echo the query back.
-#[tool(public)]
+#[tool]
 pub fn echo(query: String) -> Result<String> {
     Ok(query)
 }
 ```
 
+Who may call it, and what it costs, is its table in `crab.toml`:
+
+```toml
+[tools.echo]
+access = "public"
+```
+
 The docs are at [crab.talk/docs](https://crab.talk/docs/development/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).
 
-## Kits
+## Services
+
+Open-source services deploy on their own or link into another service with `default-features = false`. The consuming deployment inherits credentials, HTTP permissions and migrations; it chooses its own exported tools. See [services](services/README.md).
+
+- [Resend](services/resend/README.md): send emails and read delivery status.
+- [GitHub](services/github/README.md): repositories, issues, pull requests and releases.
+- [Upstash Redis](services/upstash/README.md): strings, expiry, counters, pipelines and transactions.
+- [PostHog](services/posthog/README.md): events, feature flags and analytics queries.
+- [OSV](services/osv/README.md): package vulnerabilities and advisory lookup.
+- [Release watch](services/release-watch/README.md): retained release and vulnerability observations.
+
+## Libraries
 
 [crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each: `crabkit = { version = "0.1", features = ["auth"] }`. Linking a kit is using it.
 
@@ -49,4 +67,4 @@ Rust 2024 edition, POSIX only. `rustup target add wasm32-unknown-unknown`, then 
 
 The runtime and the CLI that runs it — `berm`, `berm-host`, `berm-oci`, `berm-build` and `crab-agent` — are licensed under the [GNU Affero General Public License, version 3](LICENSE-AGPL).
 
-Everything else — `berm-lang`, `berm-codegen`, `berm-api`, `crabtalk-sdk`, `crabkit`, `crab-html` and the kits — is licensed under the [Apache License, Version 2.0](LICENSE-APACHE). A service built with them is yours to license as you choose.
+Everything else — `berm-lang`, `berm-codegen`, `berm-api`, `crabtalk-sdk`, `crabkit`, `crab-html` and the services and libraries — is licensed under the [Apache License, Version 2.0](LICENSE-APACHE). A service built with them is yours to license as you choose.

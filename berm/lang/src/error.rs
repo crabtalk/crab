@@ -1,7 +1,11 @@
 //! What a tool fails with.
 
 use crate::CallError;
-use alloc::string::{String, ToString};
+use alloc::{
+    format,
+    string::{String, ToString},
+};
+use serde_json::Error as JsonError;
 
 /// A tool's failure. `message` is what its caller reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,5 +42,13 @@ impl From<&str> for Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(&self.message)
+    }
+}
+
+impl From<JsonError> for Error {
+    fn from(error: JsonError) -> Self {
+        Self {
+            message: format!("JSON: {error}"),
+        }
     }
 }

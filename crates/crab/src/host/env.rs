@@ -1,7 +1,7 @@
-use crate::host::{Alone, Fetch, secrets::Grants};
-use berm_host::{Env, Stored, System};
+use crate::host::{Fetch, secrets::Grants};
+use berm_host::{Alone, Env, Stored, System};
 
-/// One machine, running every program itself.
+/// One machine, running every service itself.
 #[derive(Clone)]
 pub struct Local;
 

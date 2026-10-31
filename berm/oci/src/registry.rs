@@ -2,20 +2,19 @@
 
 use crate::Reference;
 use anyhow::{Context, Result, bail};
-use berm_api::Manifest;
+use berm_api::{Manifest, digest};
 use reqwest::{
     Method, StatusCode,
     blocking::{Client, RequestBuilder, Response},
     header::{ACCEPT, CONTENT_TYPE, LOCATION, WWW_AUTHENTICATE},
 };
 use serde_json::{Map, Value, json};
-use sha2::{Digest, Sha256};
 use std::env;
 
 /// The layer, and what the whole artifact is typed as.
-pub const PROGRAM: &str = "application/vnd.berm.program.v1";
-/// The config blob: what the program says it is.
-pub const MANIFEST: &str = "application/vnd.berm.manifest.v1+json";
+const SERVICE: &str = "application/vnd.berm.service.v1";
+/// The config blob: what the service says it is.
+const MANIFEST: &str = "application/vnd.berm.manifest.v1+json";
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 /// Accepted only to be refused by name: a registry handed one of these back as
 /// its own error otherwise, which read as a berm bug.
@@ -99,14 +98,14 @@ impl Registry {
 
         let config = artifact
             .get("config")
-            .context("not a program: the artifact has no config")?;
+            .context("not a service: the artifact has no config")?;
 
         let kind = config
             .get("mediaType")
             .and_then(Value::as_str)
             .unwrap_or("");
         if kind != MANIFEST {
-            bail!("not a program: its config is {kind:?}");
+            bail!("not a service: its config is {kind:?}");
         }
         let digest = config
             .get("digest")
@@ -114,23 +113,23 @@ impl Registry {
             .context("the artifact's config has no digest")?;
 
         let bytes = self.blob(digest)?;
-        let json = str::from_utf8(&bytes).context("program manifest is not UTF-8")?;
+        let json = str::from_utf8(&bytes).context("service manifest is not UTF-8")?;
         Ok((image, json.parse()?))
     }
 
     /// Upload the image, its manifest as the config blob, and the artifact
     /// manifest naming both. Returns the image's digest, which is the layer's.
-    pub fn push(&self, reference: &str, program: &[u8]) -> Result<String> {
-        let manifest = serde_json::to_vec(&Manifest::from_image(program)?)?;
-        let image = self.upload(program)?;
+    pub fn push(&self, reference: &str, service: &[u8]) -> Result<String> {
+        let manifest = serde_json::to_vec(&Manifest::try_from(service)?)?;
+        let image = self.upload(service)?;
         let config = self.upload(&manifest)?;
 
         let artifact = json!({
             "schemaVersion": 2,
             "mediaType": OCI_MANIFEST,
-            "artifactType": PROGRAM,
+            "artifactType": SERVICE,
             "config": { "mediaType": MANIFEST, "digest": config, "size": manifest.len() },
-            "layers": [ { "mediaType": PROGRAM, "digest": image, "size": program.len() } ],
+            "layers": [ { "mediaType": SERVICE, "digest": image, "size": service.len() } ],
             "annotations": annotations(),
         });
 
@@ -161,7 +160,7 @@ impl Registry {
             .context("cannot read the blob")?
             .to_vec();
 
-        let got = digest(&bytes);
+        let got = digest::of(&bytes);
         if got != want {
             bail!("blob does not match its digest: {want} advertised, {got} received");
         }
@@ -170,7 +169,7 @@ impl Registry {
 
     /// One blob, uploaded monolithically: ask where to put it, then put it.
     fn upload(&self, bytes: &[u8]) -> Result<String> {
-        let digest = digest(bytes);
+        let digest = digest::of(bytes);
         let uploads = format!("{}/v2/{}/blobs/uploads/", self.base, self.repository);
         let opened = send(self.request(Method::POST, uploads))?;
 
@@ -215,8 +214,8 @@ impl Registry {
         let realm = field(&challenge, "realm")
             .context("registry asked for a token without saying where from")?;
 
-        // Built rather than encoded: a scope is `repository:org/name:pull`,
-        // and every character in it is one a query value may carry as itself.
+        // Not percent-encoded: every character of a scope
+        // (`repository:org/name:pull`) is one a query value carries as itself.
         let service = field(&challenge, "service").unwrap_or_default();
         let mut request = self
             .http
@@ -252,8 +251,8 @@ impl Registry {
     }
 }
 
-/// Turn a refusal into what the registry said, rather than a status code the
-/// operator then has to go and look up.
+/// Turn a refusal into the registry's own message, or its status when it gave
+/// none.
 fn send(request: RequestBuilder) -> Result<Response> {
     let response = request.send().context("cannot reach the registry")?;
     if response.status().is_success() {
@@ -276,34 +275,32 @@ fn send(request: RequestBuilder) -> Result<Response> {
     }
 }
 
-/// The one layer a program has, refusing anything that is not one.
+/// The one layer a service has, refusing anything that is not one.
 fn layer(manifest: &Value) -> Result<&Value> {
-    // An index is what a container image looks like, and pointing at one is the
-    // likely mistake here — worth saying so rather than reporting a missing
-    // field.
+    // An index is a multi-platform container image.
     if manifest.get("manifests").is_some() {
-        bail!("not a program: a multi-platform image, which berm has no use for");
+        bail!("not a service: a multi-platform image, which berm has no use for");
     }
 
     let layers = manifest
         .get("layers")
         .and_then(Value::as_array)
-        .context("not a program: the artifact has no layers")?;
+        .context("not a service: the artifact has no layers")?;
     let [layer] = layers.as_slice() else {
         bail!(
-            "not a program: {} layers, where one is the whole of it",
+            "not a service: {} layers, where one is the whole of it",
             layers.len()
         );
     };
 
     let kind = layer.get("mediaType").and_then(Value::as_str).unwrap_or("");
-    if kind != PROGRAM {
-        bail!("not a program: its layer is {kind:?}");
+    if kind != SERVICE {
+        bail!("not a service: its layer is {kind:?}");
     }
     Ok(layer)
 }
 
-/// Standard OCI keys only. What the program *is* lives in the config blob, and
+/// Standard OCI keys only. What the service *is* lives in the config blob, and
 /// a second copy here would be the one that rots.
 fn annotations() -> Value {
     let mut annotations = Map::new();
@@ -343,8 +340,4 @@ fn field(challenge: &str, key: &str) -> Option<String> {
     let at = challenge.find(&format!("{key}=\""))? + key.len() + 2;
     let rest = &challenge[at..];
     Some(rest[..rest.find('"')?].to_owned())
-}
-
-fn digest(bytes: &[u8]) -> String {
-    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }

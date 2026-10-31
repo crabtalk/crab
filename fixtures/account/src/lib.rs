@@ -11,7 +11,7 @@ use berm_lang::{Result, tool};
 
 /// Signs in with a GitHub authorization code, creating the account on the
 /// identity's first sign-in, and answers a session of it.
-#[tool(public, anonymous)]
+#[tool]
 pub fn github(
     /// The `code` GitHub sent the user back with.
     code: String,
@@ -23,7 +23,7 @@ pub fn github(
 
 /// Signs in with a Google authorization code, creating the account on the
 /// identity's first sign-in, and answers a session of it.
-#[tool(public, anonymous)]
+#[tool]
 pub fn google(
     /// The `code` Google sent the user back with.
     code: String,
@@ -38,7 +38,7 @@ pub fn google(
 
 /// Adds the GitHub identity behind an authorization code to the account
 /// a session is signed in to, and answers the account.
-#[tool(public, anonymous)]
+#[tool]
 pub fn link_github(
     /// The session's token.
     session: String,
@@ -52,7 +52,7 @@ pub fn link_github(
 
 /// Adds the Google identity behind an authorization code to the account
 /// a session is signed in to, and answers the account.
-#[tool(public, anonymous)]
+#[tool]
 pub fn link_google(
     /// The session's token.
     session: String,
@@ -69,7 +69,7 @@ pub fn link_google(
 
 /// The account a session is signed in to, and the identities that sign
 /// in to it.
-#[tool(query, public, anonymous)]
+#[tool(query)]
 pub fn account(
     /// The session's token.
     session: String,
@@ -78,7 +78,7 @@ pub fn account(
 }
 
 /// Signs a session out, answering whether it was signed in.
-#[tool(public, anonymous)]
+#[tool]
 pub fn sign_out(
     /// The session's token.
     session: String,

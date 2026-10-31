@@ -1,6 +1,6 @@
 //! `crab calls` — a service's calls over the last 30 days, newest first.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
@@ -12,9 +12,9 @@ pub fn run(
     limit: u32,
     json: bool,
 ) -> Result<()> {
-    let calls = utils::wait(client.calls(name, tool, outcome, limit))?;
+    let calls = runtime::wait(client.calls(name, tool, outcome, limit))?;
     if json {
-        return utils::json(&calls);
+        return terminal::json(&calls);
     }
     if calls.is_empty() {
         println!("no calls in the last 30 days");

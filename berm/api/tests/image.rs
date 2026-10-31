@@ -1,22 +1,36 @@
-//! What a manifest is read from: an image's `.berm.abi`, `.berm.program` and
+//! What a manifest is read from: an image's `.berm.abi`, `.berm.service` and
 //! `.berm.kits` sections, and what it refuses.
 
+use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use berm_api::{
-    ABI_SECTION, ABI_VERSION, Credential, CredentialSecret, Deps, Image, KITS_SECTION, Kit,
-    Manifest, PROGRAM_SECTION, ProgramRecord,
+    Access, Credential, CredentialSecret, Deps, Image, Kit, Limits, Manifest, ServiceRecord,
+    ToolRecord,
 };
+use std::collections::BTreeMap;
 
 /// A wasm module holding one custom section, `padding`, empty.
 const EMPTY: &[u8] = b"\0asm\x01\0\0\0\0\x08\x07padding";
 
 fn tool(name: &str, krate: &str) -> String {
     format!(
-        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}},"public":true}},"abi_version":{ABI_VERSION},"crate":"{krate}"}}"#
+        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}}}},"abi_version":{ABI_VERSION},"crate":"{krate}"}}"#
     )
 }
 
-fn program() -> Vec<u8> {
-    serde_json::to_vec(&ProgramRecord {
+fn cron(name: &str) -> String {
+    format!(
+        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}},"cron":true}},"abi_version":{ABI_VERSION},"crate":"demo"}}"#
+    )
+}
+
+fn service() -> Vec<u8> {
+    with_tools(BTreeMap::new())
+}
+
+/// The service record, with `tools` as `[tools]` of its `crab.toml` says.
+fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
+    serde_json::to_vec(&ServiceRecord {
+        lang: String::new(),
         name: "demo".to_owned(),
         version: "0.1.0".to_owned(),
         description: String::new(),
@@ -29,6 +43,7 @@ fn program() -> Vec<u8> {
             ..Deps::default()
         },
         database: None,
+        tools,
     })
     .unwrap()
 }
@@ -58,6 +73,7 @@ fn credentialed(name: &str, id: &str, secret: &str) -> Kit {
             guide: String::new(),
             copy: Default::default(),
             hosts: Vec::new(),
+            optional: false,
             secrets: vec![CredentialSecret {
                 name: secret.to_owned(),
                 label: String::new(),
@@ -69,13 +85,13 @@ fn credentialed(name: &str, id: &str, secret: &str) -> Kit {
     kit
 }
 
-fn image(abi: &str, program: Option<&[u8]>, kits: &[Kit]) -> Vec<u8> {
+fn image(abi: &str, service: Option<&[u8]>, kits: &[Kit]) -> Vec<u8> {
     let mut image = Image(EMPTY)
         .with_section(ABI_SECTION, abi.as_bytes())
         .unwrap();
-    if let Some(program) = program {
+    if let Some(service) = service {
         image = Image(&image)
-            .with_section(PROGRAM_SECTION, program)
+            .with_section(SERVICE_SECTION, service)
             .unwrap();
     }
     Image(&image)
@@ -102,7 +118,7 @@ fn a_section_is_appended_once() {
 fn the_manifest_joins_the_three_sections() {
     let abi = tool("b", "demo") + &tool("a", "demo");
     let manifest =
-        Manifest::from_image(&image(&abi, Some(&program()), &[kit("k1"), kit("k2")])).unwrap();
+        Manifest::try_from(&*image(&abi, Some(&service()), &[kit("k1"), kit("k2")])).unwrap();
     assert_eq!(manifest.name, "demo");
     assert_eq!(manifest.buffer, 1024);
     let tools: Vec<&str> = manifest
@@ -117,7 +133,7 @@ fn the_manifest_joins_the_three_sections() {
 
 #[test]
 fn the_manifest_reads_back_from_its_json() {
-    let manifest = Manifest::from_image(&image(&tool("a", "demo"), Some(&program()), &[])).unwrap();
+    let manifest = Manifest::try_from(&*image(&tool("a", "demo"), Some(&service()), &[])).unwrap();
     let json = serde_json::to_string(&manifest).unwrap();
     let read: Manifest = json.parse().unwrap();
     assert_eq!(read.tools.len(), 1);
@@ -125,23 +141,23 @@ fn the_manifest_reads_back_from_its_json() {
 }
 
 #[test]
-fn an_image_without_its_program_section_is_refused() {
-    let error = Manifest::from_image(&image(&tool("a", "demo"), None, &[])).unwrap_err();
-    assert!(error.to_string().contains(PROGRAM_SECTION), "{error}");
+fn an_image_without_its_service_section_is_refused() {
+    let error = Manifest::try_from(&*image(&tool("a", "demo"), None, &[])).unwrap_err();
+    assert!(error.to_string().contains(SERVICE_SECTION), "{error}");
 }
 
 #[test]
 fn a_tool_compiled_in_another_crate_is_refused() {
     let abi = tool("a", "demo") + &tool("b", "some-kit");
-    let error = Manifest::from_image(&image(&abi, Some(&program()), &[])).unwrap_err();
+    let error = Manifest::try_from(&*image(&abi, Some(&service()), &[])).unwrap_err();
     assert!(error.to_string().contains("some-kit"), "{error}");
 }
 
 #[test]
 fn a_kit_named_twice_is_refused() {
-    let error = Manifest::from_image(&image(
+    let error = Manifest::try_from(&*image(
         &tool("a", "demo"),
-        Some(&program()),
+        Some(&service()),
         &[kit("k"), kit("k")],
     ))
     .unwrap_err();
@@ -151,21 +167,21 @@ fn a_kit_named_twice_is_refused() {
 #[test]
 fn an_image_of_another_abi_is_refused() {
     let old = r#"{"abi_version":4,"tools":[]}"#;
-    let error = Manifest::from_image(&image(old, Some(&program()), &[])).unwrap_err();
+    let error = Manifest::try_from(&*image(old, Some(&service()), &[])).unwrap_err();
     assert!(error.to_string().contains("ABI version 4"), "{error}");
 }
 
 #[test]
 fn an_image_with_no_tools_is_refused() {
-    let error = Manifest::from_image(&image("", Some(&program()), &[])).unwrap_err();
+    let error = Manifest::try_from(&*image("", Some(&service()), &[])).unwrap_err();
     assert!(error.to_string().contains("no tools"), "{error}");
 }
 
 #[test]
 fn a_kits_credentials_reach_the_manifest() {
-    let manifest = Manifest::from_image(&image(
+    let manifest = Manifest::try_from(&*image(
         &tool("a", "demo"),
-        Some(&program()),
+        Some(&service()),
         &[credentialed("k", "github", "GITHUB_CLIENT_ID")],
     ))
     .unwrap();
@@ -183,9 +199,9 @@ fn a_kits_credentials_reach_the_manifest() {
 
 #[test]
 fn a_credential_declared_by_two_kits_is_refused() {
-    let error = Manifest::from_image(&image(
+    let error = Manifest::try_from(&*image(
         &tool("a", "demo"),
-        Some(&program()),
+        Some(&service()),
         &[
             credentialed("k1", "github", "A"),
             credentialed("k2", "github", "B"),
@@ -200,9 +216,9 @@ fn a_credential_declared_by_two_kits_is_refused() {
 
 #[test]
 fn a_secret_in_two_credentials_is_refused() {
-    let error = Manifest::from_image(&image(
+    let error = Manifest::try_from(&*image(
         &tool("a", "demo"),
-        Some(&program()),
+        Some(&service()),
         &[
             credentialed("k1", "github", "A"),
             credentialed("k2", "google", "A"),
@@ -213,4 +229,47 @@ fn a_secret_in_two_credentials_is_refused() {
         format!("{error:#}").contains("secret A is in two credentials"),
         "{error:#}"
     );
+}
+
+#[test]
+fn the_service_record_gives_each_tool_its_access_title_catalog_and_budget() {
+    let budget = Limits {
+        written: Some(10),
+        ..Limits::default()
+    };
+    let record = ToolRecord {
+        access: Some(Access::Accounts),
+        title: Some("Search the web".to_owned()),
+        catalog: Some("web.search".to_owned()),
+        budget: Some(budget),
+    };
+    let abi = tool("a", "demo") + &tool("b", "demo");
+    let service = with_tools(BTreeMap::from([("a".to_owned(), record)]));
+    let manifest = Manifest::try_from(&*image(&abi, Some(&service), &[])).unwrap();
+    let a = &manifest.tools[0];
+    assert_eq!(a.access(), Some(Access::Accounts));
+    assert!(a.public && !a.anonymous);
+    assert_eq!(a.title.as_deref(), Some("Search the web"));
+    assert_eq!(a.catalog.as_deref(), Some("web.search"));
+    assert_eq!(a.budget, Some(budget));
+    assert_eq!(manifest.tools[1].access(), None);
+    assert_eq!(manifest.tools[1].budget, None);
+}
+
+#[test]
+fn a_record_for_a_tool_the_image_lacks_is_refused() {
+    let service = with_tools(BTreeMap::from([("gone".to_owned(), ToolRecord::default())]));
+    let error = Manifest::try_from(&*image(&tool("a", "demo"), Some(&service), &[])).unwrap_err();
+    assert!(error.to_string().contains("\"gone\""), "{error}");
+}
+
+#[test]
+fn a_cron_tool_given_access_is_refused() {
+    let record = ToolRecord {
+        access: Some(Access::Public),
+        ..ToolRecord::default()
+    };
+    let service = with_tools(BTreeMap::from([("tick".to_owned(), record)]));
+    let error = Manifest::try_from(&*image(&cron("tick"), Some(&service), &[])).unwrap_err();
+    assert!(error.to_string().contains("takes no access"), "{error}");
 }

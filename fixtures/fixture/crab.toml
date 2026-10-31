@@ -2,12 +2,100 @@ name = "fixture"
 deploy = false
 # `inner` is what `nest`, `relay` and `recurse` reach for. It is not resolved
 # here, only declared.
-programs = ["inner"]
+calls = ["inner"]
 secrets = ["fixture"]
+
+[vars]
+greeting = { default = "hello", description = "What greet answers" }
 
 [syscalls]
 "berm.get" = []
 "berm.set" = []
 "berm.call.after" = []
 "berm.http.fetch" = ["127.0.0.1"]
+"berm.http.proxy" = ["127.0.0.1"]
 "berm.vouch" = []
+
+[tools.reach]
+access = "public"
+
+[tools.echo]
+access = "public"
+budget = { cpu = 10_000, read = 10, written = 10, memory = 16 }
+
+[tools.carry]
+access = "public"
+
+[tools.spin]
+access = "public"
+
+[tools.lowered]
+access = "public"
+
+[tools.chatty]
+access = "public"
+
+[tools.probe]
+access = "public"
+
+[tools.wait]
+access = "public"
+
+[tools.fetch]
+access = "public"
+
+[tools.random]
+access = "public"
+
+[tools.greet]
+access = "public"
+
+[tools.undeclared]
+access = "public"
+
+[tools.whoami]
+access = "public"
+
+[tools.guarded]
+access = "public"
+
+[tools.fromservices]
+access = "services"
+
+[tools.askguarded]
+access = "public"
+
+[tools.askwho]
+access = "public"
+
+[tools.vouched]
+access = "public"
+
+[tools.boom]
+access = "public"
+
+[tools.flaky]
+access = "public"
+
+[tools.nest]
+access = "public"
+
+[tools.note]
+access = "public"
+
+[tools.relay]
+access = "public"
+
+[tools.ask]
+access = "public"
+
+[tools.peek]
+access = "public"
+
+[tools.recurse]
+access = "public"
+
+[credentials.spare]
+title = "Spare token"
+optional = true
+secrets = [{ name = "spare" }]

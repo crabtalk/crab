@@ -34,7 +34,7 @@ esac
 case "$os" in
   Darwin) target="$arch-apple-darwin" ;;
   Linux) target="$arch-unknown-linux-gnu" ;;
-  *) err "no release for $os; on Windows, download crab-x86_64-pc-windows-msvc.zip from https://github.com/$REPO/releases/latest" ;;
+  *) err "no release for $os; on Windows, run \`irm https://crab.talk/install.ps1 | iex\` in PowerShell" ;;
 esac
 
 if command -v sha256sum >/dev/null 2>&1; then

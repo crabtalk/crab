@@ -1,13 +1,13 @@
 //! `crab invites` — the orgs that invited you, and joining one.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn ls(client: &Client, json: bool) -> Result<()> {
-    let invites = utils::wait(client.my_invites())?;
+    let invites = runtime::wait(client.my_invites())?;
     if json {
-        return utils::json(&invites);
+        return terminal::json(&invites);
     }
     if invites.is_empty() {
         println!("no invitations");
@@ -25,7 +25,7 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
 }
 
 pub fn accept(client: &Client, token: &str) -> Result<()> {
-    utils::wait(client.accept_invite(token))?;
+    runtime::wait(client.accept_invite(token))?;
     eprintln!("joined");
     Ok(())
 }

@@ -50,14 +50,15 @@ impl Answer {
     /// `int4`, `int8` and `oid` an integer; `float4` and `float8` a number,
     /// or a string when not finite; `json` and `jsonb` their value; any
     /// other type its text.
-    pub fn rows<T: DeserializeOwned>(&self) -> Result<Vec<T>> {
+    pub fn rows<T: DeserializeOwned>(self) -> Result<Vec<T>> {
+        let fields = self.fields;
         let rows = self
             .text
-            .iter()
+            .into_iter()
             .map(|row| {
-                row.iter()
-                    .zip(&self.fields)
-                    .map(|(text, field)| field.value(text.as_deref()))
+                row.into_iter()
+                    .zip(&fields)
+                    .map(|(text, field)| field.value(text))
                     .collect::<Result<Vec<_>>>()
                     .map(Value::Array)
             })
@@ -69,7 +70,7 @@ impl Answer {
 
 impl Field {
     /// `text`, this column's value in Postgres' text output, as JSON.
-    fn value(&self, text: Option<&str>) -> Result<Value> {
+    fn value(&self, text: Option<String>) -> Result<Value> {
         let Some(text) = text else {
             return Ok(Value::Null);
         };
@@ -77,12 +78,13 @@ impl Field {
         Ok(match self.data_type {
             BOOL => Value::Bool(text == "t"),
             INT2 | INT4 | INT8 | OID => Value::from(text.parse::<i64>().map_err(|_| unreadable())?),
-            FLOAT4 | FLOAT8 => {
-                let float = text.parse::<f64>().map_err(|_| unreadable())?;
-                Number::from_f64(float).map_or_else(|| Value::String(text.into()), Value::Number)
-            }
-            JSON | JSONB => serde_json::from_str(text).map_err(|_| unreadable())?,
-            _ => Value::String(text.into()),
+            FLOAT4 | FLOAT8 => match text.parse::<f64>().map(Number::from_f64) {
+                Ok(Some(number)) => Value::Number(number),
+                Ok(None) => Value::String(text),
+                Err(_) => return Err(unreadable().into()),
+            },
+            JSON | JSONB => serde_json::from_str(&text).map_err(|_| unreadable())?,
+            _ => Value::String(text),
         })
     }
 }

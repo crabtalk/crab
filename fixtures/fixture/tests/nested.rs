@@ -20,7 +20,7 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         agent: None,
     };
     for tool in ["nest", "echo"] {
-        host.host()
+        host.host
             .call(
                 "acct/fixture",
                 Some(&caller),
@@ -47,17 +47,17 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         if written {
             host.flush().await?;
         }
-        let (calls, _) = host.host().calls("acct/fixture", page.clone()).await?;
+        let (calls, _) = host.host.calls("acct/fixture", page.clone()).await?;
         let [echo, nest] = calls.as_slice() else {
             panic!("two runs, got {}", calls.len());
         };
         assert!(
-            host.host()
+            host.host
                 .call_nested("acct/fixture", echo.id)
                 .await?
                 .is_empty()
         );
-        let nested = host.host().call_nested("acct/fixture", nest.id).await?;
+        let nested = host.host.call_nested("acct/fixture", nest.id).await?;
         let [inner] = nested.as_slice() else {
             panic!("one nested call, got {}", nested.len());
         };
@@ -68,6 +68,6 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         );
         assert_eq!(inner.outcome, Outcome::Done);
     }
-    assert!(host.host().call_nested("acct/fixture", 999).await.is_err());
+    assert!(host.host.call_nested("acct/fixture", 999).await.is_err());
     Ok(())
 }

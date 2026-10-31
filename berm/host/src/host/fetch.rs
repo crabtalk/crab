@@ -1,8 +1,8 @@
-//! `berm.http.fetch`, `berm.http.fetch_all` and `berm.http.proxy`, sent
-//! through the daemon's
-//! [`Env::Fetch`]. Each request sent meters [`Meter::sent`], and each answered
-//! `berm.http.proxy` request meters [`Meter::proxied`]: its URL, header names
-//! and values and body, and the response's header names and values and body.
+//! `berm.http.fetch`, `berm.http.fetch_all`, `berm.http.proxy` and
+//! `berm.http.proxy_all`, sent through the daemon's [`Env::Fetch`]. Each
+//! request sent meters [`Meter::sent`], and each answered request through the
+//! proxy meters [`Meter::proxied`]: its URL, header names and values and body,
+//! and the response's header names and values and body.
 
 use crate::{
     env::{Env, Secrets},
@@ -22,13 +22,14 @@ pub(crate) enum Door {
     Fetch,
     FetchAll,
     Proxy,
+    ProxyAll,
 }
 
 /// The syscall `door` names, sent through `fetch` with `host`'s secrets, each
 /// request given up at its timeout or its call's deadline, whichever comes
 /// first.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door) -> Syscall {
-    let proxied = door == Door::Proxy;
+    let proxied = matches!(door, Door::Proxy | Door::ProxyAll);
     let send = move |at: Callsite, request: Request| {
         let fetch = fetch.clone();
         async move {
@@ -61,11 +62,12 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     let host = host.clone();
     let secret = move |at: Callsite, secret: String, to: String| {
         let host = host::alive(&host);
-        async move { host?.secrets.grant(&at.program, &secret, &to).await }
+        async move { host?.secrets.grant(&at.service, &secret, &to).await }
     };
     match door {
         Door::Fetch => http::fetch(send, secret),
         Door::FetchAll => http::fetch_all(send, secret),
         Door::Proxy => http::proxy(send, secret),
+        Door::ProxyAll => http::proxy_all(send, secret),
     }
 }

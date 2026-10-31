@@ -1,6 +1,6 @@
 name: Image
 
-# Pushes `crab serve` to ghcr.io/crabtalk/crab/berm, tagged with the release's
+# Pushes the `crab dev` host to ghcr.io/crabtalk/crab, tagged with the release's
 # version and `latest`.
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}/berm
+  IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   # Each platform builds on a runner of its own architecture and pushes by

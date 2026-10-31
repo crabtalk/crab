@@ -1,10 +1,10 @@
-//! What a program says it is, read from its image's [`ABI_SECTION`],
-//! [`PROGRAM_SECTION`] and [`KITS_SECTION`].
+//! What a service says it is, read from its image's [`ABI_SECTION`],
+//! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{
-    ABI_SECTION, ABI_VERSION, DEFAULT_BUFFER, Image, KITS_SECTION, PROGRAM_SECTION, ToolSpec,
-};
+use crate::{Access, DEFAULT_BUFFER, Image, Limits, ToolSpec};
 use anyhow::{Context, Result, bail};
+use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
@@ -17,6 +17,12 @@ pub struct Manifest {
     /// The package's version when it was built.
     #[serde(default)]
     pub version: String,
+    /// The `berm-lang` version it was built with.
+    #[serde(default)]
+    pub lang: String,
+    /// The host calls its image imports, sorted.
+    #[serde(default)]
+    pub imports: Vec<String>,
     /// The package's `description`, `homepage` and `repository` from its
     /// `Cargo.toml`.
     #[serde(default)]
@@ -34,13 +40,11 @@ pub struct Manifest {
     /// host refuses arguments past it and fails a result past it.
     #[serde(default = "default_buffer")]
     pub buffer: usize,
-    /// What this program reaches for once it runs, its kits' declarations
+    /// What this service reaches for once it runs, its kits' declarations
     /// included.
     ///
-    /// Runtime, and resolved wherever the image lands — nothing here is
-    /// fetched or installed, and a name nothing answers to is reported rather
-    /// than refused. Declared by the author because a target computed at the
-    /// call cannot be read off the image at all.
+    /// Resolved wherever the image lands; nothing here is fetched or
+    /// installed, and a name nothing answers to is reported, not refused.
     #[serde(default)]
     pub deps: Deps,
     /// The typed logs it emits, by name.
@@ -54,14 +58,17 @@ pub struct Manifest {
     pub kits: Vec<Kit>,
 }
 
-/// The [`PROGRAM_SECTION`] the build appends: the program's own declarations,
+/// The [`SERVICE_SECTION`] the build appends: the service's own declarations,
 /// from its package and its `crab.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProgramRecord {
+pub struct ServiceRecord {
     /// The package it was built from. Each tool record names it.
     pub name: String,
     #[serde(default)]
     pub version: String,
+    /// The `berm-lang` version it was built with.
+    #[serde(default)]
+    pub lang: String,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
@@ -75,9 +82,27 @@ pub struct ProgramRecord {
     pub deps: Deps,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
+    /// What `[tools]` in its `crab.toml` says of each tool, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tools: BTreeMap<String, ToolRecord>,
 }
 
-/// A library crate a program links that has a `crab.toml` of its own: its
+/// What `[tools]` in a service's `crab.toml` says of one tool, applied onto
+/// its [`ToolSpec`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolRecord {
+    /// `None` is internal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access: Option<Access>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<Limits>,
+}
+
+/// A library crate a service links that has a `crab.toml` of its own: its
 /// declarations, as one entry of the [`KITS_SECTION`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kit {
@@ -90,17 +115,17 @@ pub struct Kit {
     /// What its applied migrations were kept under before `id`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formerly: Vec<String>,
-    /// The package's version when the program was built.
+    /// The package's version when the service was built.
     #[serde(default)]
     pub version: String,
     #[serde(default)]
     pub deps: Deps,
-    /// The tables it keeps in the program's database.
+    /// The tables it keeps in the service's database.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
 }
 
-/// A program's own SQLite database: the migrations that build it, in order.
+/// A service's own SQLite database: the migrations that build it, in order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Database {
     pub migrations: Vec<Migration>,
@@ -110,14 +135,14 @@ pub struct Database {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sequence {
     /// What its applied migrations are kept under: a kit's id, or `""` for
-    /// the program's own.
+    /// the service's own.
     pub kit: String,
     /// What its applied migrations were kept under before `kit`.
     pub formerly: Vec<String>,
     pub migrations: Vec<Migration>,
 }
 
-/// One migration. A host applies each once, in order, and refuses a program
+/// One migration. A host applies each once, in order, and refuses a service
 /// whose migrations no longer begin with the ones it applied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Migration {
@@ -125,7 +150,7 @@ pub struct Migration {
     pub sql: String,
 }
 
-/// One typed log a program emits, from an `#[event]` struct. Emitted under the
+/// One typed log a service emits, from an `#[event]` struct. Emitted under the
 /// topic `name`, its data the JSON `fields` describes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventSpec {
@@ -137,12 +162,12 @@ pub struct EventSpec {
     pub deprecated: bool,
 }
 
-/// What a program reaches for once it runs, by kind.
+/// What a service reaches for once it runs, by kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Deps {
-    /// Programs it calls by name.
+    /// Services it calls by name.
     #[serde(default)]
-    pub programs: Vec<String>,
+    pub calls: Vec<String>,
     /// Syscalls it makes beyond the ABI's own, each beside what it reaches
     /// through that call — the hosts a fetch goes to, the names a secret is
     /// read by. An empty list is the call alone.
@@ -156,6 +181,36 @@ pub struct Deps {
     /// secret is in one credential at most.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub credentials: BTreeMap<String, Credential>,
+    /// Settings each deployed copy holds its own value of, read through
+    /// `berm.var`, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, Var>,
+}
+
+/// One var of `[vars]` in a service's `crab.toml`.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Var {
+    /// What `berm.var` answers for a copy that set no value.
+    #[serde(default)]
+    pub default: String,
+    /// What the deployer sets it to, shown where they set it.
+    #[serde(default)]
+    pub description: String,
+}
+
+impl Var {
+    /// The most vars one service declares.
+    pub const MAX: usize = 32;
+    /// The most bytes a value or a default holds.
+    pub const BYTES: usize = 4096;
+
+    /// Whether `name` names a var: 1 to 64 ASCII letters, digits and `_`.
+    pub fn name(name: &str) -> bool {
+        (1..=64).contains(&name.len())
+            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    }
 }
 
 /// Secrets a person gets together from one provider, such as a GitHub OAuth
@@ -177,6 +232,10 @@ pub struct Credential {
     /// A secret goes only to the hosts the person setting it confirms.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
+    /// Whether the service is called with its secrets unset. A header naming
+    /// an unset one is left off the request; a body naming one is refused.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
     /// In the order the person sets them.
     pub secrets: Vec<CredentialSecret>,
 }
@@ -209,8 +268,7 @@ pub struct CredentialSecret {
     /// Never shown once set. An unmasked one, such as a client ID, is.
     #[serde(default = "masked")]
     pub masked: bool,
-    /// A regular expression a value is expected to match. A value that does
-    /// not is warned about, never refused.
+    /// A regular expression a value must match; one that does not is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
 }
@@ -220,8 +278,38 @@ fn masked() -> bool {
 }
 
 impl Deps {
+    /// Required secrets absent from `set`.
+    pub fn unset(&self, set: &[String]) -> Vec<String> {
+        self.grouped()
+            .into_iter()
+            .filter(|(_, credential)| !credential.optional)
+            .flat_map(|(_, credential)| credential.secrets)
+            .map(|secret| secret.name)
+            .filter(|name| !set.contains(name))
+            .collect()
+    }
+
+    /// Refuse setting `var` to `value`: a var `[vars]` does not declare, or
+    /// a value past [`Var::BYTES`].
+    pub fn settable(&self, var: &str, value: &str) -> Result<()> {
+        if !self.vars.contains_key(var) {
+            bail!("{var} is not declared in [vars]");
+        }
+        if value.len() > Var::BYTES {
+            bail!(
+                "a var holds at most {} bytes, and {var}'s value is {}",
+                Var::BYTES,
+                value.len()
+            );
+        }
+        Ok(())
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.programs.is_empty() && self.syscalls.is_empty() && self.secrets.is_empty()
+        self.calls.is_empty()
+            && self.syscalls.is_empty()
+            && self.secrets.is_empty()
+            && self.vars.is_empty()
     }
 
     /// Add what `other` reaches that this does not. Refused when both declare
@@ -234,7 +322,7 @@ impl Deps {
                 }
             }
         };
-        missing(&mut self.programs, &other.programs);
+        missing(&mut self.calls, &other.calls);
         missing(&mut self.secrets, &other.secrets);
         for (name, reached) in &other.syscalls {
             missing(self.syscalls.entry(name.clone()).or_default(), reached);
@@ -268,6 +356,7 @@ impl Deps {
                     guide: String::new(),
                     copy: BTreeMap::new(),
                     hosts: Vec::new(),
+                    optional: false,
                     secrets: vec![CredentialSecret {
                         name: name.clone(),
                         label: String::new(),
@@ -284,12 +373,46 @@ impl Deps {
             .collect()
     }
 
+    /// Refused when `value` does not match the pattern a credential declares
+    /// for `secret`. A secret no pattern covers takes any value.
+    pub fn admits(&self, secret: &str, value: &str) -> Result<(), String> {
+        let Some(declared) = self
+            .credentials
+            .values()
+            .flat_map(|credential| &credential.secrets)
+            .find(|declared| declared.name == secret)
+        else {
+            return Ok(());
+        };
+        let Some(pattern) = &declared.pattern else {
+            return Ok(());
+        };
+        let compiled =
+            Regex::new(pattern).map_err(|e| format!("{secret}'s pattern is not one: {e}"))?;
+        match compiled.is_match(value) {
+            true => Ok(()),
+            false => {
+                let label = match declared.label.is_empty() {
+                    true => secret,
+                    false => &declared.label,
+                };
+                Err(format!("{label} does not match {pattern}"))
+            }
+        }
+    }
+
     /// The id of the credential `secret` is in, when it is in one.
     pub fn credential_of(&self, secret: &str) -> Option<&str> {
         self.credentials
             .iter()
             .find(|(_, credential)| credential.secrets.iter().any(|s| s.name == secret))
             .map(|(id, _)| id.as_str())
+    }
+
+    /// Whether `secret` is in an optional credential.
+    pub fn optional(&self, secret: &str) -> bool {
+        self.credential_of(secret)
+            .is_some_and(|id| self.credentials[id].optional)
     }
 
     /// How `host` is declared under `syscall`, or `None` when it is not.
@@ -328,11 +451,11 @@ pub enum Reach {
     Pattern,
 }
 
-/// `inner, berm.http.fetch (example.com), secret openai` — every program,
+/// `inner, berm.http.fetch (example.com), secret openai` — every service,
 /// every syscall with what it reaches, then every secret.
 impl fmt::Display for Deps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut items = self.programs.clone();
+        let mut items = self.calls.clone();
         items.extend(
             self.syscalls
                 .iter()
@@ -372,106 +495,17 @@ impl Manifest {
         kits.chain(own).collect()
     }
 
-    /// Read what an image claims to be, without compiling or running it.
-    ///
-    /// Refused when the image has no [`PROGRAM_SECTION`], which a bare
-    /// `cargo build` leaves out; when it has no tools; when a tool record was
-    /// compiled in a crate other than the program's; and when it names a kit
-    /// twice.
-    pub fn from_image(image: &[u8]) -> Result<Self> {
-        let image = Image(image);
-        let abi = image.section(ABI_SECTION)?.unwrap_or_default();
-        let abi =
-            str::from_utf8(abi).with_context(|| format!("program's {ABI_SECTION} is not UTF-8"))?;
-        let mut tools = Vec::new();
-        let mut events = Vec::new();
-        for record in serde_json::Deserializer::from_str(abi).into_iter::<AbiRecord>() {
-            match record.with_context(|| format!("program's {ABI_SECTION} is not valid JSON"))? {
-                AbiRecord::Event { event } => events.push(event),
-                AbiRecord::Tool {
-                    tool,
-                    abi_version,
-                    krate,
-                } => {
-                    versioned(abi_version)?;
-                    tools.push((tool, krate));
-                }
-                AbiRecord::Program { abi_version } => {
-                    versioned(abi_version)?;
-                    bail!("program's {ABI_SECTION} holds a program record");
-                }
-            }
-        }
-
-        let program = image.section(PROGRAM_SECTION)?.with_context(|| {
-            format!("program has no {PROGRAM_SECTION} section, which `crab build` appends")
-        })?;
-        let program: ProgramRecord = serde_json::from_slice(program)
-            .with_context(|| format!("program's {PROGRAM_SECTION} is not valid"))?;
-        let kits: Vec<Kit> = match image.section(KITS_SECTION)? {
-            Some(kits) => serde_json::from_slice(kits)
-                .with_context(|| format!("program's {KITS_SECTION} is not valid"))?,
-            None => Vec::new(),
-        };
-
-        let tools = tools
-            .into_iter()
-            .map(|(tool, krate)| match krate == program.name {
-                true => Ok(tool),
-                false => bail!(
-                    "tool {:?} was compiled in {krate}, not in the program {}; a kit carries no tools",
-                    tool.name,
-                    program.name
-                ),
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        let ProgramRecord {
-            name,
-            version,
-            description,
-            homepage,
-            repository,
-            readme,
-            buffer,
-            mut deps,
-            database,
-        } = program;
-        for kit in &kits {
-            deps.merge(&kit.deps)
-                .with_context(|| format!("linking kit {}", kit.name))?;
-        }
-        let mut manifest = Manifest {
-            abi_version: ABI_VERSION,
-            name,
-            version,
-            description,
-            homepage,
-            repository,
-            readme,
-            tools,
-            buffer,
-            deps,
-            events,
-            database,
-            kits,
-        };
-        manifest.tools.sort_by(|a, b| a.name.cmp(&b.name));
-        manifest.events.sort_by(|a, b| a.name.cmp(&b.name));
-        manifest.checked()
-    }
-
     /// Refuse a manifest of another ABI, with no tools, naming a kit twice,
     /// with a kit keeping tables or naming former keys and declaring no id, or
     /// with an id or former key empty or named twice.
     fn checked(self) -> Result<Self> {
         versioned(self.abi_version)?;
         if self.tools.is_empty() {
-            bail!("program declares no tools");
+            bail!("service declares no tools");
         }
         for (at, kit) in self.kits.iter().enumerate() {
             if self.kits[..at].iter().any(|seen| seen.name == kit.name) {
-                bail!("program manifest names kit {} twice", kit.name);
+                bail!("service manifest names kit {} twice", kit.name);
             }
             if kit.database.is_some() && kit.id.is_none() {
                 bail!("kit {} keeps tables and declares no id", kit.name);
@@ -504,6 +538,123 @@ impl Manifest {
     }
 }
 
+/// What an image claims to be, read without compiling or running it.
+///
+/// Each tool takes its access, title and catalog from the service record.
+/// Refused when the image has no [`SERVICE_SECTION`], which a bare
+/// `cargo build` leaves out; when it has no tools; when a tool record was
+/// compiled in a crate other than the service's; when the service record
+/// names a tool the image lacks, or gives a cron, stripe or webhook tool
+/// access; and
+/// when it names a kit twice.
+impl TryFrom<&[u8]> for Manifest {
+    type Error = anyhow::Error;
+
+    fn try_from(image: &[u8]) -> Result<Self> {
+        let image = Image(image);
+        let abi = image.section(ABI_SECTION)?.unwrap_or_default();
+        let abi =
+            str::from_utf8(abi).with_context(|| format!("service's {ABI_SECTION} is not UTF-8"))?;
+        let mut tools = Vec::new();
+        let mut events = Vec::new();
+        for record in serde_json::Deserializer::from_str(abi).into_iter::<AbiRecord>() {
+            match record.with_context(|| format!("service's {ABI_SECTION} is not valid JSON"))? {
+                AbiRecord::Event { event } => events.push(event),
+                AbiRecord::Tool {
+                    tool,
+                    abi_version,
+                    krate,
+                } => {
+                    versioned(abi_version)?;
+                    tools.push((tool, krate));
+                }
+                AbiRecord::Service { abi_version } => {
+                    versioned(abi_version)?;
+                    bail!("service's {ABI_SECTION} holds a service record");
+                }
+            }
+        }
+
+        let service = image.section(SERVICE_SECTION)?.with_context(|| {
+            format!("service has no {SERVICE_SECTION} section, which `crab build` appends")
+        })?;
+        let mut service: ServiceRecord = serde_json::from_slice(service)
+            .with_context(|| format!("service's {SERVICE_SECTION} is not valid"))?;
+        let kits: Vec<Kit> = match image.section(KITS_SECTION)? {
+            Some(kits) => serde_json::from_slice(kits)
+                .with_context(|| format!("service's {KITS_SECTION} is not valid"))?,
+            None => Vec::new(),
+        };
+
+        let mut records = std::mem::take(&mut service.tools);
+        let tools = tools
+            .into_iter()
+            .map(|(mut tool, krate)| {
+                if krate != service.name {
+                    bail!(
+                        "tool {:?} was compiled in {krate}, not in the service {}; a kit carries no tools",
+                        tool.name,
+                        service.name
+                    );
+                }
+                let record = records.remove(&tool.name).unwrap_or_default();
+                if record.access.is_some() && (tool.cron || tool.stripe || tool.webhook) {
+                    bail!(
+                        "tool {:?} is called by its host, and takes no access",
+                        tool.name
+                    );
+                }
+                tool.set_access(record.access);
+                tool.title = record.title;
+                tool.catalog = record.catalog;
+                tool.budget = record.budget;
+                Ok(tool)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if let Some(name) = records.keys().next() {
+            bail!("[tools] names {name:?}, which the service has no tool of");
+        }
+
+        let ServiceRecord {
+            name,
+            version,
+            lang,
+            description,
+            homepage,
+            repository,
+            readme,
+            buffer,
+            mut deps,
+            database,
+            tools: _,
+        } = service;
+        for kit in &kits {
+            deps.merge(&kit.deps)
+                .with_context(|| format!("linking kit {}", kit.name))?;
+        }
+        let mut manifest = Manifest {
+            abi_version: ABI_VERSION,
+            name,
+            version,
+            lang,
+            imports: image.imports()?,
+            description,
+            homepage,
+            repository,
+            readme,
+            tools,
+            buffer,
+            deps,
+            events,
+            database,
+            kits,
+        };
+        manifest.tools.sort_by(|a, b| a.name.cmp(&b.name));
+        manifest.events.sort_by(|a, b| a.name.cmp(&b.name));
+        manifest.checked()
+    }
+}
+
 /// A manifest as JSON, as [`Manifest`] serializes it: what a registry carries
 /// beside the image.
 impl FromStr for Manifest {
@@ -511,7 +662,7 @@ impl FromStr for Manifest {
 
     fn from_str(json: &str) -> Result<Self> {
         let manifest: Manifest =
-            serde_json::from_str(json).context("program manifest is not valid JSON")?;
+            serde_json::from_str(json).context("service manifest is not valid JSON")?;
         manifest.checked()
     }
 }
@@ -520,7 +671,7 @@ impl FromStr for Manifest {
 fn versioned(abi_version: u32) -> Result<()> {
     if abi_version != ABI_VERSION {
         bail!(
-            "program was built against ABI version {abi_version}, this host speaks {ABI_VERSION}"
+            "service was built against ABI version {abi_version}, this host speaks {ABI_VERSION}"
         );
     }
     Ok(())
@@ -544,9 +695,9 @@ enum AbiRecord {
         #[serde(rename = "crate")]
         krate: String,
     },
-    /// The program record an image built against ABI version 4 or earlier
+    /// The service record an image built against ABI version 4 or earlier
     /// carries in its place.
-    Program {
+    Service {
         abi_version: u32,
     },
 }

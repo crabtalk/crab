@@ -1,6 +1,6 @@
 # crab
 
-The [local host](https://crab.talk/docs/development/local), and the command-line client for it and CrabTalk Cloud.
+The [local host](https://crab.talk/docs/guides/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
 crab dev -d
@@ -21,17 +21,30 @@ crab rm example
 `crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `crab.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
 
 ```toml
-# The service this program deploys as.
+# The name it deploys as.
 name = "example"
 # The public registry repository the image is published to, tagged with the
 # crate's version on each deploy. Without it, a deploy uploads the image to
 # the host.
 image = "ghcr.io/org/example"
 
+# Who may call a tool, its display name, its price a call on Cloud in USD
+# micros, and the catalog job it does. A tool without a table is internal.
+[tools.search]
+access = "public"
+title = "Search the web"
+price = 2_000
+catalog = "web.search"
+
 # When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC.
 [crons]
 tick = "*/5 * * * *"
+
+# Settings each deployed copy holds its own value of, read through
+# `berm_lang::var`.
+[vars]
+keywords = { default = "rust, wasm", description = "Words to watch" }
 
 # What the service's database may hold: 1GiB when unset, from 64KiB to 10GiB.
 [database]
@@ -40,11 +53,15 @@ size = "2GiB"
 seed = "seed.sqlite"
 ```
 
+`access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml), and `budget = { cpu, read, written, memory }` sets what one call may use, each key at least 1, `memory` in MiB, a key left out the host's default. A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title`, `catalog` and `budget` into the image, and a deploy carries `price`.
+
 Without `[crons]`, each cron tool's expression is its owners' to set on the host; with it, a deploy sets each, and is refused while it would undo one its owners set since: `crab deploy --pull` writes theirs into `[crons]` first, and `--force` overrides them. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
+
+`berm_lang::var("keywords")` answers the value the deployed copy holds, or the var's `default` while it holds none, from the call after one is set; a var `[vars]` does not declare is refused. A service declares at most 32, each name letters, digits and `_`, each value at most 4096 bytes. `crab var ls NAME` lists a service's vars with their values, `crab var set NAME VAR VALUE` sets one, and `crab var unset NAME VAR` returns it to its default. A deploy's request sets the values it names and keeps the rest; a deploy whose `[vars]` drops a var drops its value. A kit declares no vars.
 
 ## Developing
 
-`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: programs reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy` picks services as cargo picks packages: in a service's directory, that service; at a workspace's root, every one whose `crab.toml` does not say `deploy = false`; `-p <name>`, repeatable, names them. `crab push` deploys the same way and installs each service stopped; `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
+`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: services reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy` picks services as cargo picks packages: in a service's directory, that service; at a workspace's root, every one whose `crab.toml` does not say `deploy = false`; `-p <name>`, repeatable, names them. `crab push` deploys the same way and installs each service stopped; `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
 ## Contexts
 
@@ -57,9 +74,9 @@ crab context ls
 crab context use default
 ```
 
-A program's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET --host api.example.com` sets one, sent only to the hosts given, each named in full; `crab secret hosts NAME SECRET --host …` replaces a secret's hosts; `crab secret ls NAME` lists them by name with their hosts; `crab secret rm NAME SECRET` revokes one. A secret with no hosts is never sent. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the program declares, with its guide and the hosts its secrets go to, filled in from the `hosts` its `crab.toml` suggests, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the program enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
+A service's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET --host api.example.com` sets one, sent only to the hosts given, each named in full; `crab secret hosts NAME SECRET --host …` replaces a secret's hosts; `crab secret ls NAME` lists them by name with their hosts; `crab secret rm NAME SECRET` revokes one. A secret with no hosts is never sent. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the service declares, with its guide and the hosts its secrets go to, filled in from the `hosts` its `crab.toml` suggests, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the service enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud keeps it for that service alone. With `image`, or `--image`, it pushes the image there instead and Cloud deploys that reference: Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud keeps it for that service alone. With `image`, or `--image`, it pushes the image there instead and Cloud deploys that reference: Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crab.talk/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; a newer deploy of the same service replaces it. `--yes` deploys without asking. The local host never asks.
 
 Contexts are kept in `~/.crab/contexts.toml`.
 
@@ -69,7 +86,7 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
 
-`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. `crab request <code> --wait` follows a payment or a secret request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
+`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. When the check fails, it prints a link instead, `https://crab.talk/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. A refusal from Cloud that names a code, as `Error: 402 [E0001]: …`, ends with `crab explain E0001`, which prints what it means and what to do about it; the same explanations are at `https://crab.talk/docs/errors/introduction`. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login                     # --github for GitHub
@@ -83,6 +100,7 @@ crab billing                   # plan, credit, refill, card
 crab billing verify
 crab billing plan pro --for "Pro, to run the crawler past Hobby"
 crab request WDJB-MJHT --wait
+crab explain E0001             # what an error's code means and what to do about it
 crab billing portal            # opens Stripe's portal in the browser
 crab key create ci --days 90
 crab app ls
@@ -107,13 +125,13 @@ steps:
 A service with an `image` pushes it with `GITHUB_TOKEN` as the registry credential: give the job `packages: write` and the step `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. Locally, `GITHUB_TOKEN=$(gh auth token)` does the same.
 
 `new` is the one subcommand that does not talk to the context's host. It writes
-a program crate pinning the `berm-lang` that shipped with this binary.
+a service crate pinning the `berm-lang` that shipped with this binary.
 
-`inspect` prints a program's README and renders each tool's JSON Schema as the argument list it describes, since a schema printed raw is something to read past rather than read. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
+`inspect` prints a service's README, a table of its tools with each one's access, title, catalog job, price, marks and description, and each tool's JSON Schema as the argument list it describes. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
 
-`inspect` shows the most one call of each tool may use, and `budget NAME TOOL --cpu MICROS --rows N` sets it. `call` calls one public tool and prints what the call used on stderr; `usage` prints a program's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a program reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
+`inspect` shows the most one call of each tool may use, which `budget` on its `[tools.<tool>]` in `crab.toml` sets; `budget NAME TOOL` prints what its runs used and the `budget` they fit. `call` calls one public tool and prints what the call used on stderr; `usage` prints a service's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a service reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 
-A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the program, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
+A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the service, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
 
 ## License
 

@@ -1,7 +1,8 @@
 //! `berm.http.fetch` and `berm.http.proxy` — one HTTP request, to a host the
-//! program's manifest declares under the syscall it makes.
+//! service's manifest declares under the syscall it makes — and their batch
+//! forms `berm.http.fetch_all` and `berm.http.proxy_all`.
 //!
-//! berm checks the request against the asking program's [`crate::Deps`] and
+//! berm checks the request against the asking service's [`crate::Deps`] and
 //! substitutes every `{secret:NAME}` in a header value and in the body.
 //! Resolving a secret and sending the request are the host's, and arrive as
 //! the two closures below.
@@ -19,18 +20,20 @@ const SECRET: &str = "{secret:";
 /// secret already substituted.
 #[derive(Debug, Clone)]
 pub struct Request {
+    /// What the asking service was deployed as.
+    pub service: String,
     pub method: String,
     pub url: String,
     /// The host `url` names, lowercased, without port or credentials.
     pub host: String,
-    /// How the asking program's manifest declares `host`.
+    /// How the asking service's manifest declares `host`.
     pub reach: Reach,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
-    /// How long the asking program waits for an answer, within its call's
+    /// How long the asking service waits for an answer, within its call's
     /// deadline; `None` for the deadline alone.
     pub timeout: Option<Duration>,
-    /// The most body bytes the asking program takes of its answer. The host
+    /// The most body bytes the asking service takes of its answer. The host
     /// stops reading the body there and answers it cut; `None` for the host's
     /// own bound.
     pub limit: Option<usize>,
@@ -98,34 +101,63 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
+    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, send, secret)
+}
+
+/// Serve `berm.http.proxy_all`: [`fetch_all`], each request to a host the
+/// manifest declares under `berm.http.proxy`, where `send` goes through the
+/// host's proxy.
+pub fn proxy_all<S, Sent, R, Found>(send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
+    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, send, secret)
+}
+
+/// The batch syscall `name`, each request allowed under `syscall`.
+fn serve_all<S, Sent, R, Found>(
+    name: &'static str,
+    syscall: &'static str,
+    send: S,
+    secret: R,
+) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
     let (send, secret) = (Arc::new(send), Arc::new(secret));
     Syscall {
-        name: abi::HTTP_FETCH_ALL.to_owned(),
+        name: name.to_owned(),
         call: Arc::new(move |at: Callsite, batch: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let requests = wire::fields(&batch)?;
+                let requests = abi::wire::fields(&batch)?;
                 let answers = future::join_all(
                     requests
                         .iter()
-                        .map(|request| answer(&at, abi::HTTP_FETCH, request, &*send, &*secret)),
+                        .map(|request| answer(&at, syscall, request, &*send, &*secret)),
                 )
                 .await;
                 let framed: Vec<Vec<u8>> = answers
                     .iter()
                     .map(|answered| match answered {
-                        Ok(response) => [wire::frame(&[b"ok"]), write(response)].concat(),
+                        Ok(response) => [abi::wire::request(&[b"ok"]), write(response)].concat(),
                         Err(error) => {
                             let kind: &[u8] = match error.downcast_ref::<Refused>() {
                                 Some(_) => b"refused",
                                 None => b"failed",
                             };
-                            wire::frame(&[kind, format!("{error:#}").as_bytes()])
+                            abi::wire::request(&[kind, format!("{error:#}").as_bytes()])
                         }
                     })
                     .collect();
                 let fields: Vec<&[u8]> = framed.iter().map(Vec::as_slice).collect();
-                Ok(wire::frame(&fields))
+                Ok(abi::wire::request(&fields))
             })
         }),
     }
@@ -167,26 +199,42 @@ where
     Found: Future<Output = Result<Option<String>>>,
 {
     let mut request = read(at, syscall, request)?;
-    for (_, value) in &mut request.headers {
-        let found = substitute(at, secret, &request.host, value.as_bytes()).await?;
-        if let Some(found) = found {
-            *value = String::from_utf8(found)?;
+    let mut headers = Vec::with_capacity(request.headers.len());
+    for (name, value) in request.headers {
+        match substitute(at, secret, &request.host, value.as_bytes()).await? {
+            Substituted::Untouched => headers.push((name, value)),
+            Substituted::Done(found) => headers.push((name, String::from_utf8(found)?)),
+            Substituted::Unset(_) => {}
         }
     }
-    if let Some(found) = substitute(at, secret, &request.host, &request.body).await? {
-        request.body = found;
+    request.headers = headers;
+    match substitute(at, secret, &request.host, &request.body).await? {
+        Substituted::Untouched => {}
+        Substituted::Done(found) => request.body = found,
+        Substituted::Unset(name) => return Err(ungranted(at, &name, &request.host)),
     }
     send(at.clone(), request).await
 }
 
+/// What [`substitute`] made of a text.
+enum Substituted {
+    /// It names no secret.
+    Untouched,
+    /// Every secret it names replaced by its value.
+    Done(Vec<u8>),
+    /// It names this secret of an optional credential, granted nowhere for
+    /// the request's host.
+    Unset(String),
+}
+
 /// `text` with every `{secret:NAME}` replaced by what `secret` grants the
-/// asking program for `host`, or `None` when it names no secret.
+/// asking service for `host`.
 async fn substitute<R, Found>(
     at: &Callsite,
     secret: &R,
     host: &str,
     text: &[u8],
-) -> Result<Option<Vec<u8>>>
+) -> Result<Substituted>
 where
     R: Fn(Callsite, String, String) -> Found,
     Found: Future<Output = Result<Option<String>>>,
@@ -196,7 +244,7 @@ where
             .position(|w| w == SECRET.as_bytes())
     };
     if opens(text).is_none() {
-        return Ok(None);
+        return Ok(Substituted::Untouched);
     }
     let mut substituted = Vec::with_capacity(text.len());
     let mut rest = text;
@@ -209,23 +257,31 @@ where
         if !at.deps.secrets.iter().any(|declared| declared == name) {
             return Err(Refused(format!(
                 "{} does not declare the secret {name:?}",
-                at.program
+                at.service
             ))
             .into());
         }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
-            return Err(Refused(format!(
-                "no secret {name:?} is granted to {} for {host}",
-                at.program
-            ))
-            .into());
+            if at.deps.optional(name) {
+                return Ok(Substituted::Unset(name.to_owned()));
+            }
+            return Err(ungranted(at, name, host));
         };
         substituted.extend_from_slice(&rest[..start]);
         substituted.extend_from_slice(found.as_bytes());
         rest = &after[end + 1..];
     }
     substituted.extend_from_slice(rest);
-    Ok(Some(substituted))
+    Ok(Substituted::Done(substituted))
+}
+
+/// The refusal of a request naming `name`, granted nowhere for `host`.
+fn ungranted(at: &Callsite, name: &str, host: &str) -> anyhow::Error {
+    Refused(format!(
+        "no secret {name:?} is granted to {} for {host}",
+        at.service
+    ))
+    .into()
 }
 
 /// The bytes of `headers`' names and values.
@@ -236,22 +292,22 @@ fn headers(headers: &[(String, String)]) -> usize {
         .sum()
 }
 
-/// Refuse a host the asking program's manifest does not declare under
+/// Refuse a host the asking service's manifest does not declare under
 /// `syscall`.
 fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
     at.deps.reach(syscall, host).ok_or_else(|| {
         Refused(format!(
             "{} does not declare {host} under {syscall}",
-            at.program
+            at.service
         ))
         .into()
     })
 }
 
-/// `request` off the wire, refused unless the asking program declares its host
+/// `request` off the wire, refused unless the asking service declares its host
 /// under `syscall`.
 fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
-    let fields = wire::fields(request)?;
+    let fields = abi::wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?;
     let Some(body) = fields.get(2) else {
@@ -297,6 +353,7 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     };
     let reach = permitted(at, syscall, &host)?;
     Ok(Request {
+        service: at.service.to_string(),
         method,
         host,
         reach,
@@ -315,5 +372,5 @@ fn write(response: &Response) -> Vec<u8> {
         fields.push(name.as_bytes());
         fields.push(value.as_bytes());
     }
-    wire::frame(&fields)
+    abi::wire::request(&fields)
 }

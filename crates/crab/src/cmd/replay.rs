@@ -1,50 +1,54 @@
 //! `crab replay` — run a call that failed again: from its tape, or against
 //! another host's state.
 
-use crate::{cmd::call, utils};
+use crate::{cmd::call, project, runtime};
 use anyhow::{Result, bail};
 use berm::{
-    Berm, Calls, Config, Engine, Output, User, abi, chain, digest, storage,
-    syscall::{call::DEFAULT_CALL_DEPTH, emit},
+    Berm, Calls, Config, Engine, Output, User, abi, chain,
+    syscall::emit,
     tape::{Tape, Taping},
 };
+use berm_api::digest;
 use crabtalk_sdk::client::Client;
-use std::{process::ExitCode, sync::Arc};
+use std::{fs, path::Path, process::ExitCode, sync::Arc};
 
 /// Leaves by the door `crab call` takes for a tool that failed.
 const FAILED: u8 = 2;
 
-/// Run `program`'s call `id`, as `from` recorded it, in this process: the
+/// Run `service`'s call `id`, as `from` recorded it, in this process: the
 /// image it ran, its arguments and caller, each syscall answered from its
 /// tape. Its logs are printed here.
-pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
-    let input = utils::wait(from.call_input(program, id))?;
-    let tape = Tape::try_from(&utils::wait(from.call_tape(program, id))?[..])?;
-    let bytes = utils::wait(from.call_image(program, id))?;
-    if input.digest.strip_prefix("sha256:") != Some(digest(&bytes).as_str()) {
-        bail!(
-            "the host served an image of another digest than {}",
-            input.digest
-        );
-    }
+pub fn tape(from: &Client, service: &str, id: u64, build: Option<&Path>) -> Result<ExitCode> {
+    let input = runtime::wait(from.call_input(service, id))?;
+    let tape = Tape::try_from(&runtime::wait(from.call_tape(service, id))?[..])?;
+    let bytes = if let Some(dir) = build {
+        project::read(dir)?;
+        let image = fs::read(berm_build::build(dir, None)?)?;
+        eprintln!("recorded {}; built {}", input.digest, digest::of(&image));
+        image
+    } else {
+        let image = runtime::wait(from.call_image(service, id))?;
+        if input.digest != digest::of(&image) {
+            bail!(
+                "the host served an image of another digest than {}",
+                input.digest
+            );
+        }
+        image
+    };
     if !tape.complete {
         eprintln!("the tape was cut short; the replay stops where it ends");
     }
 
     let engine = Engine::new(&Config::default())?;
-    let logs = emit::programs(|_, log| async move {
+    let logs = emit::services(|_, log| async move {
         eprintln!("{} {}", log.topics.join(" "), log.data);
         Ok(true)
     });
-    let berm = Berm::new(
-        &engine,
-        Calls::by_name(DEFAULT_CALL_DEPTH),
-        vec![logs],
-        storage::Memory::new(),
-    );
-    let deployed = berm.deploy(program, &bytes)?;
+    let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), vec![logs]);
+    let deployed = berm.deploy(service, &bytes)?;
     let caller = input.caller.as_ref();
-    let replayed = utils::wait(
+    let replayed = runtime::wait(
         deployed.call_as(
             caller
                 .filter(|caller| !caller.anonymous())
@@ -61,7 +65,7 @@ pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
             &input.tool,
             input.args.into_bytes(),
             Arc::default(),
-            chain(),
+            chain::next(),
             Taping::Replay {
                 tape,
                 through: vec![abi::EMIT.to_owned()],
@@ -73,38 +77,40 @@ pub fn tape(from: &Client, program: &str, id: u64) -> Result<ExitCode> {
             Output::Done(result) => {
                 println!("{result}");
                 eprintln!(
-                    "{program}.{} answered; the call it replays failed",
+                    "{service}.{} answered; the call it replays failed",
                     input.tool
                 );
                 Ok(ExitCode::SUCCESS)
             }
             Output::Failed(failure) => {
-                eprintln!("{program}.{} failed: {failure}", input.tool);
+                eprintln!("{service}.{} failed: {failure}", input.tool);
                 Ok(ExitCode::from(FAILED))
             }
         },
         Err(error) => {
-            eprintln!("{program}.{} trapped: {error:#}", input.tool);
+            eprintln!("{service}.{} trapped: {error:#}", input.tool);
             Ok(ExitCode::from(FAILED))
         }
     }
 }
 
-/// Run `program`'s call `id`, as `from` recorded it, on `on`: its tool, its
-/// arguments and its caller, against `on`'s own state.
-pub fn on(from: &Client, on: &Client, program: &str, id: u64) -> Result<ExitCode> {
-    let input = utils::wait(from.call_input(program, id))?;
-    let running = utils::wait(on.inspect(program))?.digest;
-    if input.digest.strip_prefix("sha256:") != Some(running.trim_start_matches("sha256:")) {
+/// Run `service`'s call `id`, as `from` recorded it, on `on`: its tool, its
+/// arguments and its caller, against `on`'s own state, priced at `cloud`'s
+/// rates.
+pub fn on(from: &Client, on: &Client, cloud: &Client, service: &str, id: u64) -> Result<ExitCode> {
+    let input = runtime::wait(from.call_input(service, id))?;
+    let running = runtime::wait(on.inspect(service))?.digest;
+    let running = digest::prefixed(running.trim_start_matches(digest::PREFIX));
+    if input.digest != running {
         eprintln!(
-            "the call ran {}; {program} here runs sha256:{}",
-            input.digest,
-            running.trim_start_matches("sha256:")
+            "the call ran {}; {service} here runs {running}",
+            input.digest
         );
     }
-    call::run(
+    call::tool(
         on,
-        program,
+        cloud,
+        service,
         &input.tool,
         Some(&input.args),
         input.caller.as_ref(),

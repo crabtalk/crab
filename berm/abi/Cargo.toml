@@ -1,0 +1,10 @@
+[package]
+name = "berm-abi"
+description = "The contract between a berm service and its host"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["berm", "wasm", "abi"]
+categories = ["wasm", "no-std"]

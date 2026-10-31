@@ -2,7 +2,10 @@
 //! written, and for no other.
 
 use anyhow::Result;
-use berm_api::host::{CallPage, Caller, Outcome, User};
+use berm_api::{
+    digest,
+    host::{CallPage, Caller, Outcome, User},
+};
 use berm_host::test::{self, TestHost};
 
 #[tokio::test]
@@ -21,7 +24,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
         agent: None,
     };
     let call = |tool: &'static str, args: &'static [u8]| {
-        host.host()
+        host.host
             .call("acct/fixture", Some(&caller), tool, args.to_vec(), false)
     };
     call("echo", br#"{"query":"hi"}"#).await?;
@@ -32,7 +35,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
             host.flush().await?;
         }
         let (calls, _) = host
-            .host()
+            .host
             .calls(
                 "acct/fixture",
                 CallPage {
@@ -52,7 +55,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
         let failed = calls.iter().find(|c| c.outcome == Outcome::Failed).unwrap();
         let done = calls.iter().find(|c| c.outcome == Outcome::Done).unwrap();
 
-        let input = host.host().call_input("acct/fixture", failed.id).await?;
+        let input = host.host.call_input("acct/fixture", failed.id).await?;
         assert_eq!(input.tool, "boom");
         assert_eq!(input.args, r#"{"why":"test"}"#);
         let kept = input.caller.unwrap();
@@ -60,16 +63,16 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
         assert_eq!(kept.user.unwrap().subject, "42");
         assert_eq!(
             input.digest,
-            format!("sha256:{}", host.host().get("acct/fixture").unwrap().digest)
+            digest::prefixed(&host.host.get("acct/fixture").unwrap().digest)
         );
 
         let error = host
-            .host()
+            .host
             .call_input("acct/fixture", done.id)
             .await
             .unwrap_err();
         assert!(format!("{error:?}").contains("kept no input"), "{error:?}");
-        assert!(host.host().call_input("acct/fixture", 999).await.is_err());
+        assert!(host.host.call_input("acct/fixture", 999).await.is_err());
     }
     Ok(())
 }

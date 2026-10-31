@@ -1,4 +1,4 @@
-//! A program's migrations and its kits', each kept under its own key, a
+//! A service's migrations and its kits', each kept under its own key, a
 //! database from before kits taken over with its history, and a kit's history
 //! kept under a former key moved under its id.
 
@@ -31,7 +31,7 @@ fn dir(test: &str) -> Result<PathBuf> {
 }
 
 #[tokio::test]
-async fn a_kit_and_the_program_may_name_a_migration_alike() -> Result<()> {
+async fn a_kit_and_the_service_may_name_a_migration_alike() -> Result<()> {
     let databases = Databases::new(dir("alike")?);
     let database = databases.get("p")?;
     let ran = database

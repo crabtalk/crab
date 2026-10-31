@@ -1,6 +1,6 @@
 name = "keeper"
 deploy = false
-programs = ["inner"]
+calls = ["inner"]
 
 [syscalls]
 "berm.get" = []
@@ -9,3 +9,15 @@ programs = ["inner"]
 
 [database]
 migrations = "migrations"
+
+[tools.put]
+access = "public"
+
+[tools.count]
+access = "public"
+
+[tools.note]
+access = "public"
+
+[tools.relay]
+access = "public"

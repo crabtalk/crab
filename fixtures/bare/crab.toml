@@ -1,2 +1,8 @@
 name = "bare"
 deploy = false
+
+[tools.fetch]
+access = "public"
+
+[tools.vouch]
+access = "public"

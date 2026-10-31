@@ -1,7 +1,7 @@
 //! What a source fetched, in its database: `lake_items`, `lake_threads` and
 //! `lake_records`.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use berm_lang::{
     CallError, json,
     serde::{Serialize, de::DeserializeOwned},
@@ -27,32 +27,62 @@ pub struct Version<T> {
 /// Store `values` as a version of record `id` in `feed` since `now`, when they
 /// differ from its latest. Answers the bytes written, 0 when they do not.
 pub fn record(id: &str, feed: &str, now: u64, values: &impl Serialize) -> Result<usize, CallError> {
-    let data = json::to(values)?;
-    let inserted = berm_lang::rows::<(u64,)>(
-        "INSERT INTO lake_records (id, feed, since, data) SELECT ?, ?, ?, ?
-          WHERE ? IS NOT (SELECT data FROM lake_records WHERE id = ? AND feed = ?
-                           ORDER BY seq DESC LIMIT 1)
-         RETURNING seq",
-        &(id, feed, now, &data, &data, id, feed),
-    )?;
-    Ok(if inserted.is_empty() { 0 } else { data.len() })
+    Ok(add_records(feed, now, &[(id, values)])?.1)
 }
 
-/// Store `item`, posted at `posted`, as shown by `feed`. Answers the bytes
-/// written, 0 when `feed` already showed it.
-pub(crate) fn item(
-    id: &str,
+/// Store each of `records`, an id and its values, as a version of that record
+/// in `feed` since `now`, when its values differ from its latest. Of an id
+/// listed more than once, the last is stored. Answers how many versions were
+/// stored and the bytes written.
+pub(crate) fn add_records(
     feed: &str,
-    posted: u64,
-    item: &impl Serialize,
-) -> Result<usize, CallError> {
-    let data = json::to(item)?;
-    let inserted = berm_lang::rows::<(u64,)>(
-        "INSERT OR IGNORE INTO lake_items (id, feed, posted, data) VALUES (?, ?, ?, ?)
-         RETURNING seq",
-        &(id, feed, posted, &data),
-    )?;
-    Ok(if inserted.is_empty() { 0 } else { data.len() })
+    now: u64,
+    records: &[(&str, impl Serialize)],
+) -> Result<(u64, usize), CallError> {
+    let mut seen = BTreeSet::new();
+    let mut rows: Vec<(&str, String)> = Vec::with_capacity(records.len());
+    for (id, values) in records.iter().rev() {
+        if seen.insert(*id) {
+            rows.push((id, json::to(values)?));
+        }
+    }
+    rows.reverse();
+    written(berm_lang::rows::<(u64,)>(
+        "INSERT INTO lake_records (id, feed, since, data)
+         SELECT j.value ->> 0, ?1, ?2, j.value ->> 1 FROM json_each(?3) AS j
+                LEFT JOIN (SELECT id, data, MAX(seq) FROM lake_records
+                            WHERE feed = ?1 AND id IN (SELECT value ->> 0 FROM json_each(?3))
+                            GROUP BY id) AS l ON l.id = j.value ->> 0
+          WHERE l.data IS NOT j.value ->> 1
+          ORDER BY j.key
+         RETURNING length(CAST(data AS BLOB))",
+        &(feed, now, &rows),
+    )?)
+}
+
+/// Store each of `items`, an id, when it was posted and the item, as shown by
+/// `feed`, in order, those `feed` did not already show. Answers how many were
+/// new and the bytes written.
+pub(crate) fn add_items(
+    feed: &str,
+    items: &[(&str, u64, impl Serialize)],
+) -> Result<(u64, usize), CallError> {
+    let rows = items
+        .iter()
+        .map(|(id, posted, item)| Ok((*id, *posted, json::to(item)?)))
+        .collect::<Result<Vec<_>, CallError>>()?;
+    written(berm_lang::rows::<(u64,)>(
+        "INSERT OR IGNORE INTO lake_items (id, feed, posted, data)
+         SELECT value ->> 0, ?1, value ->> 1, value ->> 2 FROM json_each(?2) ORDER BY key
+         RETURNING length(CAST(data AS BLOB))",
+        &(feed, &rows),
+    )?)
+}
+
+/// How many rows an insert returned the bytes of, and their sum.
+fn written(rows: Vec<(u64,)>) -> Result<(u64, usize), CallError> {
+    let bytes = rows.iter().map(|(bytes,)| *bytes as usize).sum();
+    Ok((rows.len() as u64, bytes))
 }
 
 /// Whether item `id` is stored as shown by `feed`.
@@ -83,11 +113,16 @@ pub fn items<T: DeserializeOwned>(
     after: u64,
     limit: u64,
 ) -> Result<Vec<Stored<T>>, CallError> {
-    berm_lang::rows::<(u64, String)>(
-        "SELECT seq, data FROM lake_items WHERE seq > ? AND (? IS NULL OR feed = ?)
-          ORDER BY seq LIMIT ?",
-        &(after, feed, feed, limit),
-    )?
+    match feed {
+        Some(feed) => berm_lang::rows::<(u64, String)>(
+            "SELECT seq, data FROM lake_items WHERE feed = ? AND seq > ? ORDER BY seq LIMIT ?",
+            &(feed, after, limit),
+        )?,
+        None => berm_lang::rows::<(u64, String)>(
+            "SELECT seq, data FROM lake_items WHERE seq > ? ORDER BY seq LIMIT ?",
+            &(after, limit),
+        )?,
+    }
     .into_iter()
     .map(|(seq, data)| {
         Ok(Stored {
@@ -110,10 +145,11 @@ pub fn thread_of<T: DeserializeOwned>(id: &str) -> Result<Option<T>, CallError> 
 /// order the feeds first did.
 pub fn record_of<T: DeserializeOwned>(id: &str) -> Result<Vec<Version<T>>, CallError> {
     versions_where(
-        "SELECT seq, id, feed, since, data FROM lake_records AS r
-          WHERE id = ? AND seq = (SELECT MAX(seq) FROM lake_records
-                                   WHERE id = r.id AND feed = r.feed)
-          ORDER BY (SELECT MIN(seq) FROM lake_records WHERE id = r.id AND feed = r.feed)",
+        "SELECT r.seq, r.id, r.feed, r.since, r.data
+           FROM (SELECT MIN(seq) AS first, MAX(seq) AS last FROM lake_records
+                  WHERE id = ? GROUP BY feed) AS f
+                JOIN lake_records AS r ON r.seq = f.last
+          ORDER BY f.first",
         &(id,),
     )
 }
@@ -123,11 +159,17 @@ pub fn versions_of<T: DeserializeOwned>(
     id: &str,
     feed: Option<&str>,
 ) -> Result<Vec<Version<T>>, CallError> {
-    versions_where(
-        "SELECT seq, id, feed, since, data FROM lake_records
-          WHERE id = ? AND (? IS NULL OR feed = ?) ORDER BY seq",
-        &(id, feed, feed),
-    )
+    match feed {
+        Some(feed) => versions_where(
+            "SELECT seq, id, feed, since, data FROM lake_records
+              WHERE id = ? AND feed = ? ORDER BY seq",
+            &(id, feed),
+        ),
+        None => versions_where(
+            "SELECT seq, id, feed, since, data FROM lake_records WHERE id = ? ORDER BY seq",
+            &(id,),
+        ),
+    }
 }
 
 /// Up to `limit` versions stored after `after`, oldest first, of `feed` when
@@ -137,11 +179,17 @@ pub fn versions<T: DeserializeOwned>(
     after: u64,
     limit: u64,
 ) -> Result<Vec<Version<T>>, CallError> {
-    versions_where(
-        "SELECT seq, id, feed, since, data FROM lake_records
-          WHERE seq > ? AND (? IS NULL OR feed = ?) ORDER BY seq LIMIT ?",
-        &(after, feed, feed, limit),
-    )
+    match feed {
+        Some(feed) => versions_where(
+            "SELECT seq, id, feed, since, data FROM lake_records
+              WHERE feed = ? AND seq > ? ORDER BY seq LIMIT ?",
+            &(feed, after, limit),
+        ),
+        None => versions_where(
+            "SELECT seq, id, feed, since, data FROM lake_records WHERE seq > ? ORDER BY seq LIMIT ?",
+            &(after, limit),
+        ),
+    }
 }
 
 fn versions_where<T: DeserializeOwned>(

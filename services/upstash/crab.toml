@@ -1,0 +1,45 @@
+name = "upstash"
+buffer = 1048576
+
+[vars]
+UPSTASH_REDIS_REST_URL = { description = "HTTPS REST URL from your Upstash database's Connect page" }
+
+[syscalls]
+"berm.http.fetch" = ["*.upstash.io"]
+
+[credentials.upstash_redis]
+title = "Upstash Redis database"
+guide = "Copy the REST token from your database at https://console.upstash.com. Grant it only to the exact host in UPSTASH_REDIS_REST_URL. A read-only token supports reads; writes require the standard token."
+secrets = [{ name = "UPSTASH_REDIS_REST_TOKEN", label = "REST token" }]
+
+[tools.get]
+access = "public"
+title = "Get"
+
+[tools.set]
+access = "public"
+title = "Set"
+
+[tools.delete]
+access = "public"
+title = "Delete"
+
+[tools.expire]
+access = "public"
+title = "Expire"
+
+[tools.ttl]
+access = "public"
+title = "TTL"
+
+[tools.increment]
+access = "public"
+title = "Increment"
+
+[tools.pipeline]
+access = "public"
+title = "Pipeline"
+
+[tools.transaction]
+access = "public"
+title = "Transaction"

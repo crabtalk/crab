@@ -1,10 +1,12 @@
-//! `/requests` — asking a person to pay or to set a secret, by a code.
+//! `/requests` — asking a person to pay, to set a secret, to approve a deploy
+//! or to verify on GitHub, by a code.
 
 use crate::{
     account::request::{
         CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest, Purchase, Request,
     },
     client::{Client, Error},
+    services::service::DeployRequest,
 };
 use reqwest::Method;
 use std::collections::BTreeMap;
@@ -42,6 +44,58 @@ impl Client {
             service: service.to_owned(),
             credential: credential.map(str::to_owned),
             copy,
+            context: context.to_owned(),
+        })
+        .await
+    }
+
+    /// Ask a person to approve deploying the account's `services` together,
+    /// by name.
+    pub async fn ask_deploy(
+        &self,
+        services: BTreeMap<String, DeployRequest>,
+        context: &str,
+    ) -> Result<Request, Error> {
+        self.ask_deploy_with_copy(services, BTreeMap::new(), context)
+            .await
+    }
+
+    pub async fn ask_deploy_with_copy(
+        &self,
+        services: BTreeMap<String, DeployRequest>,
+        copy: BTreeMap<String, BTreeMap<String, String>>,
+        context: &str,
+    ) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Deploy {
+            account: self.account()?.name().to_owned(),
+            services,
+            copy,
+            context: context.to_owned(),
+        })
+        .await
+    }
+
+    /// Ask the person the client acts for to verify on GitHub.
+    pub async fn ask_verify(&self, context: &str) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Verify {
+            account: self.account()?.name().to_owned(),
+            context: context.to_owned(),
+        })
+        .await
+    }
+
+    /// Ask an owner of the key's account to let this client's key call
+    /// `services`, each as `owner/name`, or spend `budget` USD micros a UTC
+    /// day.
+    pub async fn ask_grant(
+        &self,
+        services: Vec<String>,
+        budget: Option<i64>,
+        context: &str,
+    ) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Grant {
+            services,
+            budget,
             context: context.to_owned(),
         })
         .await

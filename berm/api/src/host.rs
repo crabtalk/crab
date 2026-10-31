@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
 
 /// Header carrying a tool call's [`Meter`], summed over every
-/// program the call reached, as JSON.
+/// service the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
 /// Header carrying the [`Caller`] a call to the local host is made as, as
@@ -75,6 +75,9 @@ pub struct Deploy {
     /// Install it stopped, to serve once started.
     #[serde(default)]
     pub stopped: bool,
+    /// Check required secrets here; Fleet checks its own secret store.
+    #[serde(default)]
+    pub check_secrets: bool,
     /// The project it is deployed in: the workspace it came from. `None`
     /// keeps the project it was in. Refused, unless `force`, when the service
     /// is in another project.
@@ -84,6 +87,11 @@ pub struct Deploy {
     /// services deployed with it whose new version no longer calls it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exempt: Vec<String>,
+    /// The value this copy holds for each var it names, as
+    /// [`Deps::settable`](crate::Deps::settable) holds it; a var it leaves
+    /// out keeps its value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }
 
 /// The days back a deploy's breaks check counts what callers used.
@@ -103,6 +111,12 @@ pub struct Checked {
     /// How it breaks what callers of the running version used in the last
     /// [`USED_DAYS`] days, the callers `exempt` names left out.
     pub breaks: Vec<Broken>,
+    /// The secrets it names, its kits' included.
+    #[serde(default)]
+    pub secrets: Vec<String>,
+    /// Required secret names, including those in no credential.
+    #[serde(default)]
+    pub required: Vec<String>,
 }
 
 /// A break of what callers used, and who used it.
@@ -336,6 +350,8 @@ pub enum Source {
     Anonymous,
     /// A Stripe event its daemon took for the service.
     Stripe,
+    /// A webhook its daemon verified for the service.
+    Webhook,
 }
 
 /// How a use ended.
@@ -363,23 +379,7 @@ impl Outcome {
     }
 }
 
-impl fmt::Display for Kind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.serialize(f)
-    }
-}
-
-impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.serialize(f)
-    }
-}
-
-impl fmt::Display for Outcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.serialize(f)
-    }
-}
+crate::text_enum!(Kind, Source, Outcome);
 
 /// Uses of a service counted on another host, for the host it runs on.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -711,6 +711,9 @@ pub struct RecordsPage {
     pub logs: u64,
     /// At most this many of each.
     pub limit: u32,
+    /// Include replay artifacts and delete them up to the acknowledged call cursor.
+    #[serde(default)]
+    pub replays: bool,
 }
 
 /// A host's written calls and logs past a [`RecordsPage`]'s cursors, each
@@ -719,6 +722,9 @@ pub struct RecordsPage {
 pub struct Records {
     pub calls: Vec<RecordedCall>,
     pub logs: Vec<RecordedLog>,
+    /// A replay size limit cut the page before its call limit.
+    #[serde(default)]
+    pub more: bool,
 }
 
 /// One written call, with the calls it made.
@@ -730,6 +736,10 @@ pub struct RecordedCall {
     #[serde(flatten)]
     pub call: Call,
     pub nested: Vec<NestedCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<CallInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tape: Option<Vec<u8>>,
 }
 
 /// One written log.
@@ -748,9 +758,9 @@ pub struct RecordedLog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallInput {
     pub tool: String,
-    /// Its arguments as sent: JSON, or a Stripe event's body.
+    /// Its arguments as sent: JSON, or a Stripe event's or a webhook's body.
     pub args: String,
-    /// Who it was made as; none for a wake, a Stripe event or an anonymous
+    /// Who it was made as; none for a wake, a Stripe event, a webhook or an anonymous
     /// call.
     pub caller: Option<Caller>,
     /// The image it ran, as `sha256:` and hex.
@@ -781,11 +791,24 @@ pub struct Live {
 
 /// The memory a scope's services hold now, and the most they may.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Memory {
     /// Bytes; `0` is no limit.
     pub limit: u64,
     /// Bytes of the images and compiled code of its services deployed.
+    pub loaded: u64,
+    /// Bytes of linear memory its invocations running now hold.
+    pub running: u64,
+    /// What each of its services holds, by its name within the scope.
+    #[serde(default)]
+    pub services: BTreeMap<String, Held>,
+}
+
+/// The memory one service holds now.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct Held {
+    /// Bytes of its image and compiled code.
     pub loaded: u64,
     /// Bytes of linear memory its invocations running now hold.
     pub running: u64,

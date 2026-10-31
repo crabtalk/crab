@@ -1,4 +1,4 @@
-//! `berm.call.after` — a tool called later, by the program's own arming.
+//! `berm.call.after` — a tool called later, by the service's own arming.
 //!
 //! berm reads the request; holding the wake, writing it down so a restart
 //! keeps it, and firing it are the host's, and arrive as the closure below.
@@ -8,22 +8,22 @@ use crate::{Callsite, Refused, Syscall, abi, wire};
 use anyhow::{Context, Result};
 use std::{future::Future, sync::Arc};
 
-/// One wake a program asked for.
+/// One wake a service asked for.
 #[derive(Debug)]
 pub struct Wake {
     /// Milliseconds from the call.
     pub delay: u64,
-    pub program: String,
+    pub service: String,
     pub tool: String,
     pub args: String,
 }
 
 /// Serve `berm.call.after` against `arm`, handed the callsite and the wake.
 ///
-/// One wake per program that arms it: arming again replaces what that program
+/// One wake per service that arms it: arming again replaces what that service
 /// had pending. `arm` answers once the wake is held; an `Err` reaches the
 /// guest, which is still running and can act on it.
-pub fn programs<A, Armed>(arm: A) -> Syscall
+pub fn services<A, Armed>(arm: A) -> Syscall
 where
     A: Fn(Callsite, Wake) -> Armed + Send + Sync + 'static,
     Armed: Future<Output = Result<()>> + Send + 'static,
@@ -51,12 +51,12 @@ where
 }
 
 fn read(request: &[u8]) -> Result<Wake> {
-    let fields = wire::fields(request)?;
+    let fields = abi::wire::fields(request)?;
     Ok(Wake {
         delay: wire::text(&fields, 0, "delay")?
             .parse()
             .context("a delay is milliseconds")?,
-        program: wire::text(&fields, 1, "program")?.to_owned(),
+        service: wire::text(&fields, 1, "service")?.to_owned(),
         tool: wire::text(&fields, 2, "tool")?.to_owned(),
         args: wire::text(&fields, 3, "arguments")?.to_owned(),
     })

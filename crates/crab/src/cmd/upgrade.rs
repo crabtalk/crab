@@ -1,6 +1,6 @@
 //! `crab upgrade` — replace this `crab` with the latest release.
 
-use crate::utils;
+use crate::terminal;
 use anyhow::Result;
 use self_update::{backends::github::Update, cargo_crate_version};
 use std::io::{self, IsTerminal};
@@ -23,7 +23,7 @@ pub fn run(yes: bool) -> Result<()> {
         return Ok(());
     };
     let version = latest.version().to_owned();
-    utils::confirm(yes, &format!("upgrade crab {current} to {version}"))?;
+    terminal::confirm(yes, &format!("upgrade crab {current} to {version}"))?;
     // Pinned to the release just confirmed, not whichever is latest by now.
     updater
         .release_tag(format!("v{version}"))

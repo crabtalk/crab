@@ -2,7 +2,7 @@
 //! against edges the test holds. Fetches answer what the test arranged, images
 //! are bytes it handed in, there are no peers, secrets are what it granted,
 //! each service signs with a key generated on first use, and the clock stands
-//! where it set it. Wakes are fired by the test, not a timer.
+//! where it set it. Wakes are fired by the test.
 //!
 //! ```ignore
 //! let host = TestHost::open(0).await?;
@@ -16,15 +16,16 @@
 pub use berm::User;
 
 use crate::{
+    Installed,
     api::outside::Layers,
-    env::{Clock, Edges},
+    env::{Alone, Clock, Edges},
     host::{self, Host},
     state::service,
     wake::table,
 };
 use anyhow::{Context, Result, bail};
 use berm::{
-    Meter, Program,
+    Meter, Service,
     syscall::{
         http::{Request, Response},
         sql::Statement,
@@ -32,7 +33,7 @@ use berm::{
     tape::Taping,
 };
 use berm_api::{
-    Logged, Output,
+    Logged, Output, digest,
     host::{DATABASE_SIZE, Deploy, Page},
 };
 use parking_lot::Mutex;
@@ -46,13 +47,12 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     task::{self, Poll},
-    time::Duration,
 };
+use tokio::sync::MutexGuard;
 
 mod clock;
 mod env;
 mod images;
-mod peers;
 mod secrets;
 
 /// The edges of a [`TestHost`].
@@ -61,19 +61,20 @@ pub struct Test;
 
 /// A host whose state lives in a directory of its own, removed when it drops.
 pub struct TestHost {
-    host: Host<Test>,
+    /// The host itself, for what this does not wrap.
+    pub host: Host<Test>,
     fetch: Arranged,
     images: Given,
     secrets: Granted,
     clock: Manual,
     dir: PathBuf,
-    cpu: Duration,
+    config: crate::Config,
 }
 
-/// A host over the state in `dir`, each call spending at most `cpu`.
+/// A host over the state in `dir`, sized by `config`.
 async fn opened(
     dir: &Path,
-    cpu: Duration,
+    config: &crate::Config,
     fetch: &Arranged,
     images: &Given,
     secrets: &Granted,
@@ -81,8 +82,7 @@ async fn opened(
 ) -> Result<Host<Test>> {
     let config = crate::Config {
         databases: dir.join("databases"),
-        cpu,
-        ..crate::Config::default()
+        ..config.clone()
     };
     Host::open(
         &dir.join("host.db"),
@@ -91,7 +91,7 @@ async fn opened(
             fetch: fetch.clone(),
             proxy: Some(fetch.clone()),
             images: images.clone(),
-            peers: Nowhere,
+            peers: Alone,
             secrets: secrets.clone(),
             layers: Layers::new(tower::layer::util::Identity::new()),
             observe: (),
@@ -106,7 +106,7 @@ async fn opened(
 pub struct Ran {
     /// What the tool answered, or the failure it reported.
     pub result: Output,
-    /// `result` is [`Output::Failed`] because the tool refused its caller.
+    /// The tool refused its caller; `result` is then [`Output::Failed`].
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,
@@ -118,7 +118,7 @@ pub struct Wake {
     /// The service that armed it.
     pub service: String,
     /// The service it calls, by name in the arming one's scope.
-    pub program: String,
+    pub calls: String,
     pub tool: String,
     pub args: String,
 }
@@ -127,11 +127,11 @@ impl TestHost {
     /// A host with nothing deployed, its clock at `now` in milliseconds since
     /// the Unix epoch.
     pub async fn open(now: u64) -> Result<Self> {
-        Self::open_with(now, crate::Config::default().cpu).await
+        Self::open_with(now, crate::Config::default()).await
     }
 
-    /// [`TestHost::open`], each call spending at most `cpu` of CPU.
-    pub async fn open_with(now: u64, cpu: Duration) -> Result<Self> {
+    /// [`TestHost::open`], sized by `config`.
+    pub async fn open_with(now: u64, config: crate::Config) -> Result<Self> {
         static OPENED: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "berm-test-{}-{}",
@@ -142,7 +142,7 @@ impl TestHost {
         std::fs::create_dir_all(&dir)?;
         let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
         let clock = Manual(Arc::new(AtomicU64::new(now)));
-        let host = opened(&dir, cpu, &fetch, &images, &secrets, &clock).await?;
+        let host = opened(&dir, &config, &fetch, &images, &secrets, &clock).await?;
         Ok(Self {
             host,
             fetch,
@@ -150,7 +150,7 @@ impl TestHost {
             secrets,
             clock,
             dir,
-            cpu,
+            config,
         })
     }
 
@@ -159,7 +159,7 @@ impl TestHost {
     pub async fn reopen(&mut self) -> Result<()> {
         self.host = opened(
             &self.dir,
-            self.cpu,
+            &self.config,
             &self.fetch,
             &self.images,
             &self.secrets,
@@ -168,11 +168,6 @@ impl TestHost {
         .await?;
         self.host.reconcile().await;
         Ok(())
-    }
-
-    /// The host itself, for what this does not wrap.
-    pub fn host(&self) -> &Host<Test> {
-        &self.host
     }
 
     /// Answer `method` on `url` with `status` and `body`, from now on.
@@ -217,7 +212,7 @@ impl TestHost {
 
     /// Run `image` as `service`, every public tool confirmed and each cron tool
     /// without an expression.
-    pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+    pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Service>> {
         self.seeded(service, image, None).await
     }
 
@@ -228,18 +223,18 @@ impl TestHost {
         service: &str,
         image: &[u8],
         seed: Option<&Path>,
-    ) -> Result<Arc<Program>> {
+    ) -> Result<Arc<Service>> {
         self.installed(service, image, seed, DATABASE_SIZE, false)
             .await
     }
 
     /// [`TestHost::deploy`], its database held to `size` bytes.
-    pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Program>> {
+    pub async fn sized(&self, service: &str, image: &[u8], size: u64) -> Result<Arc<Service>> {
         self.installed(service, image, None, size, false).await
     }
 
     /// [`TestHost::deploy`], installed stopped.
-    pub async fn pushed(&self, service: &str, image: &[u8]) -> Result<Arc<Program>> {
+    pub async fn pushed(&self, service: &str, image: &[u8]) -> Result<Arc<Service>> {
         self.installed(service, image, None, DATABASE_SIZE, true)
             .await
     }
@@ -254,7 +249,7 @@ impl TestHost {
     ) -> Result<Vec<String>> {
         let mut members = Vec::new();
         for (service, image, size) in set {
-            let digest = format!("sha256:{}", berm::digest(image));
+            let digest = digest::of(image);
             let reference = format!("test/{service}");
             self.images.0.lock().insert(digest.clone(), image.to_vec());
             members.push((
@@ -266,8 +261,10 @@ impl TestHost {
                     crons: None,
                     size: *size,
                     stopped: false,
+                    check_secrets: false,
                     project: Some(project.to_owned()),
                     exempt: Vec::new(),
+                    vars: Default::default(),
                 },
             ));
         }
@@ -282,8 +279,57 @@ impl TestHost {
         seed: Option<&Path>,
         size: u64,
         stopped: bool,
-    ) -> Result<Arc<Program>> {
-        let digest = format!("sha256:{}", berm::digest(image));
+    ) -> Result<Arc<Service>> {
+        Ok(self
+            .installing(service, image, seed, size, stopped, false)
+            .await?
+            .service)
+    }
+
+    /// Deploy a set independently; test images are held before checking.
+    pub async fn deploy_partial(
+        &self,
+        set: &[(&str, &[u8], u64)],
+    ) -> Result<Vec<(String, Result<Installed, crate::Denied>)>> {
+        let mut members = Vec::new();
+        for (service, image, size) in set {
+            let digest = digest::of(image);
+            self.images.0.lock().insert(digest.clone(), image.to_vec());
+            members.push((
+                (*service).to_owned(),
+                Deploy {
+                    reference: format!("test/{service}"),
+                    digest,
+                    force: false,
+                    crons: None,
+                    size: *size,
+                    stopped: false,
+                    check_secrets: false,
+                    project: None,
+                    exempt: Vec::new(),
+                    vars: Default::default(),
+                },
+            ));
+        }
+        Ok(self.host.deploy_partial(members).await?)
+    }
+
+    /// Deploy `image` as `service`, refusing missing required secrets.
+    pub async fn deploy_checked(&self, service: &str, image: &[u8]) -> Result<Installed> {
+        self.installing(service, image, None, DATABASE_SIZE, false, true)
+            .await
+    }
+
+    async fn installing(
+        &self,
+        service: &str,
+        image: &[u8],
+        seed: Option<&Path>,
+        size: u64,
+        stopped: bool,
+        check_secrets: bool,
+    ) -> Result<Installed> {
+        let digest = digest::of(image);
         let reference = format!("test/{service}");
         self.images.0.lock().insert(digest.clone(), image.to_vec());
         Ok(self
@@ -297,13 +343,14 @@ impl TestHost {
                     crons: None,
                     size,
                     stopped,
+                    check_secrets,
                     project: None,
                     exempt: Vec::new(),
+                    vars: Default::default(),
                 },
                 seed,
             )
-            .await?
-            .program)
+            .await?)
     }
 
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
@@ -323,15 +370,35 @@ impl TestHost {
         self.run(service, tool, args, Some(user)).await
     }
 
+    /// [`TestHost::call`] with `args` as JSON, answering its result as JSON:
+    /// null when it is empty. Refused when the tool did not finish.
+    pub async fn call_json(
+        &self,
+        service: &str,
+        tool: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let ran = self
+            .call(service, tool, &serde_json::to_vec(&args)?)
+            .await?;
+        let Output::Done(result) = ran.result else {
+            bail!("{tool} runs: {:?}", ran.result);
+        };
+        Ok(match result.as_str() {
+            "" => serde_json::Value::Null,
+            result => serde_json::from_str(result)?,
+        })
+    }
+
     async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
-        let program = self
+        let deployed = self
             .host
             .get(service)
             .with_context(|| format!("no service named {service:?} is deployed"))?;
         let invoked = self
             .host
             .invoke(
-                &program,
+                &deployed,
                 self.host.calls.start().id,
                 None,
                 user,
@@ -353,6 +420,11 @@ impl TestHost {
         self.host.flush().await
     }
 
+    /// While held, a flush that wrote what it took keeps it in memory too.
+    pub async fn landing(&self) -> MutexGuard<'_, ()> {
+        self.host.landing.lock().await
+    }
+
     /// Every pending wake beside when it is due, in milliseconds since the
     /// Unix epoch, soonest first.
     pub async fn wakes(&self) -> Result<Vec<(Wake, u64)>> {
@@ -371,7 +443,7 @@ impl TestHost {
         for wake in self.host.due().await? {
             let woken = Wake::from(&wake);
             let Some(invoked) = self.host.fire(wake).await else {
-                bail!("{}.{} did not run", woken.program, woken.tool);
+                bail!("{}.{} did not run", woken.calls, woken.tool);
             };
             fired.push((
                 woken,
@@ -413,11 +485,11 @@ impl TestHost {
 
     /// What `service` last committed under `key`.
     pub async fn state(&self, service: &str, key: &str) -> Result<Option<Vec<u8>>> {
-        let program = self
+        let deployed = self
             .host
             .get(service)
             .with_context(|| format!("no service named {service:?} is deployed"))?;
-        if host::keeps(&program) {
+        if host::keeps(&deployed) {
             return self
                 .host
                 .databases
@@ -458,7 +530,7 @@ impl From<&table::Wake> for Wake {
     fn from(wake: &table::Wake) -> Self {
         Self {
             service: host::join(&wake.scope, &wake.name),
-            program: wake.program.clone(),
+            calls: wake.service.clone(),
             tool: wake.tool.clone(),
             args: wake.args.clone(),
         }
@@ -471,13 +543,10 @@ impl Drop for TestHost {
     }
 }
 
-/// What the test programs this builds call their project file.
-const FIXTURE_FILE: &str = "crab.toml";
-
-/// Build the program `package` of the workspace the current directory is in
+/// Build the service `package` of the workspace the current directory is in
 /// as `crab build` does, and answer its finished image.
 pub fn build(package: &str) -> Result<Vec<u8>> {
-    let image = berm_build::build(&std::env::current_dir()?, Some(package), FIXTURE_FILE)?;
+    let image = berm_build::build(&std::env::current_dir()?, Some(package))?;
     std::fs::read(&image).with_context(|| format!("reading {}", image.display()))
 }
 
@@ -528,9 +597,6 @@ impl tower::Service<Request> for Arranged {
 /// The images the test deployed, by digest.
 #[derive(Clone, Default)]
 pub struct Given(Arc<Mutex<HashMap<String, Vec<u8>>>>);
-
-/// No peers: every service is deployed here or nowhere.
-pub struct Nowhere;
 
 /// The secrets the test granted, by service, secret and host.
 #[derive(Clone, Default)]

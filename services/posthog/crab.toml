@@ -1,0 +1,39 @@
+name = "posthog"
+buffer = 1048576
+
+[vars]
+POSTHOG_REGION = { default = "us", description = "PostHog Cloud region: us or eu" }
+POSTHOG_PROJECT_ID = { description = "Numeric project ID for analytics queries; not needed for capture or flags" }
+
+[syscalls]
+"berm.http.fetch" = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]
+
+[credentials.posthog_project]
+title = "PostHog project token"
+guide = "Copy your project token from PostHog project settings. Grant it to us.i.posthog.com for US Cloud or eu.i.posthog.com for EU Cloud. Capture and flags use this token."
+optional = true
+hosts = ["us.i.posthog.com", "eu.i.posthog.com"]
+secrets = [{ name = "POSTHOG_PROJECT_TOKEN", label = "Project token" }]
+
+[credentials.posthog_private]
+title = "PostHog analytics API key"
+guide = "Create a personal API key in PostHog with query:read and access to your project. Grant it to us.posthog.com for US Cloud or eu.posthog.com for EU Cloud. Only analytics queries need this key."
+optional = true
+hosts = ["us.posthog.com", "eu.posthog.com"]
+secrets = [{ name = "POSTHOG_PERSONAL_API_KEY", label = "Personal API key" }]
+
+[tools.capture]
+access = "public"
+title = "Capture event"
+
+[tools.capture_batch]
+access = "public"
+title = "Capture batch"
+
+[tools.flags]
+access = "public"
+title = "Evaluate flags"
+
+[tools.query]
+access = "public"
+title = "Query analytics"

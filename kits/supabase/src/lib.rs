@@ -1,7 +1,7 @@
 //! Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and
 //! functions, and Storage objects, as the key in the secret `SUPABASE_KEY`.
 //!
-//! The kit declares no host. A program using it declares its project's host
+//! The kit declares no host. A service using it declares its project's host
 //! under `berm.http.fetch`, e.g. `"berm.http.fetch" = ["abcd.supabase.co"]`.
 
 #![no_std]

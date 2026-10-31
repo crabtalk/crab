@@ -7,11 +7,11 @@ extern crate alloc;
 
 use alloc::string::String;
 use berm_lang::{Result, tool};
-use crabkit::stripe::{Data, Session, Subscriber};
+use stripe::{Data, Session, Subscriber};
 
 /// Opens a Stripe Checkout session subscribing the calling user to a
 /// plan, and answers the URL to send them to.
-#[tool(public, callers(services))]
+#[tool]
 pub fn checkout(
     /// The plan: the `lookup_key` of one of the product's Stripe prices.
     price: String,
@@ -25,7 +25,7 @@ pub fn checkout(
 
 /// Opens a Stripe customer portal session for the calling user, and
 /// answers the URL to send them to.
-#[tool(public, callers(services))]
+#[tool]
 pub fn portal(
     /// Where the portal sends the user back to.
     back: String,
@@ -35,7 +35,7 @@ pub fn portal(
 
 /// The calling user's plan: the `lookup_key` of the price their active or
 /// trialing subscription is on, or `null` without one.
-#[tool(query, public, callers(services))]
+#[tool(query)]
 pub fn plan() -> Result<Option<String>> {
     Subscriber::calling()?.plan()
 }

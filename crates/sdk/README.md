@@ -43,12 +43,12 @@ A `429` that names its `Retry-After` is sent again after that wait, up to three 
 | Module    | Holds                                               |
 | --------- | --------------------------------------------------- |
 | `account` | Auth, users, orgs and teams, API keys, apps, billing |
-| `sandbox` | Services: deploys, secrets, visibility, meters, costs |
+| `services` | Services: deploys, secrets, visibility, meters, costs |
 | `system`  | `/meta` (version, rates) and feedback               |
 | `error`   | The two error envelopes the API answers with        |
 | `client`  | `Client`, `Owner`, `Error` (feature `client`)        |
 
-`berm_api` is re-exported for the program, call and meter types the service calls return.
+`berm_api` is re-exported for the service, call and meter types the service calls return.
 
 ## License
 

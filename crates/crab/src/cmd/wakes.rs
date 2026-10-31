@@ -1,13 +1,13 @@
 //! `crab wakes` — the wakes armed to call a service's tools.
 
-use crate::{format, utils};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
-    let wakes = utils::wait(client.wakes(name))?;
+    let wakes = runtime::wait(client.wakes(name))?;
     if json {
-        return utils::json(&wakes);
+        return terminal::json(&wakes);
     }
     if wakes.held {
         println!("held: its account is refused, so nothing fires");

@@ -1,4 +1,4 @@
-//! What a chain used, by program.
+//! What a chain used, by service.
 
 use crate::Refused;
 use anyhow::{Result, bail};
@@ -13,7 +13,7 @@ use std::{
     time::Instant,
 };
 
-/// Meters by program and the tool of it that ran.
+/// Meters by service and the tool of it that ran.
 pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
 
 /// One chain's meters, shared by every invocation in it. Filled whether the
@@ -22,15 +22,11 @@ pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
 pub struct Meters(Mutex<ByTool>);
 
 impl Meters {
-    pub(crate) fn add(&self, program: &str, tool: &str, used: Meter) {
-        *self
-            .0
-            .lock()
-            .entry((program.into(), tool.into()))
-            .or_default() += used;
+    pub(crate) fn add(&self, service: Arc<str>, tool: Arc<str>, used: Meter) {
+        *self.0.lock().entry((service, tool)).or_default() += used;
     }
 
-    /// CPU microseconds over every program.
+    /// CPU microseconds over every service.
     pub(crate) fn cpu(&self) -> u64 {
         self.0.lock().values().map(|meter| meter.cpu).sum()
     }
@@ -40,7 +36,7 @@ impl Meters {
     }
 }
 
-/// What a program's invocations hold while they run.
+/// What a service's invocations hold while they run.
 #[derive(Debug, Default)]
 pub struct Running {
     calls: AtomicU64,
@@ -57,7 +53,7 @@ impl Running {
     }
 }
 
-/// The memory the programs drawing from it hold at once: their images and
+/// The memory the services drawing from it hold at once: their images and
 /// compiled code while they are deployed, and the linear memory of their
 /// invocations while they run.
 #[derive(Debug, Default)]
@@ -80,6 +76,7 @@ impl Pool {
             limit: self.limit.load(Ordering::Relaxed),
             loaded: self.loaded.load(Ordering::Relaxed),
             running: self.running.load(Ordering::Relaxed),
+            services: BTreeMap::new(),
         }
     }
 
@@ -89,6 +86,7 @@ impl Pool {
             limit,
             loaded,
             running,
+            ..
         } = self.now();
         limit != 0 && loaded + running >= limit
     }
@@ -125,7 +123,7 @@ impl Pool {
     }
 }
 
-/// One invocation's part of its program's [`Running`] and of its [`Pool`],
+/// One invocation's part of its service's [`Running`] and of its [`Pool`],
 /// and its budget of memory reserved from the engine's, from when it is built
 /// until it is dropped. Its store's limiter, so the memory it holds is counted
 /// as it grows and held to its budget.
@@ -251,30 +249,40 @@ impl wasmtime::ResourceLimiter for Held {
     }
 }
 
-/// What one invocation used itself, the programs it called left out, and its
-/// budget of rows read and written.
+/// What one invocation used itself, the services it called left out, and its
+/// budgets of rows read and rows written.
 #[derive(Debug)]
 pub(crate) struct Own {
     used: Mutex<Meter>,
-    budget: AtomicU64,
+    read: AtomicU64,
+    written: AtomicU64,
 }
 
 impl Own {
-    pub(crate) fn new(budget: u64) -> Self {
+    pub(crate) fn new(read: u64, written: u64) -> Self {
         Self {
             used: Mutex::default(),
-            budget: AtomicU64::new(budget),
+            read: AtomicU64::new(read),
+            written: AtomicU64::new(written),
         }
     }
 
-    /// Its budget of rows.
-    pub(crate) fn budget(&self) -> u64 {
-        self.budget.load(Ordering::Relaxed)
+    /// Its budgets of rows read and rows written.
+    pub(crate) fn budget(&self) -> (u64, u64) {
+        (
+            self.read.load(Ordering::Relaxed),
+            self.written.load(Ordering::Relaxed),
+        )
     }
 
-    /// Hold it to `rows` from now on.
-    pub(crate) fn lower(&self, rows: u64) {
-        self.budget.fetch_min(rows, Ordering::Relaxed);
+    /// Hold it to `read` and `written` from now on, `0` keeping each.
+    pub(crate) fn lower(&self, read: u64, written: u64) {
+        if read != 0 {
+            self.read.fetch_min(read, Ordering::Relaxed);
+        }
+        if written != 0 {
+            self.written.fetch_min(written, Ordering::Relaxed);
+        }
     }
 
     pub(crate) fn add(&self, used: Meter) {
@@ -285,12 +293,18 @@ impl Own {
         std::mem::take(&mut *self.used.lock())
     }
 
-    /// Refused once the budget is used.
+    /// Refused once its rows read or its rows written are used.
     pub(crate) fn left(&self) -> Result<()> {
         let used = *self.used.lock();
-        let budget = self.budget();
-        if used.read + used.written >= budget {
-            return Err(Refused(format!("this call has used its budget of {budget} rows")).into());
+        let (read, written) = self.budget();
+        if used.read >= read {
+            return Err(Refused(format!("this call has read its budget of {read} rows")).into());
+        }
+        if used.written >= written {
+            return Err(Refused(format!(
+                "this call has written its budget of {written} rows"
+            ))
+            .into());
         }
         Ok(())
     }

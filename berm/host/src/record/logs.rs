@@ -6,7 +6,10 @@
 use crate::{
     env::Env,
     host::{self, Inner},
-    record::usage,
+    record::{
+        flight::{Flight, Table, Taken, Unflushed},
+        usage,
+    },
     state::store::Store,
 };
 use anyhow::Result;
@@ -19,7 +22,7 @@ use std::{collections::HashMap, mem, sync::Weak};
 /// `berm.emit`: each log taken into `host`'s pending logs as it is emitted.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
-    emit::programs(move |at: Callsite, log: Log| {
+    emit::services(move |at: Callsite, log: Log| {
         let taken = host::alive(&host).map(|host| {
             host.logs.take(&at, log);
             true
@@ -31,6 +34,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
 /// Logs not yet written, and the call each running chain is.
 pub(crate) struct Pending {
     pending: Mutex<Vec<Emitted>>,
+    flight: Mutex<Flight<Emitted>>,
     /// The call each chain started here is, by [`Callsite::chain`].
     runs: Mutex<HashMap<u64, u64>>,
     now: Now,
@@ -71,9 +75,11 @@ impl Emitted {
 }
 
 impl Pending {
-    pub(crate) fn new(now: Now) -> Self {
+    /// Holding logs after `flushed`, the last generation written.
+    pub(crate) fn new(now: Now, flushed: u64) -> Self {
         Self {
             pending: Mutex::default(),
+            flight: Mutex::new(Flight::new(Table::Logs, flushed)),
             runs: Mutex::default(),
             now,
         }
@@ -97,7 +103,7 @@ impl Pending {
     pub(crate) fn take(&self, at: &Callsite, log: Log) {
         let call = self.run(at.chain);
         self.pending.lock().push(Emitted {
-            service: at.program.to_string(),
+            service: at.service.to_string(),
             call,
             at: (self.now)(),
             topics: log.topics,
@@ -105,69 +111,96 @@ impl Pending {
         });
     }
 
-    pub(crate) fn take_all(&self) -> Vec<Emitted> {
-        mem::take(&mut *self.pending.lock())
+    /// Take what is pending, held in flight until [`Pending::land`].
+    pub(crate) fn take_all(&self) -> Taken<Emitted> {
+        let mut pending = self.pending.lock();
+        self.flight.lock().take(mem::take(&mut *pending))
+    }
+
+    /// Drop what generation `generation` took.
+    pub(crate) fn land(&self, generation: u64) {
+        let _pending = self.pending.lock();
+        self.flight.lock().land(generation);
     }
 
     /// The logs of the service keyed `service` not yet written, in the order
     /// they are numbered.
-    pub(crate) fn unsaved(&self, service: &str) -> Vec<Emitted> {
-        self.pending
-            .lock()
-            .iter()
-            .filter(|log| log.service == service)
-            .cloned()
-            .collect()
+    pub(crate) fn unsaved(&self, service: &str) -> Unflushed<Emitted> {
+        self.unsaved_of(|log| log.service == service)
     }
 
     /// The logs of `scope`'s services not yet written.
-    pub(crate) fn unsaved_in(&self, scope: &str) -> Vec<Emitted> {
-        self.pending
-            .lock()
-            .iter()
-            .filter(|log| host::split(&log.service).0 == scope)
-            .cloned()
-            .collect()
+    pub(crate) fn unsaved_in(&self, scope: &str) -> Unflushed<Emitted> {
+        self.unsaved_of(|log| host::split(&log.service).0 == scope)
+    }
+
+    fn unsaved_of(&self, of: impl Fn(&Emitted) -> bool) -> Unflushed<Emitted> {
+        let pending = self.pending.lock();
+        let logs = pending.iter().filter(|log| of(log)).cloned().collect();
+        self.flight.lock().unflushed(of, logs)
     }
 }
 
 /// Add `logs`, each numbered after its service's last, and drop what is older
 /// than [`usage::WINDOW`] days before `now`. Logs of a service this host does
 /// not run are dropped.
-pub(crate) async fn write(store: &Store, logs: Vec<Emitted>, now: u64) -> Result<()> {
+pub(crate) async fn write(store: &Store, logs: Taken<Emitted>, now: u64) -> Result<()> {
     let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
-    store
-        .each(logs, |tx, log| {
-            let (scope, name) = host::split(&log.service);
-            let topics = serde_json::to_string(&log.topics).unwrap_or_default();
-            let bytes = (topics.len() + log.data.len()) as i64;
-            let Some(seq) = tx
+    logs.write(store, |tx, logs| {
+        let logs: Vec<(&Emitted, String)> = logs
+            .iter()
+            .map(|log| {
+                let topics = serde_json::to_string(&log.topics).unwrap_or_default();
+                (log, topics)
+            })
+            .collect();
+        let mut counts: HashMap<&str, (i64, i64)> = HashMap::new();
+        for (log, topics) in &logs {
+            let (count, bytes) = counts.entry(&log.service).or_default();
+            *count += 1;
+            *bytes += (topics.len() + log.data.len()) as i64;
+        }
+        // The seq each service's next log in the chunk takes.
+        let mut numbered: HashMap<&str, i64> = HashMap::with_capacity(counts.len());
+        for (service, (count, bytes)) in counts {
+            let (scope, name) = host::split(service);
+            let last = tx
                 .prepare_cached(
-                    "UPDATE services SET seq = seq + 1, log_bytes = log_bytes + ?3
-                      WHERE scope = ?1 AND name = ?2
-                     RETURNING seq",
+                    "UPDATE services SET seq = seq + ?3, log_bytes = log_bytes + ?4
+                          WHERE scope = ?1 AND name = ?2
+                         RETURNING seq",
                 )?
-                .query_row(params![scope, name, bytes], |row| row.get::<_, i64>(0))
-                .optional()?
-            else {
-                return Ok(());
-            };
-            tx.prepare_cached(
-                "INSERT INTO service_logs (scope, name, seq, call, at, topics, data)
+                .query_row(params![scope, name, count, bytes], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .optional()?;
+            if let Some(last) = last {
+                numbered.insert(service, last - count + 1);
+            }
+        }
+        let mut insert = tx.prepare_cached(
+            "INSERT INTO service_logs (scope, name, seq, call, at, topics, data)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            )?
-            .execute(params![
+        )?;
+        for (log, topics) in &logs {
+            let Some(seq) = numbered.get_mut(log.service.as_str()) else {
+                continue;
+            };
+            let (scope, name) = host::split(&log.service);
+            insert.execute(params![
                 scope,
                 name,
-                seq,
+                *seq,
                 log.call.map(|call| call as i64),
                 log.at as i64,
                 topics,
                 log.data
             ])?;
-            Ok(())
-        })
-        .await?;
+            *seq += 1;
+        }
+        Ok(())
+    })
+    .await?;
     store
         .run(move |conn| {
             let tx = conn.transaction()?;
@@ -212,7 +245,7 @@ pub(crate) async fn read(
     scope: &str,
     name: &str,
     page: wire::Page,
-    unsaved: Vec<Emitted>,
+    unsaved: Unflushed<Emitted>,
 ) -> Result<Vec<Logged>> {
     let (scope, name) = (scope.to_owned(), name.to_owned());
     store
@@ -227,6 +260,7 @@ pub(crate) async fn read(
                 .optional()?
                 .unwrap_or(0);
             let unsaved: Vec<Logged> = unsaved
+                .resolve(conn)?
                 .into_iter()
                 .zip(seq + 1..)
                 .filter(|(log, seq)| {

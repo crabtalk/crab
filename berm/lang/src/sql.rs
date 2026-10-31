@@ -1,4 +1,4 @@
-//! This program's own SQLite database, which its `crab.toml` declares with
+//! This service's own SQLite database, which its `crab.toml` declares with
 //! `[database] migrations = "migrations"`.
 //!
 //! One statement per call. The host runs every statement of an invocation in
@@ -6,8 +6,9 @@
 //! statements are refused. Under a `query`, a statement that writes is refused.
 
 use crate::{
-    abi::{self, host, host::CallError, wire},
-    json,
+    abi::wire,
+    host::{self, CallError},
+    json, sys,
 };
 use alloc::{string::String, vec::Vec};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 /// ```
 pub fn sql(statement: &str, params: &str) -> Result<String, CallError> {
     let reply = host::call(
-        abi::HOST_SQL,
+        sys::SQL,
         &wire::request(&[statement.as_bytes(), params.as_bytes()]),
     )?;
     String::from_utf8(reply)

@@ -60,6 +60,6 @@ jobs:
       - name: run it
         run: |
           cargo run --release --example measure -p berm
-          # A program calling a program, which only a real guest can show:
+          # A service calling a service, which only a real guest can show:
           # the call, a refusal, and a target that ran and said no.
           cargo run --release --example nesting -p berm

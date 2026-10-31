@@ -1,6 +1,7 @@
 //! What `cargo build` reports compiling, one `compiler-artifact` message per
 //! crate, fresh or not.
 
+use crate::metadata::ManifestPath;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
@@ -14,7 +15,7 @@ use std::{
 #[derive(Deserialize)]
 pub struct Artifact {
     pub package_id: String,
-    pub manifest_path: PathBuf,
+    pub manifest_path: ManifestPath,
     pub filenames: Vec<PathBuf>,
 }
 
@@ -73,10 +74,5 @@ impl Artifact {
                 (name.to_owned(), fragment.to_owned())
             }
         })
-    }
-
-    /// The directory of its `Cargo.toml`.
-    pub fn dir(&self) -> &Path {
-        self.manifest_path.parent().unwrap_or(Path::new("."))
     }
 }

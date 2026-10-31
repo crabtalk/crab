@@ -1,25 +1,25 @@
-//! The local host — deploys programs and serves their tools over MCP.
+//! The local host — deploys services and serves their tools over MCP.
 //!
-//! A thin daemon over [`Host`], run by `crab dev`, with one flat namespace of programs, every
+//! A thin daemon over [`Host`], run by `crab dev`, with one flat namespace of services, every
 //! one reached through one MCP endpoint.
 
 use crate::host::secrets::Grants;
 use anyhow::{Context, Result};
-use berm::Program;
-use berm_host::{Config, Edges, Host, Layers, Stored, System};
+use berm::Service;
+use berm_host::{Alone, Config, Edges, Host, Layers, Stored, System};
 use std::{io::IsTerminal, path::PathBuf, sync::Arc, time::Duration};
 
+pub use dev::{Dev, Status};
 pub use env::Local;
 pub use fetch::Fetch;
-pub use peers::Alone;
 
 mod api;
+mod dev;
 mod env;
 mod fetch;
 mod mcp;
-mod peers;
-mod program;
 pub mod secrets;
+mod service;
 
 /// Write the host's log lines to stderr, `info` and up of `crab` and `berm` unless
 /// `RUST_LOG` says otherwise.
@@ -41,7 +41,7 @@ pub fn trace() {
         .init();
 }
 
-pub struct Service {
+pub struct Node {
     pub host: Host<Local>,
     /// Each service's secrets, which the host reads and the control API sets.
     pub secrets: Grants,
@@ -49,10 +49,10 @@ pub struct Service {
     images: Stored,
 }
 
-impl Service {
+impl Node {
     /// Open `root`, restoring whatever was deployed before this process, its
-    /// programs' secrets read from the file at `secrets`. Chains of programs
-    /// calling programs nest at most `depth` deep, and a call spends at most
+    /// services' secrets read from the file at `secrets`. Chains of services
+    /// calling services nest at most `depth` deep, and a call spends at most
     /// `cpu` of CPU and runs at most `deadline`. `berm.http.proxy` goes
     /// through `proxy`, or direct without one.
     pub async fn new(
@@ -65,6 +65,11 @@ impl Service {
     ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
         let grants = Grants::open(secrets);
+        let fetch = Fetch::new(None)?;
+        let proxy = match proxy {
+            Some(proxy) => Fetch::new(Some(proxy))?,
+            None => fetch.clone(),
+        };
         let config = Config {
             depth,
             cpu,
@@ -77,8 +82,8 @@ impl Service {
             &root.join("host.db"),
             &config,
             Edges {
-                fetch: Fetch::new(None)?,
-                proxy: Some(Fetch::new(proxy)?),
+                fetch,
+                proxy: Some(proxy),
                 images: images.clone(),
                 peers: Alone,
                 secrets: grants.clone(),
@@ -97,19 +102,19 @@ impl Service {
         }))
     }
 
-    /// Every deployed program, as a snapshot the caller can hold across awaits.
-    pub fn list(&self) -> Vec<Arc<Program>> {
-        let mut programs: Vec<Arc<Program>> = self
+    /// Every deployed service, as a snapshot the caller can hold across awaits.
+    pub fn list(&self) -> Vec<Arc<Service>> {
+        let mut services: Vec<Arc<Service>> = self
             .host
             .list("")
             .into_iter()
-            .map(|(_, program)| program)
+            .map(|(_, service)| service)
             .collect();
-        programs.sort_by(|a, b| a.name.cmp(&b.name));
-        programs
+        services.sort_by(|a, b| a.name.cmp(&b.name));
+        services
     }
 
-    pub fn get(&self, name: &str) -> Option<Arc<Program>> {
+    pub fn get(&self, name: &str) -> Option<Arc<Service>> {
         self.host.get(name)
     }
 }

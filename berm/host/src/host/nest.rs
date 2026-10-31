@@ -61,7 +61,7 @@ pub(crate) fn calls<E: Env>(
                         Kind::Tool,
                         tool,
                         Source::Service,
-                        &at.program,
+                        &at.service,
                         outcome,
                     );
                 },
@@ -69,7 +69,7 @@ pub(crate) fn calls<E: Env>(
         },
         // A callee is told the calling service's name; it is in the same
         // scope.
-        named: Arc::new(|program: &str| host::split(program).1.to_owned()),
+        named: Arc::new(|service: &str| host::split(service).1.to_owned()),
         invoked: {
             let host = host.clone();
             Arc::new(move |at: &Callsite, tool: &str, used: Meter, ran: Ran| {
@@ -81,7 +81,7 @@ pub(crate) fn calls<E: Env>(
                         NestedCall {
                             id: at.span,
                             parent,
-                            service: host::split(&at.program).1.to_owned(),
+                            service: host::split(&at.service).1.to_owned(),
                             tool: tool.to_owned(),
                             at: ran.at,
                             ms: ran.ms,
@@ -92,27 +92,21 @@ pub(crate) fn calls<E: Env>(
                         },
                     );
                 }
-                observe.invoked(&at.program, tool, call, &used, at.spent());
+                observe.invoked(&at.service, tool, call, &used, at.spent());
             })
         },
         enter: commit::enter(commits),
-        budget: {
-            let host = host.clone();
-            Arc::new(move |service: &str, tool: &str| {
-                host.upgrade()?.terms.get(service, tool).budget
-            })
-        },
         now,
         remote: {
             let host = host.clone();
             Arc::new(move |at, deployed, tool, args, link| {
                 let host = host.upgrade()?;
                 let peer = host.routes.peer(deployed)?;
-                let from = at.program.to_string();
+                let from = at.service.to_string();
                 let (service, tool) = (deployed.to_owned(), tool.to_owned());
                 let link = Link {
                     caller: link.caller.map(|caller| match caller {
-                        Caller::Outside(name) | Caller::Program(name) => name.to_string(),
+                        Caller::Outside(name) | Caller::Service(name) => name.to_string(),
                     }),
                     from,
                     user: link.user.map(|user| User {
@@ -129,7 +123,7 @@ pub(crate) fn calls<E: Env>(
                     stack: link
                         .stack
                         .iter()
-                        .map(|program| program.to_string())
+                        .map(|service| service.to_string())
                         .collect(),
                 };
                 let at = at.clone();
@@ -148,19 +142,19 @@ pub(crate) fn calls<E: Env>(
                 }))
             })
         },
-        pool: Arc::new(move |program: &str| pools.pool(host::split(program).0)),
+        pool: Arc::new(move |service: &str| pools.pool(host::split(service).0)),
     }
 }
 
 /// A `berm.call` target: the calling service itself or one its manifest
-/// declares in `programs`, by name in the caller's scope.
+/// declares in `calls`, by name in the caller's scope.
 fn resolve(at: &Callsite, target: &str) -> Result<String> {
     if target.contains('/') {
         bail!("a service calls services in its own scope, by name");
     }
-    let (scope, name) = host::split(&at.program);
-    if target != name && !at.deps.programs.iter().any(|declared| declared == target) {
-        bail!("{name} does not declare {target:?} in its programs");
+    let (scope, name) = host::split(&at.service);
+    if target != name && !at.deps.calls.iter().any(|declared| declared == target) {
+        bail!("{name} does not declare {target:?} in its calls");
     }
     Ok(host::join(scope, target))
 }

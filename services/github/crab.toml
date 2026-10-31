@@ -1,0 +1,56 @@
+name = "github"
+buffer = 1048576
+
+[syscalls]
+"berm.http.fetch" = ["api.github.com", "github.com"]
+
+[credentials.github_api]
+title = "GitHub access token"
+guide = "Create a fine-grained token at https://github.com/settings/personal-access-tokens for the repositories you need. Repository reads use Metadata, releases use Contents, issues use Issues, and pull requests use Pull requests. Grant Read or Read and write only for the operations you use. Public reads can run without a token, with GitHub's lower anonymous rate limit."
+optional = true
+hosts = ["api.github.com"]
+secrets = [{ name = "GITHUB_TOKEN", label = "Access token" }]
+
+[tools.repository]
+access = "public"
+title = "Repository"
+
+[tools.issues]
+access = "public"
+title = "Issues"
+
+[tools.issue]
+access = "public"
+title = "Issue"
+
+[tools.create_issue]
+access = "public"
+title = "Create issue"
+
+[tools.comment]
+access = "public"
+title = "Comment"
+
+[tools.pull_requests]
+access = "public"
+title = "Pull requests"
+
+[tools.pull_request]
+access = "public"
+title = "Pull request"
+
+[tools.create_pull_request]
+access = "public"
+title = "Create pull request"
+
+[tools.releases]
+access = "public"
+title = "Releases"
+
+[tools.latest_release]
+access = "public"
+title = "Latest release"
+
+[tools.create_release]
+access = "public"
+title = "Create release"

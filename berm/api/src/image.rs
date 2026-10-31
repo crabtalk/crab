@@ -1,7 +1,8 @@
-//! A program's wasm module, and the custom sections its manifest is read from.
+//! A service's wasm module, and the custom sections its manifest is read from.
 
 use anyhow::{Context, Result, bail};
 use object::{Object, ObjectSection};
+use wasmparser::{Parser, Payload};
 
 /// A wasm module's bytes.
 pub struct Image<'a>(pub &'a [u8]);
@@ -9,21 +10,41 @@ pub struct Image<'a>(pub &'a [u8]);
 impl<'a> Image<'a> {
     /// The payload of its custom section `name`, `None` when it has none.
     pub fn section(&self, name: &str) -> Result<Option<&'a [u8]>> {
-        let file = object::File::parse(self.0).context("program is not a readable image")?;
+        let file = object::File::parse(self.0).context("service is not a readable image")?;
         let Some(section) = file.section_by_name(name) else {
             return Ok(None);
         };
         let data = section
             .data()
-            .with_context(|| format!("program's {name} section is unreadable"))?;
+            .with_context(|| format!("service's {name} section is unreadable"))?;
         Ok(Some(data))
+    }
+
+    /// The host calls it imports, by name, sorted.
+    pub fn imports(&self) -> Result<Vec<String>> {
+        let mut names = Vec::new();
+        for payload in Parser::new(0).parse_all(self.0) {
+            let Payload::ImportSection(section) =
+                payload.context("service is not a readable image")?
+            else {
+                continue;
+            };
+            for import in section.into_imports() {
+                let import = import.context("service's imports are unreadable")?;
+                if import.module == berm_abi::MODULE {
+                    names.push(import.name.to_owned());
+                }
+            }
+        }
+        names.sort();
+        Ok(names)
     }
 
     /// Its bytes with `payload` appended as the custom section `name`.
     /// Refused when it holds a section of that name already.
     pub fn with_section(&self, name: &str, payload: &[u8]) -> Result<Vec<u8>> {
         if self.section(name)?.is_some() {
-            bail!("program already holds a {name} section");
+            bail!("service already holds a {name} section");
         }
         let mut body = Vec::with_capacity(name.len() + payload.len() + 5);
         leb128(&mut body, name.len());

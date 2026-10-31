@@ -10,7 +10,7 @@ use std::time::Duration;
 ///
 /// A guest suspended in a syscall cannot notice until the reply resolves, so
 /// an embedder's syscall has to bound its own wait inside this. The bound
-/// stops non-termination; a program doing slow but finite work finishes.
+/// stops non-termination; a service doing slow but finite work finishes.
 ///
 /// A nested invocation runs under its caller's deadline, so depth *n* buys
 /// one deadline, not *n*.

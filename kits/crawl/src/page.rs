@@ -99,13 +99,15 @@ fn read(answer: Response) -> Fetched {
         .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned());
     let mut text = html::text(&page);
     text.truncate(text.floor_char_boundary(TEXT));
+    let html::Head { title, metas } =
+        html::head(&page, &["og:title", "description", "og:description"]);
+    let [og_title, description, og_description] = <[_; 3]>::try_from(metas).unwrap_or_default();
     Fetched::Answered {
         status,
         etag,
         modified,
-        title: html::title(&page).or_else(|| html::meta(&page, "og:title")),
-        description: html::meta(&page, "description")
-            .or_else(|| html::meta(&page, "og:description")),
+        title: title.or(og_title),
+        description: description.or(og_description),
         text: (!text.is_empty()).then_some(text),
         html: Some(page),
     }

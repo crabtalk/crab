@@ -1,6 +1,6 @@
 //! How a host is sized.
 
-use berm::syscall::call::DEFAULT_CALL_DEPTH;
+use berm::{Budget, Calls};
 use serde::Deserialize;
 use std::{path::PathBuf, time::Duration};
 
@@ -21,9 +21,16 @@ pub struct Config {
     /// duration like `"50ms"`.
     #[serde(default = "cpu", with = "humantime_serde")]
     pub cpu: Duration,
-    /// The most rows one invocation may read and write together.
-    #[serde(default = "rows")]
-    pub rows: u64,
+    /// The most rows one invocation may read.
+    #[serde(default = "read")]
+    pub read: u64,
+    /// The most rows one invocation may write.
+    #[serde(default = "written")]
+    pub written: u64,
+    /// What one invocation of a tool whose `crab.toml` sets no budget is held
+    /// to: `cpu` in microseconds, `read`, `written`, and `memory` in bytes.
+    #[serde(default = "budget")]
+    pub budget: Budget,
     /// How long a chain of calls runs before it is stopped, as a duration like
     /// `"60s"`.
     #[serde(default = "deadline", with = "humantime_serde")]
@@ -51,7 +58,9 @@ impl Default for Config {
             memory: memory(),
             reserved: 0,
             cpu: cpu(),
-            rows: rows(),
+            read: read(),
+            written: written(),
+            budget: budget(),
             deadline: deadline(),
             depth: depth(),
             held: None,
@@ -77,12 +86,20 @@ fn cpu() -> Duration {
     berm::Config::default().cpu
 }
 
-fn rows() -> u64 {
-    berm::Config::default().rows
+fn read() -> u64 {
+    berm::Config::default().read
+}
+
+fn written() -> u64 {
+    berm::Config::default().written
+}
+
+fn budget() -> Budget {
+    berm::Config::default().budget
 }
 
 fn depth() -> u32 {
-    DEFAULT_CALL_DEPTH
+    Calls::DEFAULT_DEPTH
 }
 
 fn databases() -> PathBuf {

@@ -1,5 +1,5 @@
 //! The guest's allocator, dlmalloc, which grows the guest's own memory the
-//! first time something allocates. A program that never allocates never grows
+//! first time something allocates. A service that never allocates never grows
 //! it.
 #![cfg(target_arch = "wasm32")]
 

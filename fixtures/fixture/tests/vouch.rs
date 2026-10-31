@@ -1,4 +1,4 @@
-//! `berm.vouch`: a program naming the end user the rest of its chain runs for.
+//! `berm.vouch`: a service naming the end user the rest of its chain runs for.
 
 use anyhow::Result;
 use berm_api::Output;
@@ -22,7 +22,7 @@ async fn a_vouched_user_reaches_the_calls_made_after() -> Result<()> {
         panic!("vouched answers");
     };
     let said: String = serde_json::from_str(&answer)?;
-    assert_eq!(said, "program fixture user fixture ada");
+    assert_eq!(said, "service fixture user fixture ada");
     Ok(())
 }
 

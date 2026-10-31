@@ -1,6 +1,6 @@
 # crabkit-supabase
 
-Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and Postgres functions, and Storage objects. Each request carries the project key from the secret `SUPABASE_KEY` in `apikey` and `Authorization: Bearer`, substituted by the host, so the program never holds it.
+Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and Postgres functions, and Storage objects. Each request carries the project key from the secret `SUPABASE_KEY` in `apikey` and `Authorization: Bearer`, substituted by the host, so the service never holds it.
 
 ## Using it
 
@@ -11,14 +11,14 @@ crabkit = { version = "0.1", features = ["supabase"] }
 
 The kit is also the crate `crabkit-supabase` on its own.
 
-The kit's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the program's manifest when the program links the kit, and no host. The program declares its own project's host under `berm.http.fetch` in its own `crab.toml`:
+The kit's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the service's manifest when the service links the kit, and no host. The service declares its own project's host under `berm.http.fetch` in its own `crab.toml`:
 
 ```toml
 [syscalls]
 "berm.http.fetch" = ["abcd.supabase.co"]
 ```
 
-Set the key as the program's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | crab secret put <program> SUPABASE_KEY --host <project>.supabase.co`:
+Set the key as the service's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | crab secret put <service> SUPABASE_KEY --host <project>.supabase.co`:
 
 - the `anon` or publishable key reaches only what the project's Row Level Security policies allow;
 - the `service_role` or secret key bypasses Row Level Security, and reads and writes every table and bucket.

@@ -1,20 +1,20 @@
 [package]
 name = "berm-lang"
-description = "Guest-side library for building berm programs"
+description = "Guest-side library for building berm services"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-keywords = ["berm", "program", "sandbox", "wasm"]
+keywords = ["berm", "service", "sandbox", "wasm"]
 categories = ["wasm", "no-std"]
 
 [lib]
-# No host tests yet: the crate is `no_std`, so a test harness would need one
-# written against the stubs below.
+# Guest behavior is covered by integration tests and consumers of `berm_lang::test`.
 test = false
 
 [dependencies]
+berm-abi.workspace = true
 berm-codegen.workspace = true
 serde = { workspace = true, features = ["alloc"] }
 serde_json = { workspace = true, features = ["alloc"] }

@@ -1,21 +1,13 @@
 //! What a guest can reach.
 //!
-//! A syscall is native host code behind a name, the way a precompile is
-//! native code behind an address. berm serves [`call`] itself, resolving
-//! against the set it already holds.
-//!
-//! The standard calls — [`store`], [`emit`], [`after`], [`http`], [`sql`] —
-//! are berm's to read and check, and a host's to carry out: each module turns
-//! the request into a typed value and hands it to closures the embedder
-//! registers with it.
-//! Anything else is a [`crate::Syscall`] the embedder writes whole.
-//!
-//! Every one of them, berm's own included, is reached through the one table
-//! below.
+//! A syscall is native host code behind a name. berm serves `berm.call`
+//! itself. The standard calls — [`store`], [`emit`], [`after`], [`http`],
+//! [`sql`], [`var`] — are read and checked here and handed as typed values to closures
+//! the embedder registers; anything else is a [`crate::Syscall`] the embedder
+//! writes whole. Each one is its own import.
 
 use crate::{
-    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine,
-    tape::Answer, wire,
+    Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine, tape::Answer,
 };
 use anyhow::{Result, anyhow, bail};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -26,22 +18,21 @@ use std::{
 use wasmtime::Caller;
 
 pub mod after;
-pub mod call;
+pub(crate) mod call;
 pub mod emit;
 pub mod http;
 pub mod sql;
 pub mod store;
+pub mod var;
 
 /// One of the ABI's own doors: request bytes at `(ptr, len)` in, a staged
 /// length out, answered before the guest resumes.
 ///
-/// One signature for all of them, so the engine registers a table rather than
-/// a list of shapes. A call that takes no arguments is handed a pair it
-/// ignores.
+/// A call that takes no arguments is handed a pair it ignores.
 pub(crate) type Handler =
     Arc<dyn Fn(&mut Caller<'_, Invocation>, u64, u64) -> Result<u64> + Send + Sync>;
 
-/// What answers one syscall number.
+/// What answers one syscall.
 #[derive(Clone)]
 pub(crate) enum Door {
     /// The ABI's own, which touch nothing but the guest.
@@ -50,31 +41,39 @@ pub(crate) enum Door {
     Hosted(Call),
 }
 
-/// Every syscall one program can reach, by the number its name hashes to.
-pub(crate) type Table = HashMap<u64, Door>;
+/// Every syscall one service can reach, by name.
+pub(crate) type Table = HashMap<String, Door>;
 
-/// Assemble what a program is instantiated with: the ABI's own doors, then
+/// Assemble what a service is instantiated with: the ABI's own doors, then
 /// whatever the embedder registered.
 ///
-/// A name already spoken for is refused rather than replaced. An embedder
-/// cannot check for a collision itself without knowing every name berm
-/// reserves, and a silent replacement would send a guest's calls somewhere its
-/// author never named.
+/// A name already spoken for, berm's own included, is refused.
 pub(crate) fn table(syscalls: &[Syscall]) -> Result<Table> {
     let mut table = builtins();
     for syscall in syscalls {
-        let number = abi::hash(&syscall.name);
-        if table.contains_key(&number) {
+        if table.contains_key(&syscall.name) {
             bail!("syscall {:?} is already served", syscall.name);
         }
-        table.insert(number, Door::Hosted(syscall.call.clone()));
+        table.insert(syscall.name.clone(), Door::Hosted(syscall.call.clone()));
     }
     Ok(table)
 }
 
-/// Whether `number` is one of the ABI's own doors.
-pub(crate) fn is_builtin(number: u64) -> bool {
-    builtins().contains_key(&number)
+/// A syscall that is refused when reached.
+pub(crate) fn refused(name: String) -> Syscall {
+    let refusal = format!("{name} is not served here");
+    Syscall {
+        name,
+        call: Arc::new(move |_, _| {
+            let refusal = refusal.clone();
+            Box::pin(async move { Err(Refused(refusal).into()) })
+        }),
+    }
+}
+
+/// Whether `name` is one of the ABI's own doors.
+pub(crate) fn is_builtin(name: &str) -> bool {
+    builtins().contains_key(name)
 }
 
 /// Copy a hosted syscall's request out of the guest, beside the callsite it
@@ -90,11 +89,8 @@ pub(crate) fn request(
 
 /// Leave a syscall's bytes for the guest to pull, and answer with their length.
 ///
-/// Failure rides on the same return value: the [`abi::ERROR`] bit says the
-/// staged bytes are a message. One that fails therefore costs the guest
-/// nothing extra to find out about, and an empty result cannot be mistaken for
-/// one. A [`Refused`] additionally sets [`abi::REFUSED`], which is how a guest
-/// tells "it ran and said no" from "it never ran".
+/// The [`abi::ERROR`] bit says the staged bytes are a failure message. A
+/// [`Refused`] also sets [`abi::REFUSED`]: the call never ran.
 pub(crate) fn stage(guest: &mut Caller<'_, Invocation>, answer: Result<Vec<u8>>) -> u64 {
     let (staged, outcome) = match answer {
         Ok(result) => (result, 0),
@@ -120,20 +116,20 @@ fn builtins() -> Table {
     let mut table = Table::new();
 
     table.insert(
-        abi::HOST_TRACE,
+        abi::TRACE.to_owned(),
         handler(|guest, ptr, len| {
             let message = engine::read(guest, ptr, len)?;
-            tracing::info!(target: "program", "{}", String::from_utf8_lossy(&message));
+            tracing::info!(target: "service", "{}", String::from_utf8_lossy(&message));
             Ok(0)
         }),
     );
 
     table.insert(
-        abi::HOST_CALLER,
+        abi::CALLER.to_owned(),
         handler(|guest, _, _| {
             let reply = match &guest.data().at.caller {
-                Some(Asking::Outside(name)) => wire::frame(&[b"outside", name.as_bytes()]),
-                Some(Asking::Program(name)) => wire::frame(&[b"program", name.as_bytes()]),
+                Some(Asking::Outside(name)) => abi::wire::request(&[b"outside", name.as_bytes()]),
+                Some(Asking::Service(name)) => abi::wire::request(&[b"service", name.as_bytes()]),
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -141,10 +137,12 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_USER,
+        abi::USER.to_owned(),
         handler(|guest, _, _| {
             let reply = match &guest.data().at.user {
-                Some(user) => wire::frame(&[user.issuer.as_bytes(), user.subject.as_bytes()]),
+                Some(user) => {
+                    abi::wire::request(&[user.issuer.as_bytes(), user.subject.as_bytes()])
+                }
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -152,7 +150,7 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_VOUCH,
+        abi::VOUCH.to_owned(),
         handler(|guest, ptr, len| {
             let subject = engine::read(guest, ptr, len)?;
             let answer = vouch(guest.data_mut(), subject);
@@ -161,10 +159,10 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_CLIENT,
+        abi::CLIENT.to_owned(),
         handler(|guest, _, _| {
             let reply = match &guest.data().at.client {
-                Some(client) => wire::frame(&[client.as_bytes()]),
+                Some(client) => abi::wire::request(&[client.as_bytes()]),
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
@@ -172,7 +170,7 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_DENY,
+        abi::DENY.to_owned(),
         handler(|guest, _, _| {
             guest.data_mut().denied = true;
             Ok(0)
@@ -180,7 +178,7 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_LIMIT,
+        abi::LIMIT.to_owned(),
         handler(|guest, ptr, len| {
             let bytes = engine::read(guest, ptr, len)?;
             let answer = limit(guest.data_mut(), &bytes);
@@ -189,15 +187,14 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_ARG_LEN,
+        abi::ARG_LEN.to_owned(),
         handler(|guest, _, _| Ok(guest.data().args.len() as u64)),
     );
 
-    // Answers with the blob's full length rather than what fit, so a guest with
-    // too small a buffer can tell it was truncated instead of acting on half a
-    // request.
+    // Answers with the blob's full length, which exceeds `capacity` when the
+    // copy was truncated.
     table.insert(
-        abi::HOST_ARG_READ,
+        abi::ARG_READ.to_owned(),
         handler(|guest, ptr, capacity| {
             let args = std::mem::take(&mut guest.data_mut().args);
             let length = args.len();
@@ -208,11 +205,9 @@ fn builtins() -> Table {
         }),
     );
 
-    // The other half of every syscall. A program given none never stages
-    // anything, so this is registered unconditionally and has nothing to hand
-    // over.
+    // Registered for every service, including one given no syscalls.
     table.insert(
-        abi::HOST_RESULT_READ,
+        abi::RESULT_READ.to_owned(),
         handler(|guest, ptr, capacity| {
             let staged = std::mem::take(&mut guest.data_mut().staged);
             let length = staged.len();
@@ -224,7 +219,7 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_DONE,
+        abi::DONE.to_owned(),
         handler(|guest, ptr, len| {
             let result = engine::read(guest, ptr, len)?;
             guest.data_mut().outcome = Some(Ok(result));
@@ -233,7 +228,7 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_FAIL,
+        abi::FAIL.to_owned(),
         handler(|guest, ptr, len| {
             let message = engine::read(guest, ptr, len)?;
             let message = String::from_utf8_lossy(&message).into_owned();
@@ -243,20 +238,19 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_NOW,
+        abi::NOW.to_owned(),
         handler(|guest, _, _| {
             let Some(deck) = guest.data().tape.clone() else {
                 return Ok((guest.data().now)());
             };
-            let replayed = deck.lock().replay(&guest.data().at, abi::HOST_NOW, [0; 32]);
+            let replayed = deck.lock().replay(abi::NOW, [0; 32]);
             match replayed {
                 Some(Ok(Answer::Number(now))) => Ok(now),
                 Some(Ok(_)) => bail!("the tape answered berm.now with no reading"),
                 Some(Err(diverged)) => Err(diverged),
                 None => {
                     let now = (guest.data().now)();
-                    deck.lock()
-                        .record(abi::HOST_NOW, [0; 32], Answer::Number(now));
+                    deck.lock().record(abi::NOW, [0; 32], Answer::Number(now));
                     Ok(now)
                 }
             }
@@ -264,13 +258,12 @@ fn builtins() -> Table {
     );
 
     table.insert(
-        abi::HOST_RANDOM,
+        abi::RANDOM.to_owned(),
         handler(|guest, ptr, len| {
             let deck = guest.data().tape.clone();
-            let replayed = deck.as_ref().and_then(|deck| {
-                deck.lock()
-                    .replay(&guest.data().at, abi::HOST_RANDOM, [0; 32])
-            });
+            let replayed = deck
+                .as_ref()
+                .and_then(|deck| deck.lock().replay(abi::RANDOM, [0; 32]));
             let filled = engine::slice_mut(guest, ptr, len)?;
             match replayed {
                 Some(Ok(Answer::Done(bytes))) if bytes.len() == filled.len() => {
@@ -285,7 +278,7 @@ fn builtins() -> Table {
                     if let Some(deck) = deck {
                         let bytes = filled.to_vec();
                         deck.lock()
-                            .record(abi::HOST_RANDOM, [0; 32], Answer::Done(bytes));
+                            .record(abi::RANDOM, [0; 32], Answer::Done(bytes));
                     }
                 }
             }
@@ -296,23 +289,25 @@ fn builtins() -> Table {
     table
 }
 
-/// Lower `invocation`'s budget to what `bytes` holds, as [`abi::HOST_LIMIT`]
+/// Lower `invocation`'s budget to what `bytes` holds, as [`abi::LIMIT`]
 /// reads it.
 fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
-    let [cpu, rows, memory]: [u64; 3] = match bytes.len() {
-        24 => std::array::from_fn(|i| {
+    let [cpu, read, written, memory]: [u64; 4] = match bytes.len() {
+        32 => std::array::from_fn(|i| {
             u64::from_le_bytes(bytes[i * 8..i * 8 + 8].try_into().expect("eight bytes"))
         }),
-        _ => return Err(Refused(String::from("a limit is three u64s")).into()),
+        _ => return Err(Refused(String::from("a limit is four u64s")).into()),
     };
     if invocation.limited {
         return Err(Refused(String::from("a call lowers its budget once")).into());
     }
     let own = invocation.at.own.clone();
-    let (held_cpu, held_rows) = (invocation.cpu.load(Ordering::Relaxed), own.budget());
-    if cpu > held_cpu || rows > held_rows {
+    let held_cpu = invocation.cpu.load(Ordering::Relaxed);
+    let (held_read, held_written) = own.budget();
+    if cpu > held_cpu || read > held_read || written > held_written {
         return Err(Refused(format!(
-            "a call lowers its budget of {held_cpu}µs of CPU and {held_rows} rows, never raises it"
+            "a call lowers its budget of {held_cpu}µs of CPU, {held_read} rows read and \
+             {held_written} rows written, never raises it"
         ))
         .into());
     }
@@ -322,20 +317,18 @@ fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
     if cpu != 0 {
         invocation.cpu.store(cpu, Ordering::Relaxed);
     }
-    if rows != 0 {
-        own.lower(rows);
-    }
+    own.lower(read, written);
     invocation.limited = true;
     Ok(Vec::new())
 }
 
 /// Have the rest of `invocation`'s chain run for `subject`, vouched for by its
-/// program.
+/// service.
 fn vouch(invocation: &mut Invocation, subject: Vec<u8>) -> Result<Vec<u8>> {
     let issuer = invocation.issuer.clone();
     let at = &mut invocation.at;
     if !at.deps.syscalls.contains_key(abi::VOUCH) {
-        return Err(Refused(format!("{} does not declare {}", at.program, abi::VOUCH)).into());
+        return Err(Refused(format!("{} does not declare {}", at.service, abi::VOUCH)).into());
     }
     if at.user.is_some() {
         return Err(Refused(String::from("the chain already runs for a user")).into());

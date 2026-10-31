@@ -1,5 +1,5 @@
 [workspace]
-members = ["berm/*", "crates/*", "fixtures/*", "kits/*"]
+members = ["berm/*", "crates/*", "fixtures/*", "kits/*", "services/*"]
 resolver = "3"
 
 [workspace.package]
@@ -10,12 +10,12 @@ license = "Apache-2.0"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
 
 [workspace.dependencies]
-crab = { package = "crab-agent", path = "crates/crab", version = "0.1.1" }
 crabkit = { path = "crates/crabkit", version = "0.1.1" }
 crabtalk-sdk = { path = "crates/sdk", version = "0.1.1" }
 
 # berm
 berm = { path = "berm/berm", version = "0.1.1" }
+berm-abi = { path = "berm/abi", version = "0.1.1" }
 berm-api = { path = "berm/api", version = "0.1.1" }
 berm-build = { path = "berm/build", version = "0.1.1" }
 berm-codegen = { path = "berm/codegen", version = "0.1.1" }
@@ -29,6 +29,9 @@ html = { package = "crab-html", path = "crates/html", version = "0.1.1" }
 # fixtures
 berm-kit = { path = "fixtures/kit" }
 
+# services
+github = { package = "crab-github", path = "services/github", version = "0.1.1", default-features = false }
+
 # kits
 auth = { package = "crabkit-auth", path = "kits/auth", version = "0.1.1" }
 crawl = { package = "crabkit-crawl", path = "kits/crawl", version = "0.1.1" }
@@ -40,7 +43,7 @@ supabase = { package = "crabkit-supabase", path = "kits/supabase", version = "0.
 # crates-io
 anyhow = "1.0"
 axum = "0.8"
-base64 = "0.22"
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 bytesize = { version = "2.7", features = ["serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
@@ -90,14 +93,13 @@ tokio = { version = "1", features = [
 pulldown-cmark = { version = "0.13", default-features = false }
 ratatui = "0.30"
 regex = "1"
-rpassword = "7"
 toml = "1"
 toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = "5"
-# Off by default: `cache` drags in a config format nothing here reads.
+wasmparser = "0.255"
 wasmtime = { version = "48", default-features = false, features = [
     "anyhow",
     "async",

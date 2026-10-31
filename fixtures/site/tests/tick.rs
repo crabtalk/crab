@@ -4,13 +4,12 @@
 //! each site before a second of any, a silent site fetched no more in its
 //! tick, a page cut at the bytes it is read for, a failed read logged and
 //! retried, a read whose sitemaps all fail failed and a site with no sitemap
-//! read empty, robots.txt patterns matched percent-encoded, the URLs a program lists and the links its crawler lists fetched
+//! read empty, robots.txt patterns matched percent-encoded, the URLs a service lists and the links its crawler lists fetched
 //! under the site's robots.txt, and a URL listed with its bytes read for them,
 //! past the tick's HTML when it is the tick's first, and the sites after a
 //! tick's first sharing its sitemap bytes.
 
 use anyhow::Result;
-use berm_api::Output;
 use berm_host::test::{self, TestHost};
 use serde_json::{Value, json};
 
@@ -70,20 +69,6 @@ fn arrange(host: &TestHost) {
     );
 }
 
-async fn call(host: &TestHost, tool: &str, args: Value) -> Result<Value> {
-    let ran = host
-        .call("site", tool, serde_json::to_vec(&args)?.as_slice())
-        .await?;
-    let Output::Done(result) = ran.result else {
-        panic!("{tool} runs: {:?}", ran.result);
-    };
-    Ok(if result.is_empty() {
-        Value::Null
-    } else {
-        serde_json::from_str(&result)?
-    })
-}
-
 /// The URLs fetched so far, in order.
 fn fetched(host: &TestHost) -> Vec<String> {
     host.fetched()
@@ -97,16 +82,20 @@ async fn a_tick_keeps_the_pages_of_a_kind_robots_allows() -> Result<()> {
     let host = deployed().await?;
     arrange(&host);
     assert_eq!(
-        call(&host, "watch", json!({"domains": ["Example.com"]})).await?,
+        host.call_json("site", "watch", json!({"domains": ["Example.com"]}))
+            .await?,
         1
     );
     assert_eq!(
-        call(&host, "watch", json!({"domains": ["example.com"]})).await?,
+        host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+            .await?,
         0
     );
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
 
-    let urls = call(&host, "urls", json!({"domain": "example.com"})).await?;
+    let urls = host
+        .call_json("site", "urls", json!({"domain": "example.com"}))
+        .await?;
     assert_eq!(
         urls,
         json!([
@@ -115,7 +104,13 @@ async fn a_tick_keeps_the_pages_of_a_kind_robots_allows() -> Result<()> {
         ])
     );
 
-    let pricing = call(&host, "page", json!({"url": "https://example.com/pricing"})).await?;
+    let pricing = host
+        .call_json(
+            "site",
+            "page",
+            json!({"url": "https://example.com/pricing"}),
+        )
+        .await?;
     assert_eq!(pricing["status"], 200);
     assert_eq!(pricing["title"], "Pricing & plans");
     assert_eq!(pricing["description"], "What Example costs.");
@@ -124,23 +119,29 @@ async fn a_tick_keeps_the_pages_of_a_kind_robots_allows() -> Result<()> {
     assert!(!text.contains("tracking"), "{text}");
 
     // A page rendered by JavaScript is kept without text.
-    let compare = call(
-        &host,
-        "page",
-        json!({"url": "https://example.com/compare/example-vs-other"}),
-    )
-    .await?;
+    let compare = host
+        .call_json(
+            "site",
+            "page",
+            json!({"url": "https://example.com/compare/example-vs-other"}),
+        )
+        .await?;
     assert_eq!(compare["title"], "Example vs Other");
     assert!(compare.get("text").is_none(), "{compare}");
 
     // Each page that answered with HTML is handed to the crawler.
     assert_eq!(
-        call(&host, "read", json!({"url": "https://example.com/pricing"})).await?,
+        host.call_json(
+            "site",
+            "read",
+            json!({"url": "https://example.com/pricing"})
+        )
+        .await?,
         json!({"kind": "pricing", "length": PRICING.len()})
     );
     assert_eq!(
-        call(
-            &host,
+        host.call_json(
+            "site",
             "read",
             json!({"url": "https://example.com/compare/example-vs-other"})
         )
@@ -164,18 +165,19 @@ async fn a_tick_keeps_the_pages_of_a_kind_robots_allows() -> Result<()> {
 async fn pages_are_fetched_again_only_when_due() -> Result<()> {
     let host = deployed().await?;
     arrange(&host);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     let first = fetched(&host).len();
 
     // Nothing is due a day later.
     host.advance(DAY);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(fetched(&host).len(), first);
 
     // A week on, the site is read again; neither page is due.
     host.advance(7 * DAY);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     let reread = &fetched(&host)[first..];
     assert_eq!(
         reread,
@@ -196,7 +198,7 @@ async fn pages_are_fetched_again_only_when_due() -> Result<()> {
     );
     host.advance(30 * DAY);
     let before = fetched(&host).len();
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     let again: Vec<String> = fetched(&host)[before..].to_vec();
     assert!(
         again.contains(&"https://example.com/pricing".to_owned()),
@@ -213,10 +215,11 @@ async fn pages_are_fetched_again_only_when_due() -> Result<()> {
 async fn a_failed_read_is_kept_and_retried_up_to_the_cap_then_a_week_on() -> Result<()> {
     let host = deployed().await?;
     host.arrange("GET", "https://example.com/robots.txt", 503, "unavailable");
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
 
-    call(&host, "tick", json!({})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     let failed = host.logs("site", Some("ReadFailed")).await?;
     assert_eq!(failed.len(), 2);
     let error: Value = serde_json::from_str(&failed[0].data)?;
@@ -227,7 +230,7 @@ async fn a_failed_read_is_kept_and_retried_up_to_the_cap_then_a_week_on() -> Res
 
     // Two failures in a row is this crawler's cap: the site keeps its last
     // error, and is not read again until a week after its last failure.
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(host.logs("site", Some("ReadFailed")).await?.len(), 2);
     let site = host
         .sql(
@@ -241,7 +244,7 @@ async fn a_failed_read_is_kept_and_retried_up_to_the_cap_then_a_week_on() -> Res
         json!([2, "https://example.com/robots.txt answered 503", NOW])
     );
     host.advance(7 * DAY);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(host.logs("site", Some("ReadFailed")).await?.len(), 3);
     Ok(())
 }
@@ -249,9 +252,11 @@ async fn a_failed_read_is_kept_and_retried_up_to_the_cap_then_a_week_on() -> Res
 #[tokio::test]
 async fn a_site_watched_first_is_read_first() -> Result<()> {
     let host = deployed().await?;
-    call(&host, "watch", json!({"domains": ["elsewhere.com"]})).await?;
-    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["elsewhere.com"]}))
+        .await?;
+    host.call_json("site", "watch_first", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(
         fetched(&host).first().map(String::as_str),
         Some("https://example.com/robots.txt")
@@ -278,15 +283,16 @@ async fn elsewhere_read(host: &TestHost) -> Result<()> {
         200,
         format!(r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>"#),
     );
-    call(host, "watch", json!({"domains": ["elsewhere.com"]})).await?;
-    call(host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["elsewhere.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     Ok(())
 }
 
 /// The pages a tick fetches.
 async fn ticked_pages(host: &TestHost) -> Result<Vec<String>> {
     let before = fetched(host).len();
-    call(host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     Ok(fetched(host)[before..]
         .iter()
         .filter(|url| !url.ends_with(".xml") && !url.ends_with(".txt"))
@@ -299,7 +305,8 @@ async fn the_pages_of_a_site_watched_first_are_fetched_first() -> Result<()> {
     let host = deployed().await?;
     elsewhere_read(&host).await?;
     arrange(&host);
-    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
+    host.call_json("site", "watch_first", json!({"domains": ["example.com"]}))
+        .await?;
     let pages = ticked_pages(&host).await?;
     assert!(pages[0].starts_with("https://example.com/"), "{pages:?}");
     Ok(())
@@ -310,7 +317,8 @@ async fn a_tick_takes_a_page_of_each_site_due_before_a_second_of_any() -> Result
     let host = deployed().await?;
     elsewhere_read(&host).await?;
     arrange(&host);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
     let pages = ticked_pages(&host).await?;
     assert!(
         pages
@@ -327,8 +335,9 @@ async fn a_site_that_answers_a_page_with_nothing_is_fetched_no_more_that_tick() 
     host.arrange("GET", "https://example.com/robots.txt", 200, ROBOTS);
     host.arrange("GET", "https://example.com/sitemap-index.xml", 200, INDEX);
     host.arrange("GET", "https://example.com/sitemap-pages.xml", 200, PAGES);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     // Neither page is arranged: the first answers nothing, the second is left.
     let pages: Vec<String> = fetched(&host)
         .into_iter()
@@ -345,10 +354,16 @@ async fn a_page_reaches_the_crawler_cut_at_the_bytes_a_page_is_read_for() -> Res
     arrange(&host);
     let long = format!("<html><body><p>{}</p></body></html>", "a".repeat(300 << 10));
     host.arrange("GET", "https://example.com/pricing", 200, long);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(
-        call(&host, "read", json!({"url": "https://example.com/pricing"})).await?,
+        host.call_json(
+            "site",
+            "read",
+            json!({"url": "https://example.com/pricing"})
+        )
+        .await?,
         json!({"kind": "pricing", "length": 256 << 10})
     );
     Ok(())
@@ -356,7 +371,9 @@ async fn a_page_reaches_the_crawler_cut_at_the_bytes_a_page_is_read_for() -> Res
 
 /// The URLs `domain`'s site keeps.
 async fn kept(host: &TestHost, domain: &str) -> Result<Vec<String>> {
-    let urls = call(host, "urls", json!({ "domain": domain })).await?;
+    let urls = host
+        .call_json("site", "urls", json!({ "domain": domain }))
+        .await?;
     Ok(urls
         .as_array()
         .into_iter()
@@ -366,26 +383,25 @@ async fn kept(host: &TestHost, domain: &str) -> Result<Vec<String>> {
 }
 
 #[tokio::test]
-async fn a_url_its_program_lists_is_fetched_once_its_site_is_read_and_kept_by_its_next_read()
+async fn a_url_its_service_lists_is_fetched_once_its_site_is_read_and_kept_by_its_next_read()
 -> Result<()> {
     let host = deployed().await?;
     arrange(&host);
     let listed = "https://example.com/compare/listed-vs-other";
     host.arrange("GET", listed, 200, COMPARE);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    let new = call(
-        &host,
-        "list",
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    let new = host.call_json("site", "list",
         json!({"domain": "example.com", "urls": [listed, "https://example.com/blog/hello", "https://elsewhere.com/pricing"]}),
     )
     .await?;
     assert_eq!(new, 1);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(fetched(&host).contains(&listed.to_owned()));
 
     // A week on, the site's sitemaps are read again and the listed URL stays.
     host.advance(7 * DAY);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(
         kept(&host, "example.com")
             .await?
@@ -399,14 +415,15 @@ async fn a_listed_url_its_robots_txt_disallows_is_not_fetched() -> Result<()> {
     let host = deployed().await?;
     arrange(&host);
     let secret = "https://example.com/compare/secret";
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(
-        &host,
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json(
+        "site",
         "list",
         json!({"domain": "example.com", "urls": [secret]}),
     )
     .await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(!fetched(&host).contains(&secret.to_owned()));
     assert!(
         !kept(&host, "example.com")
@@ -421,18 +438,19 @@ async fn a_url_listed_after_its_site_is_read_is_held_to_its_robots_txt() -> Resu
     let host = deployed().await?;
     arrange(&host);
     let secret = "https://example.com/compare/secret";
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(
-        call(
-            &host,
+        host.call_json(
+            "site",
             "list",
             json!({"domain": "example.com", "urls": [secret]}),
         )
         .await?,
         json!(0)
     );
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(!fetched(&host).contains(&secret.to_owned()));
     Ok(())
 }
@@ -447,8 +465,9 @@ async fn a_robots_txt_opening_with_a_byte_order_mark_keeps_its_first_group() -> 
         200,
         format!("\u{feff}{ROBOTS}"),
     );
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(
         !kept(&host, "example.com")
             .await?
@@ -475,8 +494,9 @@ async fn a_pattern_of_many_wildcards_is_matched_in_time() -> Result<()> {
         200,
         format!(r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>{long}</loc></url></urlset>"#),
     );
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(kept(&host, "example.com").await?.contains(&long));
     Ok(())
 }
@@ -493,8 +513,9 @@ async fn a_link_its_crawler_lists_is_fetched_on_a_later_tick() -> Result<()> {
         r#"<html><body><a href="/compare/linked-vs-other">Compared</a> <a href="/blog/hello">Blog</a> <a href="https://elsewhere.com/compare/a-vs-b">Elsewhere</a></body></html>"#,
     );
     host.arrange("GET", linked, 200, COMPARE);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(!fetched(&host).contains(&linked.to_owned()));
     assert_eq!(
         kept(&host, "example.com").await?,
@@ -504,7 +525,7 @@ async fn a_link_its_crawler_lists_is_fetched_on_a_later_tick() -> Result<()> {
             "https://example.com/pricing"
         ]
     );
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(fetched(&host).contains(&linked.to_owned()));
     Ok(())
 }
@@ -516,16 +537,18 @@ async fn a_url_listed_with_its_bytes_is_read_past_the_bytes_a_page_is_read_for()
     let listed = "https://example.com/compare/listed-vs-other";
     let long = format!("<html><body><p>{}</p></body></html>", "a".repeat(600 << 10));
     host.arrange("GET", listed, 200, long.clone());
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(
-        &host,
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json(
+        "site",
         "list",
         json!({"domain": "example.com", "urls": [listed], "bytes": 1 << 20}),
     )
     .await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(
-        call(&host, "read", json!({ "url": listed })).await?,
+        host.call_json("site", "read", json!({ "url": listed }))
+            .await?,
         json!({"kind": "comparison", "length": long.len()})
     );
     Ok(())
@@ -551,21 +574,24 @@ async fn a_url_listed_past_the_html_left_is_left_due_and_read_first_on_a_tick_of
     let big = "https://big.com/compare/big-vs-other";
     let long = format!("<html><body><p>{}</p></body></html>", "a".repeat(5 << 19));
     host.arrange("GET", big, 200, long.clone());
-    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
-    call(&host, "watch", json!({"domains": ["big.com"]})).await?;
-    call(
-        &host,
+    host.call_json("site", "watch_first", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "watch", json!({"domains": ["big.com"]}))
+        .await?;
+    host.call_json(
+        "site",
         "list",
         json!({"domain": "big.com", "urls": [big], "bytes": 3 << 20}),
     )
     .await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(fetched(&host).contains(&"https://example.com/pricing".to_owned()));
     assert!(!fetched(&host).contains(&big.to_owned()));
 
     assert_eq!(ticked_pages(&host).await?, [big]);
     assert_eq!(
-        call(&host, "read", json!({ "url": big })).await?,
+        host.call_json("site", "read", json!({ "url": big }))
+            .await?,
         json!({"kind": "comparison", "length": long.len()})
     );
     Ok(())
@@ -593,14 +619,16 @@ async fn the_sites_after_the_first_share_the_sitemap_bytes_of_a_round() -> Resul
             ),
         );
     }
-    call(&host, "watch_first", json!({"domains": ["example.com"]})).await?;
-    call(&host, "watch", json!({"domains": ["a.com", "b.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch_first", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "watch", json!({"domains": ["a.com", "b.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(kept(&host, "a.com").await?.is_empty());
     assert!(kept(&host, "b.com").await?.is_empty());
 
     // Left due, each is read on the next tick, a.com for bytes of its own.
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(kept(&host, "a.com").await?, ["https://a.com/pricing"]);
     assert_eq!(kept(&host, "b.com").await?, ["https://b.com/pricing"]);
     Ok(())
@@ -610,8 +638,9 @@ async fn the_sites_after_the_first_share_the_sitemap_bytes_of_a_round() -> Resul
 async fn a_read_whose_sitemaps_all_fail_keeps_the_urls_it_had() -> Result<()> {
     let host = deployed().await?;
     arrange(&host);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     let urls = kept(&host, "example.com").await?;
     assert_eq!(urls.len(), 2, "{urls:?}");
 
@@ -623,7 +652,7 @@ async fn a_read_whose_sitemaps_all_fail_keeps_the_urls_it_had() -> Result<()> {
         "unavailable",
     );
     host.advance(7 * DAY);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     // As does the index itself.
     host.arrange(
         "GET",
@@ -632,7 +661,7 @@ async fn a_read_whose_sitemaps_all_fail_keeps_the_urls_it_had() -> Result<()> {
         "unavailable",
     );
     host.advance(7 * DAY);
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
 
     assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
     let read = host.logs("site", Some("Read")).await?;
@@ -662,8 +691,9 @@ async fn a_site_whose_sitemap_xml_answers_404_is_read_with_no_urls() -> Result<(
         "User-agent: *\nAllow: /\n",
     );
     host.arrange("GET", "https://example.com/sitemap.xml", 404, "not found");
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(host.logs("site", Some("Read")).await?.len(), 1);
     assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
     assert!(kept(&host, "example.com").await?.is_empty());
@@ -682,14 +712,15 @@ async fn a_url_listed_on_a_site_whose_named_sitemap_is_gone_is_fetched() -> Resu
     );
     host.arrange("GET", "https://example.com/gone.xml", 404, "not found");
     host.arrange("GET", listed, 200, COMPARE);
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(
-        &host,
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json(
+        "site",
         "list",
         json!({"domain": "example.com", "urls": [listed]}),
     )
     .await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert!(host.logs("site", Some("ReadFailed")).await?.is_empty());
     assert!(fetched(&host).contains(&listed.to_owned()));
     Ok(())
@@ -716,8 +747,9 @@ async fn a_pattern_outside_ascii_matches_its_percent_encoded_path() -> Result<()
   <url><loc>https://example.com/compare/cafe-vs-other</loc></url>
 </urlset>"#,
     );
-    call(&host, "watch", json!({"domains": ["example.com"]})).await?;
-    call(&host, "tick", json!({})).await?;
+    host.call_json("site", "watch", json!({"domains": ["example.com"]}))
+        .await?;
+    host.call_json("site", "tick", json!({})).await?;
     assert_eq!(
         kept(&host, "example.com").await?,
         ["https://example.com/compare/cafe-vs-other"]

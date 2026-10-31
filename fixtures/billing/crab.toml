@@ -1,2 +1,11 @@
 name = "billing"
 deploy = false
+
+[tools.checkout]
+access = "services"
+
+[tools.portal]
+access = "services"
+
+[tools.plan]
+access = "services"
