@@ -108,10 +108,22 @@ impl Fetched {
 /// test::respond("GET", "https://api.example.com/items", 200, b"[]");
 /// ```
 pub fn respond(method: &str, url: &str, status: u16, body: &[u8]) {
+    respond_with(
+        method,
+        url,
+        http::Response {
+            status,
+            headers: Vec::new(),
+            body: body.to_vec(),
+        },
+    );
+}
+
+/// Arrange a response including headers, for pagination, caching and retry handling.
+pub fn respond_with(method: &str, url: &str, response: http::Response) {
     sys::with(|host| {
-        host.responses.retain(|(m, u, ..)| m != method || u != url);
-        host.responses
-            .push((method.into(), url.into(), status, body.to_vec()));
+        host.responses.retain(|(m, u, _)| m != method || u != url);
+        host.responses.push((method.into(), url.into(), response));
     });
 }
 

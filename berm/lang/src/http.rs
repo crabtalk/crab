@@ -14,6 +14,7 @@ use alloc::{string::String, vec::Vec};
 use serde::de::DeserializeOwned;
 
 /// What the far end answered.
+#[derive(Clone)]
 pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,

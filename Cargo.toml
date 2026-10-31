@@ -1,5 +1,5 @@
 [workspace]
-members = ["berm/*", "crates/*", "fixtures/*", "kits/*"]
+members = ["berm/*", "crates/*", "fixtures/*", "kits/*", "services/*"]
 resolver = "3"
 
 [workspace.package]
@@ -28,6 +28,9 @@ html = { package = "crab-html", path = "crates/html", version = "0.1.1" }
 
 # fixtures
 berm-kit = { path = "fixtures/kit" }
+
+# services
+github = { package = "crab-github", path = "services/github", version = "0.1.1", default-features = false }
 
 # kits
 auth = { package = "crabkit-auth", path = "kits/auth", version = "0.1.1" }

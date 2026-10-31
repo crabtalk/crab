@@ -3,8 +3,6 @@ id = "115a99982fc0ce031c0a94fad9aa47a0"
 
 [syscalls]
 "berm.http.fetch" = [
-    "github.com",
-    "api.github.com",
     "oauth2.googleapis.com",
     "openidconnect.googleapis.com",
 ]

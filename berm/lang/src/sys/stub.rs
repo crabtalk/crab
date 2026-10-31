@@ -30,8 +30,8 @@ pub(crate) struct Host {
     /// tool, the outcome bits, and the bytes.
     pub answers: Vec<(String, String, u64, Vec<u8>)>,
     /// What a test has arranged a request to answer: the method, the URL,
-    /// the status, and the body.
-    pub responses: Vec<(String, String, u16, Vec<u8>)>,
+    /// and the response including headers.
+    pub responses: Vec<(String, String, crate::http::Response)>,
     /// Each request sent, in order.
     pub fetched: Vec<Fetched>,
     /// What a test has arranged each var to hold: the name and the value.
@@ -173,11 +173,11 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
         }
         abi::HTTP_FETCH | abi::HTTP_PROXY => {
             let request = bytes(a0, a1);
-            let Some((status, body)) = respond(request) else {
+            let Some(response) = respond(request) else {
                 no_host(name)
             };
             with(|host| {
-                host.result = abi::wire::request(&[status.to_string().as_bytes(), &body]);
+                host.result = frame_response(&response, false);
                 host.result.len() as u64
             })
         }
@@ -189,10 +189,10 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
             let answers: Vec<Vec<u8>> = requests
                 .into_iter()
                 .map(|request| {
-                    let Some((status, body)) = respond(request) else {
+                    let Some(response) = respond(request) else {
                         no_host(name)
                     };
-                    abi::wire::request(&[b"ok", status.to_string().as_bytes(), &body])
+                    frame_response(&response, true)
                 })
                 .collect();
             let fields: Vec<&[u8]> = answers.iter().map(Vec::as_slice).collect();
@@ -205,9 +205,9 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
     }
 }
 
-/// The status and body arranged for one framed HTTP request, kept as
+/// The response arranged for one framed HTTP request, kept as
 /// fetched; `None` when it is not framed as one.
-fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
+fn respond(request: &[u8]) -> Option<crate::http::Response> {
     let fields = abi::wire::fields(request).ok()?;
     let [method, url, body, _timeout, limit, headers @ ..] = fields.as_slice() else {
         return None;
@@ -231,13 +231,13 @@ fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
         host.responses
             .iter()
             .find(|(m, u, ..)| *m == fetched.method && *u == fetched.url)
-            .map(|(.., status, body)| (*status, body.clone()))
+            .map(|(_, _, response)| response.clone())
     });
     let limit: Option<usize> = match core::str::from_utf8(limit).ok()? {
         "" => None,
         limit => Some(limit.parse().ok()?),
     };
-    let Some((status, mut body)) = response else {
+    let Some(mut response) = response else {
         panic!(
             "nothing arranged for {} {}; call berm_lang::test::respond first",
             fetched.method, fetched.url
@@ -245,9 +245,26 @@ fn respond(request: &[u8]) -> Option<(u16, Vec<u8>)> {
     };
     with(|host| host.fetched.push(fetched));
     if let Some(limit) = limit {
-        body.truncate(limit);
+        response.body.truncate(limit);
     }
-    Some((status, body))
+    Some(response)
+}
+
+fn frame_response(response: &crate::http::Response, batch: bool) -> Vec<u8> {
+    let mut framed = if batch {
+        abi::wire::request(&[
+            b"ok",
+            response.status.to_string().as_bytes(),
+            &response.body,
+        ])
+    } else {
+        abi::wire::request(&[response.status.to_string().as_bytes(), &response.body])
+    };
+    for (name, value) in &response.headers {
+        abi::wire::field(&mut framed, name.as_bytes());
+        abi::wire::field(&mut framed, value.as_bytes());
+    }
+    framed
 }
 
 /// Read a `(ptr, len)` pair the caller passed. Off-target these are real

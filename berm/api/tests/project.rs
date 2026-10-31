@@ -143,3 +143,14 @@ fn a_budget_key_of_zero_or_unknown_is_refused() {
         (Some(100), Some(16), None)
     );
 }
+
+#[test]
+fn linked_services_validate_migration_identity_without_rejecting_deployment_settings() {
+    let service =
+        read("name = \"github\"\n[tools.repository]\naccess = \"public\"\n[vars]\nlimit = {}\n")
+            .unwrap();
+    service.check_dependency().unwrap();
+    assert_eq!(service.tools.len(), 1);
+    let missing = read("[database]\nmigrations = \"migrations\"\n").unwrap();
+    assert!(missing.check_dependency().is_err());
+}

@@ -1,0 +1,21 @@
+[package]
+name = "crab-github"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "GitHub repositories, issues, pull requests and releases for berm services"
+readme = "README.md"
+
+[lib]
+name = "github"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+url.workspace = true

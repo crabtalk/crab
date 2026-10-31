@@ -41,7 +41,7 @@ fn service(root: &Path, dependencies: &str, dev: &str) {
 
 /// A `crab.toml` a kit may not have, so taking the crate for a kit fails the
 /// build naming it.
-const NOT_A_KIT: &str = "name = \"kit\"\n";
+const NOT_A_KIT: &str = "id = \"invalid\"\n";
 
 #[test]
 fn a_kit_at_two_versions_is_refused() {

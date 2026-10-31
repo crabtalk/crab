@@ -1,0 +1,23 @@
+name = "resend"
+buffer = 1048576
+
+[syscalls]
+"berm.http.fetch" = ["api.resend.com"]
+
+[credentials.resend]
+title = "Resend API key"
+guide = "Create an API key at https://resend.com/api-keys for the sending domain you use. Sending access is sufficient for send and send_batch; retrieve requires full access. Verify your sender domain in Resend."
+hosts = ["api.resend.com"]
+secrets = [{ name = "RESEND_API_KEY", label = "API key" }]
+
+[tools.send]
+access = "public"
+title = "Send email"
+
+[tools.send_batch]
+access = "public"
+title = "Send batch emails"
+
+[tools.retrieve]
+access = "public"
+title = "Read email delivery"

@@ -292,6 +292,11 @@ impl Project {
                 declared.join(", ")
             );
         }
+        self.check_dependency()
+    }
+
+    /// Validate a linked package's migration identity. Deployment settings stay with its own image.
+    pub fn check_dependency(&self) -> Result<()> {
         match &self.id {
             None if self.database.migrations.is_some() => {
                 bail!("a kit keeping tables declares its id")

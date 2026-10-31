@@ -128,9 +128,8 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
     Ok(image)
 }
 
-/// The record of each kit among `artifacts` compiled into `guest`, the
-/// target directory of [`TARGET`], other than the service at `service`, by
-/// name. Refused when a kit is there at two versions.
+/// Linked packages contribute requirements and migrations, not their deployment settings.
+/// Refuse two versions of the same package.
 fn kits(artifacts: &[Artifact], service: &ManifestPath, guest: &Path) -> Result<Vec<Kit>> {
     let mut kits: Vec<(&Artifact, String, String)> = Vec::new();
     for artifact in artifacts {
@@ -162,7 +161,7 @@ fn kits(artifacts: &[Artifact], service: &ManifestPath, guest: &Path) -> Result<
         .map(|(artifact, name, version)| {
             let project = Project::read(&artifact.manifest_path.dir().join(project::FILE))?;
             project
-                .check_kit()
+                .check_dependency()
                 .with_context(|| format!("the kit {name}"))?;
             Ok(Kit {
                 database: migrations(artifact.manifest_path.dir(), &project)?,

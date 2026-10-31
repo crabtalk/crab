@@ -15,9 +15,6 @@ use berm_lang::{
 };
 
 const FORM: &str = "application/x-www-form-urlencoded";
-/// GitHub refuses an API request without one.
-const USER_AGENT: &str = "crabkit-auth";
-
 /// What a token endpoint answers, a grant or an error.
 #[derive(Deserialize)]
 #[serde(crate = "berm_lang::serde")]
@@ -25,16 +22,6 @@ struct Granted {
     access_token: Option<String>,
     error: Option<String>,
     error_description: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(crate = "berm_lang::serde")]
-struct GithubUser {
-    id: u64,
-    login: String,
-    name: Option<String>,
-    email: Option<String>,
-    avatar_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -50,23 +37,7 @@ struct GoogleUser {
 impl Identity {
     /// The GitHub identity `code` was granted for.
     pub fn github(code: &str, redirect: &str) -> Result<Self> {
-        let form = http::form(&[("code", code), ("redirect_uri", redirect)]);
-        let access = exchange(
-            "GitHub",
-            "https://github.com/login/oauth/access_token",
-            &format!(
-                "{form}&client_id={{secret:GITHUB_CLIENT_ID}}&client_secret={{secret:GITHUB_CLIENT_SECRET}}"
-            ),
-        )?;
-        let user: GithubUser = get(
-            "GitHub",
-            "https://api.github.com/user",
-            &[
-                ("Accept", "application/vnd.github+json"),
-                ("Authorization", &format!("Bearer {access}")),
-                ("User-Agent", USER_AGENT),
-            ],
-        )?;
+        let user = github::oauth::user(code, redirect)?;
         Ok(Self {
             provider: "github".to_owned(),
             subject: user.id.to_string(),
