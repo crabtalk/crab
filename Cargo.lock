@@ -509,6 +509,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "berm-tikhub"
+version = "0.1.1"
+dependencies = [
+ "berm-api",
+ "berm-build",
+ "berm-lang",
+ "crab-openapi",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
