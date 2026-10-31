@@ -13,3 +13,5 @@ berm-lang.workspace = true
 auth.workspace = true
 resend = { package = "crab-resend", path = "../../services/resend", default-features = false }
 github = { package = "crab-github", path = "../../services/github", default-features = false }
+upstash = { package = "crab-upstash", path = "../../services/upstash", default-features = false }
+posthog = { package = "crab-posthog", path = "../../services/posthog", default-features = false }

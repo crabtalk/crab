@@ -10,7 +10,7 @@ keywords = ["berm", "service", "sandbox", "wasm"]
 categories = ["wasm", "no-std"]
 
 [lib]
-# The crate has no tests of its own; kits test through `berm_lang::test`.
+# Guest behavior is covered by integration tests and consumers of `berm_lang::test`.
 test = false
 
 [dependencies]

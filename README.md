@@ -43,6 +43,8 @@ Open-source services deploy on their own or link into another service with `defa
 
 - [Resend](services/resend/README.md): send emails and read delivery status.
 - [GitHub](services/github/README.md): repositories, issues, pull requests and releases.
+- [Upstash Redis](services/upstash/README.md): strings, expiry, counters, pipelines and transactions.
+- [PostHog](services/posthog/README.md): events, feature flags and analytics queries.
 
 ## Libraries
 

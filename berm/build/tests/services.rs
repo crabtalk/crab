@@ -18,6 +18,21 @@ fn provider_services_build_standalone_and_link_without_exporting_dependency_tool
     let github = build("services/github");
     assert_eq!(github.tools.len(), 11);
     assert!(github.deps.credentials["github_api"].optional);
+    let upstash = build("services/upstash");
+    assert_eq!(upstash.tools.len(), 8);
+    assert!(upstash.deps.vars.contains_key("UPSTASH_REDIS_REST_URL"));
+    assert!(!upstash.deps.credentials["upstash_redis"].optional);
+    let posthog = build("services/posthog");
+    assert_eq!(posthog.tools.len(), 4);
+    assert_eq!(posthog.deps.vars["POSTHOG_REGION"].default, "us");
+    assert!(posthog.deps.credentials["posthog_project"].optional);
+    assert!(posthog.deps.credentials["posthog_private"].optional);
+    let capture = posthog.tools.iter().find(|t| t.name == "capture").unwrap();
+    let schema = &capture.parameters;
+    assert_eq!(
+        schema["properties"]["event"]["properties"]["properties"]["additionalProperties"],
+        serde_json::json!({})
+    );
     let linked = build("fixtures/linked-services");
     assert_eq!(
         linked
@@ -29,6 +44,24 @@ fn provider_services_build_standalone_and_link_without_exporting_dependency_tool
     );
     assert!(linked.deps.secrets.iter().any(|s| s == "RESEND_API_KEY"));
     assert!(linked.deps.secrets.iter().any(|s| s == "GITHUB_TOKEN"));
+    assert!(linked.deps.vars.is_empty());
+    for credential in ["upstash_redis", "posthog_project", "posthog_private"] {
+        assert!(linked.deps.credentials.contains_key(credential));
+    }
+    assert!(
+        linked
+            .deps
+            .secrets
+            .iter()
+            .any(|s| s == "UPSTASH_REDIS_REST_TOKEN")
+    );
+    assert!(
+        linked
+            .deps
+            .secrets
+            .iter()
+            .any(|s| s == "POSTHOG_PROJECT_TOKEN")
+    );
     assert_eq!(linked.buffer, berm_api::DEFAULT_BUFFER);
     assert!(linked.deps.credentials.contains_key("github"));
     assert!(linked.deps.credentials.contains_key("github_api"));

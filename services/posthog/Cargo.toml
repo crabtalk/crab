@@ -1,0 +1,20 @@
+[package]
+name = "crab-posthog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "PostHog events, feature flags and analytics queries"
+readme = "README.md"
+
+[lib]
+name = "posthog"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true

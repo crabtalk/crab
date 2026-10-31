@@ -16,6 +16,8 @@ pub trait Schema {
 
 /// One JSON Schema. Every string in it is already JSON-escaped.
 pub enum Shape {
+    /// Any JSON value, including null and nested objects.
+    Any,
     String,
     Boolean,
     Number,
@@ -122,6 +124,15 @@ const fn pieces_into(sink: &mut Sink, pieces: &[Piece]) {
 
 const fn shape_into(sink: &mut Sink, shape: &Shape, description: &str) {
     match shape {
+        Shape::Any => {
+            sink.put("{");
+            if !description.is_empty() {
+                sink.put(r#""description":"#);
+                sink.put(description);
+            }
+            sink.put("}");
+            return;
+        }
         Shape::Optional { inner } => return shape_into(sink, inner, description),
         Shape::String => sink.put(r#"{"type":"string""#),
         Shape::Boolean => sink.put(r#"{"type":"boolean""#),
@@ -214,4 +225,8 @@ impl<T: Schema> Schema for Option<T> {
 
 impl<T: Schema> Schema for BTreeMap<String, T> {
     const SHAPE: Shape = Shape::Map { values: &T::SHAPE };
+}
+
+impl Schema for crate::serde_json::Value {
+    const SHAPE: Shape = Shape::Any;
 }

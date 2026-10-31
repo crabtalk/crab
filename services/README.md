@@ -4,6 +4,8 @@ Each directory is a member of the root Cargo workspace. A service builds both a 
 
 - [Resend](resend/README.md): email sending and delivery status.
 - [GitHub](github/README.md): repositories, issues, pull requests and releases.
+- [Upstash Redis](upstash/README.md): strings, expiry, counters, pipelines and transactions.
+- [PostHog](posthog/README.md): event capture, feature flags and HogQL queries.
 
 `crab build` and `crab deploy` operate from a service directory. Agents call deployed tools through MCP.
 

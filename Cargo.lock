@@ -452,7 +452,9 @@ version = "0.1.1"
 dependencies = [
  "berm-lang",
  "crab-github",
+ "crab-posthog",
  "crab-resend",
+ "crab-upstash",
  "crabkit-auth",
 ]
 
@@ -887,7 +889,22 @@ name = "crab-html"
 version = "0.1.1"
 
 [[package]]
+name = "crab-posthog"
+version = "0.1.1"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
 name = "crab-resend"
+version = "0.1.1"
+dependencies = [
+ "berm-lang",
+ "url",
+]
+
+[[package]]
+name = "crab-upstash"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
