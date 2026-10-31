@@ -922,6 +922,17 @@ name = "crab-html"
 version = "0.1.1"
 
 [[package]]
+name = "crab-litescrape"
+version = "0.1.1"
+dependencies = [
+ "berm-api",
+ "berm-build",
+ "berm-lang",
+ "crab-openapi",
+ "url",
+]
+
+[[package]]
 name = "crab-openapi"
 version = "0.1.1"
 dependencies = [

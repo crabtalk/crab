@@ -84,7 +84,12 @@ impl Types {
             }
         }
         let json = schema.to_string();
+        let default = schema["required"]
+            .as_array()
+            .is_none_or(|required| required.is_empty())
+            .then(|| quote!(#[derive(Default)]));
         self.definitions.push(quote! {
+            #default
             #[derive(Debug, Clone, ::berm_lang::serde::Serialize, ::berm_lang::serde::Deserialize)]
             #[serde(crate = "::berm_lang::serde", deny_unknown_fields)]
             pub struct #ident { #(#fields)* }
