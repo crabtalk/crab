@@ -1,0 +1,204 @@
+name = "companyenrich"
+buffer = 8388608
+
+[syscalls]
+"berm.http.fetch" = ["api.companyenrich.com"]
+
+[credentials.companyenrich]
+title = "CompanyEnrich API key"
+guide = "Create an API key at https://companyenrich.com/dashboard. Enrichment, search results and background jobs consume credits; email enrichment is beta."
+hosts = ["api.companyenrich.com"]
+secrets = [{ name = "COMPANYENRICH_API_KEY", label = "API key" }]
+
+[tools.enrich_company]
+access = "public"
+title = "Enrich company"
+catalog = "company.enrich"
+
+[tools.enrich_company_by_properties]
+access = "public"
+title = "Enrich company by properties"
+catalog = "company.enrich"
+
+[tools.enrich_companies_batch]
+access = "public"
+title = "Enrich companies batch"
+catalog = "company.enrich.batch"
+
+[tools.get_company]
+access = "public"
+title = "Get company"
+catalog = "company.profile"
+
+[tools.get_company_workforce]
+access = "public"
+title = "Get company workforce"
+catalog = "company.workforce"
+
+[tools.autocomplete_companies]
+access = "public"
+title = "Autocomplete companies"
+catalog = "company.autocomplete"
+
+[tools.search_companies]
+access = "public"
+title = "Search companies"
+catalog = "company.search"
+
+[tools.scroll_companies]
+access = "public"
+title = "Scroll companies"
+catalog = "company.search.scroll"
+
+[tools.count_companies]
+access = "public"
+title = "Count companies"
+catalog = "company.search.count"
+
+[tools.preview_companies]
+access = "public"
+title = "Preview companies"
+catalog = "company.search.preview"
+
+[tools.find_similar_companies]
+access = "public"
+title = "Find similar companies"
+catalog = "company.similar"
+
+[tools.scroll_similar_companies]
+access = "public"
+title = "Scroll similar companies"
+catalog = "company.similar.scroll"
+
+[tools.count_similar_companies]
+access = "public"
+title = "Count similar companies"
+catalog = "company.similar.count"
+
+[tools.start_company_bulk_enrichment]
+access = "public"
+title = "Start company bulk enrichment"
+catalog = "company.enrich.bulk.start"
+
+[tools.get_company_bulk_enrichment]
+access = "public"
+title = "Get company bulk enrichment"
+catalog = "company.enrich.bulk.status"
+
+[tools.list_company_bulk_enrichments]
+access = "public"
+title = "List company bulk enrichments"
+catalog = "company.enrich.bulk.list"
+
+[tools.start_company_export]
+access = "public"
+title = "Start company export"
+catalog = "company.export.start"
+
+[tools.get_company_export]
+access = "public"
+title = "Get company export"
+catalog = "company.export.status"
+
+[tools.list_company_exports]
+access = "public"
+title = "List company exports"
+catalog = "company.export.list"
+
+[tools.search_people]
+access = "public"
+title = "Search people"
+catalog = "person.search"
+
+[tools.scroll_people]
+access = "public"
+title = "Scroll people"
+catalog = "person.search.scroll"
+
+[tools.get_person]
+access = "public"
+title = "Get person"
+catalog = "person.profile"
+
+[tools.lookup_person]
+access = "public"
+title = "Lookup person"
+catalog = "person.enrich"
+
+[tools.find_person_email]
+access = "public"
+title = "Find person email"
+catalog = "person.email"
+
+[tools.start_bulk_email_enrichment]
+access = "public"
+title = "Start bulk email enrichment"
+catalog = "person.email.bulk.start"
+
+[tools.get_bulk_email_enrichment]
+access = "public"
+title = "Get bulk email enrichment"
+catalog = "person.email.bulk.status"
+
+[tools.start_people_export]
+access = "public"
+title = "Start people export"
+catalog = "person.export.start"
+
+[tools.get_people_export]
+access = "public"
+title = "Get people export"
+catalog = "person.export.status"
+
+[tools.list_people_exports]
+access = "public"
+title = "List people exports"
+catalog = "person.export.list"
+
+[tools.list_jobs]
+access = "public"
+title = "List jobs"
+
+[tools.get_job]
+access = "public"
+title = "Get job"
+
+[tools.list_industries]
+access = "public"
+title = "List industries"
+
+[tools.autocomplete_keywords]
+access = "public"
+title = "Autocomplete keywords"
+
+[tools.autocomplete_technologies]
+access = "public"
+title = "Autocomplete technologies"
+
+[tools.autocomplete_positions]
+access = "public"
+title = "Autocomplete positions"
+
+[tools.list_regions]
+access = "public"
+title = "List regions"
+
+[tools.get_country]
+access = "public"
+title = "Get country"
+
+[tools.search_countries]
+access = "public"
+title = "Search countries"
+
+[tools.search_states]
+access = "public"
+title = "Search states"
+
+[tools.search_cities]
+access = "public"
+title = "Search cities"
+
+[tools.get_account]
+access = "public"
+title = "Get account"

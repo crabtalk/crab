@@ -1,0 +1,57 @@
+#![no_std]
+extern crate alloc;
+use berm_lang::http::Client;
+
+const CLIENT: Client<'static> = Client {
+    name: "CompanyEnrich",
+    headers: &[("Authorization", "Bearer {secret:COMPANYENRICH_API_KEY}")],
+};
+
+crab_openapi::service! {
+    spec: env!("OPENAPI_SPEC"),
+    client: crate::CLIENT,
+    tools: cfg(feature = "tools"),
+    operations: {
+        enrich_company: "GET /companies/enrich",
+        enrich_company_by_properties: "POST /companies/enrich",
+        enrich_companies_batch: "POST /companies/enrich/batch",
+        get_company: "GET /companies",
+        get_company_workforce: "GET /companies/workforce",
+        autocomplete_companies: "GET /companies/autocomplete",
+        search_companies: "POST /companies/search",
+        scroll_companies: "POST /companies/search/scroll",
+        count_companies: "POST /companies/search/count",
+        preview_companies: "POST /companies/search/preview",
+        find_similar_companies: "POST /companies/similar",
+        scroll_similar_companies: "POST /companies/similar/scroll",
+        count_similar_companies: "POST /companies/similar/count",
+        start_company_bulk_enrichment: "POST /companies/enrich/bulk",
+        get_company_bulk_enrichment: "GET /companies/enrich/bulk/{jobId}",
+        list_company_bulk_enrichments: "GET /companies/enrich/bulk/jobs",
+        start_company_export: "POST /companies/search/async",
+        get_company_export: "GET /companies/search/async/{jobId}",
+        list_company_exports: "GET /companies/search/async/jobs",
+        search_people: "POST /people/search",
+        scroll_people: "POST /people/search/scroll",
+        get_person: "GET /people",
+        lookup_person: "POST /people/lookup",
+        find_person_email: "GET /people/email",
+        start_bulk_email_enrichment: "POST /people/email/bulk",
+        get_bulk_email_enrichment: "GET /people/email/bulk/{jobId}",
+        start_people_export: "POST /people/search/async",
+        get_people_export: "GET /people/search/async/{jobId}",
+        list_people_exports: "GET /people/search/async/jobs",
+        list_jobs: "GET /jobs",
+        get_job: "GET /jobs/{jobId}",
+        list_industries: "GET /industries",
+        autocomplete_keywords: "GET /keywords/autocomplete",
+        autocomplete_technologies: "GET /technologies/autocomplete",
+        autocomplete_positions: "GET /positions/autocomplete",
+        list_regions: "GET /geo/regions",
+        get_country: "GET /geo/countries/{countryCode}",
+        search_countries: "POST /geo/countries",
+        search_states: "POST /geo/states",
+        search_cities: "POST /geo/cities",
+        get_account: "GET /me",
+    },
+}

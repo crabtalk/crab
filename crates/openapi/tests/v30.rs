@@ -58,3 +58,26 @@ fn v30_required_nullable_fields_keep_explicit_null_on_the_wire() {
             .is_err()
     );
 }
+
+#[test]
+fn enum_only_query_parameters_preserve_nullable_schema_and_encode_array_items() {
+    let input: types::EchoInput = serde_json::from_value(json!({
+        "query":{"status":"completed", "phase":["first","last"]},
+        "body":{"name":null,"label":"ok"}
+    }))
+    .unwrap();
+    test::respond(
+        "POST",
+        "https://example.com/echo?status=completed&phase=first&phase=last",
+        200,
+        b"{}",
+    );
+    api::echo(&input).unwrap();
+    const PIECES: &[Piece] = &[Piece::Shape(&types::EchoInput::SHAPE)];
+    const BYTES: [u8; schema::len(PIECES)] = schema::render(PIECES);
+    let schema: Value = serde_json::from_slice(&BYTES).unwrap();
+    assert_eq!(
+        schema["properties"]["query"]["properties"]["status"]["enum"],
+        json!(["pending", "completed", null])
+    );
+}

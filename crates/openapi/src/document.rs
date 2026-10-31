@@ -445,7 +445,7 @@ impl Document {
         if let Some(variants) = schema["allOf"].as_array() {
             let mut shape = None;
             for variant in variants {
-                if ["type", "allOf", "anyOf", "oneOf"]
+                if ["type", "allOf", "anyOf", "oneOf", "enum"]
                     .iter()
                     .all(|key| variant.get(key).is_none())
                 {
@@ -483,6 +483,15 @@ impl Document {
                 schema["type"] = variants[0].clone();
                 return Self::parameter_shape(&schema);
             }
+        }
+        if schema.get("type").is_none()
+            && let Some(values) = schema["enum"].as_array()
+            && values.iter().any(|value| !value.is_null())
+            && values.iter().all(|value| {
+                value.is_null() || value.is_string() || value.is_number() || value.is_boolean()
+            })
+        {
+            return Ok(ParameterShape::Scalar);
         }
         match schema["type"].as_str() {
             Some("string" | "integer" | "number" | "boolean") => Ok(ParameterShape::Scalar),

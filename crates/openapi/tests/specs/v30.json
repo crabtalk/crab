@@ -23,6 +23,30 @@
               "maximum": 1,
               "exclusiveMaximum": false
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "pending",
+                "completed",
+                null
+              ]
+            }
+          },
+          {
+            "name": "phase",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "first",
+                  "last"
+                ]
+              }
+            }
           }
         ],
         "requestBody": {
