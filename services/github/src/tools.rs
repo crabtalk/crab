@@ -1,4 +1,10 @@
-use crate::*;
+use crate::{
+    api,
+    types::{
+        Comment, Issue, Issues, NewIssue, NewPullRequest, NewRelease, Page, PullRequest,
+        PullRequests, Release, Releases, Repository,
+    },
+};
 use alloc::string::String;
 use berm_lang::{Result, tool};
 
@@ -10,7 +16,7 @@ pub fn repository(
     /// Repository name without .git.
     repo: String,
 ) -> Result<Repository> {
-    crate::repository(&owner, &repo)
+    api::repository(&owner, &repo)
 }
 
 /// List repository issues, including pull requests. Filter entries with pull_request when only issues are wanted.
@@ -25,7 +31,7 @@ pub fn issues(
     /// Page number and size; defaults to page 1 with 30 items.
     page: Option<Page>,
 ) -> Result<Issues> {
-    crate::issues(&owner, &repo, state.as_deref(), &page.unwrap_or_default())
+    api::issues(&owner, &repo, state.as_deref(), &page.unwrap_or_default())
 }
 
 /// Read an issue.
@@ -38,7 +44,7 @@ pub fn issue(
     /// Repository-local issue number.
     number: u64,
 ) -> Result<Issue> {
-    crate::issue(&owner, &repo, number)
+    api::issue(&owner, &repo, number)
 }
 
 /// Create an issue in the connected GitHub account.
@@ -51,7 +57,7 @@ pub fn create_issue(
     /// Title, optional description and labels.
     issue: NewIssue,
 ) -> Result<Issue> {
-    crate::create_issue(&owner, &repo, &issue)
+    api::create_issue(&owner, &repo, &issue)
 }
 
 /// Add a comment to an issue or pull request.
@@ -66,7 +72,7 @@ pub fn comment(
     /// Comment in GitHub Markdown.
     body: String,
 ) -> Result<Comment> {
-    crate::comment(&owner, &repo, number, &body)
+    api::comment(&owner, &repo, number, &body)
 }
 
 /// List pull requests.
@@ -81,7 +87,7 @@ pub fn pull_requests(
     /// Page number and size.
     page: Option<Page>,
 ) -> Result<PullRequests> {
-    crate::pull_requests(&owner, &repo, state.as_deref(), &page.unwrap_or_default())
+    api::pull_requests(&owner, &repo, state.as_deref(), &page.unwrap_or_default())
 }
 
 /// Read a pull request.
@@ -94,7 +100,7 @@ pub fn pull_request(
     /// Repository-local pull-request number.
     number: u64,
 ) -> Result<PullRequest> {
-    crate::pull_request(&owner, &repo, number)
+    api::pull_request(&owner, &repo, number)
 }
 
 /// Open a pull request between existing branches.
@@ -107,7 +113,7 @@ pub fn create_pull_request(
     /// Title, head branch, base branch and optional body or draft flag.
     pull: NewPullRequest,
 ) -> Result<PullRequest> {
-    crate::create_pull_request(&owner, &repo, &pull)
+    api::create_pull_request(&owner, &repo, &pull)
 }
 
 /// List releases, excluding tags without a release.
@@ -120,7 +126,7 @@ pub fn releases(
     /// Page number and size.
     page: Option<Page>,
 ) -> Result<Releases> {
-    crate::releases(&owner, &repo, &page.unwrap_or_default())
+    api::releases(&owner, &repo, &page.unwrap_or_default())
 }
 
 /// Read the latest non-draft, non-prerelease release.
@@ -131,7 +137,7 @@ pub fn latest_release(
     /// Repository name without .git.
     repo: String,
 ) -> Result<Release> {
-    crate::latest_release(&owner, &repo)
+    api::latest_release(&owner, &repo)
 }
 
 /// Create a release; this can also create a Git tag.
@@ -144,5 +150,5 @@ pub fn create_release(
     /// Tag and optional target, title, notes, draft or prerelease flag.
     release: NewRelease,
 ) -> Result<Release> {
-    crate::create_release(&owner, &repo, &release)
+    api::create_release(&owner, &repo, &release)
 }

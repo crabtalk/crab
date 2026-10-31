@@ -20,7 +20,9 @@ upstash = { package = "crab-upstash", git = "https://github.com/crabtalk/crab", 
 ```
 
 ```rust,ignore
-let redis = upstash::Redis::new("https://your-database.upstash.io")?;
+use upstash::api::Redis;
+
+let redis = Redis::new("https://your-database.upstash.io")?;
 redis.set("report:42", "ready", Some(3600))?;
 let report = redis.get("report:42")?;
 let count = redis.increment("reports", 1)?;

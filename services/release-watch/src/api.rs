@@ -1,10 +1,12 @@
-use crate::{Change, Changes, Refreshed, Snapshot, Status, Watch};
+use crate::types::{Change, Changes, Refreshed, Snapshot, Status, Watch};
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::{
     Result, rows,
     serde::{Serialize, de::DeserializeOwned},
     serde_json,
 };
+use github::{api as github_api, types::Page};
+use osv::api as osv_api;
 
 const HOUR: u64 = 3_600_000;
 fn encode(value: &impl Serialize) -> Result<String> {
@@ -116,16 +118,16 @@ pub fn changes(after: u64, limit: Option<u64>) -> Result<Changes> {
 }
 /// Fetch provider evidence. Release tags are not compared to package versions or claimed as fixes.
 pub fn observe(watch: &Watch) -> Result<Snapshot> {
-    let mut releases = github::releases(
+    let mut releases = github_api::releases(
         &watch.owner,
         &watch.repo,
-        &github::Page {
+        &Page {
             page: Some(1),
             per_page: Some(30),
         },
     )?;
     releases.items.sort_by_key(|release| release.id);
-    let advisories = osv::query_all(&watch.package)?;
+    let advisories = osv_api::query_all(&watch.package)?;
     Ok(Snapshot {
         releases: releases.items,
         releases_next_page: releases.next_page,

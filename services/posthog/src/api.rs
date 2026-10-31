@@ -1,7 +1,8 @@
-use crate::{Evaluation, Event, Flags, Region};
+use crate::types::{Evaluation, Event, Flags, Region};
 use alloc::{format, string::String};
 use berm_lang::{
-    Result, http,
+    Result,
+    http::{Client, Response},
     serde::Serialize,
     serde_json::{self, Value, json},
 };
@@ -22,8 +23,8 @@ impl PostHog {
             (Region::Eu, true) => "https://eu.posthog.com",
         }
     }
-    fn request(&self, path: &str, body: &impl Serialize, private: bool) -> Result<http::Response> {
-        let body = serde_json::to_vec(body).map_err(|e| format!("PostHog request JSON: {e}"))?;
+    fn request(&self, path: &str, body: &impl Serialize, private: bool) -> Result<Response> {
+        let body = serde_json::to_vec(body)?;
         let mut headers = alloc::vec![
             ("Content-Type", "application/json"),
             ("User-Agent", "crabtalk-posthog")
@@ -31,25 +32,11 @@ impl PostHog {
         if private {
             headers.push(("Authorization", "Bearer {secret:POSTHOG_PERSONAL_API_KEY}"));
         }
-        let response = http::fetch(
-            "POST",
-            &format!("{}{path}", self.host(private)),
-            &headers,
-            &body,
-        )?;
-        if !response.is_success() {
-            let value = response.json::<Value>().ok();
-            let message = value
-                .as_ref()
-                .and_then(|v| v["detail"].as_str().or_else(|| v["error"].as_str()))
-                .unwrap_or("provider request failed");
-            let retry = response
-                .header("retry-after")
-                .map(|v| format!("; retry-after={v}"))
-                .unwrap_or_default();
-            return Err(format!("PostHog {}: {message}{retry}", response.status).into());
+        Client {
+            name: "PostHog",
+            headers: &headers,
         }
-        Ok(response)
+        .request("POST", &format!("{}{path}", self.host(private)), &body)
     }
     /// Submit one event. Success means accepted, not immediately queryable.
     pub fn capture(&self, event: &Event) -> Result<()> {

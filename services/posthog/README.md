@@ -27,11 +27,13 @@ posthog = { package = "crab-posthog", git = "https://github.com/crabtalk/crab", 
 ```
 
 ```rust,ignore
-let posthog = posthog::PostHog::new(posthog::Region::Eu);
-posthog.capture(&posthog::Event {
+use posthog::{api::PostHog, types::{Event, Region}};
+
+let posthog = PostHog::new(Region::Eu);
+posthog.capture(&Event {
     event: "report_ready".into(),
     distinct_id: "user-42".into(),
-    ..posthog::Event::default()
+    ..Event::default()
 })?;
 let rows = posthog.query(123, "select event, count() from events group by event limit 10", "Event totals")?;
 ```

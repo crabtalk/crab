@@ -1,4 +1,7 @@
-use crate::{Batch, Delivery, Email, Sent};
+use crate::{
+    api,
+    types::{Batch, Delivery, Email, Sent},
+};
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, tool};
 
@@ -10,7 +13,7 @@ pub fn send(
     /// A unique key for this send; reuse with the same payload for retries within 24 hours.
     idempotency_key: String,
 ) -> Result<Sent> {
-    crate::send(&email, &idempotency_key)
+    api::send(&email, &idempotency_key)
 }
 
 /// Send up to 100 emails in one Resend request.
@@ -21,7 +24,7 @@ pub fn send_batch(
     /// A unique key for this batch; reuse only with the same payload.
     idempotency_key: String,
 ) -> Result<Batch> {
-    crate::send_batch(&emails, &idempotency_key)
+    api::send_batch(&emails, &idempotency_key)
 }
 
 /// Read an email's current delivery event from Resend.
@@ -30,5 +33,5 @@ pub fn retrieve(
     /// The identifier returned by send or send_batch.
     id: String,
 ) -> Result<Delivery> {
-    crate::retrieve(&id)
+    api::retrieve(&id)
 }

@@ -13,6 +13,7 @@ use berm_lang::{
     Result, http,
     serde::{Deserialize, de::DeserializeOwned},
 };
+use github::oauth;
 
 const FORM: &str = "application/x-www-form-urlencoded";
 /// What a token endpoint answers, a grant or an error.
@@ -37,7 +38,7 @@ struct GoogleUser {
 impl Identity {
     /// The GitHub identity `code` was granted for.
     pub fn github(code: &str, redirect: &str) -> Result<Self> {
-        let user = github::oauth::user(code, redirect)?;
+        let user = oauth::user(code, redirect)?;
         Ok(Self {
             provider: "github".to_owned(),
             subject: user.id.to_string(),

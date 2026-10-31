@@ -3,11 +3,9 @@
 
 extern crate alloc;
 
-mod api;
+pub mod api;
 pub mod oauth;
-mod types;
-pub use api::*;
-pub use types::*;
+pub mod types;
 
 #[cfg(feature = "tools")]
 pub mod tools;

@@ -1,4 +1,7 @@
-use crate::{Evaluation, Event, Flags, PostHog, Region};
+use crate::{
+    api::PostHog,
+    types::{Evaluation, Event, Flags, Region},
+};
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, serde_json::Value, tool};
 fn client() -> Result<PostHog> {

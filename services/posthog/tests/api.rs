@@ -3,7 +3,13 @@ use berm_lang::{
     serde_json::{self, Value, json},
     test,
 };
-use posthog::{Evaluation, Event, PostHog, Region};
+#[cfg(feature = "tools")]
+use posthog::tools;
+use posthog::{
+    api::PostHog,
+    types::{Evaluation, Event, Region},
+};
+
 fn event() -> Event {
     Event {
         event: "report_ready".into(),
@@ -163,7 +169,7 @@ fn query_tool_reads_deployment_configuration_and_emits_json() {
         br#"{"columns":["one"],"results":[[1]]}"#,
     );
     let result = test::call(
-        posthog::tools::berm_tool_query,
+        tools::berm_tool_query,
         br#"{"sql":"select 1","name":"probe"}"#,
     )
     .unwrap();

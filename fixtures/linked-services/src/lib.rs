@@ -3,6 +3,14 @@
 extern crate alloc;
 use alloc::{format, string::String};
 use berm_lang::{Result, tool};
+use github::api as github_api;
+use posthog::{
+    api::PostHog,
+    types::{Evaluation, Region},
+};
+use release_watch::api as release_watch_api;
+use resend::api as resend_api;
+use upstash::api::Redis;
 
 /// Read provider data through linked service APIs.
 #[tool]
@@ -18,13 +26,13 @@ pub fn inspect(
     /// PostHog user identifier.
     distinct_id: String,
 ) -> Result<String> {
-    let watched = release_watch::watches()?;
-    let repository = github::repository(&owner, &repo)?;
-    let delivery = resend::retrieve(&email)?;
-    let cache = upstash::Redis::new(&redis_url)?.get("status")?;
-    let flags = posthog::PostHog::new(posthog::Region::Us).flags(&posthog::Evaluation {
+    let watched = release_watch_api::watches()?;
+    let repository = github_api::repository(&owner, &repo)?;
+    let delivery = resend_api::retrieve(&email)?;
+    let cache = Redis::new(&redis_url)?.get("status")?;
+    let flags = PostHog::new(Region::Us).flags(&Evaluation {
         distinct_id,
-        ..posthog::Evaluation::default()
+        ..Evaluation::default()
     })?;
     Ok(format!(
         "{}: {}; cache={cache:?}; flags={}",

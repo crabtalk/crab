@@ -1,11 +1,13 @@
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Schema, serde_json::Value};
+use github::types::Release;
+use osv::types::PackageVersion;
 
 /// A named installed package and its explicitly mapped GitHub repository.
 #[derive(Debug, Clone, PartialEq, Eq, Schema)]
 pub struct Watch {
     pub name: String,
-    pub package: osv::PackageVersion,
+    pub package: PackageVersion,
     pub owner: String,
     pub repo: String,
 }
@@ -13,7 +15,7 @@ pub struct Watch {
 /// A complete OSV match set and one recent GitHub release page, not a version comparison.
 #[derive(Debug, Clone, Schema)]
 pub struct Snapshot {
-    pub releases: Vec<github::Release>,
+    pub releases: Vec<Release>,
     /// More release pages exist. Only the most recent 30 records were observed.
     pub releases_next_page: Option<u64>,
     pub advisories: Vec<Value>,

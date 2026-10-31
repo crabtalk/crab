@@ -1,32 +1,31 @@
-use crate::{BatchPage, PackageVersion, Page, Query};
-use alloc::{collections::BTreeSet, format, string::String, vec::Vec};
+use crate::types::{BatchPage, PackageVersion, Page, Query};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec::Vec,
+};
 use berm_lang::{
-    Result, http,
+    Result,
+    http::Client,
     serde_json::{self, Value, json},
 };
+use url::Url;
 
 fn fetch(method: &str, url: &str, body: &Value) -> Result<Value> {
     let bytes = if method == "GET" {
         Vec::new()
     } else {
-        serde_json::to_vec(body).map_err(|e| format!("OSV request JSON: {e}"))?
+        serde_json::to_vec(body)?
     };
-    let response = http::fetch(method, url, &[("Content-Type", "application/json")], &bytes)?;
-    let value = response.json::<Value>().ok();
-    if !response.is_success() {
-        let message = value
-            .as_ref()
-            .and_then(|v| v["message"].as_str())
-            .unwrap_or("provider request failed");
-        let retry = response
-            .header("retry-after")
-            .map(|v| format!("; retry-after={v}"))
-            .unwrap_or_default();
-        return Err(format!("OSV {}: {message}{retry}", response.status).into());
+    let value: Value = Client {
+        name: "OSV",
+        headers: &[("Content-Type", "application/json")],
     }
-    value
-        .filter(Value::is_object)
-        .ok_or_else(|| "OSV returned an unreadable response".into())
+    .json(method, url, &bytes)?;
+    if !value.is_object() {
+        return Err("OSV returned an unreadable response".into());
+    }
+    Ok(value)
 }
 fn payload(package: &PackageVersion, token: Option<&str>) -> Result<Value> {
     if [&package.ecosystem, &package.name, &package.version]
@@ -85,7 +84,7 @@ pub fn query(package: &PackageVersion, page_token: Option<&str>) -> Result<Page>
 pub fn query_all(package: &PackageVersion) -> Result<Vec<Value>> {
     let mut next = None;
     let mut seen = BTreeSet::new();
-    let mut vulns = alloc::collections::BTreeMap::<String, Value>::new();
+    let mut vulns = BTreeMap::<String, Value>::new();
     for _ in 0..10 {
         let page = query(package, next.as_deref())?;
         for vuln in page.vulns {
@@ -145,7 +144,7 @@ pub fn advisory(id: &str) -> Result<Value> {
     if id.trim().is_empty() {
         return Err("Provide an OSV advisory ID".into());
     }
-    let mut url = url::Url::parse("https://api.osv.dev/v1/vulns/").expect("constant URL");
+    let mut url = Url::parse("https://api.osv.dev/v1/vulns/").expect("constant URL");
     url.path_segments_mut()
         .expect("HTTP URL")
         .pop_if_empty()

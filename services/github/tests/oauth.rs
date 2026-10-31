@@ -1,5 +1,6 @@
 //! GitHub OAuth belongs to the provider library; app sessions do not.
 use berm_lang::test;
+use github::oauth;
 const TOKEN: &str = "https://github.com/login/oauth/access_token";
 const USER: &str = "https://api.github.com/user";
 
@@ -17,8 +18,7 @@ fn oauth_uses_app_credentials_and_the_exchanged_token_instead_of_the_repository_
         200,
         br#"{"id":42,"login":"octo","name":null,"email":null}"#,
     );
-    let user =
-        github::oauth::user("code&scope=admin", "https://app.example/callback?a=1&b=2").unwrap();
+    let user = oauth::user("code&scope=admin", "https://app.example/callback?a=1&b=2").unwrap();
     assert_eq!(user.id, 42);
     assert_eq!(user.login, "octo");
     let requests = test::fetched();
@@ -46,7 +46,7 @@ fn an_unsuccessful_token_response_never_reads_the_user_even_if_it_contains_a_tok
         400,
         br#"{"access_token":"invalid","error":"bad_verification_code"}"#,
     );
-    let error = github::oauth::user("code", "https://app.example/callback").unwrap_err();
+    let error = oauth::user("code", "https://app.example/callback").unwrap_err();
     assert!(error.message.contains("bad_verification_code"));
     assert_eq!(test::fetched().len(), 1);
 }
@@ -54,7 +54,7 @@ fn an_unsuccessful_token_response_never_reads_the_user_even_if_it_contains_a_tok
 #[test]
 fn an_unreadable_token_response_reports_the_provider_status() {
     test::respond("POST", TOKEN, 502, b"bad gateway");
-    let error = github::oauth::user("code", "https://app.example/callback").unwrap_err();
+    let error = oauth::user("code", "https://app.example/callback").unwrap_err();
     assert!(error.message.contains("502"));
     assert_eq!(test::fetched().len(), 1);
 }

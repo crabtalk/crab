@@ -6,15 +6,38 @@
 //! manifest declares. The host substitutes it, and this service never holds the value.
 
 use crate::{
+    Error, Result,
     abi::wire,
     host::{self, CallError},
     sys,
 };
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use serde::de::DeserializeOwned;
 
+/// An upstream API's headers and error context. Secret placeholders remain host-managed.
+pub struct Client<'a> {
+    pub name: &'a str,
+    pub headers: &'a [(&'a str, &'a str)],
+}
+
+impl Client<'_> {
+    /// Make one request. Non-2xx replies fail with their body and retry metadata.
+    pub fn request(&self, method: &str, url: &str, body: &[u8]) -> Result<Response> {
+        let response = fetch(method, url, self.headers, body)?;
+        if response.is_success() {
+            Ok(response)
+        } else {
+            Err(response.failure(self.name))
+        }
+    }
+
+    pub fn json<T: DeserializeOwned>(&self, method: &str, url: &str, body: &[u8]) -> Result<T> {
+        self.request(method, url, body)?.read(self.name)
+    }
+}
+
 /// What the far end answered.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Response {
     pub status: u16,
     pub headers: Vec<(String, String)>,
@@ -30,6 +53,27 @@ impl Response {
     /// The value of the header `name`, ASCII case ignored.
     pub fn header(&self, name: &str) -> Option<&str> {
         header(&self.headers, name)
+    }
+
+    /// Format an upstream refusal, including failures carried in a 2xx body.
+    pub fn failure(&self, provider: &str) -> Error {
+        let detail = String::from_utf8_lossy(&self.body);
+        let mut message = format!("{provider} {}: {detail}", self.status);
+        for (header, label) in [
+            ("retry-after", "retry-after"),
+            ("x-request-id", "x-request-id"),
+            ("x-ratelimit-reset", "rate-limit-reset"),
+        ] {
+            if let Some(value) = self.header(header) {
+                message.push_str(&format!("; {label}={value}"));
+            }
+        }
+        message.into()
+    }
+
+    pub fn read<T: DeserializeOwned>(&self, provider: &str) -> Result<T> {
+        self.json()
+            .map_err(|error| format!("{provider} returned an unreadable response: {error}").into())
     }
 
     /// The body read as JSON.

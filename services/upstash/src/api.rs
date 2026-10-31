@@ -1,4 +1,4 @@
-use crate::CommandResult;
+use crate::types::CommandResult;
 use alloc::{
     format,
     string::{String, ToString},
@@ -6,10 +6,12 @@ use alloc::{
     vec::Vec,
 };
 use berm_lang::{
-    Result, http,
+    Result,
+    http::Client,
     serde::Serialize,
     serde_json::{self, Value},
 };
+use url::Url;
 
 /// A database's HTTPS REST endpoint. Credentials remain in the host.
 pub struct Redis {
@@ -18,7 +20,7 @@ pub struct Redis {
 impl Redis {
     /// Accept an Upstash database origin, without credentials, path or query.
     pub fn new(endpoint: &str) -> Result<Self> {
-        let url = url::Url::parse(endpoint).map_err(|_| "Invalid Upstash REST URL")?;
+        let url = Url::parse(endpoint).map_err(|_| "Invalid Upstash REST URL")?;
         if url.scheme() != "https"
             || !url.host_str().is_some_and(|h| h.ends_with(".upstash.io"))
             || !url.username().is_empty()
@@ -37,29 +39,20 @@ impl Redis {
         })
     }
     fn request(&self, path: &str, body: &impl Serialize) -> Result<Value> {
-        let body = serde_json::to_vec(body).map_err(|e| format!("Upstash request JSON: {e}"))?;
-        let response = http::fetch(
-            "POST",
-            &format!("{}{path}", self.endpoint),
-            &[
+        let body = serde_json::to_vec(body)?;
+        let response = Client {
+            name: "Upstash",
+            headers: &[
                 ("Authorization", "Bearer {secret:UPSTASH_REDIS_REST_TOKEN}"),
                 ("Content-Type", "application/json"),
             ],
-            &body,
-        )?;
-        let value = response.json::<Value>().ok();
-        if !response.is_success() || value.as_ref().is_some_and(|v| v["error"].is_string()) {
-            let message = value
-                .as_ref()
-                .and_then(|v| v["error"].as_str())
-                .unwrap_or("provider request failed");
-            let retry = response
-                .header("retry-after")
-                .map(|v| format!("; retry-after={v}"))
-                .unwrap_or_default();
-            return Err(format!("Upstash {}: {message}{retry}", response.status).into());
         }
-        value.ok_or_else(|| "Upstash returned an unreadable response".into())
+        .request("POST", &format!("{}{path}", self.endpoint), &body)?;
+        let value: Value = response.read("Upstash")?;
+        if value["error"].is_string() {
+            return Err(response.failure("Upstash"));
+        }
+        Ok(value)
     }
     /// Execute a Redis command. Arguments are strings; responses preserve JSON types.
     pub fn command(&self, command: &[String]) -> Result<Value> {

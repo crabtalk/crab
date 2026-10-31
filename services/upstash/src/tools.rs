@@ -1,4 +1,4 @@
-use crate::{CommandResult, Redis};
+use crate::{api::Redis, types::CommandResult};
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, tool};
 fn database() -> Result<Redis> {

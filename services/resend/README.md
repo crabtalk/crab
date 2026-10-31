@@ -16,7 +16,7 @@ resend = { package = "crab-resend", git = "https://github.com/crabtalk/crab", br
 ```
 
 ```rust,ignore
-use resend::Email;
+use resend::{api, types::Email};
 
 let email = Email {
     from: "Product <hello@example.com>".into(),
@@ -25,7 +25,7 @@ let email = Email {
     text: Some("Open your account to read it.".into()),
     ..Email::default()
 };
-let sent = resend::send(&email, "report/42")?;
+let sent = api::send(&email, "report/42")?;
 ```
 
 Disabling the default `tools` feature links only the Rust API. Your service inherits the credential and HTTP host requirements; it exposes its own tools. Execution and credentials belong to your deployment.

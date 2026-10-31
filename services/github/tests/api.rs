@@ -3,7 +3,13 @@ use berm_lang::{
     serde_json::{self, json},
     test,
 };
-use github::{NewIssue, NewPullRequest, NewRelease, Page};
+#[cfg(feature = "tools")]
+use github::tools;
+use github::{
+    api,
+    types::{NewIssue, NewPullRequest, NewRelease, Page},
+};
+
 const ISSUE:&[u8]=br#"{"number":7,"title":"Broken menu","body":null,"state":"open","html_url":"https://github.com/o/r/issues/7"}"#;
 const PULL:&[u8]=br#"{"number":8,"title":"Fix menu","body":null,"state":"open","html_url":"https://github.com/o/r/pull/8","draft":false}"#;
 const RELEASE:&[u8]=br#"{"id":9,"tag_name":"v1","name":null,"body":null,"html_url":"https://github.com/o/r/releases/v1","draft":false,"prerelease":false,"published_at":"2026-10-31"}"#;
@@ -11,7 +17,7 @@ const RELEASE:&[u8]=br#"{"id":9,"tag_name":"v1","name":null,"body":null,"html_ur
 #[test]
 fn repository_uses_versioned_api_headers_and_host_managed_authentication() {
     test::respond("GET","https://api.github.com/repos/o/r",200,br#"{"full_name":"o/r","html_url":"https://github.com/o/r","description":null,"default_branch":"main","private":false}"#);
-    assert_eq!(github::repository("o", "r").unwrap().full_name, "o/r");
+    assert_eq!(api::repository("o", "r").unwrap().full_name, "o/r");
     let request = &test::fetched()[0];
     assert_eq!(
         request.header("Authorization"),
@@ -26,7 +32,7 @@ fn list_preserves_issue_pr_distinction_and_follows_next_page_metadata() {
     let url = "https://api.github.com/repos/o/r/issues?per_page=2&page=1&state=all";
     let body = json!([serde_json::from_slice::<serde_json::Value>(ISSUE).unwrap(),{"number":8,"title":"Fix","body":null,"state":"open","html_url":"https://github.com/o/r/pull/8","pull_request":{"html_url":"https://github.com/o/r/pull/8"}}]);
     test::respond_with("GET",url,Response{status:200,headers:vec![("Link".into(),"<https://api.github.com/repos/o/r/issues?per_page=2&page=2&state=all>; rel=\"next\", <https://api.github.com/repos/o/r/issues?page=5>; rel=\"last\"".into())],body:serde_json::to_vec(&body).unwrap()});
-    let page = github::issues(
+    let page = api::issues(
         "o",
         "r",
         Some("all"),
@@ -46,7 +52,7 @@ fn list_preserves_issue_pr_distinction_and_follows_next_page_metadata() {
         b"[]",
     );
     assert!(
-        github::issues(
+        api::issues(
             "o",
             "r",
             Some("all"),
@@ -69,7 +75,7 @@ fn issue_creation_and_comments_send_only_requested_fields() {
         201,
         ISSUE,
     );
-    let issue = github::create_issue(
+    let issue = api::create_issue(
         "o",
         "r",
         &NewIssue {
@@ -85,7 +91,7 @@ fn issue_creation_and_comments_send_only_requested_fields() {
         json!({"title":"Broken menu"})
     );
     test::respond("POST","https://api.github.com/repos/o/r/issues/7/comments",201,br#"{"id":1,"body":"Investigating","html_url":"https://github.com/o/r/issues/7#issuecomment-1"}"#);
-    assert_eq!(github::comment("o", "r", 7, "Investigating").unwrap().id, 1);
+    assert_eq!(api::comment("o", "r", 7, "Investigating").unwrap().id, 1);
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&test::fetched()[1].body).unwrap(),
         json!({"body":"Investigating"})
@@ -96,7 +102,7 @@ fn issue_creation_and_comments_send_only_requested_fields() {
 fn pulls_and_releases_use_their_own_endpoints_and_payloads() {
     test::respond("POST", "https://api.github.com/repos/o/r/pulls", 201, PULL);
     assert_eq!(
-        github::create_pull_request(
+        api::create_pull_request(
             "o",
             "r",
             &NewPullRequest {
@@ -123,7 +129,7 @@ fn pulls_and_releases_use_their_own_endpoints_and_payloads() {
         RELEASE,
     );
     assert_eq!(
-        github::create_release(
+        api::create_release(
             "o",
             "r",
             &NewRelease {
@@ -145,7 +151,7 @@ fn pulls_and_releases_use_their_own_endpoints_and_payloads() {
         200,
         RELEASE,
     );
-    assert_eq!(github::latest_release("o", "r").unwrap().id, 9);
+    assert_eq!(api::latest_release("o", "r").unwrap().id, 9);
     test::respond(
         "GET",
         "https://api.github.com/repos/o/r/pulls?per_page=100&page=1",
@@ -153,7 +159,7 @@ fn pulls_and_releases_use_their_own_endpoints_and_payloads() {
         b"[]",
     );
     assert!(
-        github::pull_requests(
+        api::pull_requests(
             "o",
             "r",
             None,
@@ -176,7 +182,7 @@ fn path_arguments_cannot_change_the_endpoint_or_query() {
         200,
         ISSUE,
     );
-    assert_eq!(github::issue("o/other", "r?page=9", 7).unwrap().number, 7);
+    assert_eq!(api::issue("o/other", "r?page=9", 7).unwrap().number, 7);
 }
 
 #[test]
@@ -193,7 +199,7 @@ fn rate_limit_errors_preserve_provider_timing_without_retrying_writes() {
             body: br#"{"message":"API rate limit exceeded"}"#.to_vec(),
         },
     );
-    let error = github::create_issue(
+    let error = api::create_issue(
         "o",
         "r",
         &NewIssue {
@@ -223,7 +229,7 @@ fn tool_dispatch_uses_typed_arguments_and_results() {
         RELEASE,
     );
     let out = test::call(
-        github::tools::berm_tool_latest_release,
+        tools::berm_tool_latest_release,
         br#"{"owner":"o","repo":"r"}"#,
     )
     .unwrap();

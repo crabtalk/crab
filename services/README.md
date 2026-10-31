@@ -6,6 +6,7 @@ Each directory is a member of the root Cargo workspace. A service builds both a 
 - [GitHub](github/README.md): repositories, issues, pull requests and releases.
 - [Upstash Redis](upstash/README.md): strings, expiry, counters, pipelines and transactions.
 - [PostHog](posthog/README.md): event capture, feature flags and HogQL queries.
+- [TinyFish](tinyfish/README.md): web, news and publication search, multi-URL extraction and asynchronous browser agents.
 - [OSV](osv/README.md): package vulnerabilities and advisory lookup.
 - [Release watch](release-watch/README.md): retained release and vulnerability observations.
 

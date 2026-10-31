@@ -1,4 +1,7 @@
-use crate::{BatchPage, PackageVersion, Page, Query};
+use crate::{
+    api,
+    types::{BatchPage, PackageVersion, Page, Query},
+};
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, serde_json::Value, tool};
 
@@ -10,7 +13,7 @@ pub fn query(
     /// Token from the preceding page; omit on the first request.
     page_token: Option<String>,
 ) -> Result<Page> {
-    crate::query(&package, page_token.as_deref())
+    api::query(&package, page_token.as_deref())
 }
 
 /// Query multiple packages. Each result has its own optional pagination token.
@@ -19,7 +22,7 @@ pub fn query_batch(
     /// Up to 1000 package queries, in result order.
     queries: Vec<Query>,
 ) -> Result<Vec<BatchPage>> {
-    crate::query_batch(&queries)
+    api::query_batch(&queries)
 }
 
 /// Read a full advisory, including affected ranges, references and provider metadata.
@@ -28,5 +31,5 @@ pub fn advisory(
     /// Case-sensitive OSV advisory identifier.
     id: String,
 ) -> Result<Value> {
-    crate::advisory(&id)
+    api::advisory(&id)
 }

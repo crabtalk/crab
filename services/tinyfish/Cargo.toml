@@ -1,0 +1,22 @@
+[package]
+name = "crab-tinyfish"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "TinyFish search, extraction and asynchronous browser-agent tools for berm services"
+readme = "README.md"
+
+[lib]
+name = "tinyfish"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+url.workspace = true
+base64.workspace = true

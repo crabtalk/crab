@@ -3,7 +3,10 @@ use berm_lang::{
     serde_json::{self, Value, json},
     test,
 };
-use upstash::Redis;
+use upstash::api::Redis;
+#[cfg(feature = "tools")]
+use upstash::tools;
+
 const URL: &str = "https://example.upstash.io";
 fn db() -> Redis {
     Redis::new(URL).unwrap()
@@ -158,7 +161,7 @@ fn tool_uses_deployment_endpoint_and_preserves_batch_results() {
     test::var("UPSTASH_REDIS_REST_URL", URL);
     respond("/pipeline", json!([{"result":null},{"result":1}]));
     let output = test::call(
-        upstash::tools::berm_tool_pipeline,
+        tools::berm_tool_pipeline,
         br#"{"commands":[["GET","k"],["INCR","n"]]}"#,
     )
     .unwrap();

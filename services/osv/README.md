@@ -20,13 +20,15 @@ osv = { package = "crab-osv", git = "https://github.com/crabtalk/crab", branch =
 ```
 
 ```rust,ignore
-let package = osv::PackageVersion {
+use osv::{api, types::PackageVersion};
+
+let package = PackageVersion {
     ecosystem: "crates.io".into(),
     name: "example".into(),
     version: "1.0.0".into(),
 };
-let page = osv::query(&package, None)?;
-let complete = osv::query_all(&package)?;
+let page = api::query(&package, None)?;
+let complete = api::query_all(&package)?;
 ```
 
 `query_all` deduplicates IDs and reads up to ten pages. Repeated tokens, provider errors or the page cap fail the call rather than returning an incomplete match set. Use explicit page reads for larger results. Linked services inherit the HTTP permission without exporting the standalone tools.

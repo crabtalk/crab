@@ -43,7 +43,7 @@ supabase = { package = "crabkit-supabase", path = "kits/supabase", version = "0.
 # crates-io
 anyhow = "1.0"
 axum = "0.8"
-base64 = "0.22"
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 bytesize = { version = "2.7", features = ["serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }

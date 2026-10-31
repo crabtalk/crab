@@ -1,6 +1,7 @@
 //! OAuth code exchange and the profile it authorizes. The consuming app declares
 //! GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET for github.com; repository tokens are not used.
-use crate::{User, api};
+
+use crate::{api, types::User};
 use alloc::{
     format,
     string::{String, ToString},
@@ -56,5 +57,5 @@ pub fn user(code: &str, redirect: &str) -> Result<User> {
         &[],
         &format!("Bearer {token}"),
     )?;
-    api::read(&profile)
+    profile.read("GitHub")
 }

@@ -3,7 +3,13 @@ use berm_lang::{
     serde_json::{self, Value, json},
     test,
 };
-use osv::{PackageVersion, Query};
+#[cfg(feature = "tools")]
+use osv::tools;
+use osv::{
+    api,
+    types::{PackageVersion, Query},
+};
+
 fn package() -> PackageVersion {
     PackageVersion {
         ecosystem: "crates.io".into(),
@@ -26,7 +32,7 @@ fn query_preserves_full_advisories_and_sends_exact_package_and_page() {
         "query",
         json!({"vulns":[{"id":"GHSA-1","modified":"2026-10-01T00:00:00Z","affected":[{"ranges":[{"events":[{"fixed":"2.0.0"}]}]}],"database_specific":{"severity":"HIGH"}}],"next_page_token":"next"}),
     );
-    let page = osv::query(&package(), Some("previous")).unwrap();
+    let page = api::query(&package(), Some("previous")).unwrap();
     assert_eq!(page.next_page_token.as_deref(), Some("next"));
     assert_eq!(page.vulns[0]["database_specific"]["severity"], "HIGH");
     let sent: Value = serde_json::from_slice(&test::fetched()[0].body).unwrap();
@@ -40,18 +46,18 @@ fn query_preserves_full_advisories_and_sends_exact_package_and_page() {
 #[test]
 fn empty_pages_and_complete_results_are_distinct_from_incomplete_results() {
     respond("query", json!({}));
-    assert!(osv::query_all(&package()).unwrap().is_empty());
+    assert!(api::query_all(&package()).unwrap().is_empty());
     respond("query", json!({"next_page_token":"next"}));
-    let page = osv::query(&package(), None).unwrap();
+    let page = api::query(&package(), None).unwrap();
     assert!(page.vulns.is_empty());
     assert!(page.next_page_token.is_some());
-    let error = osv::query_all(&package()).unwrap_err().message;
+    let error = api::query_all(&package()).unwrap_err().message;
     assert!(error.contains("repeated a pagination token"));
     respond(
         "query",
         json!({"vulns":[{"id":"B","modified":"t"},{"id":"A","modified":"t"},{"id":"A","modified":"t"}]}),
     );
-    let all = osv::query_all(&package()).unwrap();
+    let all = api::query_all(&package()).unwrap();
     assert_eq!(all.len(), 2);
     assert_eq!(all[0]["id"], "A");
 }
@@ -72,7 +78,7 @@ fn batch_preserves_order_empty_matches_and_independent_cursors() {
             page_token: Some("p1".into()),
         },
     ];
-    let pages = osv::query_batch(&queries).unwrap();
+    let pages = api::query_batch(&queries).unwrap();
     assert!(pages[0].vulns.is_empty());
     assert_eq!(pages[1].vulns[0].id, "GHSA-A");
     assert_eq!(pages[1].next_page_token.as_deref(), Some("p2"));
@@ -89,7 +95,7 @@ fn advisory_ids_are_encoded_as_one_path_segment() {
         200,
         br#"{"id":"ID/with?parts","modified":"t","withdrawn":"t2"}"#,
     );
-    assert_eq!(osv::advisory("ID/with?parts").unwrap()["withdrawn"], "t2");
+    assert_eq!(api::advisory("ID/with?parts").unwrap()["withdrawn"], "t2");
     assert!(test::fetched()[0].body.is_empty());
 }
 
@@ -102,11 +108,11 @@ fn malformed_results_and_provider_errors_are_not_empty_successes() {
         json!({"next_page_token":4}),
     ] {
         respond("query", body);
-        assert!(osv::query(&package(), None).is_err());
+        assert!(api::query(&package(), None).is_err());
     }
     respond("querybatch", json!({"results":[]}));
     assert!(
-        osv::query_batch(&[Query {
+        api::query_batch(&[Query {
             package: package(),
             page_token: None
         }])
@@ -121,7 +127,7 @@ fn malformed_results_and_provider_errors_are_not_empty_successes() {
             body: br#"{"message":"rate limit"}"#.to_vec(),
         },
     );
-    let error = osv::query(&package(), None).unwrap_err().message;
+    let error = api::query(&package(), None).unwrap_err().message;
     assert!(error.contains("429"));
     assert!(error.contains("retry-after=10"));
 }
@@ -131,7 +137,7 @@ fn malformed_results_and_provider_errors_are_not_empty_successes() {
 fn tool_dispatch_reads_structured_package_and_returns_structured_page() {
     respond("query", json!({}));
     let result = test::call(
-        osv::tools::berm_tool_query,
+        tools::berm_tool_query,
         br#"{"package":{"ecosystem":"PyPI","name":"example","version":"1"}}"#,
     )
     .unwrap();

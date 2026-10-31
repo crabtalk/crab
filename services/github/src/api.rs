@@ -1,14 +1,27 @@
-use crate::*;
+use crate::types::{
+    Comment, Issue, Issues, NewIssue, NewPullRequest, NewRelease, Page, PullRequest, PullRequests,
+    Release, Releases, Repository,
+};
 use alloc::{
-    format,
     string::{String, ToString},
     vec::Vec,
 };
 use berm_lang::{
-    Result, http,
+    Result,
+    http::{Client, Response},
     serde::{Serialize, de::DeserializeOwned},
     serde_json,
 };
+use url::Url;
+
+const API: &str = "https://api.github.com";
+const AUTHORIZATION: &str = "Bearer {secret:GITHUB_TOKEN}";
+const HEADERS: [(&str, &str); 4] = [
+    ("Accept", "application/vnd.github+json"),
+    ("X-GitHub-Api-Version", "2026-03-10"),
+    ("User-Agent", "crabtalk-github"),
+    ("Content-Type", "application/json"),
+];
 
 fn request(
     method: &str,
@@ -17,8 +30,8 @@ fn request(
     path: &[&str],
     query: &[(&str, String)],
     body: &[u8],
-) -> Result<http::Response> {
-    let mut url = url::Url::parse("https://api.github.com").expect("constant origin");
+) -> Result<Response> {
+    let mut url = Url::parse(API).expect("constant origin");
     url.path_segments_mut()
         .expect("HTTP URL")
         .extend(["repos", owner, repo])
@@ -27,52 +40,20 @@ fn request(
         url.query_pairs_mut()
             .extend_pairs(query.iter().map(|(k, v)| (*k, v.as_str())));
     }
-    fetch(method, url.as_str(), body, "Bearer {secret:GITHUB_TOKEN}")
+    fetch(method, url.as_str(), body, AUTHORIZATION)
 }
 
-pub(crate) fn fetch(
-    method: &str,
-    url: &str,
-    body: &[u8],
-    authorization: &str,
-) -> Result<http::Response> {
-    let response = http::fetch(
-        method,
-        url,
-        &[
-            ("Authorization", authorization),
-            ("Accept", "application/vnd.github+json"),
-            ("X-GitHub-Api-Version", "2026-03-10"),
-            ("User-Agent", "crabtalk-github"),
-            ("Content-Type", "application/json"),
-        ],
-        body,
-    )?;
-    if !response.is_success() {
-        let value = response.json::<serde_json::Value>().ok();
-        let message = value
-            .as_ref()
-            .and_then(|v| v["message"].as_str())
-            .unwrap_or("provider request failed");
-        let retry = response
-            .header("retry-after")
-            .map(|v| format!("; retry-after={v}"))
-            .unwrap_or_default();
-        let reset = response
-            .header("x-ratelimit-reset")
-            .map(|v| format!("; rate-limit-reset={v}"))
-            .unwrap_or_default();
-        return Err(format!("GitHub {}: {message}{retry}{reset}", response.status).into());
+pub(crate) fn fetch(method: &str, url: &str, body: &[u8], authorization: &str) -> Result<Response> {
+    let mut headers = Vec::from(HEADERS);
+    headers.push(("Authorization", authorization));
+    Client {
+        name: "GitHub",
+        headers: &headers,
     }
-    Ok(response)
-}
-pub(crate) fn read<T: DeserializeOwned>(response: &http::Response) -> Result<T> {
-    response
-        .json()
-        .map_err(|_| String::from("GitHub returned an unreadable response").into())
+    .request(method, url, body)
 }
 fn get<T: DeserializeOwned>(owner: &str, repo: &str, path: &[&str]) -> Result<T> {
-    read(&request("GET", owner, repo, path, &[], &[])?)
+    request("GET", owner, repo, path, &[], &[])?.read("GitHub")
 }
 fn post<T: DeserializeOwned>(
     owner: &str,
@@ -80,8 +61,8 @@ fn post<T: DeserializeOwned>(
     path: &[&str],
     body: &impl Serialize,
 ) -> Result<T> {
-    let body = serde_json::to_vec(body).map_err(|e| format!("GitHub request JSON: {e}"))?;
-    read(&request("POST", owner, repo, path, &[], &body)?)
+    let body = serde_json::to_vec(body)?;
+    request("POST", owner, repo, path, &[], &body)?.read("GitHub")
 }
 fn list<T: DeserializeOwned>(
     owner: &str,
@@ -107,12 +88,12 @@ fn list<T: DeserializeOwned>(
             if !relations.split(';').any(|rel| rel.trim() == "rel=\"next\"") {
                 return None;
             }
-            let url = url::Url::parse(target.strip_prefix('<')?).ok()?;
+            let url = Url::parse(target.strip_prefix('<')?).ok()?;
             url.query_pairs()
                 .find_map(|(key, value)| (key == "page").then(|| value.parse().ok()).flatten())
         })
     });
-    Ok((read(&response)?, next))
+    Ok((response.read("GitHub")?, next))
 }
 
 /// Read repository metadata.

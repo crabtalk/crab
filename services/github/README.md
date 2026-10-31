@@ -25,8 +25,10 @@ github = { package = "crab-github", git = "https://github.com/crabtalk/crab", br
 ```
 
 ```rust,ignore
-let release = github::latest_release("crabtalk", "crab")?;
-let page = github::releases("crabtalk", "crab", &github::Page::default())?;
+use github::{api, types::Page};
+
+let release = api::latest_release("crabtalk", "crab")?;
+let page = api::releases("crabtalk", "crab", &Page::default())?;
 ```
 
 Disabling the default `tools` feature links the Rust API without exporting this service's tools. The consuming deployment inherits the HTTP host and optional credential; it owns execution and decides its public tool surface.
