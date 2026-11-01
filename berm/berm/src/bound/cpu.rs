@@ -2,9 +2,10 @@
 //!
 //! Measured on the thread's own CPU clock across each poll of the invocation,
 //! less what nested invocations polled inside it spent, so a call is charged
-//! for its own work and not for a callee's. Enforced at each engine tick, so a
-//! guest can run up to one tick past its budget before it is stopped.
+//! for its own work and not for a callee's. Budgets are checked at engine ticks;
+//! clock resolution is platform-dependent.
 
+use cpu_time::ThreadTime;
 use std::{
     cell::Cell,
     future::Future,
@@ -16,6 +17,8 @@ use std::{
     task::{Context, Poll},
 };
 
+const IDLE: u64 = u64::MAX;
+
 thread_local! {
     /// CPU nanoseconds the invocations polled inside the current poll spent,
     /// theirs and their own callees' together.
@@ -24,23 +27,25 @@ thread_local! {
 
 /// Nanoseconds of CPU this thread has used.
 pub(crate) fn now() -> u64 {
-    let mut time = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: `time` is a valid timespec to write to, and the thread CPU clock
-    // exists on every target berm runs on.
-    unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut time) };
-    time.tv_sec as u64 * 1_000_000_000 + time.tv_nsec as u64
+    ThreadTime::now().as_duration().as_nanos() as u64
 }
 
 /// The CPU time one invocation has spent on its own.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Clock {
     /// Nanoseconds spent in the polls that have returned.
     spent: AtomicU64,
     /// The thread's CPU clock when the poll running now began.
     since: AtomicU64,
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self {
+            spent: AtomicU64::new(0),
+            since: AtomicU64::new(IDLE),
+        }
+    }
 }
 
 impl Clock {
@@ -49,7 +54,7 @@ impl Clock {
     pub(crate) fn spent(&self) -> u64 {
         let spent = self.spent.load(Ordering::Relaxed);
         match self.since.load(Ordering::Relaxed) {
-            0 => spent,
+            IDLE => spent,
             since => spent + now().saturating_sub(since).saturating_sub(NESTED.get()),
         }
     }
@@ -79,7 +84,7 @@ impl<F: Future> Future for Timed<F> {
         let poll = self.future.as_mut().poll(cx);
         let elapsed = now().saturating_sub(start);
         let own = elapsed.saturating_sub(NESTED.get());
-        self.clock.since.store(0, Ordering::Relaxed);
+        self.clock.since.store(IDLE, Ordering::Relaxed);
         self.clock.spent.fetch_add(own, Ordering::Relaxed);
         NESTED.set(outer + elapsed);
         poll

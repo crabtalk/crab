@@ -4,67 +4,50 @@
 [![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
 [![Docs](https://img.shields.io/badge/docs-crab.talk-blue)](https://crab.talk/docs)
 
-The agent for the CrabTalk platform: write a service, run it locally, deploy it to CrabTalk Cloud, and call it.
+Crab is the CLI and local host for CrabTalk. Build services, run them locally, and deploy them to CrabTalk Cloud.
+
+## Install
+
+macOS (Apple Silicon) and Linux:
 
 ```sh
-cargo install crab-agent
-crab login                     # CrabTalk Cloud; --email for a code by email
-crab new example && cd example
-crab dev -d                    # start the local host
-crab --context default deploy  # build and run it there
-crab deploy                    # or deploy it to Cloud
-crab call example echo '{"query":"hello"}'
+curl -fsSL https://crab.talk/install.sh | sh
 ```
 
-A service is a Rust library crate with a `crab.toml` beside its `Cargo.toml`. A function marked `#[tool]` is a tool, and its doc comment is what an agent reads when deciding to call it:
+Windows (PowerShell):
 
-```rust
-use berm_lang::{Result, tool};
-
-/// Echo the query back.
-#[tool]
-pub fn echo(query: String) -> Result<String> {
-    Ok(query)
-}
+```powershell
+irm https://crab.talk/install.ps1 | iex
 ```
 
-Who may call it, and what it costs, is its table in `crab.toml`:
+## Quick start
 
-```toml
-[tools.echo]
-access = "public"
+Writing services requires a Rust toolchain. From a new directory, create and run a service locally:
+
+```sh
+crab new example
+cd example
+crab --context default deploy
+crab --context default call example echo '{"query":"hello"}' --caller alice
 ```
 
-The docs are at [crab.talk/docs](https://crab.talk/docs/development/writing). The CLI, contexts and keys are in [crates/crab](crates/crab/README.md).
+The local host starts automatically. To deploy the same service to CrabTalk Cloud:
 
-## Services
+```sh
+crab login
+crab deploy
+```
 
-Open-source services deploy on their own or link into another service with `default-features = false`. The consuming deployment inherits credentials, HTTP permissions and migrations; it chooses its own exported tools. See [services](services/README.md).
+## Explore
 
-- [Resend](services/resend/README.md): send emails and read delivery status.
-- [GitHub](services/github/README.md): repositories, issues, pull requests and releases.
-- [Upstash Redis](services/upstash/README.md): strings, expiry, counters, pipelines and transactions.
-- [PostHog](services/posthog/README.md): events, feature flags and analytics queries.
-- [OSV](services/osv/README.md): package vulnerabilities and advisory lookup.
-- [Release watch](services/release-watch/README.md): retained release and vulnerability observations.
-
-## Libraries
-
-[crabkit](crates/crabkit/README.md) collects the kits crab provides, a feature each: `crabkit = { version = "0.1", features = ["auth"] }`. Linking a kit is using it.
-
-- [auth](kits/auth/README.md): GitHub and Google sign-in for a product's users.
-- [crawl](kits/crawl/README.md): an incremental crawler.
-- [lake](kits/lake/README.md): feeds, RSS and Atom.
-- [neon](kits/neon/README.md): Neon Postgres over HTTP.
-- [stripe](kits/stripe/README.md): Stripe subscriptions.
-- [supabase](kits/supabase/README.md): Supabase tables, functions and Storage.
-
-## Building
-
-Rust 2024 edition, POSIX only. `rustup target add wasm32-unknown-unknown`, then `cargo nextest run --workspace`. Services run on berm, the runtime in [berm/](berm/berm/README.md).
+- [Documentation](https://crab.talk/docs) — guides for writing and deploying services.
+- [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
+- [Services](services/README.md) — integrations to deploy or reuse.
+- [Libraries](crates/crabkit/README.md) — libraries to include in your services.
+- [Berm](berm/berm/README.md) — the runtime that runs services.
 
 ## License
 
-The runtime and the CLI that runs it — `berm`, `berm-host`, `berm-oci`, `berm-build` and `crab-agent` — are licensed under the [GNU Affero General Public License, version 3](LICENSE-AGPL).
+The runtime and CLI are [AGPL-3.0](LICENSE-AGPL).
 
-Everything else — `berm-lang`, `berm-codegen`, `berm-api`, `crabtalk-sdk`, `crabkit`, `crab-html` and the services and libraries — is licensed under the [Apache License, Version 2.0](LICENSE-APACHE). A service built with them is yours to license as you choose.
+SDKs, libraries, and services are [Apache-2.0](LICENSE-APACHE). Services you build are yours to license.

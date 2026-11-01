@@ -1,25 +1,39 @@
 # TinyFish
 
-Nine tools matching [treg's TinyFish coverage](https://github.com/superdesigndev/treg/blob/main/src/treg/catalog/tinyfish.yaml), implemented against [TinyFish's API documentation](https://docs.tinyfish.ai/):
+Search the web, news and academic publications, extract pages, or run an asynchronous browser agent using the deployment’s TinyFish account.
 
-| Tool | Catalog job |
-| --- | --- |
-| `search` | `web.search` |
-| `search_news` | `web.search.news` |
-| `search_publications` | `web.search.publications` |
-| `fetch` | `web.extract` |
-| `run` | `web.agent.run` |
-| `run_status` | `web.agent.run.status` |
-| `run_cancel` | `web.agent.run.cancel` |
-| `step_screenshot` | `web.agent.step.screenshot` |
-| `step_html` | `web.agent.step.html` |
+## Call
 
-Search retains pagination, domains, freshness, language, location, thumbnails and attached fetch options. Fetch accepts 1–10 URLs as Markdown, HTML or JSON, with selectors, links, metadata and conditional fetching. Inspect both `results` and `errors` for partial failures. Conditional fetches accept one URL; unchanged content can be null.
+With Crab signed in to Cloud, replace `owner/tinyfish` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-`run` submits once and returns a run ID. Poll `run_status` for completion or call `run_cancel`. Enable screenshots or HTML in `capture_config` before retrieving those artifacts. Failed or cancelled runs can still incur upstream charges for completed steps. Screenshots return base64 JPEG; HTML returns text.
+```sh
+crab call owner/tinyfish search '{"query":"Rust WebAssembly hosting"}'
+```
 
-From `services/tinyfish`, run `crab build`, then `crab deploy`. Set `TINYFISH_API_KEY` through the approval page, granted to `agent.tinyfish.ai`, `api.search.tinyfish.ai` and `api.fetch.tinyfish.ai`. Credentials remain host-managed. Keep the deployment private if only your agents should use your provider account. Publish the image to a public registry to offer deployable copies. No credentials or fixed resale price are included in the seed.
+Returns a page of search results. Use `search_news` or `search_publications` for those sources, `fetch` to extract URLs, and `run` for browser tasks.
 
-Each call makes one upstream request. Pagination and polling are explicit; provider errors and retry timing are preserved without automatic retries. With `default-features = false`, the crate exposes the same operations as a Rust library without standalone tool exports.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
-Scope excludes dedicated batch, monitor, wallet, profile, vault, synchronous automation, SSE, research-report, dataset and browser-session APIs. Requests are generated from TinyFish’s official OpenAPI 3.0 [search](https://agent.tinyfish.ai/v1/openapi/search), [fetch](https://agent.tinyfish.ai/v1/openapi/fetch) and [agent](https://agent.tinyfish.ai/v1/openapi/main) specs. `build.rs` downloads each spec into `OUT_DIR` and verifies its pinned SHA-256; the first build needs `curl` and network access. Upstream changes require reviewing and updating the digest. Generated bindings remain private; the existing Rust API and tool inputs are unchanged.
+## Deploy your own
+
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+
+```sh
+crab deploy --from owner/tinyfish
+```
+
+Set `TINYFISH_API_KEY` through credential setup. Access and usage charges depend on the connected TinyFish account and wallet.
+
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+
+## Usage notes
+
+`fetch` accepts 1–10 URLs and returns Markdown, HTML or JSON. Inspect both `results` and `errors` for partial failures. Conditional fetches accept one URL and may return null content when unchanged.
+
+`run` returns a run ID. Poll `run_status` explicitly or call `run_cancel`. Enable screenshots or HTML in `capture_config` before calling `step_screenshot` or `step_html`. Screenshots return base64 JPEG; HTML returns text.
+
+Failed or cancelled runs may still incur provider charges for completed steps. Calls make one upstream request, with explicit pagination and polling and no automatic retries.
+
+Dedicated batch, monitor, wallet, profile, vault, synchronous automation, SSE, research-report, dataset and browser-session APIs are not included.
+
+[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/tinyfish) · [Provider documentation](https://docs.tinyfish.ai/)

@@ -32,7 +32,10 @@ case "$arch" in
   *) err "no release for the $arch architecture" ;;
 esac
 case "$os" in
-  Darwin) target="$arch-apple-darwin" ;;
+  Darwin)
+    [ "$arch" = aarch64 ] || err "macOS releases require Apple Silicon (aarch64)"
+    target=aarch64-apple-darwin
+    ;;
   Linux) target="$arch-unknown-linux-gnu" ;;
   *) err "no release for $os; on Windows, run \`irm https://crab.talk/install.ps1 | iex\` in PowerShell" ;;
 esac
@@ -53,7 +56,7 @@ trap 'rm -rf "$tmp"' EXIT
 # `browser_download_url`.
 api="https://api.github.com/repos/$REPO/releases/latest"
 curl -fsSL "$api" -o "$tmp/release.json" || err "could not read $api"
-asset=$(awk -v name="crab-$target.tar.gz" '
+asset=$(awk -v name="crab-$target.tar.xz" '
   /"digest":/ { digest = $2 }
   /"browser_download_url":/ {
     url = $2
@@ -65,7 +68,7 @@ asset=$(awk -v name="crab-$target.tar.gz" '
     }
   }
 ' "$tmp/release.json")
-[ -n "$asset" ] || err "the latest release has no crab-$target.tar.gz"
+[ -n "$asset" ] || err "the latest release has no crab-$target.tar.xz"
 digest=${asset%% *}
 url=${asset#* }
 case "$digest" in
@@ -74,9 +77,9 @@ case "$digest" in
 esac
 
 echo "downloading $url" >&2
-curl -fL --progress-bar "$url" -o "$tmp/crab.tar.gz" || err "could not download $url"
-[ "$(sha256 "$tmp/crab.tar.gz")" = "$digest" ] || err "$url does not match the sha256 GitHub records for it"
-tar -xzf "$tmp/crab.tar.gz" -C "$tmp"
+curl -fL --progress-bar "$url" -o "$tmp/crab.tar.xz" || err "could not download $url"
+[ "$(sha256 "$tmp/crab.tar.xz")" = "$digest" ] || err "$url does not match the sha256 GitHub records for it"
+tar -xJf "$tmp/crab.tar.xz" -C "$tmp"
 mkdir -p "$INSTALL_DIR"
 mv "$tmp/crab" "$INSTALL_DIR/crab"
 chmod +x "$INSTALL_DIR/crab"

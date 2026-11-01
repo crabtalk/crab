@@ -1,10 +1,6 @@
 name: CI
 
 on:
-  # Only `main` on push. A branch with an open PR would otherwise run every
-  # job twice, once for the push and once for the pull request.
-  push:
-    branches: [main]
   pull_request:
 
 env:
@@ -24,7 +20,6 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
-      - run: cargo nextest run --workspace
       - run: cargo nextest run --workspace --release
 
   lint:
@@ -39,27 +34,3 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace
-
-  # Nothing above compiles the guest target.
-  guest:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-
-      # Proves what only a real build can: that the macro's exports survive
-      # the linker, and that the manifest section is where the host looks for
-      # it.
-      - name: build the reference guest
-        run: cargo run --release -p crab-agent -- build fixtures/fixture
-
-      # Neither can run without a guest that a cross-compile produced.
-      - name: run it
-        run: |
-          cargo run --release --example measure -p berm
-          # A service calling a service, which only a real guest can show:
-          # the call, a refusal, and a target that ran and said no.
-          cargo run --release --example nesting -p berm

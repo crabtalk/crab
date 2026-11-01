@@ -1,17 +1,19 @@
 # Auth
 
+Rust library for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+
 Sign-in for a product's users: a GitHub or Google login turned into a session the service keeps in its own database, for an account each of the user's identities signs in to.
 
 ## Using it
 
-Add the kit to your service's crate:
+Add the library to your service's crate:
 
 ```toml
 [dependencies]
 crabkit = { version = "0.1", features = ["auth"] }
 ```
 
-The kit is also the crate `crabkit-auth` on its own.
+The library is also the crate `crabkit-auth` on its own.
 
 Call it from your own tools:
 
@@ -43,7 +45,7 @@ access = "anonymous"
 
 GitHub code exchange and profile requests use the [GitHub service](../../services/github/README.md) as a library. Auth maps that profile to an identity and manages account linking and sessions. Its OAuth app credentials are distinct from the optional repository API token.
 
-The service declares nothing the kit already declares: auth and its dependencies declare the secrets, HTTP hosts and migrations, and they reach the service's manifest when the service links the kit. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the service's database.
+The service declares nothing the library already declares: auth and its dependencies declare the secrets, HTTP hosts and migrations, and they reach the service's manifest when the service links the library. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the service's database.
 
 - `Identity::github(code, redirect)` and `Identity::google(code, redirect, verifier)`: the identity an authorization code was granted for, `redirect` the `redirect_uri` it was asked for with and `verifier` the PKCE `code_verifier` when it was asked for with a challenge.
 - `identity.sign_in()`: a session of the account the identity signs in to, made on its first sign-in. Answers `Session {token, expires}`.
@@ -56,6 +58,6 @@ A session lasts 30 days. Its token is 32 bytes from `berm_lang::random` as 64 he
 
 ## Setting it up
 
-The kit declares its secrets as two credentials, `github` (a GitHub OAuth app) and `google` (a Google OAuth client of type Web application, with the scopes `openid email profile`), each with a guide to getting it. Both send the user back to the page on the product's site that takes the code: `crab secret request <service> --copy callback=<that page's URL>` asks a person to set them.
+The library declares its secrets as two credentials, `github` (a GitHub OAuth app) and `google` (a Google OAuth client of type Web application, with the scopes `openid email profile`), each with a guide to getting it. Both send the user back to the page on the product's site that takes the code: `crab secret request <service> --copy callback=<that page's URL>` asks a person to set them.
 
 The site checks the `state` it sent the user away with before calling.
