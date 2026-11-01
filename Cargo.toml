@@ -1,5 +1,5 @@
 [workspace]
-members = ["berm/*", "crates/*", "fixtures/*", "kits/*", "services/*"]
+members = ["berm/*", "crates/*", "fixtures/*", "services/*"]
 resolver = "3"
 
 [workspace.package]
@@ -34,12 +34,12 @@ berm-kit = { path = "fixtures/kit" }
 github = { package = "crab-github", path = "services/github", version = "0.1.1", default-features = false }
 
 # kits
-auth = { package = "crabkit-auth", path = "kits/auth", version = "0.1.1" }
-crawl = { package = "crabkit-crawl", path = "kits/crawl", version = "0.1.1" }
-lake = { package = "crabkit-lake", path = "kits/lake", version = "0.1.1" }
-neon = { package = "crabkit-neon", path = "kits/neon", version = "0.1.1" }
-stripe = { package = "crabkit-stripe", path = "kits/stripe", version = "0.1.1" }
-supabase = { package = "crabkit-supabase", path = "kits/supabase", version = "0.1.1" }
+auth = { package = "crabkit-auth", path = "services/auth", version = "0.1.1" }
+crawl = { package = "crabkit-crawl", path = "services/crawl", version = "0.1.1" }
+lake = { package = "crabkit-lake", path = "services/lake", version = "0.1.1" }
+neon = { package = "crabkit-neon", path = "services/neon", version = "0.1.1" }
+stripe = { package = "crabkit-stripe", path = "services/stripe", version = "0.1.1" }
+supabase = { package = "crabkit-supabase", path = "services/supabase", version = "0.1.1" }
 
 # crates-io
 anyhow = "1.0"

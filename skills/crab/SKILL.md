@@ -1,11 +1,11 @@
 ---
 name: crab
-description: Build a product's services on crab — deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `kits/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
+description: Build a product's services on crab — deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `services/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
 ---
 
 # Building on crab
 
-crab is the platform a product's services run on: the `crab` CLI (`crates/crab`), the berm runtime (`berm/`), and the kits (`kits/`). A product is a separate repository whose services are its own.
+crab is the platform a product's services run on: the `crab` CLI (`crates/crab`), the berm runtime (`berm/`), and the kits (`services/`). A product is a separate repository whose services are its own.
 
 ## Services belong to the product
 
@@ -65,7 +65,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |
 | Declaring and using secrets in code | https://crab.talk/docs/development/secrets |
 | An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
-| A kit's API and setup | `kits/<kit>/README.md` |
+| A kit's API and setup | `services/<kit>/README.md` |
 
 ## A local crab checkout
 
@@ -75,7 +75,7 @@ Read these before writing code. Paths are relative to the crab repository.
   [patch."https://github.com/crabtalk/crab"]
   berm-lang = { path = "../crab/berm/lang" }
   crabkit = { path = "../crab/crates/crabkit" }
-  crabkit-auth = { path = "../crab/kits/auth" }
+  crabkit-auth = { path = "../crab/services/auth" }
   ```
 
 - What a service needs from berm or a kit and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.

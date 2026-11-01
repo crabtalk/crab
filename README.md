@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
 [![Docs](https://img.shields.io/badge/docs-crab.talk-blue)](https://crab.talk/docs)
 
-The agent for the CrabTalk platform: build services, run them locally, and deploy them to CrabTalk Cloud.
+Crab is the CLI and local host for CrabTalk. Build services, run them locally, and deploy them to CrabTalk Cloud.
 
 ## Install
 

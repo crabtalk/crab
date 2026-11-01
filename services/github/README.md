@@ -41,4 +41,4 @@ Each operation makes one request. Errors preserve GitHub's status, message and s
 
 `github::oauth::user(code, redirect)` exchanges a login code and reads the authorized user's profile. It uses `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` declared by the consuming app, granted to `github.com`. The GitHub library declares both GitHub HTTP hosts. It does not use `GITHUB_TOKEN` for this flow or return the exchanged access token.
 
-The [auth library](../../kits/auth/README.md) uses this API and supplies OAuth credential setup, account linking and sessions. The application verifies OAuth state before passing the code. OAuth exchange is a Rust API, not an additional standalone tool.
+The [auth library](../../services/auth/README.md) uses this API and supplies OAuth credential setup, account linking and sessions. The application verifies OAuth state before passing the code. OAuth exchange is a Rust API, not an additional standalone tool.
