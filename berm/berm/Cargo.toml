@@ -14,9 +14,9 @@ anyhow.workspace = true
 berm-api.workspace = true
 berm-codegen.workspace = true
 berm-abi.workspace = true
+cpu-time.workspace = true
 futures-util.workspace = true
 hex = { workspace = true, features = ["std"] }
-libc.workspace = true
 parking_lot.workspace = true
 ring.workspace = true
 rusqlite = { workspace = true, optional = true }

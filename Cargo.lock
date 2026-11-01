@@ -246,9 +246,9 @@ dependencies = [
  "berm-api",
  "berm-codegen",
  "berm-rusqlite",
+ "cpu-time",
  "futures-util",
  "hex",
- "libc",
  "parking_lot",
  "ring",
  "serde",
@@ -843,6 +843,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0667304c32ea56cb4cd6d2d7c0cfe9a2f8041229db8c033af7f8d69492429def"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "cpu-time"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9e393a7668fe1fad3075085b86c781883000b4ede868f43627b34a87c8b7ded"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]

@@ -48,13 +48,13 @@ base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 bytesize = { version = "2.7", features = ["serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
+cpu-time = "1"
 croner = "4"
 dlmalloc = { version = "0.2", features = ["global"] }
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 heck = "0.5"
 hex = { version = "0.4", default-features = false }
 humantime-serde = "1"
-libc = "0.2"
 oas3 = { version = "0.22", default-features = false }
 openapiv3 = "2.2"
 object = { version = "0.40", features = ["wasm"] }

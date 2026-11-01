@@ -32,7 +32,10 @@ case "$arch" in
   *) err "no release for the $arch architecture" ;;
 esac
 case "$os" in
-  Darwin) target="$arch-apple-darwin" ;;
+  Darwin)
+    [ "$arch" = aarch64 ] || err "macOS releases require Apple Silicon (aarch64)"
+    target=aarch64-apple-darwin
+    ;;
   Linux) target="$arch-unknown-linux-gnu" ;;
   *) err "no release for $os; on Windows, run \`irm https://crab.talk/install.ps1 | iex\` in PowerShell" ;;
 esac
