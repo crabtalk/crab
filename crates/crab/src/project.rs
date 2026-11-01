@@ -40,8 +40,8 @@ pub fn prices(project: &Project) -> Result<BTreeMap<String, Price>> {
         .collect()
 }
 
-/// The services `names` names, or with none, those the workspace the current
-/// directory is in selects as `crab deploy` does. Fails when that is none.
+/// Explicit names, or the current directory's services selected as by
+/// `crab deploy`. Fails when none are selected.
 pub fn selected(names: &[String]) -> Result<Vec<String>> {
     if !names.is_empty() {
         return Ok(names.to_vec());

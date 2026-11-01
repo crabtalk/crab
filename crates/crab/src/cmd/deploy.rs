@@ -30,9 +30,10 @@ use tokio::fs::File as AsyncFile;
 /// Which services a deploy builds, and how.
 #[derive(Args)]
 pub struct Deploy {
+    /// Service directory or parent directory containing services.
     #[arg(default_value = ".")]
     pub dir: PathBuf,
-    /// This service of the workspace in place of the directory's; repeatable.
+    /// Select this service by name across the workspace; repeatable.
     #[arg(short = 'p', long = "package")]
     pub packages: Vec<String>,
     /// Push images to this registry, overriding the context, as `localhost:5001`.
@@ -93,9 +94,9 @@ pub fn run(
     let workspace = Workspace::read(dir, packages, publish_only)?;
     if workspace.services.is_empty() {
         bail!(
-            "no {} in the workspace at {} names a service to deploy",
+            "no {} at or below {} names a service to deploy",
             project::FILE,
-            workspace.root.display()
+            dir.display()
         );
     }
     if workspace.services.len() > 1 && pull {

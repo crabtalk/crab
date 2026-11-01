@@ -1,7 +1,7 @@
 //! The services of a cargo workspace.
 
 use crate::metadata::Metadata;
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use berm_api::project::{self, Project};
 use std::{
     env,
@@ -20,20 +20,26 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    /// The workspace `dir` is in, with the services a command names as cargo
-    /// names packages: those `named` by service name, anywhere in the
-    /// workspace; else the package whose `Cargo.toml` is in `dir` when its
-    /// project file names a service; else every member whose does and does not
-    /// say `deploy = false`.
+    /// Explicit names select across the Cargo workspace. Otherwise, select
+    /// the service in `dir`, or services beneath it. Directory groups omit
+    /// `deploy = false` unless `include_disabled` is set.
     pub fn read(dir: &Path, named: &[String], include_disabled: bool) -> Result<Self> {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
         let metadata = Metadata::read(&cargo, dir)?;
         let mut services = Vec::new();
         let mut skipped = Vec::new();
-        let here = dir.canonicalize().ok();
+        let here = dir
+            .canonicalize()
+            .with_context(|| format!("cannot resolve {}", dir.display()))?;
         let mut found = Vec::new();
         for package in &metadata.packages {
             let dir = package.manifest_path.dir();
+            let package_dir = dir
+                .canonicalize()
+                .with_context(|| format!("cannot resolve {}", dir.display()))?;
+            if named.is_empty() && !package_dir.starts_with(&here) {
+                continue;
+            }
             let path = dir.join(project::FILE);
             if !path.is_file() {
                 continue;
@@ -49,7 +55,7 @@ impl Workspace {
                 }
                 continue;
             }
-            if here.as_deref() == Some(dir) {
+            if here == package_dir {
                 return Ok(Self {
                     root: metadata.workspace_root.clone(),
                     target: metadata.target_directory.clone(),

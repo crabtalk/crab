@@ -93,8 +93,8 @@ enum Command {
         dir: PathBuf,
     },
     /// Build services and deploy each as its `crab.toml` names it, replacing
-    /// whatever holds the name, and serve it: the one whose directory this is,
-    /// or at a workspace's root every one not saying `deploy = false`. On
+    /// whatever holds the name, and serve it: the service in the selected
+    /// directory, or services beneath it not saying `deploy = false`. On
     /// Cloud it waits for a person to approve it at the link it prints last;
     /// `--yes` deploys without asking.
     Deploy(cmd::deploy::Deploy),
