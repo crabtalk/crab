@@ -3,12 +3,13 @@
 
 use anyhow::Result;
 use berm_api::host::{CallPage, Caller, DATABASE_SIZE};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn a_project_switches_together() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let deployed = host
         .deploy_set(
             "p",
@@ -30,7 +31,7 @@ async fn a_project_switches_together() -> Result<()> {
 #[tokio::test]
 async fn one_refused_refuses_the_project_and_none_switches() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let refused = host
         .deploy_set(
             "p",
@@ -48,7 +49,7 @@ async fn one_refused_refuses_the_project_and_none_switches() -> Result<()> {
 #[tokio::test]
 async fn a_project_spans_one_scope() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let refused = host
         .deploy_set(
             "p",
@@ -65,13 +66,14 @@ async fn a_project_spans_one_scope() -> Result<()> {
 #[tokio::test]
 async fn one_failing_to_switch_puts_those_switched_back() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("acct/one", &test::build("berm-bare")?).await?;
+    host.deploy("acct/one", &fixture::image("berm-bare")?)
+        .await?;
     let failed = host
         .deploy_set(
             "p",
             &[
-                ("acct/one", &test::build("berm-fixture")?, DATABASE_SIZE),
-                ("acct/two", &test::build("berm-broken")?, DATABASE_SIZE),
+                ("acct/one", &fixture::image("berm-fixture")?, DATABASE_SIZE),
+                ("acct/two", &fixture::image("berm-broken")?, DATABASE_SIZE),
             ],
         )
         .await
@@ -87,7 +89,7 @@ async fn one_failing_to_switch_puts_those_switched_back() -> Result<()> {
 #[tokio::test]
 async fn a_service_of_another_project_is_refused() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     host.deploy_set("foo", &[("acct/hn", &image, DATABASE_SIZE)])
         .await?;
     let refused = host
@@ -106,7 +108,7 @@ async fn a_service_of_another_project_is_refused() -> Result<()> {
 #[tokio::test]
 async fn a_project_names_its_services_and_their_calls() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     host.deploy_set(
         "p",
         &[
@@ -180,7 +182,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
 #[tokio::test]
 async fn a_partial_set_keeps_successes_when_another_is_refused() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let results = host
         .deploy_partial(&[("acct/one", &image, DATABASE_SIZE), ("acct/two", &image, 0)])
         .await?;
@@ -208,11 +210,12 @@ async fn a_partial_set_keeps_successes_when_another_is_refused() -> Result<()> {
 #[tokio::test]
 async fn a_partial_set_keeps_successes_when_another_fails_to_switch() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("acct/one", &test::build("berm-bare")?).await?;
+    host.deploy("acct/one", &fixture::image("berm-bare")?)
+        .await?;
     let results = host
         .deploy_partial(&[
-            ("acct/one", &test::build("berm-fixture")?, DATABASE_SIZE),
-            ("acct/two", &test::build("berm-broken")?, DATABASE_SIZE),
+            ("acct/one", &fixture::image("berm-fixture")?, DATABASE_SIZE),
+            ("acct/two", &fixture::image("berm-broken")?, DATABASE_SIZE),
         ])
         .await?;
     assert!(

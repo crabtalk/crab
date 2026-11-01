@@ -1,10 +1,10 @@
 use berm_api::Manifest;
+use berm_build::fixture;
 use berm_lang::{
     serde_json::{self, Value, json},
     test,
 };
 use berm_tikhub::tools;
-use std::{fs, path::Path};
 
 #[test]
 fn real_douyin_schema_generates_the_expected_http_request() {
@@ -31,8 +31,7 @@ fn real_douyin_schema_generates_the_expected_http_request() {
 
 #[test]
 fn all_supported_tikhub_operations_build_into_a_wasm_service() {
-    let image = berm_build::build(Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
-    let bytes = fs::read(&image).unwrap();
+    let bytes = fixture::image(env!("CARGO_PKG_NAME")).unwrap();
     let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
     assert_eq!(manifest.tools.len(), 1047);
     let fetch = manifest

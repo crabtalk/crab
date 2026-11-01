@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use berm_api::{Budget, Output};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use std::collections::HashMap;
 
 /// A page of linear memory.
@@ -14,7 +15,7 @@ const PAGE: u64 = 64 << 10;
 async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> {
     let host = TestHost::open(0).await?;
     let service = host
-        .deploy("acct/fixture", &test::build("berm-fixture")?)
+        .deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     host.call("acct/fixture", "carry", b"{}").await?;
     let memory = host.host.memory("acct");
@@ -28,7 +29,7 @@ async fn loaded_images_count_and_a_call_gives_back_what_it_held() -> Result<()> 
 async fn a_call_past_the_limit_fails() -> Result<()> {
     let host = TestHost::open(0).await?;
     let service = host
-        .deploy("acct/fixture", &test::build("berm-fixture")?)
+        .deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     host.host
         .limit(HashMap::from([("acct".to_owned(), service.bytes + PAGE)]));
@@ -47,7 +48,7 @@ async fn a_call_past_the_limit_fails() -> Result<()> {
 #[tokio::test]
 async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let bytes = host.deploy("acct/fixture", &image).await?.bytes;
     host.host
         .limit(HashMap::from([("acct".to_owned(), bytes + PAGE)]));
@@ -78,7 +79,7 @@ async fn holding(memory: u64) -> Result<TestHost> {
         },
     )
     .await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
     Ok(host)
 }
@@ -127,7 +128,10 @@ async fn a_budget_past_the_hosts_most_is_refused() -> Result<()> {
         },
     )
     .await?;
-    let Err(refused) = host.deploy("fixture", &test::build("berm-fixture")?).await else {
+    let Err(refused) = host
+        .deploy("fixture", &fixture::image("berm-fixture")?)
+        .await
+    else {
         panic!("echo's budget of 16 MiB is past the host's 8 MiB");
     };
     assert!(
@@ -144,7 +148,7 @@ async fn a_budget_past_the_hosts_most_is_refused() -> Result<()> {
 #[tokio::test]
 async fn a_call_lowers_its_memory_once_and_is_metered_the_lower_after() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
     let kept = host
         .call("fixture", "lowered", br#"{"memory":0,"rounds":20000000}"#)

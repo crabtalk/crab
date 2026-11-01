@@ -1,11 +1,10 @@
 #![cfg(feature = "tools")]
 use berm_api::Manifest;
-use std::{fs, path::Path};
+use berm_build::fixture;
 
 #[test]
 fn image_contains_the_complete_service_scope_and_imported_constraints() {
-    let image = berm_build::build(Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
-    let bytes = fs::read(image).unwrap();
+    let bytes = fixture::image(env!("CARGO_PKG_NAME")).unwrap();
     let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
     assert_eq!(manifest.tools.len(), 184);
     let company = manifest

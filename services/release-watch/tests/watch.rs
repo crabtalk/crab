@@ -1,6 +1,7 @@
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use serde_json::{Value, json};
 const GH: &str = "https://api.github.com/repos/example/project/releases?per_page=30&page=1";
 const OSV: &str = "https://api.osv.dev/v1/query";
@@ -22,7 +23,7 @@ fn arrange(host: &TestHost, body: &str) {
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(10_000).await?;
     let service = host
-        .deploy("watch", &test::build("crab-release-watch")?)
+        .deploy("watch", &fixture::image("crab-release-watch")?)
         .await?;
     assert_eq!(service.manifest.tools.len(), 6);
     arrange(&host, "Release notes");
@@ -62,7 +63,7 @@ async fn baseline_changes_pagination_and_redeployment_keep_history() -> Result<(
     let second = history(&host, first["next_cursor"].as_u64().unwrap(), 1).await?;
     assert_eq!(second["items"][0]["kind"], "changed");
     assert_eq!(second["has_more"], false);
-    host.deploy("watch", &test::build("crab-release-watch")?)
+    host.deploy("watch", &fixture::image("crab-release-watch")?)
         .await?;
     assert_eq!(
         history(&host, 0, 100).await?["items"]

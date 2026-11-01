@@ -3,7 +3,8 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost, User};
+use berm_build::fixture;
+use berm_host::test::{TestHost, User};
 use serde_json::{Value, json};
 
 const PRICES: &str = "https://api.stripe.com/v1/prices?lookup_keys%5B%5D=pro&active=true";
@@ -14,7 +15,7 @@ const SUBSCRIPTION: &str = "https://api.stripe.com/v1/subscriptions/sub_1";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("billing", &test::build("berm-billing")?)
+    host.deploy("billing", &fixture::image("berm-billing")?)
         .await?;
     host.grant("billing", "STRIPE_SECRET_KEY", "api.stripe.com", "rk_test");
     host.arrange(

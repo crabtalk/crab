@@ -1,0 +1,179 @@
+experimental = ["setup-scripts"]
+nextest-version = "0.9.98"
+
+# Build packages separately to preserve each service's linked features.
+
+[scripts.setup.berm-fixture]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-fixture"]
+
+[scripts.setup.berm-bare]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-bare"]
+
+[scripts.setup.berm-broken]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-broken"]
+
+[scripts.setup.berm-feed]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-feed"]
+
+[scripts.setup.berm-account]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-account"]
+
+[scripts.setup.berm-billing]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-billing"]
+
+[scripts.setup.berm-keeper]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-keeper"]
+
+[scripts.setup.berm-site]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-site"]
+
+[scripts.setup.crab-release-watch]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-release-watch"]
+
+[scripts.setup.crab-pdl]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-pdl"]
+
+[scripts.setup.crab-tinyfish]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-tinyfish"]
+
+[scripts.setup.crab-companyenrich]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-companyenrich"]
+
+[scripts.setup.crab-dataforseo]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-dataforseo"]
+
+[scripts.setup.crab-anyapi]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-anyapi"]
+
+[scripts.setup.crab-litescrape]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-litescrape"]
+
+[scripts.setup.crab-contextdev]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-contextdev"]
+
+[scripts.setup.crab-firecrawl]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-firecrawl"]
+
+[scripts.setup.berm-tikhub]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-tikhub"]
+
+[scripts.setup.berm-openapi]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-openapi"]
+
+[scripts.setup.crab-resend]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-resend"]
+
+[scripts.setup.crab-github]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-github"]
+
+[scripts.setup.crab-upstash]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-upstash"]
+
+[scripts.setup.crab-posthog]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-posthog"]
+
+[scripts.setup.crab-osv]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-osv"]
+
+[scripts.setup.berm-linked-services]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-linked-services"]
+
+[[profile.default.scripts]]
+filter = '(package(=berm-fixture) & !binary(=old) & !binary(=tools)) | (package(=berm-host) & (binary(=memory) | binary(=meters) | (binary(=records) & !test(=a_crons_last_run_outlives_its_deletion)))) | (package(=crab-agent) & (binary(=mcp) | (binary(=replay) & test(=built_replays_accept_a_new_image_but_keep_call_exit_codes))))'
+setup = "berm-fixture"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-bare) | (package(=berm-fixture) & binary(=set))'
+setup = "berm-bare"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-fixture) & binary(=set)'
+setup = "berm-broken"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-feed) | (package(=berm-host) & binary(=records) & test(=a_crons_last_run_outlives_its_deletion))'
+setup = "berm-feed"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-account)'
+setup = "berm-account"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-billing)'
+setup = "berm-billing"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-keeper)'
+setup = "berm-keeper"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-site)'
+setup = "berm-site"
+
+[[profile.default.scripts]]
+filter = '(package(=crab-release-watch)) | (package(=berm-build) & binary(=services))'
+setup = "crab-release-watch"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-pdl) & binary(=wasm) & test(=image_exports_active_tools_and_full_query_constraints)'
+setup = "crab-pdl"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-tinyfish) & binary(=wasm) & test(=image_keeps_the_nine_tool_names_and_existing_input_shapes)'
+setup = "crab-tinyfish"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-companyenrich) & binary(=wasm) & test(=image_exports_the_complete_scope_and_upstream_input_constraints)'
+setup = "crab-companyenrich"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-dataforseo) & binary(=wasm) & test(=image_exports_the_verified_scope_and_array_task_schemas)'
+setup = "crab-dataforseo"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-anyapi) & binary(=wasm) & test(=image_contains_the_complete_service_scope_and_imported_constraints)'
+setup = "crab-anyapi"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-litescrape) & binary(=wasm) & test(=image_contains_the_scoped_tools_and_nested_browser_constraints)'
+setup = "crab-litescrape"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-contextdev) & binary(=wasm) & test(=image_exports_seven_tools_with_lookup_variants_and_recursive_parse_rules)'
+setup = "crab-contextdev"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-firecrawl) & binary(=wasm) & test(=image_exports_only_the_seven_bounded_tools)'
+setup = "crab-firecrawl"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-tikhub) & test(=all_supported_tikhub_operations_build_into_a_wasm_service)'
+setup = "berm-tikhub"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-openapi) & binary(=wasm)'
+setup = "berm-openapi"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-build) & binary(=services)'
+setup = "crab-resend"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-build) & binary(=services)'
+setup = "crab-github"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-build) & binary(=services)'
+setup = "crab-upstash"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-build) & binary(=services)'
+setup = "crab-posthog"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-build) & binary(=services)'
+setup = "crab-osv"
+
+[[profile.default.scripts]]
+filter = 'package(=berm-build) & binary(=services)'
+setup = "berm-linked-services"

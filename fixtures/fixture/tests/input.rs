@@ -6,12 +6,13 @@ use berm_api::{
     digest,
     host::{CallPage, Caller, Outcome, User},
 };
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     host.deploy("acct/fixture", &image).await?;
     let caller = Caller {
         id: "acct".to_owned(),

@@ -1,28 +1,26 @@
 //! Deployable service images and their use as linked dependencies.
 use berm_api::Manifest;
-use std::{fs, path::Path};
+use berm_build::fixture;
 
-fn build(path: &str) -> Manifest {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let image = berm_build::build(&root.join(path), None).unwrap();
-    Manifest::try_from(fs::read(image).unwrap().as_slice()).unwrap()
+fn manifest(package: &str) -> Manifest {
+    Manifest::try_from(fixture::image(package).unwrap().as_slice()).unwrap()
 }
 
 #[test]
 fn provider_services_build_standalone_and_link_without_exporting_dependency_tools() {
-    let resend = build("services/resend");
+    let resend = manifest("crab-resend");
     assert_eq!(resend.tools.len(), 3);
     assert_eq!(resend.buffer, 1048576);
     assert_eq!(resend.deps.secrets, ["RESEND_API_KEY"]);
     assert!(!resend.deps.credentials["resend"].optional);
-    let github = build("services/github");
+    let github = manifest("crab-github");
     assert_eq!(github.tools.len(), 11);
     assert!(github.deps.credentials["github_api"].optional);
-    let upstash = build("services/upstash");
+    let upstash = manifest("crab-upstash");
     assert_eq!(upstash.tools.len(), 8);
     assert!(upstash.deps.vars.contains_key("UPSTASH_REDIS_REST_URL"));
     assert!(!upstash.deps.credentials["upstash_redis"].optional);
-    let posthog = build("services/posthog");
+    let posthog = manifest("crab-posthog");
     assert_eq!(posthog.tools.len(), 4);
     assert_eq!(posthog.deps.vars["POSTHOG_REGION"].default, "us");
     assert!(posthog.deps.credentials["posthog_project"].optional);
@@ -33,14 +31,14 @@ fn provider_services_build_standalone_and_link_without_exporting_dependency_tool
         schema["properties"]["event"]["properties"]["properties"]["additionalProperties"],
         serde_json::json!({})
     );
-    let osv = build("services/osv");
+    let osv = manifest("crab-osv");
     assert_eq!(osv.tools.len(), 3);
     assert!(osv.deps.secrets.is_empty());
-    let watch = build("services/release-watch");
+    let watch = manifest("crab-release-watch");
     assert_eq!(watch.tools.len(), 6);
     assert!(watch.keeps_database());
     assert!(watch.tools.iter().any(|t| t.name == "tick" && t.cron));
-    let linked = build("fixtures/linked-services");
+    let linked = manifest("berm-linked-services");
     assert_eq!(
         linked
             .tools

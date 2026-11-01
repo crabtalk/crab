@@ -1,12 +1,10 @@
 use berm_api::Manifest;
-use std::{fs, path::Path};
+use berm_build::fixture;
 use wasmparser::{Parser, Payload};
 
 #[test]
 fn generated_service_builds_with_tool_exports_and_imported_schemas() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let path = berm_build::build(&root.join("fixtures/openapi"), None).unwrap();
-    let bytes = fs::read(path).unwrap();
+    let bytes = fixture::image("berm-openapi").unwrap();
     let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
     assert_eq!(manifest.tools.len(), 4);
     let fetch = manifest

@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use berm_api::host::{CallPage, Caller};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 const FIXTURE: &str = "acct/fixture";
 
@@ -38,7 +39,8 @@ fn page(tool: Option<&str>) -> CallPage {
 
 async fn fixture() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy(FIXTURE, &test::build("berm-fixture")?).await?;
+    host.deploy(FIXTURE, &fixture::image("berm-fixture")?)
+        .await?;
     Ok(host)
 }
 

@@ -6,7 +6,8 @@ use berm_api::{
     Output, digest,
     host::{self, Deploy},
 };
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use std::collections::BTreeMap;
 
 mod common;
@@ -74,7 +75,7 @@ async fn a_var_the_manifest_does_not_declare_is_refused() -> Result<()> {
 #[tokio::test]
 async fn a_deploy_sets_the_vars_it_names_and_keeps_the_rest() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     host.deploy("acct/fixture", &image).await?;
     let redeploy = |vars: BTreeMap<String, String>| Deploy {
         reference: "test/acct/fixture".to_owned(),

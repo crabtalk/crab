@@ -271,6 +271,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "crabkit-auth",
@@ -305,6 +306,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "tokio",
@@ -316,6 +318,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "crabkit-stripe",
@@ -360,6 +363,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "crabkit-lake",
@@ -374,6 +378,7 @@ dependencies = [
  "anyhow",
  "berm",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "hex",
@@ -410,6 +415,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-kit",
  "berm-lang",
@@ -500,6 +506,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "crab-html",
@@ -1042,6 +1049,7 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "berm-api",
+ "berm-build",
  "berm-host",
  "berm-lang",
  "crab-github",

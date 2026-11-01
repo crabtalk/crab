@@ -10,7 +10,8 @@
 //! tick's first sharing its sitemap bytes.
 
 use anyhow::Result;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use serde_json::{Value, json};
 
 /// 2026-10-12T00:00:00Z.
@@ -52,7 +53,7 @@ const COMPARE: &str = r#"<html><head><meta property="og:title" content="Example 
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("site", &test::build("berm-site")?).await?;
+    host.deploy("site", &fixture::image("berm-site")?).await?;
     Ok(host)
 }
 

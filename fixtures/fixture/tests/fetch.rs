@@ -2,13 +2,14 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 const URL: &str = "http://127.0.0.1/token";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
     host.arrange("POST", URL, 200, "ok");
     Ok(host)

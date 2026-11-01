@@ -27,6 +27,7 @@ use std::{
 
 pub use workspace::Workspace;
 
+pub mod fixture;
 pub mod source;
 
 mod artifact;

@@ -1,13 +1,13 @@
 #![cfg(feature = "tools")]
 use berm_api::Manifest;
+use berm_build::fixture;
 use berm_lang::{serde_json, test};
 use dataforseo::tools;
-use std::{fs, path::Path};
 
 #[test]
 fn image_exports_the_verified_scope_and_array_task_schemas() {
-    let image = berm_build::build(Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
-    let manifest = Manifest::try_from(fs::read(image).unwrap().as_slice()).unwrap();
+    let bytes = fixture::image(env!("CARGO_PKG_NAME")).unwrap();
+    let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
     assert_eq!(manifest.tools.len(), 240);
     assert!(
         manifest

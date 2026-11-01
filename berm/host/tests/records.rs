@@ -7,7 +7,8 @@ use berm_api::{
     Output,
     host::{CallPage, Caller, RecordedLog, Records, RecordsPage},
 };
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 const FIXTURE: &str = "acct/fixture";
 
@@ -41,7 +42,8 @@ fn page() -> CallPage {
 
 async fn fixture() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy(FIXTURE, &test::build("berm-fixture")?).await?;
+    host.deploy(FIXTURE, &fixture::image("berm-fixture")?)
+        .await?;
     Ok(host)
 }
 
@@ -176,7 +178,7 @@ async fn a_failed_calls_replay_outlives_its_deletion() -> Result<()> {
 async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
     const FEED: &str = "http://127.0.0.1/feed.xml";
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed")?).await?;
+    host.deploy("feed", &fixture::image("berm-feed")?).await?;
     host.arrange(
         "GET",
         FEED,

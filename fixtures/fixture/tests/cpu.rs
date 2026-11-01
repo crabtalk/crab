@@ -3,14 +3,15 @@
 use anyhow::Result;
 use berm::{Berm, Calls, Callsite, Config, Engine, Meters, Syscall, abi, chain, tape::Taping};
 use berm_api::{Budget, Output};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use std::{sync::Arc, thread, time::Duration};
 use tokio::runtime::Builder;
 
 #[tokio::test]
 async fn a_call_is_metered_the_cpu_it_spent() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
 
     let short = host.call("fixture", "spin", br#"{"rounds":1}"#).await?;
@@ -37,7 +38,7 @@ async fn a_call_past_its_cpu_budget_is_stopped_on_a_fresh_thread() -> Result<()>
         },
     )
     .await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
 
     let ran = thread::spawn(move || -> Result<_> {
@@ -58,7 +59,7 @@ async fn a_call_past_its_cpu_budget_is_stopped_on_a_fresh_thread() -> Result<()>
 
 #[tokio::test]
 async fn time_asleep_inside_a_host_call_is_not_charged_as_cpu() -> Result<()> {
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let engine = Engine::new(&Config::default())?;
     let get = Syscall {
         name: abi::GET.to_owned(),

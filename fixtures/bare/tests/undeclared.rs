@@ -2,12 +2,13 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn a_fetch_is_refused_without_the_declaration() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("bare", &test::build("berm-bare")?).await?;
+    host.deploy("bare", &fixture::image("berm-bare")?).await?;
     let Output::Failed(failure) = host.call("bare", "fetch", b"{}").await?.result else {
         panic!("fetch is refused");
     };
@@ -21,7 +22,7 @@ async fn a_fetch_is_refused_without_the_declaration() -> Result<()> {
 #[tokio::test]
 async fn vouching_is_refused_without_the_declaration() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("bare", &test::build("berm-bare")?).await?;
+    host.deploy("bare", &fixture::image("berm-bare")?).await?;
     let Output::Failed(failure) = host.call("bare", "vouch", b"{}").await?.result else {
         panic!("vouch is refused");
     };

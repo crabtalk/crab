@@ -3,7 +3,8 @@
 
 use anyhow::Result;
 use berm_api::host::{CallPage, Caller};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 fn page(service: Option<&str>, before: Option<u64>) -> CallPage {
     CallPage {
@@ -23,7 +24,7 @@ fn page(service: Option<&str>, before: Option<u64>) -> CallPage {
 #[tokio::test]
 async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     for service in ["acct/fixture", "acct/inner", "other/fixture"] {
         host.deploy(service, &image).await?;
     }
@@ -75,7 +76,7 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
 #[tokio::test]
 async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("acct/fixture", &test::build("berm-fixture")?)
+    host.deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     let caller = Caller {
         id: "acct".to_owned(),
@@ -128,7 +129,7 @@ async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
 #[tokio::test]
 async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     for service in ["acct/fixture", "acct/inner", "other/fixture"] {
         host.deploy(service, &image).await?;
     }

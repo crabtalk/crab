@@ -3,12 +3,13 @@
 
 use anyhow::Result;
 use berm_api::host::{CallPage, Caller, Outcome};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn a_run_keeps_the_calls_it_made() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     for service in ["acct/fixture", "acct/inner"] {
         host.deploy(service, &image).await?;
     }

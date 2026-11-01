@@ -94,7 +94,8 @@ Read these before writing code. Paths are relative to the crab repository.
   crabkit-auth = { path = "../crab/services/auth" }
   ```
 
-- Run Rust tests with `cargo nextest run`; workspace CI uses `cargo nextest run --workspace --release`. Tests belong in each crate's `tests/` directory.
+- Run Rust tests with `cargo nextest run`; the Crab workspace requires nextest 0.9.98 or newer, and its CI uses `cargo nextest run --workspace --release`. Tests belong in each crate's `tests/` directory.
+- Workspace Wasm behavior tests read `berm_build::fixture::image(package)`. Register each image and its consuming tests in `.config/nextest.toml`; setup scripts build selected images before tests run. Only tests of the builder or CLI build behavior should compile inside a test.
 - Update affected READMEs, examples, website guides and this skill alongside behavior or layout changes.
 - What a service needs from berm or a library and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.
 - To check a fix against a failed call's tape, run `crab replay <service> <id> --build` in the service crate. It builds locally, prints both digests, and reaches no live services. `--build` and `--on` exclude each other.

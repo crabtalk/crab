@@ -3,12 +3,13 @@
 
 use anyhow::Result;
 use berm_api::Budget;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn a_budget_is_published_in_the_terms() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
     let terms = host.host.terms("fixture")?;
     assert_eq!(

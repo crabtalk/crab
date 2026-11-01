@@ -1,12 +1,11 @@
 #![cfg(feature = "tools")]
 use berm_api::Manifest;
+use berm_build::fixture;
 use berm_lang::serde_json;
-use std::{fs, path::Path};
 
 #[test]
 fn image_contains_the_scoped_tools_and_nested_browser_constraints() {
-    let image = berm_build::build(Path::new(env!("CARGO_MANIFEST_DIR")), None).unwrap();
-    let bytes = fs::read(image).unwrap();
+    let bytes = fixture::image(env!("CARGO_PKG_NAME")).unwrap();
     let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
     assert_eq!(manifest.tools.len(), 38);
     assert!(manifest.tools.iter().any(|tool| tool.name == "search_news"));

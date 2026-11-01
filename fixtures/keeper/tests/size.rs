@@ -5,11 +5,12 @@
 
 use anyhow::Result;
 use berm_api::host::{DATABASE_SIZE, MIN_DATABASE_SIZE};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn a_size_under_the_floor_is_refused() -> Result<()> {
-    let image = test::build("berm-keeper")?;
+    let image = fixture::image("berm-keeper")?;
     let host = TestHost::open(0).await?;
     let error = host
         .sized("keeper", &image, MIN_DATABASE_SIZE - 1)
@@ -26,7 +27,7 @@ async fn a_size_under_the_floor_is_refused() -> Result<()> {
 
 #[tokio::test]
 async fn a_refused_deploy_leaves_the_size_as_it_was() -> Result<()> {
-    let image = test::build("berm-keeper")?;
+    let image = fixture::image("berm-keeper")?;
     let host = TestHost::open(0).await?;
     host.deploy("keeper", &image).await?;
     let (applied, changed) = (
