@@ -3,7 +3,7 @@
 use crate::host::Node;
 use axum::http::StatusCode;
 use berm_api::{
-    Break, Manifest, Output, digest,
+    Break, Manifest, digest,
     host::{self, Deploy},
 };
 use berm_host::{Denied, Images, Installed, deny};
@@ -150,12 +150,6 @@ impl Node {
             true => self.host.start(name).await?,
             false => self.host.stop(name).await?,
         })
-    }
-
-    /// Run one public tool with no caller.
-    pub async fn call(&self, name: &str, tool: &str, args: Vec<u8>) -> Result<Output, Denied> {
-        let (_, output) = self.host.call(name, None, tool, args, false).await?;
-        Ok(output)
     }
 }
 

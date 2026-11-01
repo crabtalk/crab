@@ -4,7 +4,7 @@
 //! one; results and events are read by those callers from the new service.
 //! Fields a reader does not know are ignored.
 
-use crate::{EventSpec, Manifest, ToolSpec};
+use crate::{EventSpec, Manifest, ToolSpec, schema};
 use serde_json::Value;
 
 /// One way the next manifest breaks a caller of this one.
@@ -111,6 +111,13 @@ fn event(old: &EventSpec, new: &EventSpec, found: &mut Vec<String>) {
 
 /// Whether what `new` reads still takes everything callers wrote against `old`.
 fn accepts(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
+    let old_inner = schema::nullable(old);
+    let new_inner = schema::nullable(new);
+    if old_inner.is_some() && new_inner.is_none() {
+        found.push(format!("{at} no longer takes null"));
+    }
+    let old = old_inner.unwrap_or(old);
+    let new = new_inner.unwrap_or(new);
     if !same_type(at, old, new, found) {
         return;
     }
@@ -137,6 +144,13 @@ fn accepts(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
 
 /// Whether what `new` writes is still read by callers built against `old`.
 fn writes(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
+    let old_inner = schema::nullable(old);
+    let new_inner = schema::nullable(new);
+    if old_inner.is_none() && new_inner.is_some() {
+        found.push(format!("{at} may now be null"));
+    }
+    let old = old_inner.unwrap_or(old);
+    let new = new_inner.unwrap_or(new);
     if !same_type(at, old, new, found) {
         return;
     }

@@ -68,6 +68,7 @@ impl Node {
             .with_state(node)
             .nest(&format!("/services/{LOCAL}/{{name}}"), service)
             .route_service("/mcp", mcp)
+            .route_layer(middleware::from_fn(caller))
     }
 }
 
@@ -77,13 +78,13 @@ struct Name {
     name: String,
 }
 
-/// Name the service a request is for, and the caller it is made as, from
-/// [`host::CALLER`], unverified.
-async fn named(
-    Path(Name { name }): Path<Name>,
-    mut request: Request,
-    next: Next,
-) -> Result<Response, Denied> {
+async fn named(Path(Name { name }): Path<Name>, mut request: Request, next: Next) -> Response {
+    request.extensions_mut().insert(Named(name));
+    next.run(request).await
+}
+
+/// [`host::CALLER`] is an unverified local identity, including on MCP requests.
+async fn caller(mut request: Request, next: Next) -> Result<Response, Denied> {
     if let Some(value) = request.headers().get(host::CALLER) {
         let caller: host::Caller = serde_json::from_slice(value.as_bytes()).map_err(|e| {
             deny(
@@ -93,7 +94,6 @@ async fn named(
         })?;
         request.extensions_mut().insert(caller);
     }
-    request.extensions_mut().insert(Named(name));
     Ok(next.run(request).await)
 }
 

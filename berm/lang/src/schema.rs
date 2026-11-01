@@ -33,7 +33,7 @@ pub enum Shape {
     Map {
         values: &'static Shape,
     },
-    /// May be absent: left out of its object's `required`.
+    /// Nullable as a value; omitted from an object's `required` as a field.
     Optional {
         inner: &'static Shape,
     },
@@ -144,7 +144,11 @@ const fn shape_into(sink: &mut Sink, shape: &Shape, description: &str) {
             sink.put(json);
             sink.put("]");
         }
-        Shape::Optional { inner } => return shape_into(sink, inner, description),
+        Shape::Optional { inner } => {
+            sink.put(r#"{"anyOf":["#);
+            shape_into(sink, inner, "");
+            sink.put(r#",{"type":"null"}]"#);
+        }
         Shape::String => sink.put(r#"{"type":"string""#),
         Shape::Boolean => sink.put(r#"{"type":"boolean""#),
         Shape::Number => sink.put(r#"{"type":"number""#),
@@ -172,7 +176,11 @@ const fn shape_into(sink: &mut Sink, shape: &Shape, description: &str) {
                 }
                 sink.quoted(fields[at].name);
                 sink.put(":");
-                shape_into(sink, fields[at].shape, fields[at].description);
+                let shape = match fields[at].shape {
+                    Shape::Optional { inner } => inner,
+                    shape => shape,
+                };
+                shape_into(sink, shape, fields[at].description);
                 at += 1;
             }
             sink.put(r#"},"required":["#);

@@ -1,0 +1,30 @@
+{
+  "name": "nullable",
+  "tools": [
+    {
+      "name": "recall",
+      "parameters": {"type": "object"},
+      "returns": {"anyOf": [
+        {"type": "object", "title": "Entry", "properties": {
+          "key": {"type": "string"},
+          "note": {"type": "string"}
+        }, "required": ["key"]},
+        {"type": "null"}
+      ]}
+    },
+    {
+      "name": "search",
+      "parameters": {"type": "object"},
+      "returns": {"type": "array", "items": {"anyOf": [
+        {"type": "integer"}, {"type": "null"}
+      ]}}
+    },
+    {
+      "name": "entries",
+      "parameters": {"type": "object"},
+      "returns": {"type": "object", "additionalProperties": {"anyOf": [
+        {"type": "boolean"}, {"type": "null"}
+      ]}}
+    }
+  ]
+}

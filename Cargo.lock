@@ -347,6 +347,7 @@ name = "berm-codegen"
 version = "0.1.1"
 dependencies = [
  "berm-abi",
+ "berm-api",
  "proc-macro2",
  "quote",
  "serde_json",

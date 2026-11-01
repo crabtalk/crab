@@ -1,10 +1,10 @@
 //! One MCP endpoint over every deployed service: `search`, `call`, and each
 //! service's README and IDL as a resource, as [`crabtalk_sdk::mcp`] lays them out. A
-//! call carries no caller, so only `access = "anonymous"` tools are found or
-//! called.
+//! request may carry the local host's unverified caller header.
 
 use crate::host::Node;
-use berm_api::Output;
+use axum::http::request::Parts;
+use berm_api::{Access, Output, host::Caller};
 use crabtalk_sdk::mcp::{self, Found};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -30,10 +30,8 @@ impl Mcp {
         Self { node }
     }
 
-    /// The running services with a tool that takes anonymous calls, each
-    /// with those tools, matching `query`'s words: best first, a word in the
-    /// name counting most, then in the description, then in a tool.
-    fn search(&self, query: &str) -> Vec<Found> {
+    fn search(&self, query: &str, caller: Option<&Caller>) -> Vec<Found> {
+        let anonymous = caller.is_none_or(Caller::anonymous);
         let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let count = |text: &str| {
             let text = text.to_lowercase();
@@ -52,7 +50,11 @@ impl Mcp {
                 let tools: Vec<mcp::Tool> = manifest
                     .tools
                     .iter()
-                    .filter(|tool| tool.anonymous)
+                    .filter(|tool| match tool.access() {
+                        Some(Access::Anonymous) => true,
+                        Some(Access::Public | Access::Accounts) => !anonymous,
+                        _ => false,
+                    })
                     .map(|tool| mcp::Tool {
                         name: tool.name.clone(),
                         title: tool.title.clone(),
@@ -127,8 +129,13 @@ impl ServerHandler for Mcp {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        let caller = context
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<Caller>())
+            .cloned();
         let arguments = request.arguments.unwrap_or_default();
         let field = |key: &str| {
             arguments
@@ -138,7 +145,7 @@ impl ServerHandler for Mcp {
         };
         match request.name.as_ref() {
             mcp::SEARCH => {
-                let found = serde_json::to_string(&self.search(field("query")?))
+                let found = serde_json::to_string(&self.search(field("query")?, caller.as_ref()))
                     .map_err(|error| McpError::internal_error(error.to_string(), None))?;
                 return Ok(CallToolResult::success(vec![ContentBlock::text(found)]));
             }
@@ -157,16 +164,6 @@ impl ServerHandler for Mcp {
                 "the local host has no accounts: name a service it runs",
             )]));
         }
-        if !self
-            .node
-            .get(service)
-            .is_some_and(|deployed| deployed.reached_anonymously(tool))
-        {
-            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "{service} has no tool named {tool:?} that takes anonymous calls"
-            ))]));
-        }
-
         // A service reads its arguments as the JSON its manifest advertised a
         // schema for, so the object goes across as it arrived.
         let input = arguments
@@ -176,12 +173,17 @@ impl ServerHandler for Mcp {
         let args = serde_json::to_vec(&input)
             .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
 
-        match self.node.call(service, tool, args).await {
-            Ok(Output::Done(result)) => {
+        match self
+            .node
+            .host
+            .call(service, caller.as_ref(), tool, args, false)
+            .await
+        {
+            Ok((_, Output::Done(result))) => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
             // The service ran and reported failure: a tool result.
-            Ok(Output::Failed(failure)) => {
+            Ok((_, Output::Failed(failure))) => {
                 Ok(CallToolResult::error(vec![ContentBlock::text(failure)]))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
