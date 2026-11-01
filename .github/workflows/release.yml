@@ -1,7 +1,7 @@
 name: Release
 
 # `install.sh` and `install.ps1` on crab.talk and `crab upgrade` download
-# `releases/latest/download/crab-<target>.{tar.gz,zip}`. Renaming an asset
+# `releases/latest/download/crab-<target>.{tar.xz,zip}`. Renaming an asset
 # breaks them.
 on:
   push:
@@ -75,6 +75,8 @@ jobs:
           package: crab-agent
           target: ${{ matrix.target }}
           archive: crab-$target
+          tar: none
+          tar-xz: unix
           locked: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
