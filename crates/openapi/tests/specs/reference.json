@@ -1,0 +1,40 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Invalid",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://example.com"
+    }
+  ],
+  "paths": {
+    "/items": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://example.com/schema.json"
+              }
+            }
+          }
+        },
+        "responses": {}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Cycle": {
+        "type": "object",
+        "properties": {
+          "child": {
+            "$ref": "https://example.com/schema.json"
+          }
+        }
+      }
+    }
+  }
+}

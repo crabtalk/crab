@@ -1,22 +1,16 @@
 //! Billing, plan-catalog, and invoice wire types.
 
-use crate::account::org::Kind;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// One plan as a client renders it: what the plan promises, never what keeping
-/// the promise costs us. Every field is a limit the caller trips directly and
-/// can act on, so `null` always means the plan carries no such value — no cap,
-/// no restriction, no price — and never that the answer lives somewhere else.
-/// Labels and copy are the frontend's: cloud serves the slug.
+/// A public plan catalog entry.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicPlan {
     /// Identifier used in `POST /orgs/{org}/billing/checkout?plan=<slug>`.
     pub slug: String,
-    /// Which kind of account this plan is for, or `null` for either. Checkout
-    /// answers `400` on a mismatch.
-    pub kind: Option<Kind>,
+    /// Whether checkout is restricted to organizations.
+    pub org: bool,
     /// Monthly gross price in microdollars — what the customer is charged.
     /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,

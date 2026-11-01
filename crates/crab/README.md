@@ -23,10 +23,8 @@ crab rm example
 ```toml
 # The name it deploys as.
 name = "example"
-# The public registry repository the image is published to, tagged with the
-# crate's version on each deploy. Without it, a deploy uploads the image to
-# the host.
-image = "ghcr.io/org/example"
+public = true
+template = true
 
 # Who may call a tool, its display name, its price a call on Cloud in USD
 # micros, and the catalog job it does. A tool without a table is internal.
@@ -76,7 +74,7 @@ crab context use default
 
 A service's secrets are its own, on the local host as on Cloud: `printf %s "$VALUE" | crab secret put NAME SECRET --host api.example.com` sets one, sent only to the hosts given, each named in full; `crab secret hosts NAME SECRET --host …` replaces a secret's hosts; `crab secret ls NAME` lists them by name with their hosts; `crab secret rm NAME SECRET` revokes one. A secret with no hosts is never sent. `crab secret fill NAME`, run by a person at a terminal, asks for each credential the service declares, with its guide and the hosts its secrets go to, filled in from the `hosts` its `crab.toml` suggests, and sets what they type on the host the context names; it refuses to run where stdin is not a terminal, so an agent cannot feed it values. On Cloud, `crab secret request NAME` asks a person to set the ones not set: it prints a link, `https://crab.talk/secrets/WDJB-MJHT`, where someone signed in who manages the service enters the values, one credential at a time, beside the guide its `crab.toml` declares, so none passes through the terminal. `--credential ID` asks for that credential alone, set or not; `--copy KEY=VALUE` gives a value the credentials have the person enter at the provider, such as a callback URL. `deploy` names each secret the manifest declares that is not set.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud keeps it for that service alone. With `image`, or `--image`, it pushes the image there instead and Cloud deploys that reference: Cloud pulls it anonymously, so the package must be public. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crab.talk/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; a newer deploy of the same service replaces it. `--yes` deploys without asking. The local host never asks.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud retains it for deployments and optional template publication. A context registry or `--registry` selects an OCI registry instead. A key needs `deploy` scope, and reaches services only; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crab.talk/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; a newer deploy of the same service replaces it. `--yes` deploys without asking. The local host never asks.
 
 Contexts are kept in `~/.crab/contexts.toml`.
 
@@ -131,8 +129,14 @@ a service crate pinning the `berm-lang` that shipped with this binary.
 
 `inspect` shows the most one call of each tool may use, which `budget` on its `[tools.<tool>]` in `crab.toml` sets; `budget NAME TOOL` prints what its runs used and the `budget` they fit. `call` calls one public tool and prints what the call used on stderr; `usage` prints a service's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a service reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud.
 
+Local MCP clients can send `x-berm-caller: {"id":"alice"}` on requests to `/mcp` to discover and call public tools as that caller. This identity is unverified; without the header, only anonymous tools are discoverable and callable.
+
 A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the service, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
 
 ## License
 
 Apache-2.0
+
+`public` exposes your Cloud deployment; `template` publishes its image so others can deploy private copies. Both default to `false`. `crab publish` publishes or withdraws a template without running an instance, using the same approval flow as deployment.
+
+Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. Repositories use the service name, and deployments pin the OCI artifact digest.

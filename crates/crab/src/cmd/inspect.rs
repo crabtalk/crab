@@ -221,7 +221,7 @@ fn tools<'a>(
             println!("    {parameter}");
         }
         if let Some(returns) = &tool.returns {
-            println!("    returns");
+            println!("    returns {}", format::schema(returns));
             for field in properties(returns) {
                 println!("      {field}");
             }
@@ -247,7 +247,7 @@ fn properties(schema: &Value) -> Vec<String> {
     properties
         .iter()
         .map(|(name, schema)| {
-            let kind = schema.get("type").and_then(Value::as_str).unwrap_or("any");
+            let kind = format::schema(schema);
             let required = if required.contains(&name.as_str()) {
                 " (required)"
             } else {

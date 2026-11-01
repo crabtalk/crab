@@ -1,0 +1,9 @@
+name = "tikhub"
+
+[syscalls]
+"berm.http.fetch" = ["api.tikhub.io"]
+
+[credentials.tikhub]
+title = "TikHub API key"
+hosts = ["api.tikhub.io"]
+secrets = [{ name = "TIKHUB_API_KEY", label = "API key" }]

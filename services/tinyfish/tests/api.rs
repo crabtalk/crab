@@ -23,7 +23,7 @@ fn searches_select_their_source_and_preserve_filters_and_paper_metadata() {
         page: Some(2),
         ..Default::default()
     };
-    let url = "https://api.search.tinyfish.ai/?query=rust+%26+wasm&domain_type=research_paper&fetch=%7B%7D&include_domains=arxiv.org%2Cexample.org&page=2&pub_year_min=2024";
+    let url = "https://api.search.tinyfish.ai/?query=rust+%26+wasm&include_domains=arxiv.org%2Cexample.org&domain_type=research_paper&pub_year_min=2024&page=2&fetch=%7B%7D";
     test::respond("GET", url, 200, br#"{"query":"rust & wasm","results":[{"position":1,"site_name":"arxiv.org","title":"Paper","snippet":"A study","url":"https://arxiv.org/abs/1","authors":["A. Author"],"year":2024,"cited_by_count":12,"fetch":{"text":"Study"}}],"total_results":1,"page":2}"#);
     let page = api::search_publications("rust & wasm", &options).unwrap();
     assert_eq!(page.page, 2);
@@ -60,7 +60,7 @@ fn searches_select_their_source_and_preserve_filters_and_paper_metadata() {
 
 #[test]
 fn fetch_preserves_partial_failures_structured_content_and_selector_hints() {
-    test::respond("POST", "https://api.fetch.tinyfish.ai", 200, br#"{"results":[{"url":"https://example.com","final_url":"https://example.com/","format":"json","text":{"heading":"Example"},"links":["https://example.com/about"],"page_metadata":{"canonical":"https://example.com"}}],"errors":[{"url":"https://missing.example","error":"selector_not_matched","candidate_selectors":["main"]}],"request_id":"request-1"}"#);
+    test::respond("POST", "https://api.fetch.tinyfish.ai/", 200, br#"{"results":[{"url":"https://example.com","final_url":"https://example.com/","format":"json","text":{"heading":"Example"},"links":["https://example.com/about"],"page_metadata":{"canonical":"https://example.com"}}],"errors":[{"url":"https://missing.example","error":"selector_not_matched","candidate_selectors":["main"]}],"request_id":"request-1"}"#);
     let result = api::fetch(
         &[
             "https://example.com".into(),
@@ -90,7 +90,7 @@ fn fetch_preserves_partial_failures_structured_content_and_selector_hints() {
 
 #[test]
 fn conditional_fetch_keeps_unchanged_content_and_validators() {
-    test::respond("POST", "https://api.fetch.tinyfish.ai", 200, br#"{"results":[{"url":"https://example.com","final_url":"https://example.com/","format":"markdown","text":null,"not_modified":true,"etag":"v1"}],"errors":[]}"#);
+    test::respond("POST", "https://api.fetch.tinyfish.ai/", 200, br#"{"results":[{"url":"https://example.com","final_url":"https://example.com/","format":"markdown","text":null,"not_modified":true,"etag":"v1"}],"errors":[]}"#);
     let result = api::fetch(
         &["https://example.com".into()],
         &FetchOptions {
@@ -164,6 +164,34 @@ fn step_artifacts_preserve_binary_and_html_and_encode_identifiers() {
     assert_eq!(
         api::step_html("run-1", "step-1").unwrap(),
         "<main>Price: 42</main>"
+    );
+}
+
+#[test]
+fn artifact_adapters_preserve_content_type_and_reject_invalid_utf8() {
+    test::respond_with(
+        "GET",
+        "https://agent.tinyfish.ai/v1/runs/run-1/steps/step-1/screenshot",
+        Response {
+            status: 200,
+            headers: vec![("Content-Type".into(), "image/jpeg; capture=step".into())],
+            body: vec![0xff, 0xd8, 0xff],
+        },
+    );
+    let screenshot = api::step_screenshot("run-1", "step-1").unwrap();
+    assert_eq!(screenshot.content_type, "image/jpeg; capture=step");
+    assert_eq!(screenshot.base64, "/9j/");
+    test::respond(
+        "GET",
+        "https://agent.tinyfish.ai/v1/runs/run-1/steps/step-1/html",
+        200,
+        &[0xff],
+    );
+    assert!(
+        api::step_html("run-1", "step-1")
+            .unwrap_err()
+            .message
+            .contains("UTF-8")
     );
 }
 
@@ -269,7 +297,7 @@ fn tools_dispatch_optional_search_options_batch_fetch_and_agent_controls() {
         serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["page"],
         0
     );
-    test::respond("POST", "https://api.fetch.tinyfish.ai", 200, br#"{"results":[],"errors":[{"url":"https://example.com","error":"page_not_found","status":404}]}"#);
+    test::respond("POST", "https://api.fetch.tinyfish.ai/", 200, br#"{"results":[],"errors":[{"url":"https://example.com","error":"page_not_found","status":404}]}"#);
     let bytes = test::call(
         tools::berm_tool_fetch,
         br#"{"urls":["https://example.com"]}"#,

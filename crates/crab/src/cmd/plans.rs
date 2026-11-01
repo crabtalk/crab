@@ -14,10 +14,8 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             || "not sold".to_owned(),
             |micros| format!("{}/month", format::usd(micros as f64)),
         );
-        let kind = plan
-            .kind
-            .map_or("anyone".to_owned(), |kind| kind.to_string());
-        println!("{}  {price}  for {kind}", plan.slug);
+        let audience = if plan.org { "organizations" } else { "anyone" };
+        println!("{}  {price}  for {audience}", plan.slug);
         let included = &plan.included;
         if included.runs
             + included.cpu

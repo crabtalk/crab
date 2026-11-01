@@ -98,6 +98,8 @@ enum Command {
     /// Cloud it waits for a person to approve it at the link it prints last;
     /// `--yes` deploys without asking.
     Deploy(cmd::deploy::Deploy),
+    /// Publish or withdraw a template according to crab.toml, without running it.
+    Publish(cmd::deploy::Deploy),
     /// `crab deploy`, installing each stopped, to serve once started.
     Push(cmd::deploy::Deploy),
     /// Serve stopped services again: those named, or those `crab deploy`
@@ -536,6 +538,9 @@ enum ContextCommand {
     Add {
         name: String,
         host: String,
+        /// Registry used for image pushes; omitted, upload to the node.
+        #[arg(long)]
+        registry: Option<String>,
         /// A Cloud key with `deploy` scope.
         #[arg(long, conflicts_with = "token_stdin")]
         token: Option<String>,
@@ -640,6 +645,7 @@ fn run() -> Result<ExitCode> {
         Command::Context(ContextCommand::Add {
             name,
             host,
+            registry,
             token,
             token_stdin,
             user,
@@ -650,6 +656,7 @@ fn run() -> Result<ExitCode> {
             *token_stdin,
             args.org.as_deref(),
             user.as_deref(),
+            registry.as_deref(),
         )?,
         Command::Context(ContextCommand::Use { name }) => cmd::context::use_(name)?,
         Command::Context(ContextCommand::Ls) => cmd::context::ls(json)?,
@@ -657,8 +664,39 @@ fn run() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Deploy(deploy) => cmd::deploy::run(&client()?, deploy, false, yes)?,
-        Command::Push(deploy) => cmd::deploy::run(&client()?, deploy, true, yes)?,
+        Command::Deploy(deploy) => cmd::deploy::run(
+            &client()?,
+            deploy,
+            false,
+            yes,
+            Contexts::load()?
+                .get(args.context.as_deref())?
+                .registry
+                .as_deref(),
+            false,
+        )?,
+        Command::Push(deploy) => cmd::deploy::run(
+            &client()?,
+            deploy,
+            true,
+            yes,
+            Contexts::load()?
+                .get(args.context.as_deref())?
+                .registry
+                .as_deref(),
+            false,
+        )?,
+        Command::Publish(deploy) => cmd::deploy::run(
+            &client()?,
+            deploy,
+            false,
+            yes,
+            Contexts::load()?
+                .get(args.context.as_deref())?
+                .registry
+                .as_deref(),
+            true,
+        )?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
         Command::Inspect { name } => cmd::inspect::run(&client()?, &cloud()?, name, json)?,

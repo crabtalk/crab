@@ -1,0 +1,22 @@
+[package]
+name = "berm-tikhub"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+berm-lang.workspace = true
+crab-openapi.workspace = true
+url.workspace = true
+
+[build-dependencies]
+berm-build.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+berm-api.workspace = true
+berm-build.workspace = true

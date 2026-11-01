@@ -1,0 +1,18 @@
+[package]
+name = "berm-openapi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+crab-openapi.workspace = true
+url.workspace = true

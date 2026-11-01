@@ -4,6 +4,7 @@
 //! reports it. It is read from `idls/{name}.json` in the crate's directory or
 //! the nearest ancestor that has one.
 
+use berm_api::schema;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use serde_json::Value;
@@ -241,6 +242,9 @@ fn collect(schema: &Value, structs: &mut BTreeMap<String, Value>) {
     for property in schema["properties"].as_object().into_iter().flatten() {
         collect(property.1, structs);
     }
+    for variant in schema["anyOf"].as_array().into_iter().flatten() {
+        collect(variant, structs);
+    }
     collect_inner(&schema["items"], structs);
     collect_inner(&schema["additionalProperties"], structs);
 }
@@ -253,6 +257,10 @@ fn collect_inner(schema: &Value, structs: &mut BTreeMap<String, Value>) {
 
 /// The Rust type a schema describes. `path` prefixes a struct's name.
 fn rust_type(schema: &Value, path: &TokenStream) -> TokenStream {
+    if let Some(inner) = schema::nullable(schema) {
+        let inner = rust_type(inner, path);
+        return quote!(::core::option::Option<#inner>);
+    }
     if let Some(title) = schema["title"].as_str() {
         let ident = format_ident!("{title}");
         return quote!(#path #ident);

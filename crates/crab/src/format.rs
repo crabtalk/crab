@@ -1,6 +1,7 @@
 //! How `crab` writes numbers for a person to read.
 
 use crabtalk_sdk::system::meta;
+use serde_json::Value;
 
 /// `4,865`, then `3.8M`, `1.2B` from a million up.
 pub fn count(n: u64) -> String {
@@ -77,4 +78,35 @@ pub fn instant(ms: u64) -> String {
         || ms.to_string(),
         |at| at.format("%Y-%m-%d %H:%M UTC").to_string(),
     )
+}
+
+/// A JSON Schema's type for terminal output.
+pub fn schema(schema: &Value) -> String {
+    for key in ["anyOf", "oneOf"] {
+        if let Some(variants) = schema[key].as_array() {
+            return variants
+                .iter()
+                .map(self::schema)
+                .collect::<Vec<_>>()
+                .join(" | ");
+        }
+    }
+    if let Some(types) = schema["type"].as_array() {
+        return types
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(" | ");
+    }
+    match schema["type"].as_str() {
+        Some("array") => format!("array<{}>", self::schema(&schema["items"])),
+        Some("object") if schema["additionalProperties"].is_object() => {
+            format!(
+                "map<string, {}>",
+                self::schema(&schema["additionalProperties"])
+            )
+        }
+        Some(kind) => schema["title"].as_str().unwrap_or(kind).to_owned(),
+        None => "any".to_owned(),
+    }
 }

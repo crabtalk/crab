@@ -1,0 +1,87 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Schemas",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "https://example.com"
+    }
+  ],
+  "paths": {
+    "/query": {
+      "get": {
+        "parameters": [
+          {
+            "name": "timeout",
+            "in": "query",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "milliseconds": {
+                  "type": "integer"
+                },
+                "behavior": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "name": "headers",
+            "in": "query",
+            "schema": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {}
+      }
+    },
+    "/tree": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Node"
+              }
+            }
+          }
+        },
+        "responses": {}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Node": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Node",
+              "description": "Child node"
+            }
+          }
+        }
+      }
+    }
+  }
+}

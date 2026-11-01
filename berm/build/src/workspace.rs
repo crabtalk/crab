@@ -25,7 +25,7 @@ impl Workspace {
     /// workspace; else the package whose `Cargo.toml` is in `dir` when its
     /// project file names a service; else every member whose does and does not
     /// say `deploy = false`.
-    pub fn read(dir: &Path, named: &[String]) -> Result<Self> {
+    pub fn read(dir: &Path, named: &[String], include_disabled: bool) -> Result<Self> {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
         let metadata = Metadata::read(&cargo, dir)?;
         let mut services = Vec::new();
@@ -57,7 +57,7 @@ impl Workspace {
                     skipped: Vec::new(),
                 });
             }
-            match project.deploy {
+            match project.deploy || include_disabled {
                 true => services.push(dir.to_path_buf()),
                 false => skipped.push(name),
             }

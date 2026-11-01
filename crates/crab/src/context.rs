@@ -23,6 +23,8 @@ const FILE: &str = "contexts.toml";
 pub struct Context {
     pub host: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     /// The account a Cloud context deploys under. A context without one is a
     /// local host.
@@ -86,6 +88,7 @@ impl Contexts {
         if name == DEFAULT {
             return Ok(Context {
                 host: format!("http://{LOCAL}"),
+                registry: None,
                 token: None,
                 owner: None,
             });
