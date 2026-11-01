@@ -3,7 +3,7 @@ use berm_build::source;
 use std::{env, fs, path::PathBuf};
 
 const SPEC_URL: &str = "https://docs.context.dev/openapi.json";
-const SPEC_SHA256: &str = "80b47e67e2fa5eec03d917982f1d265d11c57446a214a3af5db57b293cf14617";
+const SPEC_SHA256: &str = "a52df154eaffdc2be1cc761e9b57d95882e7188c29e5f80376f24b2bd6564380";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo::rerun-if-changed=build.rs");

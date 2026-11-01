@@ -121,21 +121,32 @@ pub fn run(
         let (project, bytes) = build(client, dir, one && pull, publish_only)?;
         let name = project.name()?.to_owned();
         let reference = reference(client, &name, registry, bytes)?;
-        let mut request = request(
-            client,
-            dir,
-            &project,
-            reference,
-            &in_project,
-            force,
-            stopped,
+        let seed = match &project.database.seed {
+            _ if publish_only => None,
+            Some(_) if client.owner.is_none() => bail!(
+                "{name}: a seed starts a service on Cloud; the local host's own database is where one is made"
+            ),
+            Some(seed) if runtime::wait(first(client, &name))? => {
+                Some(upload(client, &name, &dir.join(seed))?)
+            }
+            _ => None,
+        };
+        let request = DeployRequest {
+            public: (!publish_only).then_some(project.public),
+            template: Some(project.template),
+            source: None,
+            create: false,
             publish_only,
-        )?;
-        request.publish_only = publish_only;
-        if publish_only {
-            request.seed = None;
-            request.public = None;
-        }
+            reference,
+            force,
+            crons: project.crons.clone(),
+            size: Some(project.database.size()),
+            seed,
+            stopped,
+            project: Some(in_project.clone()),
+            prices: project::prices(&project)?,
+            vars: BTreeMap::new(),
+        };
         services.insert(name, request);
     }
     if client.owner.is_some() && !yes {
@@ -364,48 +375,6 @@ fn reference(
         }
         None => send(client, name, bytes),
     }
-}
-
-/// The deploy of `project`, in `dir`, from `reference`, in the project
-/// `workspace`; a service deployed to Cloud for the first time starts from
-/// `[database] seed`.
-fn request(
-    client: &Client,
-    dir: &Path,
-    project: &Project,
-    reference: String,
-    workspace: &str,
-    force: bool,
-    stopped: bool,
-    publish_only: bool,
-) -> Result<DeployRequest> {
-    let name = project.name()?;
-    let seed = match &project.database.seed {
-        _ if publish_only => None,
-        Some(_) if client.owner.is_none() => bail!(
-            "{name}: a seed starts a service on Cloud; the local host's own database is where one is made"
-        ),
-        Some(seed) if runtime::wait(first(client, name))? => {
-            Some(upload(client, name, &dir.join(seed))?)
-        }
-        _ => None,
-    };
-    Ok(DeployRequest {
-        public: Some(project.public),
-        template: Some(project.template),
-        source: None,
-        create: false,
-        publish_only: false,
-        reference,
-        force,
-        crons: project.crons.clone(),
-        size: Some(project.database.size()),
-        seed,
-        stopped,
-        project: Some(workspace.to_owned()),
-        prices: project::prices(project)?,
-        vars: BTreeMap::new(),
-    })
 }
 
 /// Show what `name` serves now that `deployed` installed it, how it breaks
