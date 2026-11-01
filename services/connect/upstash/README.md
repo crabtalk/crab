@@ -40,4 +40,4 @@ Pipelines can interleave with other clients. Transactions do not interleave, but
 
 Batches can run any Redis command allowed by the token. Calls are not automatically retried, including increments and batches whose effects may already have occurred.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/upstash/LIBRARY.md) · [Provider documentation](https://upstash.com/docs/redis/features/restapi)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/upstash/LIBRARY.md) · [Provider documentation](https://upstash.com/docs/redis/features/restapi)

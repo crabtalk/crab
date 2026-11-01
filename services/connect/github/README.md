@@ -38,4 +38,4 @@ Lists return `items` and `next_page`; pass the next page with the same filters a
 
 Each operation makes one request. Errors include GitHub’s status, message and supplied retry/reset timing. Writes are not automatically retried.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/github/LIBRARY.md) · [Provider documentation](https://docs.github.com/en/rest)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/github/LIBRARY.md) · [Provider documentation](https://docs.github.com/en/rest)

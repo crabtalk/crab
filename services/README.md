@@ -2,20 +2,14 @@
 
 Each crate is a member of the root Cargo workspace. Deployable services build both a wasm image and a Rust library. Reusable libraries are available through [crabkit](../crates/crabkit/README.md).
 
-- [Resend](resend/README.md): email sending and delivery status.
-- [GitHub](github/README.md): repositories, issues, pull requests and releases.
-- [Upstash Redis](upstash/README.md): strings, expiry, counters, pipelines and transactions.
-- [PostHog](posthog/README.md): event capture, feature flags and HogQL queries.
-- [CompanyEnrich](companyenrich/README.md): generated company intelligence, people discovery and enrichment jobs.
-- [People Data Labs](pdl/README.md): generated person and company enrichment and search.
-- [DataForSEO](dataforseo/README.md): generated keyword metrics, backlinks, rankings and web data tools.
-- [Context.dev](contextdev/README.md): generated brand intelligence, extraction and web tools.
-- [Firecrawl](firecrawl/README.md): bounded scraping, search, mapping and crawl jobs.
-- [Litescrape](litescrape/README.md): generated search, maps, reviews and web tools.
-- [AnyAPI](anyapi/README.md): generated social data, search and web tools.
-- [TinyFish](tinyfish/README.md): OpenAPI-backed web, news and publication search, multi-URL extraction and asynchronous browser agents.
-- [OSV](osv/README.md): package vulnerabilities and advisory lookup.
-- [Release watch](release-watch/README.md): retained release and vulnerability observations.
+## Catalogs
+
+- [Connect](connect/README.md): third-party API integrations.
+- [Utilities](utilities/README.md): services that perform a useful task, such as release and vulnerability monitoring.
+
+Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. Stateful utilities may require a private copy; each service documents its setup and state ownership.
+
+Library-only packages live under [services/kits](kits/) and are listed in [crabkit](../crates/crabkit/README.md).
 
 `crab build` and `crab deploy` operate from a service directory. Agents call deployed tools through MCP.
 
@@ -29,12 +23,12 @@ Calling an existing deployment or deploying a published template needs no local 
 
 ```sh
 git clone https://github.com/crabtalk/crab
-cd crab/services/github
+cd crab/services/connect/github
 crab login
 crab deploy
 ```
 
-Replace `github` with the service to build. `crab deploy` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
+Choose the service directory from either catalog, such as `services/connect/github` or `services/utilities/release-watch`. `crab deploy` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
 
 For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and pass `--caller alice` when calling a public tool. See [local development](https://crab.talk/docs/guides/local).
 

@@ -1,5 +1,12 @@
 [workspace]
-members = ["berm/*", "crates/*", "fixtures/*", "services/*"]
+members = [
+    "berm/*",
+    "crates/*",
+    "fixtures/*",
+    "services/connect/*",
+    "services/utilities/*",
+    "services/kits/*",
+]
 resolver = "3"
 
 [workspace.package]
@@ -31,15 +38,20 @@ html = { package = "crab-html", path = "crates/html", version = "0.1.1" }
 berm-kit = { path = "fixtures/kit" }
 
 # services
-github = { package = "crab-github", path = "services/github", version = "0.1.1", default-features = false }
+github = { package = "crab-github", path = "services/connect/github", version = "0.1.1", default-features = false }
+osv = { package = "crab-osv", path = "services/connect/osv", version = "0.1.1", default-features = false }
+posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.1", default-features = false }
+release-watch = { package = "crab-release-watch", path = "services/utilities/release-watch", version = "0.1.1", default-features = false }
+resend = { package = "crab-resend", path = "services/connect/resend", version = "0.1.1", default-features = false }
+upstash = { package = "crab-upstash", path = "services/connect/upstash", version = "0.1.1", default-features = false }
 
 # kits
-auth = { package = "crabkit-auth", path = "services/auth", version = "0.1.1" }
-crawl = { package = "crabkit-crawl", path = "services/crawl", version = "0.1.1" }
-lake = { package = "crabkit-lake", path = "services/lake", version = "0.1.1" }
-neon = { package = "crabkit-neon", path = "services/neon", version = "0.1.1" }
-stripe = { package = "crabkit-stripe", path = "services/stripe", version = "0.1.1" }
-supabase = { package = "crabkit-supabase", path = "services/supabase", version = "0.1.1" }
+auth = { package = "crabkit-auth", path = "services/kits/auth", version = "0.1.1" }
+crawl = { package = "crabkit-crawl", path = "services/kits/crawl", version = "0.1.1" }
+lake = { package = "crabkit-lake", path = "services/kits/lake", version = "0.1.1" }
+neon = { package = "crabkit-neon", path = "services/kits/neon", version = "0.1.1" }
+stripe = { package = "crabkit-stripe", path = "services/kits/stripe", version = "0.1.1" }
+supabase = { package = "crabkit-supabase", path = "services/kits/supabase", version = "0.1.1" }
 
 # crates-io
 anyhow = "1.0"

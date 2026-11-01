@@ -34,4 +34,4 @@ Pass `next_page_token` as `page_token` for the next request, including when a pa
 
 No matches means OSV returned no known matching records; it is not proof that a package is secure. Calls are not automatically retried.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/osv/LIBRARY.md) · [Provider documentation](https://google.github.io/osv.dev/)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/osv/LIBRARY.md) · [Provider documentation](https://google.github.io/osv.dev/)

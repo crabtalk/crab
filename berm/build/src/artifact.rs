@@ -53,7 +53,7 @@ impl Artifact {
     }
 
     /// Its package's name and version, read off its package ID: a spec such
-    /// as `path+file:///services/auth#crabkit-auth@0.1.1`, `path+file:///auth#0.1.1`,
+    /// as `path+file:///services/kits/auth#crabkit-auth@0.1.1`, `path+file:///auth#0.1.1`,
     /// or, before cargo 1.77, `auth 0.1.1 (path+file:///auth)`.
     pub fn package(&self) -> Result<(String, String)> {
         let id = &self.package_id;

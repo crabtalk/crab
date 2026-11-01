@@ -48,4 +48,4 @@ Inspect `errors_while_computing_flags`; missing flags are unknown and partial re
 
 Queries run blocking HogQL. Include a descriptive name and a SQL `LIMIT`. Pagination, polling and retries are explicit. Self-hosted PostHog is not supported.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/posthog/LIBRARY.md) · [Provider documentation](https://posthog.com/docs/api)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/posthog/LIBRARY.md) · [Provider documentation](https://posthog.com/docs/api)

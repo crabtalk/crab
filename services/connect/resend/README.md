@@ -34,4 +34,4 @@ Use a unique idempotency key for each send or batch. Reuse the same key only wit
 
 Calls make one attempt. Provider errors retain retry timing when supplied; the service does not retry or schedule delivery.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/resend/LIBRARY.md) · [Provider documentation](https://resend.com/docs/api-reference/emails/send-email)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/resend/LIBRARY.md) · [Provider documentation](https://resend.com/docs/api-reference/emails/send-email)

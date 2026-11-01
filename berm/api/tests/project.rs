@@ -57,7 +57,7 @@ fn an_unknown_key_in_a_credential_is_refused() {
 
 #[test]
 fn the_auth_kits_credentials_parse() {
-    let kit = concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/auth");
+    let kit = concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/kits/auth");
     let project = Project::read(&std::path::Path::new(kit).join("crab.toml")).unwrap();
     project.check_kit().unwrap();
     let deps = project.deps();

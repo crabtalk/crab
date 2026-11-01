@@ -42,4 +42,4 @@ Read `changes` using `next_cursor` and `has_more`; reads do not acknowledge or d
 
 The service does not compare package versions with repository tags, infer mappings, recommend upgrades or establish that a release fixes an advisory. History has no automatic cleanup.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/release-watch/LIBRARY.md) · [Provider documentation](https://google.github.io/osv.dev/post-v1-query/)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/utilities/release-watch/LIBRARY.md) · [Provider documentation](https://google.github.io/osv.dev/post-v1-query/)

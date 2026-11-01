@@ -9,7 +9,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 ## Choose how to use a capability
 
-- Check [services](../../services/README.md) and [crabkit](../../crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published template, or link its library when those fit the task. Write a product service for its own behavior.
+- Browse provider integrations in `services/connect/` and task-oriented services in `services/utilities/`. Library-only packages live under `services/kits/`. Check [services](../../services/README.md) and [crabkit](../../crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published template, or link its library when those fit the task. Write a product service for its own behavior.
 - A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `crab.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `crab.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it; `crab push` does the same and leaves it stopped; `crab stop` and `crab start` stop and serve it, keeping its data. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
 - A setting whoever deploys a copy chooses, such as the keywords a monitor watches, is a var: declared under `[vars]` in `crab.toml` with a `default` and a `description`, read with `berm_lang::var("name")`. Each copy holds its own value, set with `crab var set <service> <var> <value>` and read from the next call. A secret is never a var.
@@ -80,7 +80,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
 | Writing a service README for crab.talk | `services/README-guide.md` |
 | Linking service libraries | https://crab.talk/docs/development/reuse |
-| A service or library's API and setup | `services/<name>/README.md`, `services/README.md` |
+| A service or library's API and setup | `services/connect/<name>/README.md`, `services/utilities/<name>/README.md`, or `services/kits/<name>/README.md` for a library |
 | Building a service from OpenAPI | https://crab.talk/docs/development/openapi; macro reference: `crates/openapi/README.md` |
 
 ## A local crab checkout
@@ -91,7 +91,7 @@ Read these before writing code. Paths are relative to the crab repository.
   [patch."https://github.com/crabtalk/crab"]
   berm-lang = { path = "../crab/berm/lang" }
   crabkit = { path = "../crab/crates/crabkit" }
-  crabkit-auth = { path = "../crab/services/auth" }
+  crabkit-auth = { path = "../crab/services/kits/auth" }
   ```
 
 - Run Rust tests with `cargo nextest run`; the Crab workspace requires nextest 0.9.98 or newer, and its CI uses `cargo nextest run --workspace --release`. Tests belong in each crate's `tests/` directory.

@@ -42,7 +42,7 @@ crab deploy
 
 - [Documentation](https://crab.talk/docs) — guides for writing and deploying services.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
-- [Services](services/README.md) — integrations to deploy or reuse.
+- [Services](services/README.md) — Connect integrations and Utilities to call, deploy or reuse.
 - [Libraries](crates/crabkit/README.md) — libraries to include in your services.
 - [Berm](berm/berm/README.md) — the runtime that runs services.
 

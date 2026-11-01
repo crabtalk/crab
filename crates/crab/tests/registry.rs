@@ -37,7 +37,7 @@ async fn a_context_registry_deploys_to_a_local_node_and_survives_restart() {
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let client = Client::new(&url);
     let build = Deploy {
-        dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/osv"),
+        dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv"),
         packages: Vec::new(),
         registry: None,
         force: false,

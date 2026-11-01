@@ -19,7 +19,7 @@ tools = []
 [dependencies]
 berm-lang.workspace = true
 github.workspace = true
-osv = { package = "crab-osv", path = "../osv", default-features = false }
+osv.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
