@@ -1,5 +1,7 @@
 # Auth
 
+Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+
 Sign-in for a product's users: a GitHub or Google login turned into a session the service keeps in its own database, for an account each of the user's identities signs in to.
 
 ## Using it

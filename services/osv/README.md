@@ -1,36 +1,37 @@
 # OSV
 
-Query vulnerabilities for an installed package/version, query batches and retrieve full advisories. Uses the public OSV API; no credential is required.
+Find known vulnerabilities matching an installed package version, query multiple packages, or retrieve a full advisory. No provider account or API key is required.
 
-## Deploy
+## Call
 
-From this directory, run `crab build`, then `crab deploy`. Agents call `query`, `query_batch` and `advisory` through MCP.
+With Crab signed in to Cloud, replace `owner/osv` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-Supply the ecosystem's exact name, package name and installed version. This initial API supports package/version queries; it does not infer repositories or resolve lockfiles, commits or package URLs.
+```sh
+crab call owner/osv query '{"package":{"ecosystem":"crates.io","name":"serde","version":"1.0.0"}}'
+```
 
-`query` returns full OSV records and an optional `next_page_token`. Pass it as `page_token` on the next call, including when a page contains no records. `query_batch` returns ordered ID/modification-time references with an independent token per input. Fetch details with `advisory`. The API preserves affected ranges, references and provider metadata as JSON.
+Returns OSV advisory records and an optional `next_page_token`. Use `query_batch` for multiple packages and `advisory` for full details by advisory ID.
+
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls run on the selected deployment; no provider credential is needed.
+
+## Deploy your own
+
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+
+```sh
+crab deploy --from owner/osv
+```
+
+There are no provider credentials or required settings. A private copy keeps its execution and bill under your account.
+
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+
+## Usage notes
+
+Use the ecosystem’s exact name, package name and installed version. The service does not resolve lockfiles, commits or package URLs.
+
+Pass `next_page_token` as `page_token` for the next request, including when a page contains no records. Batch results have a separate token per input.
 
 No matches means OSV returned no known matching records; it is not proof that a package is secure. Calls are not automatically retried.
 
-## Use in another service
-
-```toml
-[dependencies]
-osv = { package = "crab-osv", git = "https://github.com/crabtalk/crab", branch = "dev", default-features = false }
-```
-
-```rust,ignore
-use osv::{api, types::PackageVersion};
-
-let package = PackageVersion {
-    ecosystem: "crates.io".into(),
-    name: "example".into(),
-    version: "1.0.0".into(),
-};
-let page = api::query(&package, None)?;
-let complete = api::query_all(&package)?;
-```
-
-`query_all` deduplicates IDs and reads up to ten pages. Repeated tokens, provider errors or the page cap fail the call rather than returning an incomplete match set. Use explicit page reads for larger results. Linked services inherit the HTTP permission without exporting the standalone tools.
-
-[Query API](https://google.github.io/osv.dev/post-v1-query/) · [Batch API](https://google.github.io/osv.dev/post-v1-querybatch/) · [Advisories](https://google.github.io/osv.dev/get-v1-vulns/)
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/osv/LIBRARY.md) · [Provider documentation](https://google.github.io/osv.dev/)

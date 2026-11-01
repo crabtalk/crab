@@ -1,49 +1,45 @@
 # Release watch
 
-Keep release and vulnerability evidence for a chosen dependency stack. Agents supply exact installed versions and explicit GitHub repository mappings, then read observations through MCP. The service links GitHub and OSV directly; neither needs a separate deployment.
+Track release and vulnerability observations for installed package versions. Keep a watchlist, check it on a schedule, and read retained changes through CrabTalk.
 
-## Deploy
+## Call
 
-From this directory, run `crab build`, then `crab deploy`. Keep the deployment private: its watchlist and history belong to the deployment and are shared by every authorized caller, not partitioned by account.
+With Crab signed in to Cloud, replace `owner/release-watch` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-An optional host-managed `GITHUB_TOKEN` improves GitHub's anonymous rate limit and permits private repositories when authorized. Grant it to `api.github.com`. OSV needs no key.
-
-Tools:
-
-- `follow(watch)`: add or update a named package/version and repository mapping. At most 20 watches per deployment.
-- `unfollow(name)`: stop checks; history remains.
-- `watches()`: current mappings, last successful snapshots, attempt times and errors.
-- `refresh(name)`: check immediately; provider failures appear in the returned status.
-- `changes(after, limit?)`: retained observations, oldest first, with `next_cursor` and `has_more`. Start at zero; reads do not acknowledge or delete data.
-
-```json
-{
-  "watch": {
-    "name": "example",
-    "package": {"ecosystem": "crates.io", "name": "example", "version": "1.0.0"},
-    "owner": "example",
-    "repo": "project"
-  }
-}
+```sh
+crab call owner/release-watch follow '{"watch":{"name":"serde","package":{"ecosystem":"crates.io","name":"serde","version":"1.0.0"},"owner":"serde-rs","repo":"serde"}}'
 ```
 
-The internal `tick` cron runs every 15 minutes, checking up to five watches due for an hourly check. Failures also wait an hour before the next scheduled attempt. Manual refreshes make an immediate attempt and consume provider quota.
+Adds or updates a watch; it does not fetch immediately. Call `refresh` with `{"name":"serde"}` to check it now, then `changes` with `{"after":0}` to read observations. `watches` shows status; `unfollow` stops checks while keeping history.
 
-## Observations
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials and shared state.
 
-The first successful check records a `baseline`, not an announcement of new releases. Later snapshots record `changed` only when evidence differs. Failed checks record `failed` while retaining the previous successful snapshot; recovery records `recovered` when the evidence is unchanged. Repeated identical failures do not add history. Changing the mapping or installed version starts a fresh baseline while preserving older observations with their original mapping.
+## Deploy your own
 
-A snapshot contains GitHub's first recent release page (up to 30 entries, including any visible drafts and prereleases), plus the complete OSV match set for the installed version. `releases_next_page` indicates older release pages were not fetched. Release history is an observation window, not a complete archive. OSV pagination failures leave prior data intact. Timestamps are Unix milliseconds; OSV/GitHub retain their own source timestamps.
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
-The service does not compare package versions to repository tags, infer package-to-repository mappings, recommend upgrades, or claim a release fixes an advisory. Agents assess the retained source evidence. Removed OSV matches mean only that the query no longer returns them. Data and history remain until the deployment/database is removed; no automatic history cleanup is performed.
-
-## Use in another service
-
-```toml
-[dependencies]
-release-watch = { package = "crab-release-watch", git = "https://github.com/crabtalk/crab", branch = "dev", default-features = false }
+```sh
+crab deploy --from owner/release-watch
 ```
 
-Call `release_watch::api::follow`, `refresh`, `changes` or `refresh_due` from your tools. Requirements and namespaced SQLite migrations are inherited; standalone tools and schedules are not. Declare your own cron if you use `refresh_due`. All linked state belongs to your deployment. `observe(&Watch)` fetches evidence without storing it.
+Keep the copy private: its watchlist and history are shared by every authorized caller, not partitioned by caller. An optional `GITHUB_TOKEN` improves GitHub rate limits and permits authorized private-repository reads. OSV needs no key. GitHub and OSV are linked libraries; you do not deploy them separately.
 
-[GitHub releases](https://docs.github.com/en/rest/releases/releases) · [OSV queries](https://google.github.io/osv.dev/post-v1-query/)
+For private repository access or a higher GitHub rate limit, request the optional GitHub credential explicitly:
+
+```sh
+crab secret request release-watch --credential github_api
+```
+
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+
+## Usage notes
+
+Supply exact installed versions and explicit GitHub repository mappings. A deployment holds up to 20 watches. Its cron runs every 15 minutes and checks up to five watches due for an hourly check; manual refreshes consume provider quota immediately.
+
+The first successful check records a `baseline`. Later observations are `changed`, `failed`, or `recovered`. Failures retain the last successful snapshot; repeated identical failures add no history. Changing a mapping or installed version starts a new baseline.
+
+Read `changes` using `next_cursor` and `has_more`; reads do not acknowledge or delete history. GitHub evidence covers its first recent release page, up to 30 entries; `releases_next_page` signals older pages. OSV pagination failures preserve prior data.
+
+The service does not compare package versions with repository tags, infer mappings, recommend upgrades or establish that a release fixes an advisory. History has no automatic cleanup.
+
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/release-watch/LIBRARY.md) · [Provider documentation](https://google.github.io/osv.dev/post-v1-query/)

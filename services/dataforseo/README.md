@@ -1,15 +1,37 @@
 # DataForSEO
 
-240 generated tools cover the matching treg core and extended operations: backlinks, keyword metrics, rankings, SERPs, audits, business and app data, AI visibility, and the listed task submissions and retrievals. The operation list is in `src/lib.rs`; 20 tools have catalog mappings in `crab.toml`.
+Get keyword metrics, backlinks, rankings and search results, inspect sites and business data, or submit and retrieve supported DataForSEO tasks.
 
-Google Events Live Advanced and Pinterest Live are absent from the pinned specification and excluded. No additional vendor operations are exported.
+## Call
 
-Run `crab build`, then `crab deploy` here. Supply `DATAFORSEO_AUTH_TOKEN`: Base64-encoded `API_LOGIN:API_PASSWORD`, without the `Basic ` prefix. API credentials are available at https://app.dataforseo.com/api-access; the API password differs from your account password. The host substitutes the encoded credential.
+With Crab signed in to Cloud, replace `owner/dataforseo` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-The first build needs `curl` and network access. `build.rs` downloads the official OpenAPI 3.0.1 YAML at a pinned revision and converts it to JSON in `OUT_DIR`. Parsing and generation run on the build host.
+```sh
+crab call owner/dataforseo keyword_volume '{"input":{"body":[{"keywords":["rust hosting","wasm hosting"],"location_code":2840,"language_code":"en"}]}}'
+```
 
-POST inputs use `body`, an array of task objects; GET path parameters use `path`. Live endpoints accept one task per call; Standard task submission limits vary by endpoint. Responses retain task IDs, results and costs. Envelope and task failures return errors containing the original response, including successful tasks in a mixed result. Created tasks and explicitly partial results remain responses. Calls do not automatically poll, paginate or retry.
+Returns the upstream task envelope, including results, task IDs and costs. Live tools return their immediate results; task-submission tools return IDs for explicit retrieval.
 
-Disable default features to reuse `dataforseo::api` and `dataforseo::types` without tool exports. Schema constraints appear in tool metadata; Rust deserialization does not enforce every constraint.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
-[API documentation](https://docs.dataforseo.com/v3/) · [Official specification](https://github.com/dataforseo/OpenApiDocumentation)
+## Deploy your own
+
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+
+```sh
+crab deploy --from owner/dataforseo
+```
+
+Set `DATAFORSEO_AUTH_TOKEN` through credential setup to the Base64 encoding of `API_LOGIN:API_PASSWORD`, without the `Basic ` prefix. Use the API credentials from your DataForSEO account, not the account password. Requests spend the connected DataForSEO balance.
+
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+
+## Usage notes
+
+POST tools take an array of task objects under `input.body`; GET path parameters go under `input.path`. Live endpoints accept one task per call; Standard task submission limits depend on the tool.
+
+Envelope and task failures return errors containing the original response, including successful tasks in a mixed result. Created tasks and explicitly partial results remain responses.
+
+Calls do not poll, paginate or retry automatically. Google Events Live Advanced and Pinterest Live are not included.
+
+[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/dataforseo) · [Provider documentation](https://docs.dataforseo.com/v3/)

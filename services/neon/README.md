@@ -1,5 +1,7 @@
 # Neon
 
+Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+
 Neon's SQL over HTTP for berm services: parameterized statements and transactions against a Neon Postgres database, each one HTTPS request through `berm.http.fetch`. The password stays a secret the host substitutes; the service never holds it.
 
 ## Using it

@@ -9,3 +9,7 @@
 - Use treg as a coverage reference; implement from upstream documentation rather than copying its code or catalog files.
 
 - Reuse `berm_lang::http::Client` for provider headers, HTTP failures and JSON decoding. Keep provider-specific response envelopes and partial failures in the service.
+
+# Service documentation
+
+- Follow [README-guide.md](README-guide.md) when writing or changing a service README. These READMEs appear on crab.talk and in MCP: lead with calling a deployment and deploying a private copy, and keep source integration details separate.

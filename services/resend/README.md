@@ -1,35 +1,37 @@
 # Resend
 
-Send email through your Resend account from an agent or another service. Tools: `send`, `send_batch` (up to 100 emails), and `retrieve` for the latest delivery event. The API key is a host-managed secret; it never enters guest memory.
+Send email through the deployment’s Resend account, send a batch of up to 100 emails, and check delivery events.
 
-## Deploy
+## Call
 
-From `services/resend`, run `crab build`, then `crab deploy`. Set `RESEND_API_KEY` through the approval page, granted to `api.resend.com`. Verify the sender domain in Resend. Sending-only keys support sends; retrieval needs full access. Keep the deployed service private when its account should only be used by your agents.
+With Crab signed in to Cloud, replace `owner/resend` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-Agents call its tools through MCP. Sending returns an email ID, not confirmation of delivery. `retrieve` reads the provider's latest event.
+Replace the sender with a domain verified in the deployment’s Resend account and choose the intended recipient. This call sends an email.
 
-## Use in another service
-
-```toml
-[dependencies]
-resend = { package = "crab-resend", git = "https://github.com/crabtalk/crab", branch = "dev", default-features = false }
+```sh
+crab call owner/resend send '{"email":{"from":"Reports <reports@your-verified-domain.com>","to":["recipient@example.com"],"subject":"Your report is ready","text":"Your report is available in your account."},"idempotency_key":"report-42"}'
 ```
 
-```rust,ignore
-use resend::{api, types::Email};
+Returns an email ID. Acceptance does not confirm delivery; call `retrieve` with that ID to read the latest delivery event. Use `send_batch` for a batch.
 
-let email = Email {
-    from: "Product <hello@example.com>".into(),
-    to: vec!["person@example.com".into()],
-    subject: "Your report is ready".into(),
-    text: Some("Open your account to read it.".into()),
-    ..Email::default()
-};
-let sent = api::send(&email, "report/42")?;
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+
+## Deploy your own
+
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+
+```sh
+crab deploy --from owner/resend
 ```
 
-Disabling the default `tools` feature links only the Rust API. Your service inherits the credential and HTTP host requirements; it exposes its own tools. Execution and credentials belong to your deployment.
+Set `RESEND_API_KEY` through the copy’s credential setup and verify your sending domain in Resend. Sending-only keys support `send` and `send_batch`; `retrieve` needs full access. Keep the copy private when its sending account is for your own use.
 
-Use a unique idempotency key for each send or batch. Retry the same payload with the same key: Resend deduplicates for 24 hours. The library makes one attempt and returns provider errors, including retry timing when supplied. It does not retry or schedule delivery itself.
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
 
-[Send API](https://resend.com/docs/api-reference/emails/send-email) · [Batch API](https://resend.com/docs/api-reference/emails/send-batch-emails) · [Idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys)
+## Usage notes
+
+Use a unique idempotency key for each send or batch. Reuse the same key only with the same payload when retrying; Resend deduplicates for 24 hours.
+
+Calls make one attempt. Provider errors retain retry timing when supplied; the service does not retry or schedule delivery.
+
+[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/resend/LIBRARY.md) · [Provider documentation](https://resend.com/docs/api-reference/emails/send-email)

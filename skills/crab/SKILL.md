@@ -78,6 +78,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |
 | Declaring and using secrets in code | https://crab.talk/docs/development/secrets |
 | An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
+| Writing a service README for crab.talk | `services/README-guide.md` |
 | A service or kit's API and setup | `services/<name>/README.md`, `services/README.md` |
 | Generating provider bindings from OpenAPI | `crates/openapi/README.md` |
 

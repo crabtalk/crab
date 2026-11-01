@@ -1,5 +1,7 @@
 # Stripe
 
+Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+
 Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan, kept from Stripe's events.
 
 ## Using it

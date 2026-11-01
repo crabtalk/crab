@@ -1,13 +1,39 @@
 # Firecrawl
 
-Seven tools: `scrape`, `search`, `map`, `crawl`, `crawl_status`, `batch_scrape` and `batch_scrape_status`. They follow treg's bounded basic-operation scope. Agents, monitors, account endpoints and charged extraction add-ons are excluded.
+Scrape a page, search the web, discover URLs, or start a small crawl or batch scrape using the deployment’s Firecrawl account.
 
-Run `crab build`, then `crab deploy` here and supply `FIRECRAWL_API_KEY`. The first build needs `curl` and network access. `build.rs` downloads the official spec at revision `bde4de304dff4c0150854bdbfe605e188bab25f2` into `OUT_DIR` and adds the status controller's missing `skip` parameter to both status operations.
+## Call
 
-`calls` exposes the bounded operations; generated `api` and `types` expose the seven underlying requests. Disable default features to reuse either without tool exports.
+With Crab signed in to Cloud, replace `owner/firecrawl` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-Search, crawl and batch inputs are limited to ten results, pages or URLs. Map defaults to 1,000 links and accepts a smaller limit. Scrape and batch support Markdown, HTML and links; PDF parsing is disabled with `parsers: []`. Crawl fixes `scrapeOptions` to that same setting. Domain/path filters accept at most 20 entries. Optional fields are omitted when absent.
+```sh
+crab call owner/firecrawl scrape '{"url":"https://example.com"}'
+```
 
-Crawl and batch submission return the upstream job ID. Call the corresponding status tool explicitly; pass `skip` from the returned `next` URL to read another page. Results retain status, page data and `creditsUsed`. Calls do not automatically poll, page or retry. The bounded calls report `success: false` as errors; generated raw API calls preserve the original JSON envelope.
+Returns the page data. Use `search` for up to ten results, `map` for URL discovery, and `crawl` or `batch_scrape` for background jobs.
 
-[API reference](https://docs.firecrawl.dev/api-reference/v2-introduction) · [Status controller](https://github.com/firecrawl/firecrawl/blob/main/apps/api/src/controllers/v2/crawl-status.ts)
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+
+## Deploy your own
+
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+
+```sh
+crab deploy --from owner/firecrawl
+```
+
+Set `FIRECRAWL_API_KEY` through the copy’s credential setup. Scraped pages and search results consume the connected Firecrawl account’s credits.
+
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+
+## Usage notes
+
+Crawl and batch submission return a job ID. Call `crawl_status` or `batch_scrape_status` explicitly and pass `skip` from the returned `next` URL for another page. Results retain status, page data and `creditsUsed`.
+
+Search, crawl and batch inputs allow at most ten results, pages or URLs. Map defaults to 1,000 links and accepts a smaller limit. Domain/path filters allow at most 20 entries.
+
+Scrape and batch support Markdown, HTML and links. PDF parsing and charged extraction add-ons are disabled. Agents, monitors and account operations are not included.
+
+Calls do not automatically poll, paginate or retry. A `success: false` response is returned as an error.
+
+[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/firecrawl) · [Provider documentation](https://docs.firecrawl.dev/api-reference/v2-introduction)

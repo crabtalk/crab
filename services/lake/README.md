@@ -1,5 +1,7 @@
 # Lake
 
+Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+
 The runtime of a source service: the feeds it follows, the items they show and the threads under them, or the records they list, kept a version per change, fetched on the service's schedule and stored in its database. `rss::entries` reads RSS 2.0, RSS 1.0 and Atom feeds, and `time` reads the dates feeds and pages carry.
 
 ## Using it

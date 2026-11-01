@@ -1,5 +1,7 @@
 # Crawl
 
+Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+
 An incremental crawler for berm services: the domains a service watches, each site's robots.txt and sitemaps, and the pages of the kinds the service names, fetched on its schedule into its database and recrawled when they change.
 
 ## Using it

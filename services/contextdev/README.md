@@ -1,13 +1,37 @@
 # Context.dev
 
-Seven generated tools: brand lookup, styleguide extraction, scrape, answers, search, map and crawl. Brand lookup accepts domain, name, email, ticker, transaction or page URL. Scrape supports the current output formats and extraction options, including screenshots and products.
+Look up brands, extract styleguides, scrape pages, answer questions, search the web, map URLs and start crawls using the deployment’s Context.dev account.
 
-This covers the current equivalents of treg's `branddev` operations. Legacy simplified lookup has no separate current route; ISIN and NAICS lookup are excluded. Industry labels in current brand profiles use EIC. People, company and news search, batches, monitors and account administration are outside this scope.
+## Call
 
-Run `crab build`, then `crab deploy` here and supply `CONTEXT_DEV_API_KEY`. The first build needs `curl` and network access. The OpenAPI document is downloaded into `OUT_DIR` and verified against the SHA-256 in `build.rs`; upstream changes require reviewing and updating that pin.
+With Crab signed in to Cloud, replace `owner/contextdev` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
 
-Inputs group GET parameters under `query` and POST JSON under `body`. Responses retain upstream JSON, including sources, partial results and credit metadata. HTTP errors retain upstream details. Calls make one request without automatic polling, pagination or retries. Schema constraints appear in tool metadata; Rust deserialization does not enforce every constraint.
+```sh
+crab call owner/contextdev brand '{"input":{"body":{"type":"by_domain","domain":"example.com"}}}'
+```
 
-Disable default features to reuse `contextdev::api` and `contextdev::types` without tool exports. Search, scrape, map and crawl have catalog mappings; brand, styleguide and answers are callable directly.
+Returns the upstream brand profile and request metadata. Brand lookup also accepts names, email, ticker, transaction details or page URLs. Use `styleguide`, `scrape`, `answers`, `search`, `map` or `crawl` for web content.
 
-[API reference](https://docs.context.dev) · [OpenAPI contract](https://docs.context.dev/openapi.json)
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+
+## Deploy your own
+
+If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+
+```sh
+crab deploy --from owner/contextdev
+```
+
+Set `CONTEXT_DEV_API_KEY` through the copy’s credential setup. Requests consume the connected Context.dev account’s credits.
+
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+
+## Usage notes
+
+GET parameters are nested under `input.query`; POST JSON is under `input.body`. Inspect the selected tool’s schema for its supported options.
+
+Responses retain source evidence, partial results and credit metadata. Scrape supports screenshots and products. Pagination, polling and retries are explicit.
+
+ISIN and NAICS brand lookup, people/company/news search, batches, monitors and account administration are not included. Brand industry labels use EIC.
+
+[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/contextdev) · [Provider documentation](https://docs.context.dev)
