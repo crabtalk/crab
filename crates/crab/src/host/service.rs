@@ -2,11 +2,59 @@
 
 use crate::host::Node;
 use axum::http::StatusCode;
-use berm_api::{Break, Manifest, Output, host::Deploy};
+use berm_api::{
+    Break, Manifest, Output, digest,
+    host::{self, Deploy},
+};
 use berm_host::{Denied, Images, Installed, deny};
-use crabtalk_sdk::services::price;
+use berm_oci::{Access, Reference, Registry};
+use crabtalk_sdk::services::{price, service::DeployRequest};
+use std::str::FromStr;
 
 impl Node {
+    /// Registry images are cached locally before installation.
+    pub async fn prepare(&self, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
+        if deploy.publish_only || deploy.source.is_some() || deploy.create {
+            return Err(deny(
+                StatusCode::BAD_REQUEST,
+                "template publication and copies require Cloud",
+            ));
+        }
+        if deploy.seed.is_some() {
+            return Err(deny(
+                StatusCode::BAD_REQUEST,
+                "a seed starts a service on Cloud; the local host's own database is where one is made",
+            ));
+        }
+        let digest = if deploy.reference.starts_with(digest::PREFIX) {
+            deploy.reference.clone()
+        } else {
+            let reference = Reference::from_str(&deploy.reference)
+                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            let bytes = tokio::task::spawn_blocking(move || {
+                let registry = Registry::open(&reference, Access::Read)?;
+                let (digest, _) = registry.describe(&reference.reference)?;
+                registry.blob(&digest)
+            })
+            .await
+            .map_err(|e| deny(StatusCode::BAD_GATEWAY, e.to_string()))?
+            .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
+            self.keep(&bytes).await?
+        };
+        Ok(host::Deploy {
+            digest,
+            reference: deploy.reference,
+            force: deploy.force,
+            crons: deploy.crons,
+            size: deploy.size.unwrap_or_else(host::database_size),
+            stopped: deploy.stopped,
+            check_secrets: true,
+            project: deploy.project,
+            exempt: Vec::new(),
+            vars: deploy.vars,
+        })
+    }
+
     /// Make the tools of the image `deploy` names reachable under `name`,
     /// answering with how it breaks callers of the service it replaced.
     /// Refused as the host refuses a deploy.

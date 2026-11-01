@@ -5,7 +5,7 @@ use crate::{
     client::{Client, Error},
     services::service::{
         Billing, Costed, DeployRequest, DeploySetRequest, Deployment, Hosts, MeteredDay, Secret,
-        SetSecret, Terms, ToolCosted, Upload, UploadRequest, Visibility,
+        SetSecret, Template, Terms, ToolCosted, Upload, UploadRequest, Visibility,
     },
 };
 use berm_api::{
@@ -26,6 +26,11 @@ impl Client {
     /// its project and the registry reference it runs.
     pub async fn listing(&self, name: &str) -> Result<Listing, Error> {
         self.json(self.at(Method::GET, &self.path_of(name))).await
+    }
+
+    pub async fn template(&self, name: &str) -> Result<Template, Error> {
+        let path = format!("{}/template", self.path_of(name));
+        self.json(self.at(Method::GET, &path)).await
     }
 
     pub async fn inspect(&self, name: &str) -> Result<Service, Error> {

@@ -15,6 +15,16 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployRequest {
     pub reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<TemplateSource>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub create: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub publish_only: bool,
     /// Deploy even when it breaks a tool or event a caller used in the last
     /// 30 days, or undoes a cron its owners set since the last deploy that set
     /// them.
@@ -56,6 +66,29 @@ pub struct DeployRequest {
     /// does not declare, or a value past 4096 bytes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, String>,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateSource {
+    pub owner: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateSummary {
+    pub name: String,
+    pub digest: String,
+    pub version: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Template {
+    pub owner: String,
+    pub name: String,
+    pub digest: String,
+    pub manifest: berm_api::Manifest,
 }
 
 /// What calling a service is held to and costs: each public tool's terms, by
@@ -134,6 +167,10 @@ pub struct DeploySetRequest {
 #[serde(untagged)]
 pub enum DeployResult {
     Live(Box<berm_api::Deployed>),
+    Published {
+        digest: String,
+        published: bool,
+    },
     Failed {
         failure: String,
         explain: Option<String>,

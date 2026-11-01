@@ -31,10 +31,10 @@ pub struct Project {
     /// The name it deploys as.
     #[serde(default)]
     pub name: Option<String>,
-    /// The public registry repository the image is published to and Cloud
-    /// pulls it from, without a tag. Absent, a deploy uploads the image.
     #[serde(default)]
-    pub image: Option<String>,
+    pub public: bool,
+    #[serde(default)]
+    pub template: bool,
     /// Whether the service is deployed: `false` keeps it out of a
     /// workspace's deploys, and refuses deploying it.
     #[serde(default = "deployed")]
@@ -271,7 +271,8 @@ impl Project {
     pub fn check_kit(&self) -> Result<()> {
         let service_only = [
             ("name", self.name.is_some()),
-            ("image", self.image.is_some()),
+            ("public", self.public),
+            ("template", self.template),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("tools", !self.tools.is_empty()),

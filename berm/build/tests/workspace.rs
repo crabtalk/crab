@@ -35,11 +35,14 @@ fn a_service_saying_deploy_false_is_left_out_unless_named() {
     service(&root, "shown", "name = \"shown\"\n");
     service(&root, "held", "name = \"held\"\ndeploy = false\n");
 
-    let workspace = Workspace::read(&root, &[]).unwrap();
+    let workspace = Workspace::read(&root, &[], false).unwrap();
     assert_eq!(workspace.services, [root.join("shown")]);
     assert_eq!(workspace.skipped, ["held"]);
+    let publishing = Workspace::read(&root, &[], true).unwrap();
+    assert_eq!(publishing.services.len(), 2);
+    assert!(publishing.skipped.is_empty());
 
-    let named = Workspace::read(&root.join("held"), &[]).unwrap();
+    let named = Workspace::read(&root.join("held"), &[], false).unwrap();
     assert_eq!(named.services, [root.join("held")]);
     assert!(named.skipped.is_empty());
 }
@@ -59,7 +62,7 @@ fn named_services_are_picked_from_anywhere_in_the_workspace() {
 
     let named = |names: &[&str]| {
         let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
-        Workspace::read(&root.join("one"), &names)
+        Workspace::read(&root.join("one"), &names, false)
     };
     assert_eq!(named(&["two"]).unwrap().services, [root.join("two")]);
     let mut both = named(&["held", "two"]).unwrap().services;

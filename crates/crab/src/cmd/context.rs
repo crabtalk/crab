@@ -5,9 +5,10 @@ use crate::{
     terminal,
 };
 use anyhow::{Context as _, Result, bail};
+use berm_oci::Reference;
 use crabtalk_sdk::client::Owner;
 use serde::Serialize;
-use std::io::Read;
+use std::{io::Read, str::FromStr};
 
 /// Name `host` as `name`: a local host, or with a key and `org` or `user`, Cloud.
 /// The key is `token`, or read from stdin when `token_stdin`.
@@ -18,7 +19,11 @@ pub fn add(
     token_stdin: bool,
     org: Option<&str>,
     user: Option<&str>,
+    registry: Option<&str>,
 ) -> Result<()> {
+    if let Some(registry) = registry {
+        Reference::from_str(&format!("{registry}/service:latest"))?;
+    }
     let owner = match (org, user) {
         (Some(org), _) => Some(Owner::Org(org.to_owned())),
         (_, Some(user)) => Some(Owner::User(user.to_owned())),
@@ -48,6 +53,7 @@ pub fn add(
         name.to_owned(),
         Context {
             host: host.to_owned(),
+            registry: registry.map(str::to_owned),
             token,
             owner,
         },
@@ -72,6 +78,7 @@ pub fn use_(name: &str) -> Result<()> {
 struct Listed<'a> {
     name: &'a str,
     host: &'a str,
+    registry: &'a Option<String>,
     owner: &'a Option<Owner>,
     signed_in: bool,
     current: bool,
@@ -92,6 +99,7 @@ pub fn ls(json: bool) -> Result<()> {
             .map(|(name, at)| Listed {
                 name,
                 host: &at.host,
+                registry: &at.registry,
                 owner: &at.owner,
                 signed_in: at.token.is_some(),
                 current: name == current,
@@ -101,10 +109,17 @@ pub fn ls(json: bool) -> Result<()> {
     }
     for (name, at) in rows {
         let mark = if name == current { "*" } else { " " };
+        let destination = at
+            .registry
+            .as_ref()
+            .map(|registry| format!("  registry {registry}"))
+            .unwrap_or_default();
         match &at.owner {
-            Some(Owner::Org(org)) => println!("{mark} {name}  {}  org {org}", at.host),
-            Some(Owner::User(user)) => println!("{mark} {name}  {}  user {user}", at.host),
-            None => println!("{mark} {name}  {}", at.host),
+            Some(Owner::Org(org)) => println!("{mark} {name}  {}  org {org}{destination}", at.host),
+            Some(Owner::User(user)) => {
+                println!("{mark} {name}  {}  user {user}{destination}", at.host)
+            }
+            None => println!("{mark} {name}  {}{destination}", at.host),
         }
     }
     Ok(())

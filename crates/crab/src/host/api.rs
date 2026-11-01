@@ -110,7 +110,7 @@ async fn deploy(
     Json(deploy): Json<DeployRequest>,
 ) -> Result<Json<Deployed>, Denied> {
     let priced: Vec<String> = deploy.prices.keys().cloned().collect();
-    let deploy = kept(&name, deploy)?;
+    let deploy = node.prepare(deploy).await?;
     node.priced(&deploy.digest, &priced).await?;
     let (deployed, breaks) = node.deploy(&name, deploy).await?;
     Ok(Json(Deployed {
@@ -119,37 +119,6 @@ async fn deploy(
         migrations: deployed.migrations,
         page: None,
     }))
-}
-
-/// `deploy` of `name` as the host runs it, refused when it names a seed or an
-/// image not uploaded through `POST /services/local/{name}/image`.
-fn kept(name: &str, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
-    if deploy.seed.is_some() {
-        return Err(deny(
-            StatusCode::BAD_REQUEST,
-            "a seed starts a service on Cloud; the local host's own database is where one is made",
-        ));
-    }
-    if !deploy.reference.starts_with(digest::PREFIX) {
-        return Err(deny(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "{name}: the local host deploys an image uploaded through POST /services/local/{name}/image, by its digest"
-            ),
-        ));
-    }
-    Ok(host::Deploy {
-        digest: deploy.reference.clone(),
-        reference: deploy.reference,
-        force: deploy.force,
-        crons: deploy.crons,
-        size: deploy.size.unwrap_or_else(host::database_size),
-        stopped: deploy.stopped,
-        check_secrets: true,
-        project: deploy.project,
-        exempt: Vec::new(),
-        vars: deploy.vars,
-    })
 }
 
 /// Where to `PUT` the image `upload` describes for a deploy of `name` to name
@@ -216,7 +185,7 @@ async fn deploy_set(
         let prepared = async {
             super::service::validate(&name)?;
             let priced = request.prices.keys().cloned().collect::<Vec<_>>();
-            let deploy = kept(&name, request)?;
+            let deploy = node.prepare(request).await?;
             node.priced(&deploy.digest, &priced).await?;
             Ok::<_, Denied>(deploy)
         }

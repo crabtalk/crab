@@ -46,7 +46,7 @@ pub fn selected(names: &[String]) -> Result<Vec<String>> {
     if !names.is_empty() {
         return Ok(names.to_vec());
     }
-    let workspace = Workspace::read(Path::new("."), &[])?;
+    let workspace = Workspace::read(Path::new("."), &[], false)?;
     let mut names = Vec::new();
     for dir in &workspace.services {
         names.push(read(dir)?.name()?.to_owned());

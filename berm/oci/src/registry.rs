@@ -118,7 +118,7 @@ impl Registry {
     }
 
     /// Upload the image, its manifest as the config blob, and the artifact
-    /// manifest naming both. Returns the image's digest, which is the layer's.
+    /// manifest naming both. Returns the artifact manifest digest.
     pub fn push(&self, reference: &str, service: &[u8]) -> Result<String> {
         let manifest = serde_json::to_vec(&Manifest::try_from(service)?)?;
         let image = self.upload(service)?;
@@ -133,12 +133,14 @@ impl Registry {
             "annotations": annotations(),
         });
 
+        let artifact = serde_json::to_vec(&artifact)?;
+        let digest = digest::of(&artifact);
         let request = self
             .request(Method::PUT, self.url("manifests", reference))
             .header(CONTENT_TYPE, OCI_MANIFEST)
-            .body(serde_json::to_vec(&artifact)?);
+            .body(artifact);
         send(request)?;
-        Ok(image)
+        Ok(digest)
     }
 
     /// The OCI manifest naming the parts, whatever they turn out to be.

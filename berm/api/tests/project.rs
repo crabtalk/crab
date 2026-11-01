@@ -178,3 +178,16 @@ id = "invalid"
         .is_err()
     );
 }
+
+#[test]
+fn publication_is_opt_in_and_independent() {
+    let private = read(r#"name = "app""#).unwrap();
+    assert!(!private.public && !private.template);
+    for (public, template) in [(false, true), (true, false), (true, true)] {
+        let project = read(&format!(
+            "name = \"app\"\npublic = {public}\ntemplate = {template}\n"
+        ))
+        .unwrap();
+        assert_eq!((project.public, project.template), (public, template));
+    }
+}
