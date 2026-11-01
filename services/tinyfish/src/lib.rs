@@ -4,6 +4,7 @@
 extern crate alloc;
 
 pub mod api;
+mod bindings;
 pub mod types;
 
 #[cfg(feature = "tools")]

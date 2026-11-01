@@ -20,11 +20,12 @@ crab_openapi::service! {
 }
 ```
 
-Invoke once at the crate root. The consuming crate needs `berm-lang`, `url` and `extern crate alloc`. Define credentials, allowed HTTP hosts and tool metadata in its normal `crab.toml`.
+Invoke once per module. Set `module: crate::bindings` when invoking inside that module; the default is the crate root. The consuming crate needs `berm-lang`, `url` and `extern crate alloc`. Define credentials, allowed HTTP hosts and tool metadata in its normal `crab.toml`.
 
 - `api::fetch_video(&types::FetchVideoInput)` returns the complete upstream JSON response. Empty responses return JSON null; HTTP failures use the shared client's errors.
 - Inputs group parameters under `path`, `query`, `headers` and `body`. Optional fields use `Option`; schema defaults remain upstream defaults.
 - `tools::fetch_video(input)` exposes the API through `#[tool]`. Set `tools: false` for API-only bindings. Use `tools: cfg(feature = "tools")` to gate the tool module on the consuming crate's feature.
+- `raw_response: true` with `tools: false` returns `berm_lang::http::Response`, preserving status, headers and body bytes after HTTP error handling. It cannot be combined with a JSON response hook.
 - `response: crate::response::check` optionally processes decoded JSON with `fn(Value) -> berm_lang::Result<Value>`. HTTP failures are handled before this function runs; an empty successful response passes JSON null.
 - `base_url: "https://example.com"` overrides the operation, path or document server. Otherwise the first applicable server is used.
 - Spec files are compiler-tracked through `include_str!`; generation performs no network requests.

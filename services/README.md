@@ -13,7 +13,7 @@ Each directory is a member of the root Cargo workspace. A service builds both a 
 - [Firecrawl](firecrawl/README.md): bounded scraping, search, mapping and crawl jobs.
 - [Litescrape](litescrape/README.md): generated search, maps, reviews and web tools.
 - [AnyAPI](anyapi/README.md): generated social data, search and web tools.
-- [TinyFish](tinyfish/README.md): web, news and publication search, multi-URL extraction and asynchronous browser agents.
+- [TinyFish](tinyfish/README.md): OpenAPI-backed web, news and publication search, multi-URL extraction and asynchronous browser agents.
 - [OSV](osv/README.md): package vulnerabilities and advisory lookup.
 - [Release watch](release-watch/README.md): retained release and vulnerability observations.
 

@@ -17,6 +17,15 @@ default = ["tools"]
 tools = []
 
 [dependencies]
+crab-openapi.workspace = true
 berm-lang.workspace = true
 url.workspace = true
 base64.workspace = true
+
+[build-dependencies]
+berm-api.workspace = true
+berm-build.workspace = true
+
+[dev-dependencies]
+berm-api.workspace = true
+berm-build.workspace = true

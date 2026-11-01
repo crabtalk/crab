@@ -94,6 +94,7 @@ impl Document {
             .spec_env
             .as_ref()
             .map(|name| quote! { const _: &str = env!(#name); });
+        let module = &config.module;
         let tool_module = config.tools.then(|| {
             quote! {
                 #tools_cfg
@@ -108,7 +109,7 @@ impl Document {
                 #present
             }
             pub mod api {
-                use crate::types;
+                use #module::types;
                 #scalar
                 #(#functions)*
             }
@@ -401,13 +402,22 @@ impl Document {
         let client = &config.client;
         let mutable_headers =
             (!headers.is_empty() || operation.request_body.is_some()).then(|| quote!(mut));
+        let module = &config.module;
+        let output = if config.raw_response {
+            quote!(::berm_lang::http::Response)
+        } else {
+            quote!(::berm_lang::serde_json::Value)
+        };
+        let decode = (!config.raw_response).then(|| quote! {
+            let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
+        });
         let response = config.response.as_ref().map_or_else(
             || quote!(Ok(response)),
             |handler| quote!(#handler(response)),
         );
         let function = quote! {
             #[doc = #description]
-            pub fn #name(input: &types::#input) -> ::berm_lang::Result<::berm_lang::serde_json::Value> {
+            pub fn #name(input: &types::#input) -> ::berm_lang::Result<#output> {
                 let _ = input;
                 let client = &(#client);
                 let mut url = ::url::Url::parse(#base).map_err(|e| ::alloc::format!("invalid base URL: {e}"))?;
@@ -419,15 +429,15 @@ impl Document {
                 let body = #body;
                 let headers: ::alloc::vec::Vec<(&str, &str)> = headers.iter().map(|(k,v)| (k.as_str(), v.as_str())).collect();
                 let response = ::berm_lang::http::Client { name: client.name, headers: &headers }.request(#method, url.as_str(), &body)?;
-                let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
+                #decode
                 #response
             }
         };
         let tool = quote! {
             #[doc = #description]
             #[::berm_lang::tool]
-            pub fn #name(input: crate::types::#input) -> ::berm_lang::Result<::berm_lang::serde_json::Value> {
-                crate::api::#name(&input)
+            pub fn #name(input: #module::types::#input) -> ::berm_lang::Result<::berm_lang::serde_json::Value> {
+                #module::api::#name(&input)
             }
         };
         Ok((

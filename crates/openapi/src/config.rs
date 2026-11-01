@@ -7,6 +7,8 @@ pub(crate) struct Config {
     pub spec: LitStr,
     pub spec_env: Option<LitStr>,
     pub client: Path,
+    pub module: Path,
+    pub raw_response: bool,
     pub response: Option<Path>,
     pub base_url: Option<LitStr>,
     pub tools: bool,
@@ -19,6 +21,8 @@ impl Parse for Config {
         let (mut spec, mut client, mut base_url, mut tools, mut operations) =
             (None, None, None, None, None);
         let mut response = None;
+        let mut module = None;
+        let mut raw_response = None;
         let mut tools_cfg = None;
         let mut spec_env = None;
         while !input.is_empty() {
@@ -44,6 +48,10 @@ impl Parse for Config {
                     }
                 }
                 "client" if client.is_none() => client = Some(input.parse()?),
+                "module" if module.is_none() => module = Some(input.parse()?),
+                "raw_response" if raw_response.is_none() => {
+                    raw_response = Some(input.parse::<LitBool>()?.value);
+                }
                 "response" if response.is_none() => response = Some(input.parse()?),
                 "base_url" if base_url.is_none() => base_url = Some(input.parse()?),
                 "tools" if tools.is_none() => {
@@ -87,12 +95,20 @@ impl Parse for Config {
             spec: spec.ok_or_else(|| syn::Error::new(span, "missing spec"))?,
             spec_env,
             client: client.ok_or_else(|| syn::Error::new(span, "missing client"))?,
+            module: module.unwrap_or_else(|| syn::parse_quote!(crate)),
+            raw_response: raw_response.unwrap_or(false),
             base_url,
             response,
             tools: tools.unwrap_or(true),
             tools_cfg,
             operations: operations.ok_or_else(|| syn::Error::new(span, "missing operations"))?,
         };
+        if config.raw_response && (config.tools || config.response.is_some()) {
+            return Err(syn::Error::new(
+                span,
+                "raw_response requires tools: false and no response hook",
+            ));
+        }
         if config.operations.is_empty() {
             return Err(syn::Error::new(span, "select at least one operation"));
         }

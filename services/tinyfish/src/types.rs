@@ -1,13 +1,9 @@
-use alloc::{
-    collections::BTreeMap,
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use crate::bindings::search::types::SearchInput;
+use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use berm_lang::{
     Error, Result, Schema,
     serde::{Deserialize, Serialize},
-    serde_json::{self, Value},
+    serde_json::{self, Value, json},
 };
 use url::Url;
 
@@ -223,62 +219,34 @@ pub struct Screenshot {
     pub base64: String,
 }
 
-impl SearchOptions {
-    pub(crate) fn url(&self, origin: &str, query: &str, domain: &str) -> Result<Url> {
+impl TryFrom<(&str, &str, &SearchOptions)> for SearchInput {
+    type Error = Error;
+
+    fn try_from((query, domain, options): (&str, &str, &SearchOptions)) -> Result<Self> {
         if query.trim().is_empty() {
             return Err("Provide a search query".into());
         }
-        if self.page.is_some_and(|page| page > 10) {
+        if options.page.is_some_and(|page| page > 10) {
             return Err("Search page must be from 0 to 10".into());
         }
-        let mut url = Url::parse(origin).expect("constant URL");
-        {
-            let mut params = url.query_pairs_mut();
-            params
-                .append_pair("query", query)
-                .append_pair("domain_type", domain);
-            for (name, value) in [
-                ("after_date", self.after_date.as_deref()),
-                ("before_date", self.before_date.as_deref()),
-                ("language", self.language.as_deref()),
-                ("location", self.location.as_deref()),
-                ("purpose", self.purpose.as_deref()),
-            ] {
-                if let Some(value) = value {
-                    params.append_pair(name, value);
-                }
-            }
-            for (name, value) in [
-                (
-                    "exclude_domains",
-                    self.exclude_domains.as_ref().map(|v| v.join(",")),
-                ),
-                (
-                    "fetch",
-                    self.fetch.as_ref().map(serde_json::to_string).transpose()?,
-                ),
-                (
-                    "include_domains",
-                    self.include_domains.as_ref().map(|v| v.join(",")),
-                ),
-                (
-                    "include_thumbnail",
-                    self.include_thumbnail.map(|v| v.to_string()),
-                ),
-                ("page", self.page.map(|v| v.to_string())),
-                ("pub_year_max", self.pub_year_max.map(|v| v.to_string())),
-                ("pub_year_min", self.pub_year_min.map(|v| v.to_string())),
-                (
-                    "recency_minutes",
-                    self.recency_minutes.map(|v| v.to_string()),
-                ),
-            ] {
-                if let Some(value) = value {
-                    params.append_pair(name, &value);
-                }
+        let mut parameters = serde_json::to_value(options)?;
+        parameters["query"] = json!(query);
+        parameters["domain_type"] = json!(domain);
+        for (name, domains) in [
+            ("include_domains", &options.include_domains),
+            ("exclude_domains", &options.exclude_domains),
+        ] {
+            if let Some(domains) = domains {
+                parameters[name] = json!(domains.join(","));
             }
         }
-        Ok(url)
+        if let Some(fetch) = &options.fetch {
+            parameters["fetch"] = json!(serde_json::to_string(fetch)?);
+        }
+        if let Some(thumbnail) = options.include_thumbnail {
+            parameters["include_thumbnail"] = json!(if thumbnail { "true" } else { "false" });
+        }
+        Ok(serde_json::from_value(json!({"query": parameters}))?)
     }
 }
 
@@ -389,4 +357,17 @@ fn check_url(value: &str) -> Result<()> {
         return Err("Provide an HTTP or HTTPS URL".into());
     }
     Ok(())
+}
+
+pub(crate) struct Identifier<'a>(pub(crate) &'a str);
+
+impl<'a> TryFrom<&'a str> for Identifier<'a> {
+    type Error = Error;
+
+    fn try_from(value: &'a str) -> Result<Self> {
+        if value.is_empty() || matches!(value, "." | "..") {
+            return Err("Provide nonempty run and step identifiers, without dot segments".into());
+        }
+        Ok(Self(value))
+    }
 }
