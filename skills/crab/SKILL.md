@@ -1,24 +1,25 @@
 ---
 name: crab
-description: Build a product's services on crab — deployed with the crab CLI, linking crab's kits as libraries — and call other accounts' public services on CrabTalk Cloud. Use before writing, changing or deploying a service on CrabTalk Cloud or the local host, before using a kit under `services/`, before calling a service someone else publishes, and before changing a local crab checkout from a product's repository.
+description: Build, reuse, deploy and call CrabTalk services with the Crab CLI, including local development, libraries, templates, credentials and Cloud approvals.
 ---
 
 # Building on crab
 
-crab is the platform a product's services run on: the `crab` CLI (`crates/crab`), the berm runtime (`berm/`), and the kits (`services/`). A product is a separate repository whose services are its own.
+Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`crates/crab`), Berm runtime (`berm/`), and deployable services and reusable libraries (`services/`).
 
-## Services belong to the product
+## Choose how to use a capability
 
+- Check [services](../../services/README.md) and [crabkit](../../crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published template, or link its library when those fit the task. Write a product service for its own behavior.
 - A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `crab.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `crab.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it; `crab push` does the same and leaves it stopped; `crab stop` and `crab start` stop and serve it, keeping its data. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
 - A setting whoever deploys a copy chooses, such as the keywords a monitor watches, is a var: declared under `[vars]` in `crab.toml` with a `default` and a `description`, read with `berm_lang::var("name")`. Each copy holds its own value, set with `crab var set <service> <var> <value>` and read from the next call. A secret is never a var.
-- `crab dev -d` starts the local host at `127.0.0.1:7777` in the background, one per machine. `crab --context default deploy` builds and deploys there the service whose directory it runs in, or at the workspace's root every service in it, or those named with `-p`, starting the host when it is not running; run it again after a change. `crab dev status` says whether the host runs; `crab dev stop` stops it. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
-- Each tool gets a budget in `crab.toml` before it goes to Cloud: `budget = { cpu = <µs>, read = <rows>, written = <rows>, memory = <MiB> }` on its `[tools.<tool>]`. Call it on the local host with the largest inputs it should take (`crab --context default call <service> <tool> '<arguments>'`), read what the call prints on stderr, and set each key to about 1.5× the most it reached. Once it runs on Cloud, `crab budget <service> <tool>` prints what its runs used and the `budget = { … }` line that fits them. A call past its budget fails. Each call is billed its memory budget for as long as it runs, waiting included, so a tool without one pays for the host's default, 128 MiB. A tool whose need depends on its arguments calls `berm_lang::limit(0, 0, 0, <bytes>)` once, before doing the work, to lower that call's memory and its bill.
+- `crab dev -d` starts the local host at `127.0.0.1:7777` in the background, one per machine. `crab --context default deploy` builds and deploys there the service whose directory it runs in, or at the workspace's root every service not marked `deploy = false`, or those named with `-p`, starting the host when it is not running; run it again after a change. `crab dev status` says whether the host runs; `crab dev stop` stops it. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
+- Each tool gets a budget in `crab.toml` before it goes to Cloud: `budget = { cpu = <µs>, read = <rows>, written = <rows>, memory = <MiB> }` on its `[tools.<tool>]`. Call it on the local host with the largest inputs it should take (`crab --context default call <service> <tool> '<arguments>' --caller alice`), read what the call prints on stderr, and set each key to about 1.5× the most it reached. Once it runs on Cloud, `crab budget <service> <tool>` prints what its runs used and the `budget = { … }` line that fits them. A call past its budget fails. Each call is billed its memory budget for as long as it runs, waiting included, so a tool without one pays for the host's default, 128 MiB. A tool whose need depends on its arguments calls `berm_lang::limit(0, 0, 0, <bytes>)` once, before doing the work, to lower that call's memory and its bill.
 - On Cloud each service reserves its `[database] size`, 1GiB when unset, whatever it holds. An account's services reserve at most its plan's storage together, and a deploy past it is refused, so size each service to what it holds (`crab usage <service>` reports `stored`).
 
-## Kits are libraries
+## Reusing services and kits
 
-- `berm-lang` and `crabkit` come from crab's git repository, at one tag or branch for both; the kits are not on crates.io. `crab new` writes `berm-lang` at the tag of the CLI's release, and `crabkit` goes beside it with a feature per kit:
+- Keep `berm-lang`, `crabkit` and linked provider packages on the same Crab revision. `crab new` writes `berm-lang` at the tag of the CLI's release, and `crabkit` goes beside it with a feature per kit:
 
   ```toml
   [dependencies]
@@ -27,13 +28,25 @@ crab is the platform a product's services run on: the `crab` CLI (`crates/crab`)
   ```
 
 - A kit is a crate with a `crab.toml` of its own. A service links it by turning on its `crabkit` feature, and calls it from its own tools as `crabkit::auth`. Linking a kit is using it: the build finds it among the crates compiled into the image, and the secrets, fetched hosts and migrations its `crab.toml` declares reach the service's manifest; its tables live in the service's database.
-- A product never deploys a kit. When a product needs a kit's capability, it writes a service of its own that wraps the kit.
+- A library-only kit has no standalone deployment. Deployable services also expose Rust APIs: depend on them with `default-features = false` to disable their standalone tool exports. Linked dependencies contribute credentials, host permissions and migrations to the consuming service; their deployment name, visibility, tool access, prices, crons, vars and database sizing stay with their own deployment. A dependency with migrations needs a stable `id` in its `crab.toml`.
 - Each kit's `README.md` lists what the service still declares itself.
+- For provider HTTP code, use `berm_lang::http::Client` for shared headers, non-2xx errors and JSON decoding. Keep provider-specific response envelopes and body-level failures in the provider crate. `crab-openapi` generates bindings from local OpenAPI 3.0/3.1 specs; read its README before using it.
+
+## Deployment visibility and templates
+
+- `public` exposes a Cloud deployment; `template` publishes its image for other accounts to deploy. Both default to `false`, independently of each tool's `access`.
+- `crab publish` publishes or withdraws a template without running an instance. `crab deploy --from owner/name` creates a private copy without a local build, with its own credentials and state. Existing copies keep their version until upgraded.
+- Images upload to the selected host by default. A context registry or `--registry` selects OCI publication instead; `image` is not a `crab.toml` key.
 
 ## Calling another account's service
 
 - On Cloud, a service is addressed as `owner/name`, its page at `https://crab.talk/{owner}/{name}`. `crab inspect owner/name` prints another account's public service: its README and its public tools with their arguments. Read it before the first call.
 - `crab call owner/name <tool> '<arguments as JSON>'` calls one of its public tools, reading the arguments from stdin when they are left out. It prints the result, and what the call used on stderr; a tool that ran and refused exits 2.
+
+## Local callers and MCP
+
+- `crab --context default call <service> <tool> '<arguments>' --caller alice` calls a public tool locally. Without a caller, only tools with `access = "anonymous"` can be called from outside.
+- Local MCP uses Streamable HTTP at `http://127.0.0.1:7777/mcp`. Send `x-berm-caller: {"id":"alice"}` to discover and call public tools as that caller. Local identities are unverified; keep the endpoint on loopback.
 
 ## Signing in, paying and secrets
 
@@ -65,7 +78,8 @@ Read these before writing code. Paths are relative to the crab repository.
 | Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |
 | Declaring and using secrets in code | https://crab.talk/docs/development/secrets |
 | An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
-| A kit's API and setup | `services/<kit>/README.md` |
+| A service or kit's API and setup | `services/<name>/README.md`, `services/README.md` |
+| Generating provider bindings from OpenAPI | `crates/openapi/README.md` |
 
 ## A local crab checkout
 
@@ -78,5 +92,7 @@ Read these before writing code. Paths are relative to the crab repository.
   crabkit-auth = { path = "../crab/services/auth" }
   ```
 
+- Run Rust tests with `cargo nextest run`; workspace CI uses `cargo nextest run --workspace --release`. Tests belong in each crate's `tests/` directory.
+- Update affected READMEs, examples, website guides and this skill alongside behavior or layout changes.
 - What a service needs from berm or a kit and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.
 - To check a fix against a failed call's tape, run `crab replay <service> <id> --build` in the service crate. It builds locally, prints both digests, and reaches no live services. `--build` and `--on` exclude each other.

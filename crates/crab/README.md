@@ -120,10 +120,9 @@ steps:
   - run: crab deploy --context cloud
 ```
 
-A service with an `image` pushes it with `GITHUB_TOKEN` as the registry credential: give the job `packages: write` and the step `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. Locally, `GITHUB_TOKEN=$(gh auth token)` does the same.
+When pushing to an OCI registry with `--registry` or a context registry, `GITHUB_TOKEN` supplies the registry credential. For GitHub Actions pushing to GHCR, give the job `packages: write` and set `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`. Locally, `GITHUB_TOKEN=$(gh auth token)` supplies the same credential.
 
-`new` is the one subcommand that does not talk to the context's host. It writes
-a service crate pinning the `berm-lang` that shipped with this binary.
+`crab new` writes a service crate pinning `berm-lang` to the CLI release tag; it needs no running host.
 
 `inspect` prints a service's README, a table of its tools with each one's access, title, catalog job, price, marks and description, and each tool's JSON Schema as the argument list it describes. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
 
@@ -133,10 +132,14 @@ Local MCP clients can send `x-berm-caller: {"id":"alice"}` on requests to `/mcp`
 
 A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the service, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
 
-## License
-
-Apache-2.0
+## Publication and images
 
 `public` exposes your Cloud deployment; `template` publishes its image so others can deploy private copies. Both default to `false`. `crab publish` publishes or withdraws a template without running an instance, using the same approval flow as deployment.
 
 Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. Repositories use the service name, and deployments pin the OCI artifact digest.
+
+`crab deploy --from owner/name` creates a private copy of a published template without building it locally. The copy has its own credentials and state.
+
+## License
+
+AGPL-3.0-only
