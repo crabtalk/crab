@@ -1,6 +1,0 @@
-target
-**/node_modules
-**/.svelte-kit
-**/build
-.git
-.cydonia
