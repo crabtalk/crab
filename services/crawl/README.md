@@ -1,6 +1,6 @@
 # Crawl
 
-Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+Rust library for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
 
 An incremental crawler for berm services: the domains a service watches, each site's robots.txt and sitemaps, and the pages of the kinds the service names, fetched on its schedule into its database and recrawled when they change.
 
@@ -11,9 +11,9 @@ An incremental crawler for berm services: the domains a service watches, each si
 crabkit = { version = "0.1", features = ["crawl"] }
 ```
 
-The kit is also the crate `crabkit-crawl` on its own.
+The library is also the crate `crabkit-crawl` on its own.
 
-The kit's `crab.toml` declares `"berm.http.fetch" = ["*"]` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the kit. The local host refuses a host matched only by a pattern when it resolves to an address that is not public.
+The library's `crab.toml` declares `"berm.http.fetch" = ["*"]` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the library. The local host refuses a host matched only by a pattern when it resolves to an address that is not public.
 
 ```rust,ignore
 use berm_lang::{Result, tool};

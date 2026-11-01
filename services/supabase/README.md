@@ -1,6 +1,6 @@
 # crabkit-supabase
 
-Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+Rust library for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
 
 Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and Postgres functions, and Storage objects. Each request carries the project key from the secret `SUPABASE_KEY` in `apikey` and `Authorization: Bearer`, substituted by the host, so the service never holds it.
 
@@ -11,9 +11,9 @@ Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and Postgres fun
 crabkit = { version = "0.1", features = ["supabase"] }
 ```
 
-The kit is also the crate `crabkit-supabase` on its own.
+The library is also the crate `crabkit-supabase` on its own.
 
-The kit's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the service's manifest when the service links the kit, and no host. The service declares its own project's host under `berm.http.fetch` in its own `crab.toml`:
+The library's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the service's manifest when the service links the library, and no host. The service declares its own project's host under `berm.http.fetch` in its own `crab.toml`:
 
 ```toml
 [syscalls]

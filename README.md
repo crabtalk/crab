@@ -43,11 +43,11 @@ crab deploy
 - [Documentation](https://crab.talk/docs) — guides for writing and deploying services.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
 - [Services](services/README.md) — integrations to deploy or reuse.
-- [Kits](crates/crabkit/README.md) — libraries to include in your services.
+- [Libraries](crates/crabkit/README.md) — libraries to include in your services.
 - [Berm](berm/berm/README.md) — the runtime that runs services.
 
 ## License
 
 The runtime and CLI are [AGPL-3.0](LICENSE-AGPL).
 
-SDKs, kits, and services are [Apache-2.0](LICENSE-APACHE). Services you build are yours to license.
+SDKs, libraries, and services are [Apache-2.0](LICENSE-APACHE). Services you build are yours to license.

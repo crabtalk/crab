@@ -1,19 +1,19 @@
 # Stripe
 
-Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+Rust library for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
 
 Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan, kept from Stripe's events.
 
 ## Using it
 
-Add the kit to your service's crate:
+Add the library to your service's crate:
 
 ```toml
 [dependencies]
 crabkit = { version = "0.1", features = ["stripe"] }
 ```
 
-The kit is also the crate `crabkit-stripe` on its own.
+The library is also the crate `crabkit-stripe` on its own.
 
 Call it from your own tools:
 
@@ -40,7 +40,7 @@ pub fn webhook(data: Data) -> Result<()> {
 access = "public"
 ```
 
-The service declares nothing the kit already declares: the kit's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the service's manifest when the service links the kit. Its tables are `stripe_customers` and `stripe_subscriptions`, in the service's database.
+The service declares nothing the library already declares: the library's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `berm.http.fetch`, and its migrations, and they reach the service's manifest when the service links the library. Its tables are `stripe_customers` and `stripe_subscriptions`, in the service's database.
 
 - `Subscriber::calling()`: the end user the call carries; a call with none is refused. `Subscriber { user }` names another.
 - `subscriber.checkout(plan, success, cancel)`: a Checkout session subscribing the user to the price whose `lookup_key` is `plan`, sending them to `success` once they subscribe and to `cancel` if they leave. Their first checkout makes their Stripe customer. Answers `Session {url}`.

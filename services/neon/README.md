@@ -1,6 +1,6 @@
 # Neon
 
-Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+Rust library for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
 
 Neon's SQL over HTTP for berm services: parameterized statements and transactions against a Neon Postgres database, each one HTTPS request through `berm.http.fetch`. The password stays a secret the host substitutes; the service never holds it.
 
@@ -11,9 +11,9 @@ Neon's SQL over HTTP for berm services: parameterized statements and transaction
 crabkit = { version = "0.1", features = ["neon"] }
 ```
 
-The kit is also the crate `crabkit-neon` on its own.
+The library is also the crate `crabkit-neon` on its own.
 
-The kit's `crab.toml` declares the secret `NEON_PASSWORD`, which reaches the service's manifest when the service links the kit. The kit declares no host; the service declares its project's endpoint under `berm.http.fetch` in its own `crab.toml`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
+The library's `crab.toml` declares the secret `NEON_PASSWORD`, which reaches the service's manifest when the service links the library. The library declares no host; the service declares its project's endpoint under `berm.http.fetch` in its own `crab.toml`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
 
 ```toml
 [syscalls]

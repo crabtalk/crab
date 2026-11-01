@@ -1,6 +1,6 @@
 # Lake
 
-Library-only kit for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
+Rust library for code running in a CrabTalk service. It has no standalone tools or deployable template; link it into your service, then expose the operations your users need.
 
 The runtime of a source service: the feeds it follows, the items they show and the threads under them, or the records they list, kept a version per change, fetched on the service's schedule and stored in its database. `rss::entries` reads RSS 2.0, RSS 1.0 and Atom feeds, and `time` reads the dates feeds and pages carry.
 
@@ -11,9 +11,9 @@ The runtime of a source service: the feeds it follows, the items they show and t
 crabkit = { version = "0.1", features = ["lake"] }
 ```
 
-The kit is also the crate `crabkit-lake` on its own.
+The library is also the crate `crabkit-lake` on its own.
 
-The kit's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the kit. The hosts a source fetches from differ per source, so the service declares them under `berm.http.fetch` in its own `crab.toml`, beside the tick's expression in `[crons]`:
+The library's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the library. The hosts a source fetches from differ per source, so the service declares them under `berm.http.fetch` in its own `crab.toml`, beside the tick's expression in `[crons]`:
 
 ```toml
 [syscalls]
