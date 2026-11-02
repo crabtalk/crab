@@ -38,7 +38,26 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
         format::day(period.since.into()),
         format::day(i64::from(period.until) - 1)
     );
-    println!("credit  {}", format::usd(credit.micros as f64));
+    println!("purchased credit  {}", format::usd(credit.micros as f64));
+    if let Some(trial) = credit.trial {
+        println!(
+            "trial credit      {}, expires {}",
+            format::usd(trial.micros as f64),
+            format::day(trial.expires_at)
+        );
+        if let Some(until) = trial.recovery_until {
+            println!(
+                "trial ended       data kept until {}; upgrade or export before deletion",
+                format::date(until)
+            );
+        }
+        if trial.reserved_micros > 0 {
+            println!(
+                "reserved trial    {} for running or unsettled work",
+                format::usd(trial.reserved_micros as f64)
+            );
+        }
+    }
     match credit.refill_cap_micros {
         0 => println!("refill  off"),
         cap => println!(
@@ -107,6 +126,15 @@ pub fn verify(client: &Client, context: &str, json: bool) -> Result<()> {
         return terminal::json(&verification);
     }
     println!("verified {}", format::date(at));
+    if let Some(offer) = verification.trial {
+        println!(
+            "trial offer       {} once, valid {} days; data retained {} days after credit ends",
+            format::usd(offer.amount_micros as f64),
+            offer.lifetime_days,
+            offer.retention_days
+        );
+        println!("                  `crab billing` shows the issued balance and expiry");
+    }
     Ok(())
 }
 

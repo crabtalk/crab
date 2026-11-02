@@ -19,6 +19,17 @@ pub struct PublicPlan {
     /// Bytes of memory the account's services may hold at once, their images
     /// and their calls running; `0` is no limit.
     pub memory: u64,
+    #[serde(default)]
+    pub trial: Option<TrialOffer>,
+}
+
+/// Verification offer, absent while trial funding is disabled.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrialOffer {
+    pub amount_micros: i64,
+    pub lifetime_days: u32,
+    pub retention_days: u32,
 }
 
 /// An account's billing period: what its plan includes, what it used, and
@@ -164,6 +175,16 @@ pub struct Included {
     pub sent: u64,
 }
 
+impl Included {
+    pub fn resource_limits(self) -> Self {
+        Self {
+            stored: self.stored,
+            sent: self.sent,
+            ..Self::default()
+        }
+    }
+}
+
 /// A person's verification, which lets an account on Hobby deploy.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,6 +196,8 @@ pub struct Verification {
     /// The person signs in with GitHub.
     #[serde(default)]
     pub github: bool,
+    #[serde(default)]
+    pub trial: Option<TrialOffer>,
 }
 
 /// A plan subscribed: the Checkout URL to pay at, or `None` when an active
@@ -185,15 +208,31 @@ pub struct SubscribeResponse {
     pub url: Option<String>,
 }
 
-/// An account's credit, in USD micros. All of it was bought.
+/// An account's credit, in USD micros.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credit {
+    /// Purchased credit, eligible for priced tools and paid-plan overage.
     pub micros: i64,
+    #[serde(default)]
+    pub trial: Option<TrialCredit>,
     /// The most refills may deposit in a UTC calendar month; `0` is off.
     pub refill_cap_micros: i64,
     /// What one refill buys; `0` when never set.
     pub refill_micros: i64,
+}
+
+/// Trial funds pay execution, excluding priced tools and subscriptions.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrialCredit {
+    pub micros: i64,
+    pub granted_micros: i64,
+    pub reserved_micros: i64,
+    /// Next grant expiration, or the last expiration when all grants expired.
+    pub expires_at: i64,
+    #[serde(default)]
+    pub recovery_until: Option<i64>,
 }
 
 /// Where an account's credit came from and went.
@@ -205,6 +244,10 @@ pub struct CreditHistory {
     /// The purchases and refills still holding credit, soonest to expire
     /// first.
     pub grants: Vec<Grant>,
+    #[serde(default)]
+    pub trial_months: Vec<CreditMonth>,
+    #[serde(default)]
+    pub trial_grants: Vec<Grant>,
 }
 
 /// One month of [`CreditHistory`], in USD micros, each figure positive.
@@ -213,9 +256,9 @@ pub struct CreditHistory {
 pub struct CreditMonth {
     /// `YYYY-MM`.
     pub month: String,
-    /// Purchases and refills.
+    /// Credit issued.
     pub added: i64,
-    /// Use past the plan's included amounts.
+    /// Metered execution.
     pub overage: i64,
     /// Other accounts' tools' prices, less what failed calls returned.
     pub prices: i64,
@@ -224,7 +267,7 @@ pub struct CreditMonth {
     pub balance: i64,
 }
 
-/// One purchase or refill's credit.
+/// One credit grant.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Grant {

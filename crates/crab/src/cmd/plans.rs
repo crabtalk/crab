@@ -17,6 +17,20 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         let audience = if plan.org { "organizations" } else { "anyone" };
         println!("{}  {price}  for {audience}", plan.slug);
         let included = &plan.included;
+        if let Some(offer) = &plan.trial {
+            println!(
+                "  {} trial credit once after GitHub verification, valid {} days",
+                format::usd(offer.amount_micros as f64),
+                offer.lifetime_days
+            );
+            println!(
+                "  {} storage included; data kept {} days after credit ends",
+                format::bytes(included.stored),
+                offer.retention_days
+            );
+            println!("  {} of memory held at once", format::bytes(plan.memory));
+            continue;
+        }
         if included.runs
             + included.cpu
             + included.read
