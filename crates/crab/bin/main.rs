@@ -409,9 +409,6 @@ enum KeyCommand {
     },
     /// Revoke a key.
     Rm { id: String },
-    /// Replace a key's token, keeping its scope, budget, grants and expiry.
-    /// The new token is printed once; the old one stops working at once.
-    Roll { id: String },
     /// Ask an owner of the account to let the key `crab` signs in with call
     /// other accounts' priced services, or spend more a day. Prints the link
     /// to send them.
@@ -813,7 +810,6 @@ fn run() -> Result<ExitCode> {
                     cmd::key::create(&client, label, *days, scope, json)?
                 }
                 KeyCommand::Rm { id } => cmd::key::rm(&client, id, yes)?,
-                KeyCommand::Roll { id } => cmd::key::roll(&client, id, yes, json)?,
                 KeyCommand::Ask {
                     services,
                     budget,

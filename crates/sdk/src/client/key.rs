@@ -26,13 +26,6 @@ impl Client {
         self.json(self.at(Method::PATCH, &path).json(body)).await
     }
 
-    /// Replace a key's token, keeping everything else of it. The new token
-    /// comes back once; the old one stops working at once.
-    pub async fn roll_key(&self, key_id: &str) -> Result<CreateKeyResponse, Error> {
-        let path = format!("{}/keys/{key_id}/roll", self.account()?.api());
-        self.json(self.at(Method::POST, &path)).await
-    }
-
     /// Let a key call `service`, as `owner/name`.
     pub async fn grant_key(&self, key_id: &str, service: &str) -> Result<(), Error> {
         let path = format!("{}/keys/{key_id}/services/{service}", self.account()?.api());

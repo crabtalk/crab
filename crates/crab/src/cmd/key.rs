@@ -107,15 +107,3 @@ pub fn budget(client: &Client, id: &str, usd: u32, json: bool) -> Result<()> {
     eprintln!("key {id} spends at most ${usd} a UTC day on tool prices");
     Ok(())
 }
-
-/// Replace key `id`'s token. The new token is printed once.
-pub fn roll(client: &Client, id: &str, yes: bool, json: bool) -> Result<()> {
-    terminal::confirm(yes, &format!("roll key {id}; its token stops working"))?;
-    let rolled = runtime::wait(client.roll_key(id))?;
-    if json {
-        return terminal::json(&rolled);
-    }
-    println!("{}", rolled.token);
-    eprintln!("key {id} rolled; the token above is shown once");
-    Ok(())
-}
