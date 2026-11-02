@@ -98,7 +98,7 @@ pub fn ungrant(client: &Client, id: &str, service: &str) -> Result<()> {
 pub fn budget(client: &Client, id: &str, usd: u32, json: bool) -> Result<()> {
     let body = UpdateKeyRequest {
         budget: Some(i64::from(usd) * 1_000_000),
-        scope: None,
+        ..UpdateKeyRequest::default()
     };
     let key = runtime::wait(client.update_key(id, &body))?;
     if json {

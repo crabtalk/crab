@@ -190,6 +190,9 @@ pub struct UpdateKeyRequest {
     pub budget: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<Vec<Scope>>,
+    /// Replace priced service access; an empty list removes every grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub services: Option<Vec<String>>,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
