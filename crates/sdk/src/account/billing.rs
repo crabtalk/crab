@@ -44,9 +44,9 @@ pub struct Period {
     pub since: i32,
     pub until: i32,
     pub included: Included,
-    /// In the units of `included`; `stored` is the bytes its services reserve.
+    /// In the units of `included`; `stored` includes database reservations, images and pending uploads.
     pub used: Included,
-    /// Bytes its placed services keep, as each was last sampled.
+    /// Sampled database bytes and confirmed image or seed bytes.
     pub stored: u64,
     /// What its services used since `since` past the included amounts costs
     /// at the rates: what credit pays, in USD micros.
