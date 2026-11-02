@@ -25,6 +25,7 @@ crab rm example
 name = "example"
 public = true
 template = true
+logo = "https://example.com/logo.svg"
 
 # Who may call a tool, its display name, its price a call on Cloud in USD
 # micros, and the catalog job it does. A tool without a table is internal.
@@ -50,6 +51,8 @@ size = "2GiB"
 # A SQLite database, relative to this file, a service on Cloud starts from on its first deploy.
 seed = "seed.sqlite"
 ```
+
+`logo` is optional and must be an absolute HTTPS URL. Builds, deployments and publication reject invalid values without fetching the image. The URL belongs to the service image and is retained by template copies; linked libraries do not contribute a logo.
 
 `access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml), and `budget = { cpu, read, written, memory }` sets what one call may use, each key at least 1, `memory` in MiB, a key left out the host's default. A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title`, `catalog` and `budget` into the image, and a deploy carries `price`.
 

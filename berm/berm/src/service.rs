@@ -231,6 +231,7 @@ impl Service {
             homepage,
             repository,
             readme,
+            logo,
             tools,
         } = &self.manifest;
         berm_api::Service {
@@ -240,6 +241,7 @@ impl Service {
             homepage: homepage.clone(),
             repository: repository.clone(),
             readme: readme.clone(),
+            logo: logo.clone(),
             digest: self.digest.clone(),
             tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
             vars: deps.vars.clone(),

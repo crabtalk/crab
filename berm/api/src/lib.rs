@@ -3,6 +3,7 @@
 //! Links no compiler: a client reads an image and talks to the API with this
 //! crate alone.
 
+use crate::logo::Logo;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -17,6 +18,7 @@ mod compat;
 pub mod digest;
 pub mod host;
 mod image;
+pub mod logo;
 mod manifest;
 pub mod project;
 pub mod schema;
@@ -60,6 +62,8 @@ pub struct Service {
     /// The Markdown file `readme` names in its `crab.toml`.
     #[serde(default)]
     pub readme: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
     /// sha256 of the image.
     pub digest: String,
     /// Its public tools.

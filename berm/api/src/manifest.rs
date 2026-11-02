@@ -1,7 +1,7 @@
 //! What a service says it is, read from its image's [`ABI_SECTION`],
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{Access, DEFAULT_BUFFER, Image, Limits, ToolSpec};
+use crate::{Access, DEFAULT_BUFFER, Image, Limits, ToolSpec, logo::Logo};
 use anyhow::{Context, Result, bail};
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use regex::Regex;
@@ -34,6 +34,8 @@ pub struct Manifest {
     /// The Markdown file `readme` names in its `crab.toml`.
     #[serde(default)]
     pub readme: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
     /// By name.
     pub tools: Vec<ToolSpec>,
     /// The most bytes a call's arguments, and a tool's result, may hold. The
@@ -77,6 +79,8 @@ pub struct ServiceRecord {
     pub repository: String,
     #[serde(default)]
     pub readme: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
     pub buffer: usize,
     #[serde(default)]
     pub deps: Deps,
@@ -623,6 +627,7 @@ impl TryFrom<&[u8]> for Manifest {
             homepage,
             repository,
             readme,
+            logo,
             buffer,
             mut deps,
             database,
@@ -642,6 +647,7 @@ impl TryFrom<&[u8]> for Manifest {
             homepage,
             repository,
             readme,
+            logo,
             tools,
             buffer,
             deps,

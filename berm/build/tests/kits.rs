@@ -200,3 +200,37 @@ fn each_service_is_credited_only_the_kits_its_own_features_link() {
     // Built again with nothing changed, every crate is fresh.
     assert_eq!(kits(&root.join("a")), ["kita"]);
 }
+
+#[test]
+fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
+    let root = TempDir::new().unwrap();
+    let root = root.path();
+    write(
+        root,
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"app\", \"provider\"]\nresolver = \"3\"\n",
+    );
+    tooled(root, "app", "provider = { path = \"../provider\" }");
+    package(root, "provider", "provider", "0.1.0", "");
+    write(
+        root,
+        "provider/crab.toml",
+        "name = \"provider\"\nlogo = \"https://example.com/provider.svg\"\n",
+    );
+
+    let built = berm_build::build(&root.join("app"), None).unwrap();
+    let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();
+    assert!(manifest.logo.is_none());
+
+    write(
+        root,
+        "app/crab.toml",
+        "name = \"app\"\nlogo = \"https://example.com/app.svg\"\n",
+    );
+    let built = berm_build::build(&root.join("app"), None).unwrap();
+    let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();
+    assert_eq!(
+        manifest.logo.unwrap().as_str(),
+        "https://example.com/app.svg"
+    );
+}

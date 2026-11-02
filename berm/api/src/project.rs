@@ -1,6 +1,8 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host};
+use crate::{
+    Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host, logo::Logo,
+};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use regex::Regex;
@@ -31,6 +33,8 @@ pub struct Project {
     /// The name it deploys as.
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub logo: Option<Logo>,
     #[serde(default)]
     pub public: bool,
     #[serde(default)]
@@ -271,6 +275,7 @@ impl Project {
     pub fn check_kit(&self) -> Result<()> {
         let service_only = [
             ("name", self.name.is_some()),
+            ("logo", self.logo.is_some()),
             ("public", self.public),
             ("template", self.template),
             ("deploy", !self.deploy),

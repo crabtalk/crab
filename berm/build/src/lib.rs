@@ -78,6 +78,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
             }
             None => String::new(),
         },
+        logo: project.logo.clone(),
         buffer: project.buffer(),
         deps: project.deps(),
         database: migrations(service.manifest_path.dir(), &project)?,

@@ -37,6 +37,7 @@ fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
         homepage: String::new(),
         repository: String::new(),
         readme: String::new(),
+        logo: None,
         buffer: 1024,
         deps: Deps {
             secrets: vec!["own".to_owned()],
@@ -272,4 +273,33 @@ fn a_cron_tool_given_access_is_refused() {
     let service = with_tools(BTreeMap::from([("tick".to_owned(), record)]));
     let error = Manifest::try_from(&*image(&cron("tick"), Some(&service), &[])).unwrap_err();
     assert!(error.to_string().contains("takes no access"), "{error}");
+}
+
+#[test]
+fn logo_validation_applies_to_images_and_manifest_json() {
+    let mut record: serde_json::Value = serde_json::from_slice(&service()).unwrap();
+    record["logo"] = "https://example.com/logo.svg".into();
+    let bytes = image(
+        &tool("a", "demo"),
+        Some(&serde_json::to_vec(&record).unwrap()),
+        &[],
+    );
+    let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
+    assert_eq!(
+        manifest.logo.as_ref().unwrap().as_str(),
+        "https://example.com/logo.svg"
+    );
+    let mut json = serde_json::to_value(&manifest).unwrap();
+    let roundtrip: Manifest = json.to_string().parse().unwrap();
+    assert_eq!(roundtrip.logo, manifest.logo);
+
+    record["logo"] = "http://example.com/logo.svg".into();
+    let bytes = image(
+        &tool("a", "demo"),
+        Some(&serde_json::to_vec(&record).unwrap()),
+        &[],
+    );
+    assert!(Manifest::try_from(bytes.as_slice()).is_err());
+    json["logo"] = "file:///logo.svg".into();
+    assert!(json.to_string().parse::<Manifest>().is_err());
 }

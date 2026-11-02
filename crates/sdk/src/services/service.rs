@@ -81,6 +81,8 @@ pub struct TemplateSummary {
     pub digest: String,
     pub version: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

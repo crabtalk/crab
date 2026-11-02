@@ -191,3 +191,36 @@ fn publication_is_opt_in_and_independent() {
         assert_eq!((project.public, project.template), (public, template));
     }
 }
+
+#[test]
+fn logos_are_optional_and_require_absolute_https_urls() {
+    assert!(read("name = \"app\"\n").unwrap().logo.is_none());
+    let logo = read("name = \"app\"\nlogo = \"https://example.com/logo.svg\"\n")
+        .unwrap()
+        .logo
+        .unwrap();
+    assert_eq!(logo.as_str(), "https://example.com/logo.svg");
+    for url in [
+        "http://example.com/logo.svg",
+        "logo.svg",
+        "//example.com/logo.svg",
+        "https://",
+        "data:image/png;base64,AA==",
+        "",
+    ] {
+        let error = read(&format!("name = \"app\"\nlogo = {url:?}\n")).unwrap_err();
+        assert!(format!("{error:#}").contains("logo must be an absolute HTTPS URL"));
+    }
+}
+
+#[test]
+fn library_only_packages_do_not_declare_logos() {
+    let project = read("logo = \"https://example.com/logo.svg\"\n").unwrap();
+    assert!(
+        project
+            .check_kit()
+            .unwrap_err()
+            .to_string()
+            .contains("logo")
+    );
+}
