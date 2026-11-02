@@ -886,3 +886,38 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.sent += used.sent;
     }
 }
+
+impl std::ops::SubAssign<Meter> for Metered {
+    fn sub_assign(&mut self, used: Meter) {
+        self.runs = self.runs.saturating_sub(used.runs);
+        self.calls = self.calls.saturating_sub(used.calls);
+        self.cpu = self.cpu.saturating_sub(used.cpu);
+        self.held = self.held.saturating_sub(used.held);
+        self.read = self.read.saturating_sub(used.read);
+        self.written = self.written.saturating_sub(used.written);
+        self.sql_cpu = self.sql_cpu.saturating_sub(used.sql_cpu);
+        self.proxied = self.proxied.saturating_sub(used.proxied);
+        self.logged = self.logged.saturating_sub(used.logged);
+        self.failed = self.failed.saturating_sub(used.failed);
+        self.sent = self.sent.saturating_sub(used.sent);
+    }
+}
+
+impl From<Metered> for Meter {
+    fn from(used: Metered) -> Self {
+        Self {
+            runs: used.runs,
+            calls: used.calls,
+            cpu: used.cpu,
+            memory: used.memory,
+            held: used.held,
+            read: used.read,
+            written: used.written,
+            sql_cpu: used.sql_cpu,
+            proxied: used.proxied,
+            logged: used.logged,
+            failed: used.failed,
+            sent: used.sent,
+        }
+    }
+}

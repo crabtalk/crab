@@ -214,6 +214,14 @@ pub struct MeteredDay {
     pub overage: u64,
 }
 
+impl std::ops::AddAssign for MeteredDay {
+    fn add_assign(&mut self, other: Self) {
+        self.used.stored = self.used.stored.max(other.used.stored);
+        self.used += Meter::from(other.used);
+        self.overage += other.overage;
+    }
+}
+
 /// One of a service's secrets, by name. Its value is never read back.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

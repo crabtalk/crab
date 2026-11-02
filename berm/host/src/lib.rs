@@ -87,7 +87,12 @@ impl std::error::Error for Denied {}
 
 impl From<anyhow::Error> for Denied {
     fn from(e: anyhow::Error) -> Self {
-        tracing::error!("host failed: {e:#}");
-        deny(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+        match e.downcast::<Self>() {
+            Ok(denied) => denied,
+            Err(e) => {
+                tracing::error!("host failed: {e:#}");
+                deny(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+            }
+        }
     }
 }

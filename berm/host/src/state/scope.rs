@@ -16,16 +16,22 @@ impl Scope for Entered {
             let Entered {
                 commits,
                 held,
+                admitted,
                 first,
             } = *self;
             let took = held.took().map(str::to_owned);
             held.commit().await?;
-            if first {
+            let changes = if first {
                 commits.commit(Changes::default(), took).await?;
-                return Ok(changes);
+                changes
+            } else {
+                commits.commit(changes, took).await?;
+                Changes::default()
+            };
+            match admitted {
+                Some(admitted) => admitted.close(changes).await,
+                None => Ok(changes),
             }
-            commits.commit(changes, took).await?;
-            Ok(Changes::default())
         })
     }
 }
