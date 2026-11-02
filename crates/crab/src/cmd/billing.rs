@@ -39,18 +39,18 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
         format::day(i64::from(period.until) - 1)
     );
     println!("purchased credit  {}", format::usd(credit.micros as f64));
+    if let Some(until) = credit.recovery_until {
+        println!(
+            "hosting paused    data kept until {}; verify if eligible, upgrade or export before deletion",
+            format::date(until)
+        );
+    }
     if let Some(trial) = credit.trial {
         println!(
             "trial credit      {}, expires {}",
             format::usd(trial.micros as f64),
             format::day(trial.expires_at)
         );
-        if let Some(until) = trial.recovery_until {
-            println!(
-                "trial ended       data kept until {}; upgrade or export before deletion",
-                format::date(until)
-            );
-        }
         if trial.reserved_micros > 0 {
             println!(
                 "reserved trial    {} for running or unsettled work",

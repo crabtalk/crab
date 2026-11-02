@@ -23,7 +23,7 @@ pub struct PublicPlan {
     pub trial: Option<TrialOffer>,
 }
 
-/// Verification offer, absent while trial funding is disabled.
+/// Verification offer terms.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrialOffer {
@@ -216,6 +216,8 @@ pub struct Credit {
     pub micros: i64,
     #[serde(default)]
     pub trial: Option<TrialCredit>,
+    #[serde(default)]
+    pub recovery_until: Option<i64>,
     /// The most refills may deposit in a UTC calendar month; `0` is off.
     pub refill_cap_micros: i64,
     /// What one refill buys; `0` when never set.
@@ -231,8 +233,6 @@ pub struct TrialCredit {
     pub reserved_micros: i64,
     /// Next grant expiration, or the last expiration when all grants expired.
     pub expires_at: i64,
-    #[serde(default)]
-    pub recovery_until: Option<i64>,
 }
 
 /// Where an account's credit came from and went.

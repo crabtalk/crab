@@ -38,7 +38,7 @@ The token is a session token or an API key. Without `owner`, the client addresse
 
 A `429` that names its `Retry-After` is sent again after that wait, up to three times, unless its body streams. `Error::retryable` is true for transport failures, `429` and `5xx` only. A structured refusal carries its stable `code` (e.g. `orgs_closed`); branch on that rather than on the status.
 
-Billing balances keep purchased funds in `Credit::micros` and trial funds in `Credit::trial`, with grant amount, reserved funds, expiry and recovery deadline. `PublicPlan::trial` and `Verification::trial` expose the enabled offer; absent means no automatic offer. `CreditHistory` reports purchased and trial activity separately.
+Billing balances keep purchased funds in `Credit::micros` and trial funds in `Credit::trial`, with grant amount, reserved funds and expiry. `Credit::recovery_until` records the account's hosting recovery deadline, including accounts that never received trial credit. `PublicPlan::trial` and `Verification::trial` expose the verification offer. `CreditHistory` reports purchased and trial activity separately.
 
 ## Modules
 
