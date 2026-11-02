@@ -83,6 +83,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         deps: project.deps(),
         database: migrations(service.manifest_path.dir(), &project)?,
         tools: project.records(),
+        crons: project.crons.clone().unwrap_or_default(),
     };
 
     let out = metadata.target_directory.join(OUT);

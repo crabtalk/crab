@@ -237,8 +237,7 @@ pub struct AskedCredential {
     /// What the person enters at the provider, from the request's `copy`.
     #[serde(default)]
     pub copy: Vec<CopyValue>,
-    /// The hosts its secrets go to: those its set secrets go to, else those
-    /// its service suggests. The person confirms them on saving.
+    /// Manifest destinations; provisioning cannot change them.
     #[serde(default)]
     pub hosts: Vec<String>,
     pub secrets: Vec<AskedSecret>,
@@ -275,7 +274,6 @@ impl AskedCredential {
                     masked: secret.masked,
                     pattern: secret.pattern,
                     set: false,
-                    value: None,
                 })
                 .collect(),
             saved: false,
@@ -299,15 +297,12 @@ pub struct AskedSecret {
     /// What the provider calls it; the name when empty.
     #[serde(default)]
     pub label: String,
-    /// Never shown once set.
+    /// Whether the entry field hides the value while it is typed.
     pub masked: bool,
     /// A regular expression a value must match.
     #[serde(default)]
     pub pattern: Option<String>,
     pub set: bool,
-    /// Its value, when it is set and not masked.
-    #[serde(default)]
-    pub value: Option<String>,
 }
 
 /// Where paying a request goes next.
@@ -320,13 +315,12 @@ pub struct PayResponse {
 }
 
 /// One credential's values by secret name, at `PUT /requests/{code}/secrets`.
-/// A secret of it already set may be left out. `hosts` replaces the hosts of
-/// every secret of it, the ones left out included.
+/// A secret already provisioned for these manifest destinations may be left out.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SecretValues {
     pub values: BTreeMap<String, String>,
-    pub hosts: Vec<String>,
 }
 
 /// A sign-in request a device made, at `POST /requests/login`: RFC 8628's

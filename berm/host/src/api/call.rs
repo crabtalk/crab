@@ -3,11 +3,11 @@
 
 use crate::{
     Denied, Stored, deny,
-    env::{Env, Images, Secrets},
+    env::{Env, Images},
     host::{self, Host},
     record::{calls, logs, meter, records, usage},
     state::{service, vars},
-    wake::{cron, table},
+    wake::table,
 };
 use axum::http::StatusCode;
 use berm::{
@@ -75,7 +75,7 @@ impl<E: Env> Host<E> {
         let deployed = self.deployed(service)?;
         let scope = host::split(service).0;
         let deps = &deployed.manifest.deps;
-        let granted = self.secrets.names(service).await.unwrap_or_default();
+        let granted = self.granted(service, deps).await.unwrap_or_default();
         let project = service::row(&self.store, scope, host::split(service).1)
             .await?
             .and_then(|row| row.project);
@@ -151,33 +151,6 @@ impl<E: Env> Host<E> {
             tools,
             deadline: self.deadline.as_millis() as u64,
         })
-    }
-
-    /// Call cron tool `tool` of `service` when `cron` fires, from its next
-    /// firing when it changes; `None` stops it. Kept until a deploy's config
-    /// sets another.
-    pub async fn set_cron(
-        &self,
-        service: &str,
-        tool: &str,
-        cron: Option<String>,
-    ) -> Result<(), Denied> {
-        self.deployed(service)?;
-        let now = (self.now)() as i64;
-        let due = cron
-            .as_deref()
-            .map(|cron| cron::next(cron, now))
-            .transpose()
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-        let (scope, name) = host::split(service);
-        if !table::set_cron(&self.store, scope, name, tool, cron, due).await? {
-            return Err(deny(
-                StatusCode::NOT_FOUND,
-                format!("the service has no cron tool named {tool:?}"),
-            ));
-        }
-        self.waking.notify_one();
-        Ok(())
     }
 
     /// Each var of `service`'s `[vars]`, with the value it holds.

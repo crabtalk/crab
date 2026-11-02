@@ -18,9 +18,14 @@ The library's `crab.toml` declares the secret `NEON_PASSWORD`, which reaches the
 ```toml
 [syscalls]
 "berm.http.fetch" = ["api.us-east-2.aws.neon.tech"]
+
+[credentials.neon]
+title = "Neon credentials"
+hosts = ["api.us-east-2.aws.neon.tech"]
+secrets = [{ name = "NEON_PASSWORD" }]
 ```
 
-Grant `NEON_PASSWORD` for that host. The connection string carries it as `{secret:NEON_PASSWORD}`, substituted unencoded, so the password must be valid in a URL as is.
+Provision `NEON_PASSWORD` after deploying this manifest; its destinations come from the credential declaration. The connection string carries it as `{secret:NEON_PASSWORD}`, substituted unencoded, so the password must be valid in a URL as is.
 
 ## Queries
 

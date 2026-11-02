@@ -59,14 +59,6 @@ pub enum Scope {
     DeploymentsRead,
     #[serde(rename = "deployments:write")]
     DeploymentsWrite,
-    #[serde(rename = "secrets:read")]
-    SecretsRead,
-    #[serde(rename = "secrets:write")]
-    SecretsWrite,
-    #[serde(rename = "schedules:read")]
-    SchedulesRead,
-    #[serde(rename = "schedules:write")]
-    SchedulesWrite,
     #[serde(rename = "calls:read")]
     CallsRead,
     #[serde(rename = "logs:read")]
@@ -108,15 +100,26 @@ pub enum Scope {
 berm_api::text_enum!(Scope);
 
 impl Scope {
-    pub const ALL: [Self; 26] = [
+    pub fn allows(self, required: Self) -> bool {
+        self == required
+            || matches!(
+                (self, required),
+                (Self::ServicesWrite, Self::ServicesRead)
+                    | (Self::DeploymentsWrite, Self::DeploymentsRead)
+                    | (Self::AppsWrite, Self::AppsRead)
+                    | (Self::OrgsWrite, Self::OrgsRead)
+                    | (Self::MembersWrite, Self::MembersRead)
+                    | (Self::InvitesWrite, Self::InvitesRead)
+                    | (Self::TeamsWrite, Self::TeamsRead)
+                    | (Self::AlertsWrite, Self::AlertsRead)
+            )
+    }
+
+    pub const ALL: [Self; 22] = [
         Self::ServicesRead,
         Self::ServicesWrite,
         Self::DeploymentsRead,
         Self::DeploymentsWrite,
-        Self::SecretsRead,
-        Self::SecretsWrite,
-        Self::SchedulesRead,
-        Self::SchedulesWrite,
         Self::CallsRead,
         Self::LogsRead,
         Self::UsageRead,

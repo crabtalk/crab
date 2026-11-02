@@ -18,9 +18,14 @@ The library's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the 
 ```toml
 [syscalls]
 "berm.http.fetch" = ["abcd.supabase.co"]
+
+[credentials.supabase]
+title = "Supabase credentials"
+hosts = ["abcd.supabase.co"]
+secrets = [{ name = "SUPABASE_KEY" }]
 ```
 
-Set the key as the service's secret `SUPABASE_KEY`, e.g. `printf %s "$KEY" | crab secret put <service> SUPABASE_KEY --host <project>.supabase.co`:
+Provision `SUPABASE_KEY` after deploying this manifest, using `crab secret fill <service>` in your terminal:
 
 - the `anon` or publishable key reaches only what the project's Row Level Security policies allow;
 - the `service_role` or secret key bypasses Row Level Security, and reads and writes every table and bucket.

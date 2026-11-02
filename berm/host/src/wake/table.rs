@@ -23,54 +23,6 @@ pub(crate) struct Wake {
     pub slot: String,
 }
 
-/// Each cron tool of `scope/name` whose expression its owner set since the
-/// last deploy's config did: the tool, its expression, and the declared one.
-pub(crate) async fn edited(
-    store: &Store,
-    scope: &str,
-    name: &str,
-) -> Result<Vec<(String, Option<String>, Option<String>)>> {
-    let (scope, name) = (scope.to_owned(), name.to_owned());
-    store
-        .read(move |conn| {
-            let mut statement = conn.prepare(
-                "SELECT slot, cron, declared FROM service_wakes
-                  WHERE scope = ?1 AND name = ?2 AND slot <> '' AND cron IS NOT declared",
-            )?;
-            let rows = statement.query_map(params![scope, name], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?;
-            rows.collect()
-        })
-        .await
-}
-
-/// Set cron tool `tool`'s expression to `cron`, due at `due`, its next
-/// firing, when it changes; `None` stops it. `false` when `scope/name` has no
-/// such cron tool.
-pub(crate) async fn set_cron(
-    store: &Store,
-    scope: &str,
-    name: &str,
-    tool: &str,
-    cron: Option<String>,
-    due: Option<i64>,
-) -> Result<bool> {
-    let row = [scope, name, tool].map(str::to_owned);
-    store
-        .run(move |conn| {
-            let [scope, name, tool] = row;
-            let set = conn.execute(
-                "UPDATE service_wakes
-                    SET due = IIF(cron IS ?4, due, ?5), cron = ?4
-                  WHERE scope = ?1 AND name = ?2 AND slot = ?3",
-                params![scope, name, tool, cron, due],
-            )?;
-            Ok(set == 1)
-        })
-        .await
-}
-
 /// Hold a wake for `scope/name`, replacing whatever it had pending.
 pub(crate) async fn arm(
     store: &Store,

@@ -3,7 +3,7 @@
 //!
 //! The kit declares no host. A service using it declares its project's
 //! endpoint under `berm.http.fetch`: `api.` and the connection string's host
-//! after its first label.
+//! after its first label. Declare that endpoint in the credential's `hosts` too.
 
 #![no_std]
 

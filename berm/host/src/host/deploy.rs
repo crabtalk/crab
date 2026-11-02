@@ -6,7 +6,7 @@ use crate::{
     host::{self, Host},
     record::{meter, usage},
     state::service,
-    wake::{cron, table},
+    wake::cron,
 };
 use axum::http::StatusCode;
 use berm::{Service, database::Database};
@@ -17,7 +17,7 @@ use berm_api::{
         Outcome,
     },
 };
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 /// The error code a deploy refused for a budget past the host's most
 /// carries.
@@ -63,7 +63,6 @@ impl<E: Env> Host<E> {
             reference,
             digest,
             force,
-            crons,
             size,
             stopped,
             check_secrets,
@@ -107,9 +106,7 @@ impl<E: Env> Host<E> {
         let _deploying = lock.lock().await;
         let current = self.current(service).await?;
         self.moving(service, project.as_deref(), force).await?;
-        let cron_tools = self
-            .cron_tools(service, &manifest, crons.as_ref(), force)
-            .await?;
+        let cron_tools = self.cron_tools(&manifest).await?;
         if let Some(current) = &current
             && !force
         {
@@ -173,7 +170,7 @@ impl<E: Env> Host<E> {
                 size,
                 deprecated,
                 cron_tools,
-                crons,
+                manifest.crons.clone(),
                 stopped,
                 project,
                 manifest.deps.vars.keys().cloned().collect(),
@@ -256,8 +253,7 @@ impl<E: Env> Host<E> {
         let current = self.current(service).await?;
         self.moving(service, deploy.project.as_deref(), deploy.force)
             .await?;
-        self.cron_tools(service, &manifest, deploy.crons.as_ref(), deploy.force)
-            .await?;
+        self.cron_tools(&manifest).await?;
         let breaks = match &current {
             Some(current) => Broken::exempted(
                 self.broken(service, current, &manifest).await?,
@@ -391,11 +387,27 @@ impl<E: Env> Host<E> {
     /// none of.
     async fn unset(&self, service: &str, deps: &Deps) -> Result<Vec<String>, Denied> {
         let set = self
-            .secrets
-            .names(service)
+            .granted(service, deps)
             .await
             .map_err(|e| deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
         Ok(deps.unset(&set))
+    }
+
+    pub(crate) async fn granted(&self, service: &str, deps: &Deps) -> anyhow::Result<Vec<String>> {
+        let mut set = Vec::new();
+        for name in self.secrets.names(service).await? {
+            let mut allowed = true;
+            for host in deps.secret_hosts(&name) {
+                if self.secrets.grant(service, &name, host).await?.is_none() {
+                    allowed = false;
+                    break;
+                }
+            }
+            if allowed {
+                set.push(name);
+            }
+        }
+        Ok(set)
     }
 
     /// Start a service explicitly stopped by its owner.
@@ -421,61 +433,24 @@ impl<E: Env> Host<E> {
         Ok(())
     }
 
-    /// The cron tools of `manifest`, refused when `crons` names another tool or
-    /// a bad expression, or, unless `force`, undoes a cron `service`'s owner
-    /// set since its last deploy.
-    async fn cron_tools(
-        &self,
-        service: &str,
-        manifest: &Manifest,
-        crons: Option<&BTreeMap<String, String>>,
-        force: bool,
-    ) -> Result<Vec<String>, Denied> {
-        let cron_tools: Vec<String> = manifest
+    async fn cron_tools(&self, manifest: &Manifest) -> Result<Vec<String>, Denied> {
+        let tools: Vec<String> = manifest
             .tools
             .iter()
-            .filter(|spec| spec.cron)
-            .map(|spec| spec.name.clone())
+            .filter(|tool| tool.cron)
+            .map(|tool| tool.name.clone())
             .collect();
-        let Some(crons) = crons else {
-            return Ok(cron_tools);
-        };
-        for (tool, expression) in crons {
-            if !cron_tools.contains(tool) {
+        for (tool, expression) in &manifest.crons {
+            if !tools.contains(tool) {
                 return Err(deny(
                     StatusCode::BAD_REQUEST,
-                    format!("`crons` names {tool:?}, which is not a cron tool of this image"),
+                    format!("crons names {tool}, which is not a cron tool"),
                 ));
             }
             cron::parse(expression)
-                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{tool}: {e:#}")))?;
+                .map_err(|error| deny(StatusCode::BAD_REQUEST, format!("{tool}: {error:#}")))?;
         }
-        if force {
-            return Ok(cron_tools);
-        }
-        let (scope, name) = host::split(service);
-        let undone: Vec<String> = table::edited(&self.store, scope, name)
-            .await?
-            .into_iter()
-            .filter(|(tool, cron, _)| cron_tools.contains(tool) && crons.get(tool) != cron.as_ref())
-            .map(|(tool, cron, _)| {
-                format!(
-                    "{tool}: the deploy sets {}, its owner set {}",
-                    crons.get(&tool).map_or("none", String::as_str),
-                    cron.as_deref().unwrap_or("none")
-                )
-            })
-            .collect();
-        if !undone.is_empty() {
-            return Err(deny(
-                StatusCode::CONFLICT,
-                format!(
-                    "this deploy undoes the crons its owner set since the last deploy: {}. Take the owner's crons into the deploy's config, or deploy with `force` to override",
-                    undone.join(" / ")
-                ),
-            ));
-        }
-        Ok(cron_tools)
+        Ok(tools)
     }
 
     /// How `manifest` breaks a public tool or event of `current`, the service

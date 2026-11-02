@@ -19,8 +19,7 @@ use berm_host::{Denied, Named, deny};
 use crabtalk_sdk::{
     client::LOCAL,
     services::service::{
-        DeployRequest, DeployResult, DeploySetRequest, Hosts, Secret, SetSecret, Upload,
-        UploadRequest,
+        DeployRequest, DeployResult, DeploySetRequest, Secret, SetSecret, Upload, UploadRequest,
     },
 };
 use rmcp::transport::{
@@ -54,7 +53,6 @@ impl Node {
                     .route("/stop", post(stop))
                     .route("/secrets", get(secrets))
                     .route("/secrets/{secret}", put(set_secret).delete(revoke_secret))
-                    .route("/secrets/{secret}/hosts", put(set_secret_hosts))
                     .with_state(node.clone()),
             )
             .route_layer(middleware::from_fn(named));
@@ -305,8 +303,7 @@ async fn secrets(
     ))
 }
 
-/// Set one of the service's secrets. A set secret's value is changed only by
-/// revoking it and setting it again.
+/// Provision a declared secret for its manifest destinations.
 async fn set_secret(
     State(node): State<Arc<Node>>,
     Extension(Named(name)): Extension<Named>,
@@ -323,35 +320,15 @@ async fn set_secret(
         .deps
         .admits(&secret, &body.value)
         .map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
-    match node
-        .secrets
-        .set(&name, &secret, &body.value, &body.hosts)
-        .map_err(internal)?
-    {
-        true => Ok(StatusCode::NO_CONTENT),
-        false => Err(deny(
-            StatusCode::CONFLICT,
-            format!("{secret} is set; revoke it to set it again"),
-        )),
-    }
-}
-
-/// Send one of the service's secrets to these hosts alone.
-async fn set_secret_hosts(
-    State(node): State<Arc<Node>>,
-    Extension(Named(name)): Extension<Named>,
-    Path(SecretName { secret }): Path<SecretName>,
-    Json(body): Json<Hosts>,
-) -> Result<StatusCode, Denied> {
-    Hosts::check(&body.hosts).map_err(|why| deny(StatusCode::BAD_REQUEST, why))?;
-    match node
-        .secrets
-        .set_hosts(&name, &secret, &body.hosts)
-        .map_err(internal)?
-    {
-        true => Ok(StatusCode::NO_CONTENT),
-        false => Err(deny(StatusCode::NOT_FOUND, "no secret of that name")),
-    }
+    node.secrets
+        .set(
+            &name,
+            &secret,
+            &body.value,
+            service.manifest.deps.secret_hosts(&secret),
+        )
+        .map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Revoke one of the service's secrets.

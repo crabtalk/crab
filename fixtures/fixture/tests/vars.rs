@@ -81,7 +81,6 @@ async fn a_deploy_sets_the_vars_it_names_and_keeps_the_rest() -> Result<()> {
         reference: "test/acct/fixture".to_owned(),
         digest: digest::of(&image),
         force: true,
-        crons: None,
         size: host::database_size(),
         stopped: false,
         check_secrets: false,

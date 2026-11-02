@@ -176,7 +176,7 @@ enum Command {
         #[command(subcommand)]
         action: Option<EarningsCommand>,
     },
-    /// A service's cron tools: listed, set, stopped.
+    /// List a service's cron schedules and runs.
     #[command(subcommand)]
     Cron(CronCommand),
     /// A service's vars: listed, set, returned to their defaults.
@@ -250,14 +250,6 @@ enum Shown {
 enum CronCommand {
     /// List a service's cron tools, each with its expression and next run.
     Ls { name: String },
-    /// Set a cron tool's expression, five fields in UTC, from its next firing.
-    Set {
-        name: String,
-        tool: String,
-        cron: String,
-    },
-    /// Stop a cron tool's calls until it is set again.
-    Stop { name: String, tool: String },
 }
 
 #[derive(Subcommand)]
@@ -277,26 +269,8 @@ enum VarCommand {
 #[derive(Subcommand)]
 enum SecretCommand {
     /// Set a secret of a service, its value read from stdin and sent only to
-    /// the hosts given, or to none. A set secret's value is changed only by
-    /// revoking it and setting it again.
-    Put {
-        name: String,
-        secret: String,
-        /// A host its value is sent to, named in full, such as
-        /// `api.stripe.com`. Repeat it for each host.
-        #[arg(long = "host")]
-        hosts: Vec<String>,
-    },
-    /// Send a secret of a service to these hosts alone, replacing those it
-    /// had.
-    Hosts {
-        name: String,
-        secret: String,
-        /// A host its value is sent to, named in full, such as
-        /// `api.stripe.com`. Repeat it for each host.
-        #[arg(long = "host", required = true)]
-        hosts: Vec<String>,
-    },
+    /// its manifest destinations, replacing any stored value.
+    Put { name: String, secret: String },
     /// List a service's secrets, by name, with the hosts each is sent to.
     Ls { name: String },
     /// Revoke a secret of a service.
@@ -718,12 +692,6 @@ fn run() -> Result<ExitCode> {
             action: Some(EarningsCommand::Dashboard),
         } => cmd::earnings::dashboard(&client()?)?,
         Command::Cron(CronCommand::Ls { name }) => cmd::cron::ls(&client()?, name, json)?,
-        Command::Cron(CronCommand::Set { name, tool, cron }) => {
-            cmd::cron::set(&client()?, name, tool, Some(cron))?
-        }
-        Command::Cron(CronCommand::Stop { name, tool }) => {
-            cmd::cron::set(&client()?, name, tool, None)?
-        }
         Command::Var(VarCommand::Ls { name }) => cmd::var::ls(&client()?, name, json)?,
         Command::Var(VarCommand::Set { name, var, value }) => {
             cmd::var::set(&client()?, name, var, Some(value))?
@@ -742,16 +710,9 @@ fn run() -> Result<ExitCode> {
         Command::Sunset { name, tool, on } => {
             cmd::sunset::run(&client()?, name, tool, on.as_deref())?
         }
-        Command::Secret(SecretCommand::Put {
-            name,
-            secret,
-            hosts,
-        }) => cmd::secret::put(&client()?, name, secret, hosts)?,
-        Command::Secret(SecretCommand::Hosts {
-            name,
-            secret,
-            hosts,
-        }) => cmd::secret::hosts(&client()?, name, secret, hosts)?,
+        Command::Secret(SecretCommand::Put { name, secret }) => {
+            cmd::secret::put(&client()?, name, secret)?
+        }
         Command::Secret(SecretCommand::Ls { name }) => cmd::secret::ls(&client()?, name, json)?,
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?

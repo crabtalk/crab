@@ -2,7 +2,7 @@
 //! functions, and Storage objects, as the key in the secret `SUPABASE_KEY`.
 //!
 //! The kit declares no host. A service using it declares its project's host
-//! under `berm.http.fetch`, e.g. `"berm.http.fetch" = ["abcd.supabase.co"]`.
+//! under `berm.http.fetch` and in the credential's `hosts`.
 
 #![no_std]
 

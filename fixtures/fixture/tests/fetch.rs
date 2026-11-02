@@ -166,3 +166,19 @@ async fn a_body_naming_an_unset_optional_secret_sends_nothing() -> Result<()> {
     assert!(host.fetched().is_empty());
     Ok(())
 }
+
+#[tokio::test]
+async fn a_stored_grant_cannot_bypass_manifest_destinations() -> Result<()> {
+    let host = deployed().await?;
+    host.grant("fixture", "hostless", "127.0.0.1", "s3cret");
+    let ran = host
+        .call(
+            "fixture",
+            "fetch",
+            format!(r#"{{"url":"{URL}","body":"token={{secret:hostless}}"}}"#).as_bytes(),
+        )
+        .await?;
+    assert!(matches!(ran.result, Output::Failed(_)), "{:?}", ran.result);
+    assert!(host.fetched().is_empty());
+    Ok(())
+}

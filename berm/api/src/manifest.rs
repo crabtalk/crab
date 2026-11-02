@@ -38,6 +38,8 @@ pub struct Manifest {
     pub logo: Option<Logo>,
     /// By name.
     pub tools: Vec<ToolSpec>,
+    #[serde(default)]
+    pub crons: BTreeMap<String, String>,
     /// The most bytes a call's arguments, and a tool's result, may hold. The
     /// host refuses arguments past it and fails a result past it.
     #[serde(default = "default_buffer")]
@@ -89,6 +91,8 @@ pub struct ServiceRecord {
     /// What `[tools]` in its `crab.toml` says of each tool, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tools: BTreeMap<String, ToolRecord>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub crons: BTreeMap<String, String>,
 }
 
 /// What `[tools]` in a service's `crab.toml` says of one tool, applied onto
@@ -232,8 +236,7 @@ pub struct Credential {
     /// request gives each value, since they differ per product.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub copy: BTreeMap<String, String>,
-    /// The hosts its secrets are suggested to be sent to, each named in full.
-    /// A secret goes only to the hosts the person setting it confirms.
+    /// The hosts its secrets may be sent to, each named in full.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
     /// Whether the service is called with its secrets unset. A header naming
@@ -245,8 +248,31 @@ pub struct Credential {
 }
 
 impl Credential {
-    /// Whether `host` names one host in full, as a credential's suggested
-    /// hosts and a set secret's hosts do: lowercase ASCII letters, digits,
+    pub const HOSTS_MAX: usize = 16;
+
+    pub fn check_hosts(hosts: &[String]) -> Result<(), String> {
+        if hosts.len() > Self::HOSTS_MAX {
+            return Err(format!(
+                "a secret is sent to at most {} hosts",
+                Self::HOSTS_MAX
+            ));
+        }
+        if let Some(host) = hosts.iter().find(|host| !Self::host(host)) {
+            return Err(format!(
+                "{host:?} is not a host named in full, as `api.example.com`: no scheme, port, path or `*`"
+            ));
+        }
+        if let Some((_, host)) = hosts
+            .iter()
+            .enumerate()
+            .find(|(at, host)| hosts[..*at].contains(host))
+        {
+            return Err(format!("{host} is given twice"));
+        }
+        Ok(())
+    }
+
+    /// Whether `host` names one host in full: lowercase ASCII letters, digits,
     /// `-` and `.`, with no pattern, port or scheme.
     pub fn host(host: &str) -> bool {
         !host.is_empty()
@@ -269,7 +295,7 @@ pub struct CredentialSecret {
     /// What the provider calls it, as `Client ID`; the name when empty.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
-    /// Never shown once set. An unmasked one, such as a client ID, is.
+    /// Whether the entry field hides the value while it is typed.
     #[serde(default = "masked")]
     pub masked: bool,
     /// A regular expression a value must match; one that does not is refused.
@@ -380,6 +406,9 @@ impl Deps {
     /// Refused when `value` does not match the pattern a credential declares
     /// for `secret`. A secret no pattern covers takes any value.
     pub fn admits(&self, secret: &str, value: &str) -> Result<(), String> {
+        if !self.secrets.iter().any(|name| name == secret) {
+            return Err(format!("the manifest does not declare secret {secret}"));
+        }
         let Some(declared) = self
             .credentials
             .values()
@@ -411,6 +440,11 @@ impl Deps {
             .iter()
             .find(|(_, credential)| credential.secrets.iter().any(|s| s.name == secret))
             .map(|(id, _)| id.as_str())
+    }
+
+    pub fn secret_hosts(&self, secret: &str) -> &[String] {
+        self.credential_of(secret)
+            .map_or(&[], |id| self.credentials[id].hosts.as_slice())
     }
 
     /// Whether `secret` is in an optional credential.
@@ -506,6 +540,18 @@ impl Manifest {
         versioned(self.abi_version)?;
         if self.tools.is_empty() {
             bail!("service declares no tools");
+        }
+        for credential in self.deps.credentials.values() {
+            Credential::check_hosts(&credential.hosts).map_err(anyhow::Error::msg)?;
+        }
+        for name in self.crons.keys() {
+            if !self
+                .tools
+                .iter()
+                .any(|tool| tool.name == *name && tool.cron)
+            {
+                bail!("crons names {name}, which is not a cron tool");
+            }
         }
         for (at, kit) in self.kits.iter().enumerate() {
             if self.kits[..at].iter().any(|seen| seen.name == kit.name) {
@@ -632,6 +678,7 @@ impl TryFrom<&[u8]> for Manifest {
             mut deps,
             database,
             tools: _,
+            crons,
         } = service;
         for kit in &kits {
             deps.merge(&kit.deps)
@@ -649,6 +696,7 @@ impl TryFrom<&[u8]> for Manifest {
             readme,
             logo,
             tools,
+            crons,
             buffer,
             deps,
             events,

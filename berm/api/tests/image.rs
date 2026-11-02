@@ -45,6 +45,7 @@ fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
         },
         database: None,
         tools,
+        crons: BTreeMap::new(),
     })
     .unwrap()
 }
@@ -302,4 +303,16 @@ fn logo_validation_applies_to_images_and_manifest_json() {
     assert!(Manifest::try_from(bytes.as_slice()).is_err());
     json["logo"] = "file:///logo.svg".into();
     assert!(json.to_string().parse::<Manifest>().is_err());
+}
+
+#[test]
+fn schedules_are_carried_by_the_image_and_must_name_cron_tools() {
+    let mut record: serde_json::Value = serde_json::from_slice(&service()).unwrap();
+    record["crons"] = serde_json::json!({"tick":"*/5 * * * *"});
+    let record = serde_json::to_vec(&record).unwrap();
+    let bytes = image(&cron("tick"), Some(&record), &[]);
+    let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
+    assert_eq!(manifest.crons["tick"], "*/5 * * * *");
+    let bytes = image(&tool("tick", "demo"), Some(&record), &[]);
+    assert!(Manifest::try_from(bytes.as_slice()).is_err());
 }

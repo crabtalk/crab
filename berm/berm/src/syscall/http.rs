@@ -261,6 +261,14 @@ where
             ))
             .into());
         }
+        if !at
+            .deps
+            .secret_hosts(name)
+            .iter()
+            .any(|allowed| allowed == host)
+        {
+            return Err(ungranted(at, name, host));
+        }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
             if at.deps.optional(name) {
                 return Ok(Substituted::Unset(name.to_owned()));

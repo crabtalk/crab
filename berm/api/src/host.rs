@@ -59,15 +59,9 @@ pub struct User {
 pub struct Deploy {
     pub reference: String,
     pub digest: String,
-    /// Deploy even when it breaks what callers used, or undoes a cron its
-    /// owner set.
+    /// Deploy even when it breaks what callers used.
     #[serde(default)]
     pub force: bool,
-    /// The cron expression of each cron tool, as the deploy's config sets
-    /// them; a cron tool it leaves out has none. `None` leaves each as its
-    /// owner set it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crons: Option<BTreeMap<String, String>>,
     /// Bytes the service's database may hold, from [`MIN_DATABASE_SIZE`] to
     /// [`MAX_DATABASE_SIZE`].
     #[serde(default = "database_size")]

@@ -185,9 +185,6 @@ async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
         200,
         r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title></channel></rss>"#,
     );
-    host.host
-        .set_cron("feed", "tick", Some("* * * * *".to_owned()))
-        .await?;
     let wakes = host.wakes().await?;
     host.set_now(wakes[0].1);
     assert_eq!(host.fire().await?.len(), 1);

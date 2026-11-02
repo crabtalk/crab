@@ -2,7 +2,7 @@
 
 use crate::services::price::Price;
 use berm_api::{
-    Credential, Meter, Service,
+    Meter, Service,
     host::{self, Call, ServedDay},
 };
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 /// `sha256:` and its SHA-256 in hex.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeployRequest {
     pub reference: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -25,15 +26,9 @@ pub struct DeployRequest {
     pub create: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub publish_only: bool,
-    /// Deploy even when it breaks a tool or event a caller used in the last
-    /// 30 days, or undoes a cron its owners set since the last deploy that set
-    /// them.
+    /// Deploy even when it breaks a tool or event used in the last 30 days.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub force: bool,
-    /// The cron expression of each cron tool, five fields in UTC; a cron tool
-    /// it leaves out has none. Absent, each stays as its owners set it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crons: Option<BTreeMap<String, String>>,
     /// Bytes the service's database may hold, from
     /// [`MIN_DATABASE_SIZE`](berm_api::host::MIN_DATABASE_SIZE) to
     /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE). Absent, a
@@ -255,12 +250,9 @@ impl Secret {
 /// The body of `PUT …/secrets/{name}`.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SetSecret {
     pub value: String,
-    /// The hosts its value is sent to, as [`Hosts`] holds them; none sends it
-    /// nowhere.
-    #[serde(default)]
-    pub hosts: Vec<String>,
 }
 
 impl SetSecret {
@@ -286,40 +278,6 @@ impl SetSecret {
                 "{name}'s value is 1 to {} bytes on one line",
                 Self::VALUE_MAX
             ));
-        }
-        Hosts::check(&self.hosts)
-    }
-}
-
-/// The body of `PUT …/secrets/{name}/hosts`: the hosts a secret's value is
-/// sent to, replacing those it had.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Hosts {
-    pub hosts: Vec<String>,
-}
-
-impl Hosts {
-    /// The most hosts one secret is sent to.
-    pub const MAX: usize = 16;
-
-    /// Refused, with why, unless `hosts` holds at most [`Self::MAX`] distinct
-    /// hosts, each named in full.
-    pub fn check(hosts: &[String]) -> Result<(), String> {
-        if hosts.len() > Self::MAX {
-            return Err(format!("a secret is sent to at most {} hosts", Self::MAX));
-        }
-        if let Some(host) = hosts.iter().find(|host| !Credential::host(host)) {
-            return Err(format!(
-                "{host:?} is not a host named in full, as `api.example.com`: no scheme, port, path or `*`"
-            ));
-        }
-        if let Some((_, host)) = hosts
-            .iter()
-            .enumerate()
-            .find(|(at, host)| hosts[..*at].contains(host))
-        {
-            return Err(format!("{host} is given twice"));
         }
         Ok(())
     }
@@ -478,9 +436,7 @@ berm_api::text_enum!(DeployOutcome);
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RedeployRequest {
-    /// Deploy even when it breaks a tool or event a caller used in the last
-    /// 30 days, or undoes a cron its owners set since the last deploy that set
-    /// them.
+    /// Deploy even when it breaks a tool or event used in the last 30 days.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub force: bool,
 }

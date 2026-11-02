@@ -44,7 +44,7 @@ pub struct Project {
     #[serde(default = "deployed")]
     pub deploy: bool,
     /// Each cron tool's expression, five fields in UTC, such as
-    /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
+    /// `"*/5 * * * *"`. Absent, no cron tool is scheduled.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
     /// What it says of each tool, by name.
@@ -200,11 +200,8 @@ impl Project {
                     );
                 }
             }
-            if let Some(host) = credential.hosts.iter().find(|host| !Credential::host(host)) {
-                bail!(
-                    "{}: credentials.{id} suggests {host:?}, not a host named in full",
-                    path.display()
-                );
+            if let Err(why) = Credential::check_hosts(&credential.hosts) {
+                bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
         Ok(project)

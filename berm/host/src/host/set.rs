@@ -102,7 +102,6 @@ impl<E: Env> Host<E> {
                     reference: row.reference,
                     digest: row.digest,
                     force: true,
-                    crons: None,
                     size: row.size,
                     stopped: self.stops.stopped(&service),
                     check_secrets: false,

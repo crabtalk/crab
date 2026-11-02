@@ -91,7 +91,7 @@ pub trait Secrets: Send + Sync + 'static {
         host: &str,
     ) -> impl Future<Output = Result<Option<String>>> + Send;
 
-    /// The names of the secrets granted to `service` for at least one host.
+    /// The names of the secrets provisioned for `service`.
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
 }
 

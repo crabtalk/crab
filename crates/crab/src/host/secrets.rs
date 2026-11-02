@@ -91,15 +91,11 @@ impl Grants {
         })
     }
 
-    /// Set `service`'s secret `name` to `value`, sent to `hosts`; `false`
-    /// when it is set already.
-    pub fn set(&self, service: &str, name: &str, value: &str, hosts: &[String]) -> Result<bool> {
+    /// Provision or replace a value and its destinations atomically.
+    pub fn set(&self, service: &str, name: &str, value: &str, hosts: &[String]) -> Result<()> {
         let created_at = (clock::now() / 1000) as i64;
         let table = self.with(|table| {
             let kept = table.entry(service.to_owned()).or_default();
-            if kept.contains_key(name) {
-                return None;
-            }
             kept.insert(
                 name.to_owned(),
                 Kept {
@@ -108,26 +104,9 @@ impl Grants {
                     created_at,
                 },
             );
-            Some(table.clone())
+            table.clone()
         })?;
-        match table {
-            Some(table) => self.write(&table).map(|()| true),
-            None => Ok(false),
-        }
-    }
-
-    /// Send `service`'s secret `name` to `hosts` alone; `false` when it is
-    /// not set.
-    pub fn set_hosts(&self, service: &str, name: &str, hosts: &[String]) -> Result<bool> {
-        let table = self.with(|table| {
-            let one = table.get_mut(service)?.get_mut(name)?;
-            one.hosts = hosts.to_vec();
-            Some(table.clone())
-        })?;
-        match table {
-            Some(table) => self.write(&table).map(|()| true),
-            None => Ok(false),
-        }
+        self.write(&table)
     }
 
     /// Revoke `service`'s secret `name`; `false` when it is not set.
@@ -161,7 +140,6 @@ impl Secrets for Grants {
         Ok(self
             .list(service)?
             .into_iter()
-            .filter(|(_, hosts, _)| !hosts.is_empty())
             .map(|(name, _, _)| name)
             .collect())
     }
