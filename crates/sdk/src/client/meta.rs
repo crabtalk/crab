@@ -1,7 +1,7 @@
 //! `/meta` — what the deployment is, and what it serves.
 
 use crate::{
-    account::billing::PublicPlan,
+    account::{billing::PublicPlan, key::KeyDefaults},
     client::{Client, Error},
     system::meta::{Explanation, Metering, VersionInfo},
 };
@@ -12,6 +12,10 @@ impl Client {
     /// is running.
     pub async fn version(&self) -> Result<VersionInfo, Error> {
         self.json(self.at(Method::GET, "/meta/version")).await
+    }
+
+    pub async fn key_defaults(&self) -> Result<KeyDefaults, Error> {
+        self.json(self.at(Method::GET, "/meta/keys")).await
     }
 
     /// Every plan it sells.

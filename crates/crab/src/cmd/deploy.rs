@@ -212,7 +212,7 @@ fn approved(
     let asked = runtime::wait(client.ask_deploy_with_copy(services, copy, ""))?;
     let minutes = (asked.expires_at - asked.created_at) / 60;
     eprintln!(
-        "a person approves this deploy at the link, signed in, within {minutes} minutes; automation requires a key with auto scope"
+        "a person approves this deploy at the link, signed in, within {minutes} minutes; automation requires a key with deployments:write scope"
     );
     println!("{}", asked.url);
     let settled = request::settled(client, &asked.code, (minutes * 60) as u64)?;

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
-    account::{billing::PortalFlow, request::Purchase},
+    account::{billing::PortalFlow, key::Scope, request::Purchase},
     client::{Client, Error, Owner},
 };
 use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
@@ -397,15 +397,18 @@ enum DevCommand {
 enum KeyCommand {
     /// List the account's keys, active and revoked.
     Ls,
-    /// Mint a deploy key. Its token is printed once.
+    /// Mint an API key. Its token is printed once.
     Create {
         label: String,
         /// Days until it expires; never by default.
         #[arg(long)]
         days: Option<u32>,
-        /// Key permissions; auto allows operations without approval.
-        #[arg(long, default_value = "deploy")]
-        scope: Vec<crabtalk_sdk::account::key::Scope>,
+        /// Key permissions, replacing the default read permissions.
+        #[arg(long, default_values_t = Scope::defaults())]
+        scope: Vec<Scope>,
+        /// Create a key without management permissions.
+        #[arg(long, conflicts_with = "scope")]
+        no_scopes: bool,
     },
     /// Revoke a key.
     Rm { id: String },
@@ -538,7 +541,7 @@ enum ContextCommand {
         /// Registry used for image pushes; omitted, upload to the node.
         #[arg(long)]
         registry: Option<String>,
-        /// A Cloud key with `deploy` scope.
+        /// A Cloud API key.
         #[arg(long, conflicts_with = "token_stdin")]
         token: Option<String>,
         /// Read the key from stdin, keeping it out of the process arguments.
@@ -586,15 +589,6 @@ fn run() -> Result<ExitCode> {
     let yes = args.yes;
     let client = || {
         let client = Client::from(Contexts::load()?.get(args.context.as_deref())?);
-        if yes
-            && client.owner.is_some()
-            && !client
-                .token
-                .as_deref()
-                .is_some_and(|token| token.starts_with("ck_"))
-        {
-            anyhow::bail!("--yes on Cloud requires an API key with auto scope [E0022]");
-        }
         Ok::<_, anyhow::Error>(match &args.org {
             Some(org) => client.owner(Owner::Org(org.clone())),
             None => client,
@@ -806,9 +800,18 @@ fn run() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 KeyCommand::Ls => cmd::key::ls(&client, json)?,
-                KeyCommand::Create { label, days, scope } => {
-                    cmd::key::create(&client, label, *days, scope, json)?
-                }
+                KeyCommand::Create {
+                    label,
+                    days,
+                    scope,
+                    no_scopes,
+                } => cmd::key::create(
+                    &client,
+                    label,
+                    *days,
+                    if *no_scopes { &[] } else { scope },
+                    json,
+                )?,
                 KeyCommand::Rm { id } => cmd::key::rm(&client, id, yes)?,
                 KeyCommand::Ask {
                     services,

@@ -34,7 +34,7 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Mint a deploy key named `label`, expiring after `days` when given. The
+/// Mint an API key named `label`, expiring after `days` when given. The
 /// token is printed once.
 pub fn create(
     client: &Client,

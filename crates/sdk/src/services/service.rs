@@ -91,6 +91,9 @@ pub struct Template {
     pub name: String,
     pub digest: String,
     pub manifest: berm_api::Manifest,
+    /// Existing service copies across all versions, stopped services included.
+    #[serde(default)]
+    pub deployments: u64,
 }
 
 /// What calling a service is held to and costs: each public tool's terms, by
