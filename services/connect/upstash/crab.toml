@@ -1,4 +1,5 @@
 name = "upstash"
+logo = "https://crab.talk/logos/templates/upstash-v1.png"
 template = true
 buffer = 1048576
 

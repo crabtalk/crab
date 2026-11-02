@@ -13,7 +13,7 @@ Library-only packages live under [services/kits](kits/) and are listed in [crabk
 
 `crab build` operates on one service directory. `crab deploy [dir]` and `crab publish [dir]` also accept a catalog directory, selecting only its descendant services; the directory defaults to `.`. For example, run `crab publish services/connect` from the repository root or `crab publish` inside `services/connect`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
 
-To reuse a deployable service as a library, add the package as a dependency with `default-features = false`. This disables its standalone `tools` exports. Call the Rust functions from your own tools. `berm-build` inherits the dependency's credentials, host permissions and migrations, while its deployment name, tool access, cron settings, variables and database sizing stay with its own deployment. A dependency keeping migrations needs a stable migration ID.
+To reuse a deployable service as a library, add the package as a dependency with `default-features = false`. This disables its standalone `tools` exports. Call the Rust functions from your own tools. `berm-build` inherits the dependency's credentials, host permissions and migrations, while its deployment name, logo, tool access, cron settings, variables and database sizing stay with its own deployment. A dependency keeping migrations needs a stable migration ID.
 
 All linked code executes inside the consuming service and uses its secrets and database. Calling a separately deployed service instead uses that deployment's execution and state.
 

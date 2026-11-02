@@ -1,4 +1,5 @@
 name = "release-watch"
+logo = "https://crab.talk/logos/templates/release-watch-v1.svg"
 id = "732e70b4fd594e91a94da0f60f50a948"
 buffer = 1048576
 [database]
