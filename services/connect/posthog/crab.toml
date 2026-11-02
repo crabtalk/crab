@@ -1,4 +1,5 @@
 name = "posthog"
+template = true
 buffer = 1048576
 
 [vars]

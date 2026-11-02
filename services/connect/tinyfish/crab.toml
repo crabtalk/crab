@@ -1,4 +1,5 @@
 name = "tinyfish"
+template = true
 buffer = 8388608
 
 [syscalls]

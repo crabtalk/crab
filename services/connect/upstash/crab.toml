@@ -1,4 +1,5 @@
 name = "upstash"
+template = true
 buffer = 1048576
 
 [vars]

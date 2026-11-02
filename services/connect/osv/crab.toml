@@ -1,4 +1,5 @@
 name = "osv"
+template = true
 buffer = 1048576
 [syscalls]
 "berm.http.fetch" = ["api.osv.dev"]

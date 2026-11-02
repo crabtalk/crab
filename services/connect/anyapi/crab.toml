@@ -1,4 +1,5 @@
 name = "anyapi"
+template = true
 buffer = 8388608
 
 [syscalls]
@@ -336,7 +337,7 @@ title = "Linkedin company thin"
 [tools.linkedin_email]
 access = "public"
 title = "Linkedin email"
-catalog = "people.email.find"
+catalog = "person.email.find"
 
 [tools.linkedin_jobs]
 access = "public"

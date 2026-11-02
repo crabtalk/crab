@@ -1,4 +1,5 @@
 name = "firecrawl"
+template = true
 buffer = 8388608
 
 [syscalls]

@@ -1,4 +1,5 @@
 name = "github"
+template = true
 buffer = 1048576
 
 [syscalls]
