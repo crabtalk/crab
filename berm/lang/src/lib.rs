@@ -31,10 +31,10 @@
 //! }
 //! ```
 
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 // Off a guest target the stand-in host in `sys/stub.rs` runs on std.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "std")))]
 extern crate std;
 
 extern crate alloc;
@@ -89,7 +89,7 @@ pub mod __private {
 }
 
 /// Traces the panic's file and traps. Guest targets only.
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", not(feature = "std")))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     if let Some(location) = info.location() {

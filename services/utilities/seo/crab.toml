@@ -1,0 +1,13 @@
+name = "seo"
+public = true
+template = true
+buffer = 1048576
+
+[database]
+size = "1MiB"
+
+[tools.check]
+access = "public"
+title = "Check page SEO"
+catalog = "web.seo"
+budget = { cpu = 500000, memory = 64 }

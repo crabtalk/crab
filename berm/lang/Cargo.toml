@@ -13,6 +13,9 @@ categories = ["wasm", "no-std"]
 # Guest behavior is covered by integration tests and consumers of `berm_lang::test`.
 test = false
 
+[features]
+std = ["serde/std", "serde_json/std"]
+
 [dependencies]
 berm-abi.workspace = true
 berm-codegen.workspace = true

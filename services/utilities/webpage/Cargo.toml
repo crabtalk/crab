@@ -1,0 +1,26 @@
+[package]
+name = "crab-webpage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Read public HTML pages as Markdown"
+readme = "README.md"
+
+[lib]
+name = "webpage"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang = { workspace = true, features = ["std"] }
+htmd.workspace = true
+scraper.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
