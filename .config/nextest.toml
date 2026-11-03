@@ -27,8 +27,17 @@ command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--exampl
 [scripts.setup.berm-site]
 command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-site"]
 
-[scripts.setup.crab-release-watch]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-release-watch"]
+[scripts.setup.crab-agent-memory]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-agent-memory"]
+
+[scripts.setup.crab-uptime]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-uptime"]
+
+[scripts.setup.crab-webhook-inbox]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-webhook-inbox"]
+
+[scripts.setup.crab-analytics]
+command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-analytics"]
 
 [scripts.setup.crab-pdl]
 command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-pdl"]
@@ -111,8 +120,20 @@ filter = 'package(=berm-site)'
 setup = "berm-site"
 
 [[profile.default.scripts]]
-filter = '(package(=crab-release-watch)) | (package(=berm-build) & binary(=services))'
-setup = "crab-release-watch"
+filter = '(package(=crab-agent-memory) & binary(=runtime)) | (package(=berm-build) & binary(=services))'
+setup = "crab-agent-memory"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-uptime) & binary(=runtime)'
+setup = "crab-uptime"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-webhook-inbox) & binary(=runtime)'
+setup = "crab-webhook-inbox"
+
+[[profile.default.scripts]]
+filter = 'package(=crab-analytics) & binary(=runtime)'
+setup = "crab-analytics"
 
 [[profile.default.scripts]]
 filter = 'package(=crab-pdl) & binary(=wasm) & test(=image_exports_active_tools_and_full_query_constraints)'

@@ -24,8 +24,8 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
   ```toml
   [dependencies]
-  berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v0.1.1" }
-  crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.1", features = ["auth"] }
+  berm-lang = { git = "https://github.com/crabtalk/crab", tag = "v0.1.2" }
+  crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.2", features = ["auth"] }
   ```
 
 - A library with host requirements declares them in its own `crab.toml`. For libraries bundled by `crabkit`, enable the matching feature and call the API from your tools, such as `crabkit::auth`. Linking a library is using it: the build finds it among the crates compiled into the image, and the secrets, fetched hosts and migrations its `crab.toml` declares reach the service's manifest; its tables live in the service's database.
