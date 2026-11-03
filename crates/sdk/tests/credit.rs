@@ -14,7 +14,7 @@ fn billing_responses_without_trial_fields_remain_readable() {
         serde_json::from_str(r#"{"verified_at":1,"reason":null,"github":true}"#).unwrap();
     assert!(verification.trial.is_none());
     let plan: PublicPlan = serde_json::from_str(
-        r#"{"slug":"hobby","org":false,"price_micros":null,"included":{},"memory":134217728}"#,
+        r#"{"slug":"hobby","accounts":["user","org"],"credit_micros":0,"price_micros":null,"included":{},"memory":134217728}"#,
     )
     .unwrap();
     assert!(plan.trial.is_none());

@@ -57,6 +57,8 @@ pub struct OrgView {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrgPrivate {
+    pub sponsor_id: Option<String>,
+    pub paused_until: Option<i64>,
     /// What the caller may do here. Present exactly when they are a member,
     /// since that is when `private` is present at all.
     pub role: Role,
@@ -300,4 +302,22 @@ pub struct UpdateMemberRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AvatarResponse {
     pub avatar: String,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgCreation {
+    pub hobby_available: bool,
+    pub reserved_until: Option<i64>,
+    pub pending: Option<PendingOrg>,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingOrg {
+    pub id: String,
+    pub name: String,
+    pub handle: String,
+    pub expires_at: i64,
+    pub checkout_url: Option<String>,
 }

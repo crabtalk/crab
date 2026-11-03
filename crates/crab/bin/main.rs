@@ -451,6 +451,8 @@ enum OrgCommand {
         /// Its display name; the handle by default.
         #[arg(long)]
         name: Option<String>,
+        #[arg(long)]
+        plan: Option<String>,
     },
     /// One org, as much of it as you may see.
     Info { org: String },
@@ -462,6 +464,8 @@ enum OrgCommand {
         #[arg(long)]
         name: Option<String>,
     },
+    /// Assign an owner as the org's Hobby sponsor.
+    Sponsor { org: String, member_id: String },
     /// Delete an org.
     Rm { org: String },
     /// List an org's members.
@@ -808,8 +812,11 @@ fn run() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 OrgCommand::Ls => cmd::org::ls(&client, json)?,
-                OrgCommand::Create { handle, name } => {
-                    cmd::org::create(&client, handle, name.as_deref(), json)?
+                OrgCommand::Sponsor { org, member_id } => {
+                    cmd::org::sponsor(&client, org, member_id)?
+                }
+                OrgCommand::Create { handle, name, plan } => {
+                    cmd::org::create(&client, handle, name.as_deref(), plan.as_deref(), json)?
                 }
                 OrgCommand::Info { org } => cmd::org::info(&client, org, json)?,
                 OrgCommand::Update { org, handle, name } => {

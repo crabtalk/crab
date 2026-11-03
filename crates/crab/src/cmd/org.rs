@@ -3,9 +3,12 @@
 use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{
-    account::org::{
-        AddMemberRequest, CreateOrgRequest, InviteRequest, Role, UpdateMemberRequest,
-        UpdateOrgRequest,
+    account::{
+        auth::Client as Surface,
+        org::{
+            AddMemberRequest, CreateOrgRequest, InviteRequest, Role, UpdateMemberRequest,
+            UpdateOrgRequest,
+        },
     },
     client::Client,
 };
@@ -26,17 +29,27 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn create(client: &Client, handle: &str, name: Option<&str>, json: bool) -> Result<()> {
+pub fn create(
+    client: &Client,
+    handle: &str,
+    name: Option<&str>,
+    plan: Option<&str>,
+    json: bool,
+) -> Result<()> {
     let created = runtime::wait(client.create_org(&CreateOrgRequest {
         name: name.unwrap_or(handle).to_owned(),
         handle: handle.to_owned(),
-        tier: None,
-        client: None,
+        tier: plan.map(str::to_owned),
+        client: Some(Surface::Terminal),
     }))?;
     if json {
         return terminal::json(&created);
     }
-    eprintln!("org {handle} made; you own it");
+    if let Some(url) = created.checkout_url {
+        eprintln!("complete payment within 30 minutes to activate org {handle}:\n{url}");
+    } else {
+        eprintln!("org {handle} made; you own it");
+    }
     Ok(())
 }
 
@@ -55,6 +68,12 @@ pub fn info(client: &Client, org: &str, json: bool) -> Result<()> {
     if let Some(private) = &view.private {
         println!("  you are {}", private.role);
         println!("  plan {}", private.plan);
+        if let Some(sponsor) = &private.sponsor_id {
+            println!("  Hobby sponsor {sponsor}");
+        }
+        if let Some(until) = private.paused_until {
+            println!("  paused; recovery ends {}", format::date(until));
+        }
     }
     Ok(())
 }
@@ -164,5 +183,11 @@ pub fn invites(client: &Client, org: &str, json: bool) -> Result<()> {
 pub fn uninvite(client: &Client, org: &str, token: &str) -> Result<()> {
     runtime::wait(client.revoke_invite(org, token))?;
     eprintln!("revoked the invitation");
+    Ok(())
+}
+
+pub fn sponsor(client: &Client, org: &str, member: &str) -> Result<()> {
+    runtime::wait(client.transfer_org_sponsor(org, member))?;
+    eprintln!("Hobby sponsor changed");
     Ok(())
 }

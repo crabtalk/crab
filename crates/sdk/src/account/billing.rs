@@ -1,5 +1,6 @@
 //! Billing, plan-catalog, and invoice wire types.
 
+use crate::account::org::Kind;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -9,8 +10,8 @@ use std::collections::BTreeMap;
 pub struct PublicPlan {
     /// Identifier used in `POST /orgs/{org}/billing/checkout?plan=<slug>`.
     pub slug: String,
-    /// Whether checkout is restricted to organizations.
-    pub org: bool,
+    pub accounts: Vec<Kind>,
+    pub credit_micros: u64,
     /// Monthly gross price in microdollars — what the customer is charged.
     /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,
@@ -37,8 +38,7 @@ pub struct TrialOffer {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Period {
-    /// The plan's slug: comped, else bought, else the one the account's kind
-    /// is granted.
+    /// The plan's slug: comped, else bought, else Hobby.
     pub plan: String,
     /// Days since the Unix epoch, `until` excluded.
     pub since: i32,
@@ -271,6 +271,10 @@ pub struct CreditMonth {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Grant {
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub reference: Option<String>,
     pub id: i64,
     /// What is left of it, in USD micros.
     pub remaining: i64,
