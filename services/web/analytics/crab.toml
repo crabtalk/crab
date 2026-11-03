@@ -1,0 +1,60 @@
+name = "analytics"
+id = "bc3917c09124402fa0444a8b7a5adba1"
+public = false
+template = true
+buffer = 262144
+
+[database]
+migrations = "migrations"
+size = "128MiB"
+
+[crons]
+prune = "0 * * * *"
+
+[tools.prune]
+budget = { cpu = 100000, read = 1000000, written = 1000000, memory = 16 }
+
+[tools.add_site]
+access = "public"
+title = "Add website"
+budget = { cpu = 100000, read = 500000, written = 2, memory = 16 }
+
+[tools.sites]
+access = "public"
+title = "List websites"
+budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
+
+[tools.remove_site]
+access = "public"
+title = "Remove website"
+budget = { cpu = 100000, read = 500000, written = 1000000, memory = 16 }
+
+[tools.record]
+access = "anonymous"
+title = "Record page view"
+budget = { cpu = 100000, read = 500000, written = 20, memory = 16 }
+
+[tools.days]
+access = "public"
+title = "Daily analytics"
+budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
+
+[tools.pages]
+access = "public"
+title = "Popular pages"
+budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
+
+[tools.sources]
+access = "public"
+title = "Referring websites"
+budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
+
+[tools.crawlers]
+access = "public"
+title = "AI crawler requests"
+budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
+
+[tools.events]
+access = "public"
+title = "Recorded page views"
+budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }

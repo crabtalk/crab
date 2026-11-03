@@ -459,9 +459,9 @@ name = "berm-linked-services"
 version = "0.1.1"
 dependencies = [
  "berm-lang",
+ "crab-agent-memory",
  "crab-github",
  "crab-posthog",
- "crab-release-watch",
  "crab-resend",
  "crab-upstash",
  "crabkit-auth",
@@ -918,6 +918,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-agent-memory"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "crab-analytics"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "crab-anyapi"
 version = "0.1.1"
 dependencies = [
@@ -1045,21 +1072,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-release-watch"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "crab-github",
- "crab-osv",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "crab-resend"
 version = "0.1.1"
 dependencies = [
@@ -1095,6 +1107,33 @@ version = "0.1.1"
 dependencies = [
  "berm-lang",
  "url",
+]
+
+[[package]]
+name = "crab-uptime"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "crab-webhook-inbox"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

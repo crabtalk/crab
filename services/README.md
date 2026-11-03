@@ -5,9 +5,13 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 ## Catalogs
 
 - [Connect](connect/README.md): third-party API integrations.
-- [Utilities](utilities/README.md): services that perform a useful task, such as release and vulnerability monitoring.
+- [Agents](agents/README.md): shared agent memory.
+- [Web](web/README.md): SEO checks, webpage-to-Markdown extraction and website analytics.
+- [Ops](ops/README.md): uptime and webhook inboxes.
 
-Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. Stateful utilities may require a private copy; each service documents its setup and state ownership.
+The catalog directory matches its intended publisher org: `connect`, `agents`, `web` or `ops`. Select the publishing account explicitly; for example, `crab --org web publish services/web` on an authenticated Cloud context. A directory does not select an account automatically.
+
+Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. Stateful services may require a private copy; each service documents its setup and state ownership.
 
 Library-only packages live under [services/kits](kits/) and are listed in [crabkit](../crates/crabkit/README.md).
 
@@ -28,7 +32,7 @@ crab login
 crab deploy
 ```
 
-Choose the service directory from either catalog, such as `services/connect/github` or `services/utilities/release-watch`. `crab deploy` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
+Choose a service directory from a catalog, such as `services/connect/github` or `services/ops/uptime`. `crab deploy` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
 
 For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and pass `--caller alice` when calling a public tool. See [local development](https://crab.talk/docs/guides/local).
 

@@ -1,0 +1,42 @@
+name = "webhooks"
+id = "0d154f8e873f4082bf93ff0583e7d185"
+public = false
+template = true
+buffer = 262144
+
+[database]
+migrations = "migrations"
+size = "64MiB"
+
+[credentials.webhook]
+title = "Webhook signing secret"
+secrets = [{ name = "WEBHOOK_SECRET", label = "Signing secret" }]
+guide = "Use a Standard Webhooks signing secret shared with your sender. Cloud verifies webhook-id, webhook-timestamp and webhook-signature before receive runs. The JSON body must contain source, id and payload. A sender using another signature scheme needs an adapter."
+
+[crons]
+prune = "0 3 * * *"
+
+[tools.receive]
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+[tools.prune]
+budget = { cpu = 100000, read = 20000, written = 10000, memory = 16 }
+
+[tools.events]
+access = "public"
+title = "List events"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+
+[tools.get]
+access = "public"
+title = "Read event"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+
+[tools.acknowledge]
+access = "public"
+title = "Acknowledge event"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+
+[tools.delete]
+access = "public"
+title = "Delete event"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }

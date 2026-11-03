@@ -376,7 +376,7 @@ impl TestHost {
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
     /// and commit what it did.
     pub async fn call(&self, service: &str, tool: &str, args: &[u8]) -> Result<Ran> {
-        self.run(service, tool, args, None).await
+        self.run(service, tool, args, None, None).await
     }
 
     /// [`TestHost::call`], for `user`.
@@ -387,7 +387,18 @@ impl TestHost {
         args: &[u8],
         user: User,
     ) -> Result<Ran> {
-        self.run(service, tool, args, Some(user)).await
+        self.run(service, tool, args, Some(user), None).await
+    }
+
+    /// [`TestHost::call`], with the host-provided daily client key.
+    pub async fn call_with_client(
+        &self,
+        service: &str,
+        tool: &str,
+        args: &[u8],
+        client: &str,
+    ) -> Result<Ran> {
+        self.run(service, tool, args, None, Some(client)).await
     }
 
     /// [`TestHost::call`] with `args` as JSON, answering its result as JSON:
@@ -410,7 +421,14 @@ impl TestHost {
         })
     }
 
-    async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
+    async fn run(
+        &self,
+        service: &str,
+        tool: &str,
+        args: &[u8],
+        user: Option<User>,
+        client: Option<&str>,
+    ) -> Result<Ran> {
         let deployed = self
             .host
             .get(service)
@@ -422,7 +440,7 @@ impl TestHost {
                 self.host.calls.start().id,
                 None,
                 user,
-                None,
+                client.map(Into::into),
                 tool,
                 args.to_vec(),
                 Taping::Off,

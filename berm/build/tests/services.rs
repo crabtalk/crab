@@ -7,7 +7,7 @@ fn manifest(package: &str) -> Manifest {
 }
 
 #[test]
-fn provider_services_build_standalone_and_link_without_exporting_dependency_tools() {
+fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let resend = manifest("crab-resend");
     assert_eq!(resend.tools.len(), 3);
     assert_eq!(resend.buffer, 1048576);
@@ -34,10 +34,9 @@ fn provider_services_build_standalone_and_link_without_exporting_dependency_tool
     let osv = manifest("crab-osv");
     assert_eq!(osv.tools.len(), 3);
     assert!(osv.deps.secrets.is_empty());
-    let watch = manifest("crab-release-watch");
-    assert_eq!(watch.tools.len(), 6);
-    assert!(watch.keeps_database());
-    assert!(watch.tools.iter().any(|t| t.name == "tick" && t.cron));
+    let memory = manifest("crab-agent-memory");
+    assert_eq!(memory.tools.len(), 4);
+    assert!(memory.keeps_database());
     let linked = manifest("berm-linked-services");
     assert_eq!(
         linked
@@ -50,18 +49,8 @@ fn provider_services_build_standalone_and_link_without_exporting_dependency_tool
     assert!(linked.deps.secrets.iter().any(|s| s == "RESEND_API_KEY"));
     assert!(linked.deps.secrets.iter().any(|s| s == "GITHUB_TOKEN"));
     assert!(linked.deps.vars.is_empty());
-    assert!(
-        linked
-            .kits
-            .iter()
-            .any(|kit| kit.name == "crab-release-watch"
-                && kit.id.as_deref() == Some("732e70b4fd594e91a94da0f60f50a948"))
-    );
-    assert!(
-        linked.deps.syscalls["berm.http.fetch"]
-            .iter()
-            .any(|host| host == "api.osv.dev")
-    );
+    assert!(linked.kits.iter().any(|kit| kit.name == "crab-agent-memory"
+        && kit.id.as_deref() == Some("1fdf32203e0e4003a68c5d766daad03b")));
     for credential in ["upstash_redis", "posthog_project", "posthog_private"] {
         assert!(linked.deps.credentials.contains_key(credential));
     }

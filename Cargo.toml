@@ -4,7 +4,9 @@ members = [
     "crates/*",
     "fixtures/*",
     "services/connect/*",
-    "services/utilities/*",
+    "services/agents/*",
+    "services/ops/*",
+    "services/web/*",
     "services/kits/*",
 ]
 resolver = "3"
@@ -39,12 +41,12 @@ berm-kit = { path = "fixtures/kit" }
 
 # services
 github = { package = "crab-github", path = "services/connect/github", version = "0.1.1", default-features = false }
+memory = { package = "crab-agent-memory", path = "services/agents/memory", version = "0.1.1", default-features = false }
 osv = { package = "crab-osv", path = "services/connect/osv", version = "0.1.1", default-features = false }
 posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.1", default-features = false }
-release-watch = { package = "crab-release-watch", path = "services/utilities/release-watch", version = "0.1.1", default-features = false }
 resend = { package = "crab-resend", path = "services/connect/resend", version = "0.1.1", default-features = false }
 upstash = { package = "crab-upstash", path = "services/connect/upstash", version = "0.1.1", default-features = false }
-webpage = { package = "crab-webpage", path = "services/utilities/webpage", version = "0.1.1", default-features = false }
+webpage = { package = "crab-webpage", path = "services/web/markdown", version = "0.1.1", default-features = false }
 
 # kits
 auth = { package = "crabkit-auth", path = "services/kits/auth", version = "0.1.1" }

@@ -113,9 +113,7 @@ pub enum Kind {
 
 berm_api::text_enum!(Kind);
 
-/// An account as anyone may see it — a person or an org. Identity only: nothing about what funds it, who is in it, or what it
-/// holds. This is what `GET /orgs/{org}` answers without a session, so knowing a
-/// handle discloses its profile, the way `github.com/rust-lang` does.
+/// Account profile fields, without billing or membership details.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicAccount {

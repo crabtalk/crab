@@ -9,7 +9,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 ## Choose how to use a capability
 
-- Browse provider integrations in `services/connect/` and task-oriented services in `services/utilities/`. Library-only packages live under `services/kits/`. Check [services](../../services/README.md) and [crabkit](../../crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published template, or link its library when those fit the task. Write a product service for its own behavior.
+- Browse provider integrations in `services/connect/`, agent services in `services/agents/`, website tools in `services/web/`, and operational services in `services/ops/`. Library-only packages live under `services/kits/`. Check [services](../../services/README.md) and [crabkit](../../crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published template, or link its library when those fit the task. Write a product service for its own behavior.
 - A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `crab.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `crab.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it; `crab push` does the same and leaves it stopped; `crab stop` and `crab start` stop and serve it, keeping its data. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
 - A setting whoever deploys a copy chooses, such as the keywords a monitor watches, is a var: declared under `[vars]` in `crab.toml` with a `default` and a `description`, read with `berm_lang::var("name")`. Each copy holds its own value, set with `crab var set <service> <var> <value>` and read from the next call. A secret is never a var.
@@ -38,6 +38,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - An optional `logo = "https://example.com/logo.svg"` in `crab.toml` names the service logo. It must be an absolute HTTPS URL; build and host validation do not fetch it. The logo stays with the image and template copies, and is not inherited from linked libraries.
 - `public` exposes a Cloud deployment; `template` publishes its image for other accounts to deploy. Both default to `false`, independently of each tool's `access`.
 - `crab publish [dir]` publishes or withdraws templates selected by directory or `-p`, including services marked `deploy = false`, without running instances. For example, `crab publish services/connect` selects that catalog without a catalog-level `crab.toml`. `crab deploy --from owner/name` creates a private copy without a local build, with its own credentials and state. Existing copies keep their version until upgraded.
+- The `connect`, `agents`, `web` and `ops` catalog directories match the intended publisher orgs. Select the account explicitly, such as `crab --org web publish services/web`; the directory does not select an org.
 - Images upload to the selected host by default. A context registry or `--registry` selects OCI publication instead; `image` is not a `crab.toml` key.
 
 ## Calling another account's service
@@ -82,7 +83,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
 | Writing a service README for crab.talk | `services/README-guide.md` |
 | Linking service libraries | https://crab.talk/docs/development/reuse |
-| A service or library's API and setup | `services/connect/<name>/README.md`, `services/utilities/<name>/README.md`, or `services/kits/<name>/README.md` for a library |
+| A service or library's API and setup | `services/{connect,agents,web,ops}/<name>/README.md`, or `services/kits/<name>/README.md` for a library |
 | Building a service from OpenAPI | https://crab.talk/docs/development/openapi; macro reference: `crates/openapi/README.md` |
 
 ## A local crab checkout

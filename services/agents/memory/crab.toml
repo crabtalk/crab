@@ -1,0 +1,29 @@
+name = "memory"
+id = "1fdf32203e0e4003a68c5d766daad03b"
+public = false
+template = true
+buffer = 1048576
+
+[database]
+migrations = "migrations"
+size = "64MiB"
+
+[tools.put]
+access = "public"
+title = "Save memory"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+
+[tools.get]
+access = "public"
+title = "Read memory"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+
+[tools.search]
+access = "public"
+title = "Search memories"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
+
+[tools.delete]
+access = "public"
+title = "Delete memory"
+budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
