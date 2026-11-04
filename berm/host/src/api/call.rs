@@ -90,7 +90,7 @@ impl<E: Env> Host<E> {
                     })
                     .cloned()
                     .collect(),
-                syscalls: Default::default(),
+                http: Default::default(),
                 credentials: Default::default(),
                 vars: Default::default(),
                 secrets: deps

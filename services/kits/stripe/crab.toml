@@ -1,8 +1,8 @@
 # What its applied migrations are kept under in a database; never changes.
 id = "ae651d8d51157671ad3e1299f0654a9d"
 
-[syscalls]
-"berm.http.fetch" = ["api.stripe.com"]
+[http]
+fetch = ["api.stripe.com"]
 
 [database]
 migrations = "migrations"

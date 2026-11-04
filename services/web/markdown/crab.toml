@@ -6,8 +6,8 @@ buffer = 1048576
 [database]
 size = "1MiB"
 
-[syscalls]
-"berm.http.fetch" = ["*"]
+[http]
+fetch = ["*"]
 
 [tools.read]
 access = "public"

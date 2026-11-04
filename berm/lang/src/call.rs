@@ -121,8 +121,8 @@ pub fn user() -> Result<Option<User>, CallError> {
 /// let plan = berm_lang::call("billing", "plan", "{}")?;
 /// ```
 ///
-/// The manifest declares `berm.vouch`. [`CallError::Refused`] in a chain that
-/// already runs for a user, and for an empty subject.
+/// [`CallError::Refused`] in a chain that already runs for a user, and for
+/// an empty subject.
 pub fn vouch(subject: &str) -> Result<(), CallError> {
     host::call(sys::VOUCH, subject.as_bytes())?;
     Ok(())
@@ -166,7 +166,7 @@ pub fn client() -> Result<Option<String>, CallError> {
 }
 
 /// The outside client's IP address, carried into every nested call. `None`
-/// when the host supplied none. Requires `berm.client.ip` in `[syscalls]`.
+/// when the host supplied none.
 pub fn client_ip() -> Result<Option<IpAddr>, CallError> {
     let reply = host::call(sys::CLIENT_IP, &[])?;
     let unreadable = || CallError::Failed(String::from("host framed an invalid client IP"));

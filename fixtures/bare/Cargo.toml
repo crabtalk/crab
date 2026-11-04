@@ -1,6 +1,6 @@
 [package]
 name = "berm-bare"
-description = "The reference guest declaring nothing beyond the ABI, what berm's refusals of undeclared syscalls are tested against"
+description = "A reference guest with no declared HTTP destinations"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

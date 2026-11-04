@@ -75,13 +75,13 @@ pub fn show(
         let missing = runtime.unresolved.calls.contains(dep);
         println!("  service {dep}{}", answered(missing));
     }
-    for (name, reached) in &runtime.deps.syscalls {
-        let missing = runtime.unresolved.syscalls.contains_key(name);
-        let reached = match reached.is_empty() {
-            true => String::new(),
-            false => format!(" -> {}", reached.join(", ")),
-        };
-        println!("  syscall {name}{reached}{}", answered(missing));
+    for (name, hosts) in [
+        ("fetch", &runtime.deps.http.fetch),
+        ("proxy", &runtime.deps.http.proxy),
+    ] {
+        if !hosts.is_empty() {
+            println!("  http {name} -> {}", hosts.join(", "));
+        }
     }
     for name in &runtime.deps.secrets {
         let missing = runtime.unresolved.secrets.contains(name);

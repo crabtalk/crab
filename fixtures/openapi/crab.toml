@@ -1,7 +1,7 @@
 name = "openapi"
 
-[syscalls]
-"berm.http.fetch" = ["example.com"]
+[http]
+fetch = ["example.com"]
 
 [credentials.example]
 title = "Example API key"

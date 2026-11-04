@@ -13,11 +13,11 @@ crabkit = { version = "0.1", features = ["supabase"] }
 
 The library is also the crate `crabkit-supabase` on its own.
 
-The library's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the service's manifest when the service links the library, and no host. The service declares its own project's host under `berm.http.fetch` in its own `crab.toml`:
+The library's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the service's manifest when the service links the library, and no host. The service declares its own project's host under `[http] fetch` in its own `crab.toml`:
 
 ```toml
-[syscalls]
-"berm.http.fetch" = ["abcd.supabase.co"]
+[http]
+fetch = ["abcd.supabase.co"]
 
 [credentials.supabase]
 title = "Supabase credentials"

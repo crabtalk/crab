@@ -173,20 +173,11 @@ fn builtins() -> Table {
         abi::CLIENT_IP.to_owned(),
         handler(|guest, _, _| {
             let at = &guest.data().at;
-            let reply = if !at.deps.syscalls.contains_key(abi::CLIENT_IP) {
-                Err(Refused(format!(
-                    "{} does not declare {}",
-                    at.service,
-                    abi::CLIENT_IP
-                ))
-                .into())
-            } else {
-                Ok(match at.client.ip {
-                    Some(ip) => abi::wire::request(&[ip.to_string().as_bytes()]),
-                    None => Vec::new(),
-                })
+            let reply = match at.client.ip {
+                Some(ip) => abi::wire::request(&[ip.to_string().as_bytes()]),
+                None => Vec::new(),
             };
-            Ok(stage(guest, reply))
+            Ok(stage(guest, Ok(reply)))
         }),
     );
 
@@ -348,9 +339,6 @@ fn limit(invocation: &mut Invocation, bytes: &[u8]) -> Result<Vec<u8>> {
 fn vouch(invocation: &mut Invocation, subject: Vec<u8>) -> Result<Vec<u8>> {
     let issuer = invocation.issuer.clone();
     let at = &mut invocation.at;
-    if !at.deps.syscalls.contains_key(abi::VOUCH) {
-        return Err(Refused(format!("{} does not declare {}", at.service, abi::VOUCH)).into());
-    }
     if at.user.is_some() {
         return Err(Refused(String::from("the chain already runs for a user")).into());
     }

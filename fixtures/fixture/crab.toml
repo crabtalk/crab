@@ -7,14 +7,9 @@ calls = ["inner"]
 [vars]
 greeting = { default = "hello", description = "What greet answers" }
 
-[syscalls]
-"berm.get" = []
-"berm.set" = []
-"berm.call.after" = []
-"berm.http.fetch" = ["127.0.0.1"]
-"berm.http.proxy" = ["127.0.0.1"]
-"berm.vouch" = []
-"berm.client.ip" = []
+[http]
+fetch = ["127.0.0.1"]
+proxy = ["127.0.0.1"]
 
 [tools.reach]
 access = "public"

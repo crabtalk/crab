@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/dataforseo-v1.png"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.dataforseo.com"]
+[http]
+fetch = ["api.dataforseo.com"]
 
 [credentials.dataforseo]
 title = "DataForSEO API credentials"

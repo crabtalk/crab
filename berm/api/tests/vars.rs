@@ -1,5 +1,4 @@
-//! `[vars]` in `crab.toml`: read into `deps` with `berm.var` granted, checked
-//! by name, size and count, and refused in a kit.
+//! `[vars]` in `crab.toml`: checked by name, size and count, and refused in a kit.
 
 use berm_api::{Var, project::Project};
 use std::fs;
@@ -19,19 +18,17 @@ keywords = { default = "rust, wasm", description = "Words to watch" }
 "#;
 
 #[test]
-fn vars_join_the_deps_and_grant_berm_var() {
+fn vars_join_the_deps() {
     let deps = read(WATCH).unwrap().deps();
     let keywords = &deps.vars["keywords"];
     assert_eq!(keywords.default, "rust, wasm");
     assert_eq!(keywords.description, "Words to watch");
-    assert!(deps.syscalls.contains_key("berm.var"));
 }
 
 #[test]
-fn a_service_with_no_vars_is_granted_no_berm_var() {
+fn a_service_with_no_vars_has_none_in_its_deps() {
     let deps = read("name = \"plain\"\n").unwrap().deps();
     assert!(deps.vars.is_empty());
-    assert!(!deps.syscalls.contains_key("berm.var"));
 }
 
 #[test]

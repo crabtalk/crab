@@ -18,6 +18,8 @@ crab rm example
 
 ## crab.toml
 
+Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Missing or empty lists allow none; linked libraries contribute their destinations.
+
 `crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `crab.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
 
 ```toml

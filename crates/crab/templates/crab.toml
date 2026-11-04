@@ -23,9 +23,9 @@ access = "public"
 # The catalog job it does: a listed platform, `.`, then the job.
 # catalog = "web.search"
 
-# Syscalls it makes beyond the ABI's own, each beside what it reaches.
-# [syscalls]
-# "berm.http.fetch" = ["example.com"]
+# Outbound HTTP destinations. Omitted or empty lists allow none.
+# [http]
+# fetch = ["example.com"]
 
 # Settings each deployed copy holds its own value of, read through
 # `berm_lang::var`.

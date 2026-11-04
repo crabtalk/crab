@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/litescrape-v1.svg"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.litescrape.com"]
+[http]
+fetch = ["api.litescrape.com"]
 
 [credentials.litescrape]
 title = "Litescrape API key"

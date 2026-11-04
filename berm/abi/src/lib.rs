@@ -164,9 +164,9 @@ macro_rules! host_calls {
             /// staged length`
             ///
             /// The request is the subject; the issuer is the service, as the services it
-            /// calls are told it is named. The reply is empty. Refused to a service whose
-            /// manifest does not declare [`VOUCH`], and in a chain that already runs for a
-            /// user. The runtime serves this one itself, and every call made after
+            /// calls are told it is named. The reply is empty. Refused for an empty
+            /// subject or in a chain that already runs for a user.
+            /// The runtime serves this one itself, and every call made after
             /// carries the user.
             VOUCH = "berm.vouch";
 
@@ -179,7 +179,7 @@ macro_rules! host_calls {
 
             /// The outside client's IP address. `(ptr, len) -> staged length`, ignored.
             /// The reply is no fields when the host supplied none, else one textual
-            /// IPv4 or IPv6 address. Requires a `berm.client.ip` manifest declaration.
+            /// IPv4 or IPv6 address.
             CLIENT_IP = "berm.client.ip";
 
             /// Mark this invocation's failure as refusing its caller. `() -> 0`

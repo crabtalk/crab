@@ -12,6 +12,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - Browse provider integrations in `services/connect/`, agent services in `services/agents/`, website tools in `services/web/`, and operational services in `services/ops/`. Library-only packages live under `services/kits/`. Check [services](../../services/README.md) and [crabkit](../../crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published template, or link its library when those fit the task. Write a product service for its own behavior.
 - A service is a library crate in the product's repository, built as a `cdylib` (`[lib] crate-type = ["cdylib", "rlib"]`, no bin target), with a `crab.toml` beside its `Cargo.toml`. Its tools are functions marked `#[berm_lang::tool(...)]`; what it reaches for is declared in `crab.toml`. `crab new` writes one; `crab build` builds its image and prints the path; `crab deploy` builds and deploys it; `crab push` does the same and leaves it stopped; `crab stop` and `crab start` stop and serve it, keeping its data. A bare `cargo build` writes an image a host refuses.
 - Its tools, its database, its secrets and its public surface are the product's.
+- Host calls are discovered from the final Wasm imports. Configure outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`; missing or empty lists allow none. Library destinations merge into the service.
 - A setting whoever deploys a copy chooses, such as the keywords a monitor watches, is a var: declared under `[vars]` in `crab.toml` with a `default` and a `description`, read with `berm_lang::var("name")`. Each copy holds its own value, set with `crab var set <service> <var> <value>` and read from the next call. A secret is never a var.
 - `crab dev -d` starts the local host at `127.0.0.1:7777` in the background, one per machine. `crab --context default deploy [dir]` builds and deploys there the service in `dir` (default `.`), or workspace services beneath it not marked `deploy = false`; `-p` selects names across the workspace instead, starting the host when it is not running; run it again after a change. `crab dev status` says whether the host runs; `crab dev stop` stops it. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
 - A service with standard-library dependencies enables `berm-lang = { workspace = true, features = ["std"] }` and omits `#![no_std]`. Default guest builds remain `no_std`.
@@ -48,7 +49,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 ## Local callers and MCP
 
-- `berm_lang::client()` reads the daily opaque client key. `berm_lang::client_ip()` reads the outside IPv4/IPv6 address, when supplied, and requires `"berm.client.ip" = []` in `[syscalls]`. Both follow nested calls; each service reading the IP needs the declaration.
+- `berm_lang::client()` reads the daily opaque client key. `berm_lang::client_ip()` reads the outside IPv4/IPv6 address, when supplied. Both follow nested calls.
 
 - `crab --context default call <service> <tool> '<arguments>'` calls a public tool locally as the unchecked caller `local`. Use `--caller alice` to override it, or `--anonymous` to call without a caller; only tools with `access = "anonymous"` accept anonymous calls. These flags are local-only; Cloud uses the credential.
 - Local MCP uses Streamable HTTP at `http://127.0.0.1:7777/mcp`. Send `x-berm-caller: {"id":"alice"}` to discover and call public tools as that caller. Local identities are unverified; keep the endpoint on loopback.
@@ -77,7 +78,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | `#[tool(...)]` and its `query`, `cron`, `stripe`, `webhook`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crab.talk/docs/development/macros |
 | Every `berm_lang` function and type, with its signature | https://crab.talk/docs/development/api |
 | Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crab.talk/docs/development, as `/docs/development/http` |
-| `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[syscalls]`, secrets, credentials, libraries | https://crab.talk/docs/development/crab-toml |
+| `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[http]`, secrets, credentials, libraries | https://crab.talk/docs/development/crab-toml |
 | `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/guides/local |
 | Deploying to Cloud, images and registries | https://crab.talk/docs/guides/deploy |
 | Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |

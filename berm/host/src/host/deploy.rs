@@ -418,9 +418,8 @@ impl<E: Env> Host<E> {
     /// Refuses `manifest` when it needs a syscall this host does not serve.
     fn served(&self, manifest: &Manifest) -> Result<(), Denied> {
         let unserved: Vec<&str> = manifest
-            .deps
-            .syscalls
-            .keys()
+            .imports
+            .iter()
             .map(String::as_str)
             .filter(|syscall| !self.berm.serves(syscall))
             .collect();
@@ -428,7 +427,8 @@ impl<E: Env> Host<E> {
             return Err(deny(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 format!("this host does not serve {}", unserved.join(", ")),
-            ));
+            )
+            .explained(MISSING_HOST_CALL));
         }
         Ok(())
     }

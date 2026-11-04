@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/github-v1.svg"
 template = true
 buffer = 1048576
 
-[syscalls]
-"berm.http.fetch" = ["api.github.com", "github.com"]
+[http]
+fetch = ["api.github.com", "github.com"]
 
 [credentials.github_api]
 title = "GitHub access token"

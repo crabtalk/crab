@@ -1,5 +1,5 @@
 //! `berm.http.fetch` and `berm.http.proxy` — one HTTP request, to a host the
-//! service's manifest declares under the syscall it makes — and their batch
+//! service's manifest allows under `[http]` — and their batch
 //! forms `berm.http.fetch_all` and `berm.http.proxy_all`.
 //!
 //! berm checks the request against the asking service's [`crate::Deps`] and
@@ -95,7 +95,7 @@ where
 }
 
 /// Serve `berm.http.fetch_all`: a batch of [`fetch`] requests, each to a
-/// host the manifest declares under `berm.http.fetch`, sent through `send` at
+/// host the manifest declares under `[http] fetch`, sent through `send` at
 /// once and answered in order, a refusal or failure answering its own place.
 pub fn fetch_all<S, Sent, R, Found>(send: S, secret: R) -> Syscall
 where
@@ -108,7 +108,7 @@ where
 }
 
 /// Serve `berm.http.proxy_all`: [`fetch_all`], each request to a host the
-/// manifest declares under `berm.http.proxy`, where `send` goes through the
+/// manifest declares under `[http] proxy`, where `send` goes through the
 /// host's proxy.
 pub fn proxy_all<S, Sent, R, Found>(send: S, secret: R) -> Syscall
 where
@@ -306,9 +306,9 @@ fn headers(headers: &[(String, String)]) -> usize {
 /// Refuse a host the asking service's manifest does not declare under
 /// `syscall`.
 fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
-    at.deps.reach(syscall, host).ok_or_else(|| {
+    at.deps.http.reach(syscall, host).ok_or_else(|| {
         Refused(format!(
-            "{} does not declare {host} under {syscall}",
+            "{} does not declare {host} in [http] for {syscall}",
             at.service
         ))
         .into()

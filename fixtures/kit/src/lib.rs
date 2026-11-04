@@ -1,4 +1,4 @@
-//! The reference kit: a secret, a host under `berm.http.fetch`, and a table,
+//! The reference kit: a secret, a host under `[http] fetch`, and a table,
 //! for each service that depends on it.
 
 #![no_std]

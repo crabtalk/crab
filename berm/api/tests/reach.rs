@@ -1,18 +1,14 @@
 //! How a manifest's declared hosts reach a request's host: by name, through
 //! `*.domain`, through `*`, or not at all.
 
-use berm_api::{Deps, Reach};
+use berm_api::{Http, Reach};
 
 const FETCH: &str = "berm.http.fetch";
 
-fn deps(hosts: &[&str]) -> Deps {
-    Deps {
-        syscalls: [(
-            FETCH.to_owned(),
-            hosts.iter().map(|h| h.to_string()).collect(),
-        )]
-        .into(),
-        ..Deps::default()
+fn deps(hosts: &[&str]) -> Http {
+    Http {
+        fetch: hosts.iter().map(|h| h.to_string()).collect(),
+        ..Http::default()
     }
 }
 
@@ -58,4 +54,23 @@ fn a_name_wins_over_a_pattern() {
 fn another_syscall_reaches_nothing() {
     let deps = deps(&["*"]);
     assert_eq!(deps.reach("berm.http.proxy", "example.com"), None);
+}
+
+#[test]
+fn batches_share_their_modes_destinations() {
+    let http = Http {
+        fetch: vec!["fetch.example".into()],
+        proxy: vec!["proxy.example".into()],
+    };
+    assert_eq!(
+        http.reach("berm.http.fetch_all", "fetch.example"),
+        Some(Reach::Named)
+    );
+    assert_eq!(
+        http.reach("berm.http.proxy_all", "proxy.example"),
+        Some(Reach::Named)
+    );
+    assert_eq!(http.reach("berm.http.fetch", "proxy.example"), None);
+    assert_eq!(http.reach("berm.http.proxy", "fetch.example"), None);
+    assert_eq!(Http::default().reach(FETCH, "fetch.example"), None);
 }

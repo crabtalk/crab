@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/pdl-v1.ico"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.peopledatalabs.com"]
+[http]
+fetch = ["api.peopledatalabs.com"]
 
 [credentials.pdl]
 title = "People Data Labs API key"

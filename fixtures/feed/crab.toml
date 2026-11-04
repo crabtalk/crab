@@ -1,8 +1,8 @@
 name = "feed"
 deploy = false
 
-[syscalls]
-"berm.http.fetch" = ["127.0.0.1"]
+[http]
+fetch = ["127.0.0.1"]
 
 [tools.posts]
 access = "public"
