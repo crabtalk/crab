@@ -21,10 +21,6 @@ berm-lang.workspace = true
 crab-openapi.workspace = true
 url.workspace = true
 
-[build-dependencies]
-berm-api.workspace = true
-berm-build.workspace = true
-
 [dev-dependencies]
 berm-api.workspace = true
 berm-build.workspace = true

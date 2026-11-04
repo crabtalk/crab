@@ -1,5 +1,6 @@
 # Documentation
 
+- Keep the English README at `README.md` and translations at `docs/readme/<locale>.md`. Update translations alongside README content changes and verify their relative links.
 - Update affected documentation in the same change as code, API, CLI, configuration, repository layout, or platform support changes. A change is unfinished while its documentation describes the previous behavior.
 - Search the whole repository for affected concepts, commands, examples, paths, and claims before editing. Review `skills/crab/SKILL.md`, the root and crate READMEs, and relevant guides and examples; update each affected source together.
 - CrabTalk website guides live in `../crabtalk/www/site/content/docs/`. Check and update affected guides alongside repository docs.
