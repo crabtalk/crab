@@ -8,15 +8,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use compat::{Break, Surface};
+pub use http::{Http, Reach};
 pub use image::Image;
 pub use manifest::{
-    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration, Reach,
-    Sequence, ServiceRecord, ToolRecord, Var,
+    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration, Sequence,
+    ServiceRecord, ToolRecord, Var,
 };
 
 mod compat;
 pub mod digest;
 pub mod host;
+mod http;
 mod image;
 pub mod logo;
 mod manifest;
@@ -78,6 +80,7 @@ pub struct Service {
 pub struct Runtime {
     /// Its tools that are not public.
     pub tools: Vec<ToolSpec>,
+    #[serde(deserialize_with = "Deps::deserialize")]
     pub deps: Deps,
     pub events: Vec<EventSpec>,
     /// The `berm-lang` version its image was built with.

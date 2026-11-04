@@ -1,4 +1,4 @@
-//! The reference guest keeping a database: its `berm.get` and `berm.set` land
+//! The reference guest keeping a database: its `berm.set` writes land
 //! in the database beside its own `words` table.
 //!
 //! `put` writes a word every way the database takes one, `count` reads the

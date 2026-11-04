@@ -2,11 +2,6 @@ name = "keeper"
 deploy = false
 calls = ["inner"]
 
-[syscalls]
-"berm.get" = []
-"berm.set" = []
-"berm.sql" = []
-
 [database]
 migrations = "migrations"
 

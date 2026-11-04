@@ -13,11 +13,11 @@ crabkit = { version = "0.1", features = ["neon"] }
 
 The library is also the crate `crabkit-neon` on its own.
 
-The library's `crab.toml` declares the secret `NEON_PASSWORD`, which reaches the service's manifest when the service links the library. The library declares no host; the service declares its project's endpoint under `berm.http.fetch` in its own `crab.toml`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
+The library's `crab.toml` declares the secret `NEON_PASSWORD`, which reaches the service's manifest when the service links the library. The library declares no host; the service declares its project's endpoint under `[http] fetch` in its own `crab.toml`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
 
 ```toml
-[syscalls]
-"berm.http.fetch" = ["api.us-east-2.aws.neon.tech"]
+[http]
+fetch = ["api.us-east-2.aws.neon.tech"]
 
 [credentials.neon]
 title = "Neon credentials"

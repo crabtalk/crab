@@ -934,6 +934,7 @@ name = "crab-analytics"
 version = "0.1.2"
 dependencies = [
  "anyhow",
+ "berm",
  "berm-api",
  "berm-build",
  "berm-host",

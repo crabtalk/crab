@@ -1,7 +1,4 @@
-//! The reference guest declaring nothing beyond the ABI. Each tool makes one
-//! syscall a manifest has to declare, which the host refuses it.
-//!
-//! `fetch` requests a host it does not declare, and `vouch` vouches for a user.
+//! A guest with no declared HTTP destinations.
 
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
@@ -19,4 +16,11 @@ pub fn fetch() -> Result<u16> {
 #[tool]
 pub fn vouch() -> Result<()> {
     Ok(berm_lang::vouch("someone")?)
+}
+
+/// Read the outside IP.
+#[tool]
+pub fn client_ip() -> Result<()> {
+    berm_lang::client_ip()?;
+    Ok(())
 }

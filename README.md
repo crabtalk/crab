@@ -30,7 +30,7 @@ Writing services requires a Rust toolchain. From a new directory, create and run
 crab new example
 cd example
 crab --context default deploy
-crab --context default call example echo '{"query":"hello"}' --caller alice
+crab --context default call example echo '{"query":"hello"}'
 ```
 
 The local host starts automatically. To deploy the same service to CrabTalk Cloud:

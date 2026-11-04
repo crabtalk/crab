@@ -1,5 +1,5 @@
-//! One HTTP request, to a host this service's manifest declares under
-//! `berm.http.fetch`, or under `berm.http.proxy` to send it through the host's
+//! One HTTP request, to a host this service's manifest allows under
+//! `[http] fetch`, or under `[http] proxy` to send it through the host's
 //! proxy.
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
@@ -137,7 +137,7 @@ pub fn fetch_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallEr
 }
 
 /// [`fetch_all`], through the host's proxy, each request to a host the
-/// manifest declares under `berm.http.proxy`. The host meters the bytes sent
+/// manifest declares under `[http] proxy`. The host meters the bytes sent
 /// and received against this service as `proxied`.
 pub fn proxy_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
     send_all(sys::HTTP_PROXY_ALL, requests)

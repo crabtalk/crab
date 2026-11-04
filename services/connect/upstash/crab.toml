@@ -6,8 +6,8 @@ buffer = 1048576
 [vars]
 UPSTASH_REDIS_REST_URL = { description = "HTTPS REST URL from your Upstash database's Connect page" }
 
-[syscalls]
-"berm.http.fetch" = ["*.upstash.io"]
+[http]
+fetch = ["*.upstash.io"]
 
 [credentials.upstash_redis]
 title = "Upstash Redis database"

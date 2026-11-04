@@ -7,13 +7,9 @@ calls = ["inner"]
 [vars]
 greeting = { default = "hello", description = "What greet answers" }
 
-[syscalls]
-"berm.get" = []
-"berm.set" = []
-"berm.call.after" = []
-"berm.http.fetch" = ["127.0.0.1"]
-"berm.http.proxy" = ["127.0.0.1"]
-"berm.vouch" = []
+[http]
+fetch = ["127.0.0.1"]
+proxy = ["127.0.0.1"]
 
 [tools.reach]
 access = "public"
@@ -109,3 +105,6 @@ secrets = [{ name = "spare" }]
 title = "Hostless token"
 optional = true
 secrets = [{ name = "hostless" }]
+
+[tools.client_context]
+access = "public"

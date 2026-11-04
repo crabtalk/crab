@@ -5,6 +5,7 @@
 
 use crate::{abi::wire, host, sys};
 use alloc::string::{String, ToString};
+use core::net::IpAddr;
 
 pub use host::CallError;
 
@@ -120,8 +121,8 @@ pub fn user() -> Result<Option<User>, CallError> {
 /// let plan = berm_lang::call("billing", "plan", "{}")?;
 /// ```
 ///
-/// The manifest declares `berm.vouch`. [`CallError::Refused`] in a chain that
-/// already runs for a user, and for an empty subject.
+/// [`CallError::Refused`] in a chain that already runs for a user, and for
+/// an empty subject.
 pub fn vouch(subject: &str) -> Result<(), CallError> {
     host::call(sys::VOUCH, subject.as_bytes())?;
     Ok(())
@@ -160,6 +161,22 @@ pub fn client() -> Result<Option<String>, CallError> {
     match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
         [] => Ok(None),
         [key] => Ok(Some(String::from_utf8_lossy(key).into_owned())),
+        _ => Err(unreadable()),
+    }
+}
+
+/// The outside client's IP address, carried into every nested call. `None`
+/// when the host supplied none.
+pub fn client_ip() -> Result<Option<IpAddr>, CallError> {
+    let reply = host::call(sys::CLIENT_IP, &[])?;
+    let unreadable = || CallError::Failed(String::from("host framed an invalid client IP"));
+    match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
+        [] => Ok(None),
+        [ip] => core::str::from_utf8(ip)
+            .ok()
+            .and_then(|ip| ip.parse().ok())
+            .map(Some)
+            .ok_or_else(unreadable),
         _ => Err(unreadable()),
     }
 }

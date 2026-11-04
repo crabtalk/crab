@@ -1,7 +1,8 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
 use crate::{
-    Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host, logo::Logo,
+    Access, Credential, DEFAULT_BUFFER, Deps, Http, Limits, ToolRecord, ToolSpec, Var, host,
+    logo::Logo,
 };
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
@@ -17,7 +18,7 @@ use std::{
 pub const FILE: &str = "crab.toml";
 
 /// The project file. A service's names it; a kit's declares only `id`,
-/// `formerly`, `secrets`, `[credentials]`, `calls`, `[syscalls]` and
+/// `formerly`, `secrets`, `[credentials]`, `calls`, `[http]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -64,11 +65,8 @@ pub struct Project {
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
     pub buffer: Option<usize>,
-    /// Syscalls it makes beyond the ABI's own, each beside what it reaches
-    /// through that call: `"berm.http.fetch" = ["example.com"]`, or `[]` for
-    /// the call alone.
     #[serde(default)]
-    pub syscalls: BTreeMap<String, Vec<String>>,
+    pub http: Http,
     /// Settings each deployed copy sets its own value of, by name.
     #[serde(default)]
     pub vars: BTreeMap<String, Var>,
@@ -217,19 +215,10 @@ impl Project {
             .context("a service names itself: `name = \"…\"`")
     }
 
-    /// What it reaches for once it runs. One keeping a database calls
-    /// `berm.sql`, and one declaring vars `berm.var`.
     pub fn deps(&self) -> Deps {
-        let mut syscalls = self.syscalls.clone();
-        if self.database.migrations.is_some() {
-            syscalls.entry("berm.sql".to_owned()).or_default();
-        }
-        if !self.vars.is_empty() {
-            syscalls.entry("berm.var".to_owned()).or_default();
-        }
         Deps {
             calls: self.calls.clone(),
-            syscalls,
+            http: self.http.clone(),
             secrets: self
                 .secrets
                 .iter()
@@ -290,7 +279,7 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit declares only id, formerly, secrets, [credentials], calls, [syscalls] and [database] migrations, not {}",
+                "a kit declares only id, formerly, secrets, [credentials], calls, [http] and [database] migrations, not {}",
                 declared.join(", ")
             );
         }

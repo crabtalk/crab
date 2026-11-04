@@ -7,8 +7,8 @@ buffer = 1048576
 POSTHOG_REGION = { default = "us", description = "PostHog Cloud region: us or eu" }
 POSTHOG_PROJECT_ID = { description = "Numeric project ID for analytics queries; not needed for capture or flags" }
 
-[syscalls]
-"berm.http.fetch" = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]
+[http]
+fetch = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]
 
 [credentials.posthog_project]
 title = "PostHog project token"

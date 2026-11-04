@@ -31,6 +31,7 @@ pub use meter::{ByTool, Meters, Pool, Running};
 pub use service::{Ended, Invocation, Link, Outcome, Refused, Service};
 use std::{
     collections::BTreeMap,
+    net::IpAddr,
     pin::Pin,
     sync::{Arc, RwLock, Weak, atomic::AtomicU32},
     time::Instant,
@@ -82,10 +83,9 @@ pub struct Callsite {
     /// service in the chain vouched for through `berm.vouch`. Carried into
     /// every call made after.
     pub user: Option<User>,
-    /// The outside client, as the per-day pseudonymous key the embedder
-    /// supplied at the chain's first call. Carried unchanged into every nested
-    /// call.
-    pub client: Option<Arc<str>>,
+    /// The outside client supplied at the chain's first call, carried into
+    /// every nested call.
+    pub client: Client,
     /// How many guests the chain holds, this one included.
     pub depth: u32,
     /// The services this call sits under, outermost first, this one last.
@@ -160,6 +160,13 @@ pub enum Caller {
 pub struct User {
     pub issuer: Arc<str>,
     pub subject: Arc<str>,
+}
+
+/// The outside client supplied by the host for a call chain.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Client {
+    pub key: Option<Arc<str>>,
+    pub ip: Option<IpAddr>,
 }
 
 /// The services a host is running.

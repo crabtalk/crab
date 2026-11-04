@@ -8,8 +8,8 @@ buffer = 262144
 migrations = "migrations"
 size = "64MiB"
 
-[syscalls]
-"berm.http.fetch" = ["*"]
+[http]
+fetch = ["*"]
 
 [crons]
 tick = "* * * * *"

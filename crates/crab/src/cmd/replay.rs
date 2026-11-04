@@ -4,11 +4,11 @@
 use crate::{cmd::call, project, runtime};
 use anyhow::{Result, bail};
 use berm::{
-    Berm, Calls, Config, Engine, Output, User, abi, chain,
+    Berm, Calls, Client as OutsideClient, Config, Engine, Output, User, abi, chain,
     syscall::emit,
     tape::{Tape, Taping},
 };
-use berm_api::digest;
+use berm_api::{digest, host::Caller};
 use crabtalk_sdk::client::Client;
 use std::{fs, path::Path, process::ExitCode, sync::Arc};
 
@@ -59,9 +59,10 @@ pub fn tape(from: &Client, service: &str, id: u64, build: Option<&Path>) -> Resu
                     issuer: user.issuer.as_str().into(),
                     subject: user.subject.as_str().into(),
                 }),
-            caller
-                .and_then(|caller| caller.client.as_deref())
-                .map(Into::into),
+            OutsideClient {
+                key: input.client_key.as_deref().map(Into::into),
+                ip: caller.and_then(Caller::client_ip),
+            },
             &input.tool,
             input.args.into_bytes(),
             Arc::default(),

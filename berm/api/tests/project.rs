@@ -224,3 +224,36 @@ fn library_only_packages_do_not_declare_logos() {
             .contains("logo")
     );
 }
+
+#[test]
+fn http_settings_replace_syscall_declarations() {
+    let project = read(
+        r#"name = "http"
+[http]
+fetch = ["api.example"]
+proxy = ["*.example"]
+"#,
+    )
+    .unwrap();
+    assert_eq!(project.deps().http.fetch, ["api.example"]);
+    assert_eq!(project.deps().http.proxy, ["*.example"]);
+    assert!(
+        read(
+            r#"name = "old"
+[syscalls]
+"berm.vouch" = []
+"#
+        )
+        .is_err()
+    );
+    assert!(
+        read(
+            r#"name = "typo"
+[http]
+ftech = []
+"#
+        )
+        .is_err()
+    );
+    assert!(read(r#"name = "plain""#).unwrap().deps().http.is_empty());
+}

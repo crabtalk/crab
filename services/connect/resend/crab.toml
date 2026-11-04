@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/resend-v1.png"
 template = true
 buffer = 1048576
 
-[syscalls]
-"berm.http.fetch" = ["api.resend.com"]
+[http]
+fetch = ["api.resend.com"]
 
 [credentials.resend]
 title = "Resend API key"

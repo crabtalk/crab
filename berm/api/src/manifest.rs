@@ -1,11 +1,11 @@
 //! What a service says it is, read from its image's [`ABI_SECTION`],
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{Access, DEFAULT_BUFFER, Image, Limits, ToolSpec, logo::Logo};
+use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, logo::Logo};
 use anyhow::{Context, Result, bail};
-use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
+use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,7 @@ pub struct Manifest {
     ///
     /// Resolved wherever the image lands; nothing here is fetched or
     /// installed, and a name nothing answers to is reported, not refused.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "Deps::deserialize")]
     pub deps: Deps,
     /// The typed logs it emits, by name.
     #[serde(default)]
@@ -84,7 +84,7 @@ pub struct ServiceRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logo: Option<Logo>,
     pub buffer: usize,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "Deps::deserialize")]
     pub deps: Deps,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
@@ -126,7 +126,7 @@ pub struct Kit {
     /// The package's version when the service was built.
     #[serde(default)]
     pub version: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "Deps::deserialize")]
     pub deps: Deps,
     /// The tables it keeps in the service's database.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,11 +176,8 @@ pub struct Deps {
     /// Services it calls by name.
     #[serde(default)]
     pub calls: Vec<String>,
-    /// Syscalls it makes beyond the ABI's own, each beside what it reaches
-    /// through that call — the hosts a fetch goes to, the names a secret is
-    /// read by. An empty list is the call alone.
     #[serde(default)]
-    pub syscalls: BTreeMap<String, Vec<String>>,
+    pub http: Http,
     /// Secrets it names in `{secret:NAME}`, which the host substitutes and
     /// the guest never holds. Every credential's secrets are among them.
     #[serde(default)]
@@ -308,6 +305,32 @@ fn masked() -> bool {
 }
 
 impl Deps {
+    // Images built before [http] stored destinations under syscall names.
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            #[serde(flatten)]
+            deps: Deps,
+            #[serde(default)]
+            syscalls: BTreeMap<String, Vec<String>>,
+        }
+        let Stored {
+            mut deps,
+            mut syscalls,
+        } = Stored::deserialize(deserializer)?;
+        let legacy = Deps {
+            http: Http {
+                fetch: syscalls.remove(abi::HTTP_FETCH).unwrap_or_default(),
+                proxy: syscalls.remove(abi::HTTP_PROXY).unwrap_or_default(),
+            },
+            ..Deps::default()
+        };
+        deps.merge(&legacy).map_err(Error::custom)?;
+        Ok(deps)
+    }
+
     /// Required secrets absent from `set`.
     pub fn unset(&self, set: &[String]) -> Vec<String> {
         self.grouped()
@@ -337,7 +360,7 @@ impl Deps {
 
     pub fn is_empty(&self) -> bool {
         self.calls.is_empty()
-            && self.syscalls.is_empty()
+            && self.http.is_empty()
             && self.secrets.is_empty()
             && self.vars.is_empty()
     }
@@ -354,9 +377,8 @@ impl Deps {
         };
         missing(&mut self.calls, &other.calls);
         missing(&mut self.secrets, &other.secrets);
-        for (name, reached) in &other.syscalls {
-            missing(self.syscalls.entry(name.clone()).or_default(), reached);
-        }
+        missing(&mut self.http.fetch, &other.http.fetch);
+        missing(&mut self.http.proxy, &other.http.proxy);
         for (id, credential) in &other.credentials {
             if self.credentials.contains_key(id) {
                 bail!("credential {id} is declared twice");
@@ -452,56 +474,16 @@ impl Deps {
         self.credential_of(secret)
             .is_some_and(|id| self.credentials[id].optional)
     }
-
-    /// How `host` is declared under `syscall`, or `None` when it is not.
-    ///
-    /// A declared host is a name, matched whole; `*.example.com`, matching
-    /// every subdomain of `example.com` and not `example.com` itself; or `*`,
-    /// matching every host. Matching ignores ASCII case. A host declared by
-    /// name is [`Reach::Named`] even when a pattern matches it too.
-    pub fn reach(&self, syscall: &str, host: &str) -> Option<Reach> {
-        let declared = self.syscalls.get(syscall)?;
-        if declared.iter().any(|item| item.eq_ignore_ascii_case(host)) {
-            return Some(Reach::Named);
-        }
-        declared
-            .iter()
-            .any(|item| match item.strip_prefix("*") {
-                Some("") => true,
-                Some(suffix) => {
-                    suffix.starts_with('.')
-                        && host.len().checked_sub(suffix.len()).is_some_and(|at| {
-                            host.as_bytes()[at..].eq_ignore_ascii_case(suffix.as_bytes())
-                        })
-                }
-                None => false,
-            })
-            .then_some(Reach::Pattern)
-    }
 }
 
-/// How a manifest declares a host it reaches.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reach {
-    /// By its name.
-    Named,
-    /// Only through `*` or `*.domain`.
-    Pattern,
-}
-
-/// `inner, berm.http.fetch (example.com), secret openai` — every service,
-/// every syscall with what it reaches, then every secret.
 impl fmt::Display for Deps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut items = self.calls.clone();
-        items.extend(
-            self.syscalls
-                .iter()
-                .map(|(name, reached)| match reached.is_empty() {
-                    true => name.clone(),
-                    false => format!("{name} ({})", reached.join(", ")),
-                }),
-        );
+        for (name, hosts) in [("fetch", &self.http.fetch), ("proxy", &self.http.proxy)] {
+            if !hosts.is_empty() {
+                items.push(format!("http {name} ({})", hosts.join(", ")));
+            }
+        }
         items.extend(self.secrets.iter().map(|name| format!("secret {name}")));
         f.write_str(&items.join(", "))
     }

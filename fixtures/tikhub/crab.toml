@@ -1,7 +1,7 @@
 name = "tikhub"
 
-[syscalls]
-"berm.http.fetch" = ["api.tikhub.io"]
+[http]
+fetch = ["api.tikhub.io"]
 
 [credentials.tikhub]
 title = "TikHub API key"

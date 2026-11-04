@@ -6,6 +6,7 @@ use berm_api::{
     Access, Credential, CredentialSecret, Deps, Image, Kit, Limits, Manifest, ServiceRecord,
     ToolRecord,
 };
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// A wasm module holding one custom section, `padding`, empty.
@@ -278,7 +279,7 @@ fn a_cron_tool_given_access_is_refused() {
 
 #[test]
 fn logo_validation_applies_to_images_and_manifest_json() {
-    let mut record: serde_json::Value = serde_json::from_slice(&service()).unwrap();
+    let mut record: Value = serde_json::from_slice(&service()).unwrap();
     record["logo"] = "https://example.com/logo.svg".into();
     let bytes = image(
         &tool("a", "demo"),
@@ -307,7 +308,7 @@ fn logo_validation_applies_to_images_and_manifest_json() {
 
 #[test]
 fn schedules_are_carried_by_the_image_and_must_name_cron_tools() {
-    let mut record: serde_json::Value = serde_json::from_slice(&service()).unwrap();
+    let mut record: Value = serde_json::from_slice(&service()).unwrap();
     record["crons"] = serde_json::json!({"tick":"*/5 * * * *"});
     let record = serde_json::to_vec(&record).unwrap();
     let bytes = image(&cron("tick"), Some(&record), &[]);
@@ -315,4 +316,58 @@ fn schedules_are_carried_by_the_image_and_must_name_cron_tools() {
     assert_eq!(manifest.crons["tick"], "*/5 * * * *");
     let bytes = image(&tool("tick", "demo"), Some(&record), &[]);
     assert!(Manifest::try_from(bytes.as_slice()).is_err());
+}
+
+#[test]
+fn linked_http_destinations_merge_without_duplicates() {
+    let mut record: ServiceRecord = serde_json::from_slice(&service()).unwrap();
+    record.deps.http.fetch = vec!["own.example".into(), "shared.example".into()];
+    let mut linked = kit("http");
+    linked.deps.http.fetch = vec!["shared.example".into(), "kit.example".into()];
+    linked.deps.http.proxy = vec!["proxy.example".into()];
+    let image = image(
+        &tool("a", "demo"),
+        Some(&serde_json::to_vec(&record).unwrap()),
+        &[linked],
+    );
+    let manifest = Manifest::try_from(image.as_slice()).unwrap();
+    assert_eq!(
+        manifest.deps.http.fetch,
+        ["own.example", "shared.example", "kit.example"]
+    );
+    assert_eq!(manifest.deps.http.proxy, ["proxy.example"]);
+}
+
+#[test]
+fn old_image_metadata_keeps_http_destinations_without_inventing_imports() {
+    let mut record: Value = serde_json::from_slice(&service()).unwrap();
+    record["deps"].as_object_mut().unwrap().remove("http");
+    record["deps"]["syscalls"] = serde_json::json!({
+        "berm.http.fetch": ["old.example"],
+        "berm.sql": [],
+        "berm.vouch": []
+    });
+    let mut linked = serde_json::to_value(kit("old")).unwrap();
+    linked["deps"].as_object_mut().unwrap().remove("http");
+    linked["deps"]["syscalls"] = serde_json::json!({"berm.http.proxy": ["proxy.example"]});
+    let base = Image(EMPTY)
+        .with_section(ABI_SECTION, tool("a", "demo").as_bytes())
+        .unwrap();
+    let base = Image(&base)
+        .with_section(SERVICE_SECTION, &serde_json::to_vec(&record).unwrap())
+        .unwrap();
+    let base = Image(&base)
+        .with_section(KITS_SECTION, &serde_json::to_vec(&[linked]).unwrap())
+        .unwrap();
+    let manifest = Manifest::try_from(base.as_slice()).unwrap();
+    assert_eq!(manifest.deps.http.fetch, ["old.example"]);
+    assert_eq!(manifest.deps.http.proxy, ["proxy.example"]);
+    assert!(manifest.imports.is_empty());
+    let mut saved = serde_json::to_value(&manifest).unwrap();
+    saved["deps"].as_object_mut().unwrap().remove("http");
+    saved["deps"]["syscalls"] = record["deps"]["syscalls"].clone();
+    let restored: Manifest = serde_json::from_value(saved).unwrap();
+    assert_eq!(restored.deps.http.fetch, ["old.example"]);
+    let encoded = serde_json::to_value(restored).unwrap();
+    assert!(encoded["deps"].get("syscalls").is_none());
 }

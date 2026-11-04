@@ -2,7 +2,7 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::Result;
-use berm::{ByTool, Meter, Meters, Service, User, chain, tape::Taping};
+use berm::{ByTool, Client, Meter, Meters, Service, User, chain, tape::Taping};
 use berm_api::{Output, host::NestedCall};
 use std::sync::Arc;
 
@@ -18,7 +18,7 @@ impl<E: Env> Host<E> {
         call: u64,
         caller: Option<&str>,
         user: Option<User>,
-        client: Option<Arc<str>>,
+        client: Client,
         tool: &str,
         args: Vec<u8>,
         taping: Taping,

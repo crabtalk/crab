@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/anyapi-v1.svg"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.getanyapi.com"]
+[http]
+fetch = ["api.getanyapi.com"]
 
 [credentials.anyapi]
 title = "AnyAPI API key"

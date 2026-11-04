@@ -1,9 +1,6 @@
 name = "broken"
 deploy = false
 
-[syscalls]
-"berm.sql" = []
-
 [database]
 migrations = "migrations"
 

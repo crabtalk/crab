@@ -114,7 +114,8 @@ pub(crate) fn calls<E: Env>(
                         issuer: user.issuer.to_string(),
                         subject: user.subject.to_string(),
                     }),
-                    client: link.client.map(|client| client.to_string()),
+                    client: link.client.key.as_deref().map(str::to_owned),
+                    client_ip: link.client.ip,
                     depth: link.depth,
                     query: link.query,
                     timeout: link

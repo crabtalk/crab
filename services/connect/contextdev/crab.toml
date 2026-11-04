@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/contextdev-v1.png"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.context.dev"]
+[http]
+fetch = ["api.context.dev"]
 
 [credentials.contextdev]
 title = "Context.dev API key"

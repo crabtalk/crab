@@ -76,9 +76,12 @@ async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "crabkit-lake");
     for syscall in ["berm.get", "berm.set", "berm.sql"] {
-        assert!(manifest.deps.syscalls.contains_key(syscall), "{syscall}");
+        assert!(
+            manifest.imports.iter().any(|name| name == syscall),
+            "{syscall}"
+        );
     }
-    assert_eq!(manifest.deps.syscalls["berm.http.fetch"], ["127.0.0.1"]);
+    assert_eq!(manifest.deps.http.fetch, ["127.0.0.1"]);
     let events: Vec<&str> = manifest
         .events
         .iter()

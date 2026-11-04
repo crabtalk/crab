@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/companyenrich-v1.png"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.companyenrich.com"]
+[http]
+fetch = ["api.companyenrich.com"]
 
 [credentials.companyenrich]
 title = "CompanyEnrich API key"

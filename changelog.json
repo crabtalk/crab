@@ -1,5 +1,34 @@
 [
   {
+    "version": "0.1.2",
+    "date": "2026-11-04",
+    "summary": "New agent, web and ops services join Connect integrations. Deploy and publish catalogs by directory, configure service logos, and manage API keys with granular permissions. Schedules and secret destinations now belong to the service image.",
+    "new": [
+      "Share revision-checked, namespaced agent notes with the memory service",
+      "Inspect SEO metadata, extract webpage Markdown and collect website analytics with the web services",
+      "Monitor endpoints and receive signed, deduplicated events with the uptime and webhooks services",
+      "Declare an HTTPS service logo in crab.toml, retained by published templates and private copies",
+      "Show purchased and trial credit separately in crab billing, including trial expiry, reserved funds and the hosting recovery deadline",
+      "Expose plan credit allowances, eligible account kinds, trial terms and organization creation status through the SDK",
+      "Replace an API key's priced-service grants through SDK key updates",
+      "Add host invocation scopes for nested and scheduled calls, preserve admission refusal statuses and identify outbound HTTP requests by chain and span",
+      "Check on every pull request that changelog.json contains release notes for the current crab-agent version"
+    ],
+    "changed": [
+      "Organize services under connect, agents, web and ops catalogs, with reusable libraries under services/kits",
+      "Scope crab deploy and crab publish to services beneath the supplied directory; -p still selects across the workspace, and publish includes services marked deploy = false",
+      "Replace deploy and auto API-key scopes with resource read/write permissions and remove crab key roll; write permission includes read access to the same resource",
+      "Embed cron schedules in the image and apply them on every deploy; change crab.toml and redeploy instead of editing schedules on the host or using deploy --pull",
+      "Fix credential destinations in the manifest and require fresh provisioning when they change; remove secret host editing and never return saved secret values",
+      "Fetch provider OpenAPI specifications into OUT_DIR at build time, with pinned revisions or reviewed digests",
+      "Use Cargo default members for routine CI tests and linting, and prepare shared Wasm fixture images with nextest setup scripts"
+    ],
+    "fixed": [
+      "Reject provisioning undeclared secrets and refuse outbound secret substitution to destinations absent from the manifest",
+      "Check the Context.dev OpenAPI source against a reviewed SHA-256 digest"
+    ]
+  },
+  {
     "version": "0.1.1",
     "date": "2026-10-22",
     "summary": "Kits replace guests: auth, crawl, lake, neon, stripe and supabase link into a service's own program. Calls are metered and bounded by CPU time, databases by the size berm.toml gives them, and crab installs and upgrades itself from GitHub releases.",

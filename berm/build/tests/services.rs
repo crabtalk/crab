@@ -76,7 +76,7 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     assert!(required.iter().any(|name| name == "GITHUB_CLIENT_ID"));
     assert!(required.iter().any(|name| name == "GITHUB_CLIENT_SECRET"));
     assert!(!required.iter().any(|name| name == "GITHUB_TOKEN"));
-    let hosts = &linked.deps.syscalls["berm.http.fetch"];
+    let hosts = &linked.deps.http.fetch;
     assert!(hosts.iter().any(|s| s == "api.github.com"));
     assert!(hosts.iter().any(|s| s == "api.resend.com"));
 }

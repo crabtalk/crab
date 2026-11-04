@@ -117,6 +117,7 @@ async fn a_project_deploy_of_a_call_the_host_lacks_carries_its_code() -> Result<
         .err()
         .expect("no host serves berm.sez");
     let denied = refused.downcast_ref::<Denied>().expect("a refusal");
+    assert_eq!(denied.status.as_u16(), 422);
     assert_eq!(denied.explain, Some("E0020"));
     Ok(())
 }
@@ -128,6 +129,7 @@ async fn a_deploy_of_a_call_the_host_lacks_carries_its_code() -> Result<()> {
         panic!("no host serves berm.sez");
     };
     let denied = refused.downcast_ref::<Denied>().expect("a refusal");
+    assert_eq!(denied.status.as_u16(), 422);
     assert_eq!(denied.explain, Some("E0020"));
     assert!(denied.message.contains("berm.sez"));
     Ok(())

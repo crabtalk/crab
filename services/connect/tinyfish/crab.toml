@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/tinyfish-v1.svg"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["agent.tinyfish.ai", "api.search.tinyfish.ai", "api.fetch.tinyfish.ai"]
+[http]
+fetch = ["agent.tinyfish.ai", "api.search.tinyfish.ai", "api.fetch.tinyfish.ai"]
 
 [credentials.tinyfish]
 title = "TinyFish API key"

@@ -3,8 +3,8 @@ logo = "https://crab.talk/logos/templates/firecrawl-v1.png"
 template = true
 buffer = 8388608
 
-[syscalls]
-"berm.http.fetch" = ["api.firecrawl.dev"]
+[http]
+fetch = ["api.firecrawl.dev"]
 
 [credentials.firecrawl]
 title = "Firecrawl API key"

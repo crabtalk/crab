@@ -1,8 +1,8 @@
 # What its applied migrations are kept under in a database; never changes.
 id = "115a99982fc0ce031c0a94fad9aa47a0"
 
-[syscalls]
-"berm.http.fetch" = [
+[http]
+fetch = [
     "oauth2.googleapis.com",
     "openidconnect.googleapis.com",
 ]
