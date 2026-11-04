@@ -3,7 +3,8 @@
 //! and the versions read back.
 
 use anyhow::Result;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use serde_json::{Value, json};
 
 const FEED: &str = "http://127.0.0.1/feed.xml";
@@ -39,7 +40,7 @@ async fn count(host: &TestHost) -> Result<u64> {
 #[tokio::test]
 async fn a_version_is_stored_when_a_record_is_new_or_changed() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed")?).await?;
+    host.deploy("feed", &fixture::image("berm-feed")?).await?;
     host.arrange("GET", FEED, 200, list(&[]));
     host.arrange("GET", LIST, 200, list(&[("a", "Acme"), ("b", "Beta")]));
     assert_eq!(

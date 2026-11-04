@@ -1,4 +1,4 @@
-//! The local host's secrets: kept by service, set once until revoked, sent
+//! The local host's secrets: kept by service, replaced atomically, sent
 //! only to their hosts, and still there when the file is opened again.
 
 use anyhow::Result;
@@ -13,11 +13,11 @@ async fn a_secret_is_kept_by_service_until_revoked() -> Result<()> {
     assert_eq!(grants.grant("app", "TOKEN", "api.example.com").await?, None);
 
     let hosts = ["api.example.com".to_owned()];
-    assert!(grants.set("app", "TOKEN", "one", &hosts)?);
-    assert!(!grants.set("app", "TOKEN", "two", &hosts)?);
+    grants.set("app", "TOKEN", "one", &hosts)?;
+    grants.set("app", "TOKEN", "two", &hosts)?;
     assert_eq!(
         grants.grant("app", "TOKEN", "api.example.com").await?,
-        Some("one".to_owned())
+        Some("two".to_owned())
     );
     assert_eq!(
         grants.grant("other", "TOKEN", "api.example.com").await?,
@@ -29,7 +29,7 @@ async fn a_secret_is_kept_by_service_until_revoked() -> Result<()> {
     let reopened = Grants::open(path);
     assert_eq!(
         reopened.grant("app", "TOKEN", "api.example.com").await?,
-        Some("one".to_owned())
+        Some("two".to_owned())
     );
     assert!(reopened.remove("app", "TOKEN")?);
     assert!(!reopened.remove("app", "TOKEN")?);
@@ -38,20 +38,11 @@ async fn a_secret_is_kept_by_service_until_revoked() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_secret_goes_only_to_its_hosts_once_it_has_any() -> Result<()> {
+async fn a_hostless_secret_is_provisioned_but_cannot_be_sent() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let grants = Grants::open(dir.path().join(FILE));
-    assert!(grants.set("app", "TOKEN", "one", &[])?);
+    grants.set("app", "TOKEN", "one", &[])?;
     assert_eq!(grants.grant("app", "TOKEN", "api.example.com").await?, None);
-    assert!(grants.names("app").await?.is_empty());
-
-    assert!(grants.set_hosts("app", "TOKEN", &["api.example.com".to_owned()])?);
-    assert!(!grants.set_hosts("app", "OTHER", &["api.example.com".to_owned()])?);
-    assert_eq!(
-        grants.grant("app", "TOKEN", "api.example.com").await?,
-        Some("one".to_owned())
-    );
-    assert_eq!(grants.grant("app", "TOKEN", "example.com").await?, None);
     assert_eq!(grants.names("app").await?, ["TOKEN"]);
     Ok(())
 }

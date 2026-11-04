@@ -9,32 +9,18 @@ use std::{
 };
 
 /// Set `name`'s secret `secret` to the value on stdin, its trailing newline
-/// dropped, sent only to `hosts`.
-pub fn put(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Result<()> {
+/// dropped, sent only to its manifest destinations.
+pub fn put(client: &Client, name: &str, secret: &str) -> Result<()> {
     let mut value = String::new();
     std::io::stdin()
         .read_to_string(&mut value)
         .context("reading the secret's value from stdin")?;
     let value = value.trim_end_matches(['\n', '\r']);
     if value.is_empty() {
-        bail!(
-            "no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret} --host <host>`"
-        );
+        bail!("no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret}`");
     }
-    runtime::wait(client.put_secret(name, secret, value, hosts))?;
-    match hosts.is_empty() {
-        true => eprintln!(
-            "set {name} {secret}, sent to no host: crab secret hosts {name} {secret} --host <host>"
-        ),
-        false => eprintln!("set {name} {secret}, sent to {}", hosts.join(", ")),
-    }
-    Ok(())
-}
-
-/// Send `name`'s secret `secret` to `hosts` alone.
-pub fn hosts(client: &Client, name: &str, secret: &str, hosts: &[String]) -> Result<()> {
-    runtime::wait(client.put_secret_hosts(name, secret, hosts))?;
-    eprintln!("{name} {secret} is sent to {}", hosts.join(", "));
+    runtime::wait(client.put_secret(name, secret, value))?;
+    eprintln!("set {name} {secret} for its manifest destinations");
     Ok(())
 }
 
@@ -47,10 +33,7 @@ pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
     for secret in &secrets {
         match secret.sent() {
             true => println!("{}  {}", secret.name, secret.hosts.join(", ")),
-            false => println!(
-                "{}  sent nowhere: crab secret hosts {name} {} --host <host>",
-                secret.name, secret.name
-            ),
+            false => println!("{}  sent nowhere", secret.name),
         }
     }
     Ok(())

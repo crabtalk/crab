@@ -2,12 +2,14 @@
 //! webhook.
 
 use anyhow::Result;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use serde_json::json;
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("keeper", &test::build("berm-keeper")?).await?;
+    host.deploy("keeper", &fixture::image("berm-keeper")?)
+        .await?;
     Ok(host)
 }
 

@@ -71,3 +71,14 @@ fn the_most_a_run_costs_spends_its_whole_budget() {
     // held 60 s.
     assert_eq!(metering.most(&budget, 60_000), "1014.67");
 }
+
+#[test]
+fn exact_charges_preserve_fractions_below_a_micro() {
+    let rates = Rates::default();
+    let meter = Meter {
+        runs: 1,
+        ..Meter::default()
+    };
+    assert_eq!(rates.call_cost(&meter, 0), 0);
+    assert_eq!(rates.call_charge(&meter, 0), 150_000_000);
+}

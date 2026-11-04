@@ -58,15 +58,21 @@ impl Commits {
 /// journal. One that took a service's writer commits that database when it
 /// returns ok; unless it is the chain's first, the rest of what it wrote is
 /// committed then.
-pub(crate) fn enter(commits: Commits) -> Enter {
+pub(crate) fn enter(commits: Commits, additional: Option<Enter>) -> Enter {
     Arc::new(move |service: &Service, at: &Callsite| {
         let (commits, entering) = (commits.clone(), commits.databases.enter(service, at));
+        let admitted = additional.as_ref().map(|enter| enter(service, at));
         let first = at.depth == 1;
         Box::pin(async move {
+            let admitted = match admitted {
+                Some(admitted) => Some(admitted.await?),
+                None => None,
+            };
             let held = entering.await?;
             Ok(Box::new(Entered {
                 commits,
                 held,
+                admitted,
                 first,
             }) as Box<dyn Scope>)
         })
@@ -77,6 +83,7 @@ pub(crate) fn enter(commits: Commits) -> Enter {
 pub(crate) struct Entered {
     pub(crate) commits: Commits,
     pub(crate) held: Held,
+    pub(crate) admitted: Option<Box<dyn Scope>>,
     /// The chain's first call, whose changes the host commits.
     pub(crate) first: bool,
 }

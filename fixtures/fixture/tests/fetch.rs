@@ -2,13 +2,14 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 const URL: &str = "http://127.0.0.1/token";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
     host.arrange("POST", URL, 200, "ok");
     Ok(host)
@@ -162,6 +163,22 @@ async fn a_body_naming_an_unset_optional_secret_sends_nothing() -> Result<()> {
         panic!("an unset optional secret in a body is refused");
     };
     assert!(failure.contains("no secret"), "{failure}");
+    assert!(host.fetched().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_stored_grant_cannot_bypass_manifest_destinations() -> Result<()> {
+    let host = deployed().await?;
+    host.grant("fixture", "hostless", "127.0.0.1", "s3cret");
+    let ran = host
+        .call(
+            "fixture",
+            "fetch",
+            format!(r#"{{"url":"{URL}","body":"token={{secret:hostless}}"}}"#).as_bytes(),
+        )
+        .await?;
+    assert!(matches!(ran.result, Output::Failed(_)), "{:?}", ran.result);
     assert!(host.fetched().is_empty());
     Ok(())
 }

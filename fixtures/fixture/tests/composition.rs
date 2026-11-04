@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use berm::{Berm, Calls, Config, Engine};
 use berm_api::Output;
-use berm_host::test;
+use berm_build::fixture;
 use std::sync::Arc;
 
 #[tokio::test]
 async fn a_nested_call_returns_its_payload_and_a_missing_target_is_refused() -> Result<()> {
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let engine = Engine::new(&Config::default())?;
     let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), vec![]);
     berm.deploy("inner", &image)?;
@@ -27,7 +27,7 @@ async fn a_nested_call_returns_its_payload_and_a_missing_target_is_refused() -> 
 
 #[tokio::test]
 async fn recursive_calls_stop_at_the_configured_depth() -> Result<()> {
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let engine = Engine::new(&Config::default())?;
     for depth in [0, 2] {
         let berm = Berm::new(&engine, Calls::by_name(depth), vec![]);
@@ -42,7 +42,7 @@ async fn recursive_calls_stop_at_the_configured_depth() -> Result<()> {
 
 #[tokio::test]
 async fn a_resolver_keeps_nested_calls_inside_the_callers_scope() -> Result<()> {
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     let engine = Engine::new(&Config::default())?;
     let berm = Berm::new(
         &engine,

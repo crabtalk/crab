@@ -45,6 +45,10 @@ A `public` tool can be called by any account the host authenticates and any serv
 
 Off the guest's target this is an ordinary library, which is why the `cfg_attr` above is worth copying: tools then run under `cargo nextest run` with no wasm toolchain and no daemon. See `berm_lang::test`.
 
+## Standard-library dependencies
+
+Services using standard-library dependencies enable `berm-lang = { workspace = true, features = ["std"] }` and omit `#![no_std]`. This selects Rust’s standard panic handler and allocator. The default remains `no_std`. HTTP and other host operations still use the berm ABI.
+
 ## Building
 
 A service is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `crab.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Service](https://crab.talk/docs/development/complete-service#the-files) has the layout.

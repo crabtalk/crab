@@ -27,6 +27,7 @@ use std::{
 
 pub use workspace::Workspace;
 
+pub mod fixture;
 pub mod source;
 
 mod artifact;
@@ -77,10 +78,12 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
             }
             None => String::new(),
         },
+        logo: project.logo.clone(),
         buffer: project.buffer(),
         deps: project.deps(),
         database: migrations(service.manifest_path.dir(), &project)?,
         tools: project.records(),
+        crons: project.crons.clone().unwrap_or_default(),
     };
 
     let out = metadata.target_directory.join(OUT);

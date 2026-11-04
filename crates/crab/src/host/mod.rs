@@ -88,6 +88,7 @@ impl Node {
                 peers: Alone,
                 secrets: grants.clone(),
                 layers: Layers::new(tower::layer::util::Identity::new()),
+                enter: None,
                 observe: (),
                 clock: System,
             },

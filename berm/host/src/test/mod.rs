@@ -25,7 +25,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use berm::{
-    Meter, Service,
+    Enter, Meter, Service,
     syscall::{
         http::{Request, Response},
         sql::Statement,
@@ -69,6 +69,7 @@ pub struct TestHost {
     clock: Manual,
     dir: PathBuf,
     config: crate::Config,
+    enter: Option<Enter>,
 }
 
 /// A host over the state in `dir`, sized by `config`.
@@ -79,6 +80,7 @@ async fn opened(
     images: &Given,
     secrets: &Granted,
     clock: &Manual,
+    enter: Option<Enter>,
 ) -> Result<Host<Test>> {
     let config = crate::Config {
         databases: dir.join("databases"),
@@ -94,6 +96,7 @@ async fn opened(
             peers: Alone,
             secrets: secrets.clone(),
             layers: Layers::new(tower::layer::util::Identity::new()),
+            enter,
             observe: (),
             clock: clock.clone(),
         },
@@ -132,6 +135,15 @@ impl TestHost {
 
     /// [`TestHost::open`], sized by `config`.
     pub async fn open_with(now: u64, config: crate::Config) -> Result<Self> {
+        Self::open_with_scope(now, config, None).await
+    }
+
+    /// Open with an additional invocation scope.
+    pub async fn open_with_scope(
+        now: u64,
+        config: crate::Config,
+        enter: Option<Enter>,
+    ) -> Result<Self> {
         static OPENED: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "berm-test-{}-{}",
@@ -142,7 +154,16 @@ impl TestHost {
         std::fs::create_dir_all(&dir)?;
         let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
         let clock = Manual(Arc::new(AtomicU64::new(now)));
-        let host = opened(&dir, &config, &fetch, &images, &secrets, &clock).await?;
+        let host = opened(
+            &dir,
+            &config,
+            &fetch,
+            &images,
+            &secrets,
+            &clock,
+            enter.clone(),
+        )
+        .await?;
         Ok(Self {
             host,
             fetch,
@@ -151,6 +172,7 @@ impl TestHost {
             clock,
             dir,
             config,
+            enter,
         })
     }
 
@@ -164,6 +186,7 @@ impl TestHost {
             &self.images,
             &self.secrets,
             &self.clock,
+            self.enter.clone(),
         )
         .await?;
         self.host.reconcile().await;
@@ -258,7 +281,6 @@ impl TestHost {
                     reference,
                     digest,
                     force: false,
-                    crons: None,
                     size: *size,
                     stopped: false,
                     check_secrets: false,
@@ -301,7 +323,6 @@ impl TestHost {
                     reference: format!("test/{service}"),
                     digest,
                     force: false,
-                    crons: None,
                     size: *size,
                     stopped: false,
                     check_secrets: false,
@@ -340,7 +361,6 @@ impl TestHost {
                     reference,
                     digest,
                     force: true,
-                    crons: None,
                     size,
                     stopped,
                     check_secrets,
@@ -356,7 +376,7 @@ impl TestHost {
     /// Run `tool` of `service` with no caller, as a wake does, public or not,
     /// and commit what it did.
     pub async fn call(&self, service: &str, tool: &str, args: &[u8]) -> Result<Ran> {
-        self.run(service, tool, args, None).await
+        self.run(service, tool, args, None, None).await
     }
 
     /// [`TestHost::call`], for `user`.
@@ -367,7 +387,18 @@ impl TestHost {
         args: &[u8],
         user: User,
     ) -> Result<Ran> {
-        self.run(service, tool, args, Some(user)).await
+        self.run(service, tool, args, Some(user), None).await
+    }
+
+    /// [`TestHost::call`], with the host-provided daily client key.
+    pub async fn call_with_client(
+        &self,
+        service: &str,
+        tool: &str,
+        args: &[u8],
+        client: &str,
+    ) -> Result<Ran> {
+        self.run(service, tool, args, None, Some(client)).await
     }
 
     /// [`TestHost::call`] with `args` as JSON, answering its result as JSON:
@@ -390,7 +421,14 @@ impl TestHost {
         })
     }
 
-    async fn run(&self, service: &str, tool: &str, args: &[u8], user: Option<User>) -> Result<Ran> {
+    async fn run(
+        &self,
+        service: &str,
+        tool: &str,
+        args: &[u8],
+        user: Option<User>,
+        client: Option<&str>,
+    ) -> Result<Ran> {
         let deployed = self
             .host
             .get(service)
@@ -402,7 +440,7 @@ impl TestHost {
                 self.host.calls.start().id,
                 None,
                 user,
-                None,
+                client.map(Into::into),
                 tool,
                 args.to_vec(),
                 Taping::Off,

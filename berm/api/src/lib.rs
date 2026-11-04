@@ -3,6 +3,7 @@
 //! Links no compiler: a client reads an image and talks to the API with this
 //! crate alone.
 
+use crate::logo::Logo;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -17,6 +18,7 @@ mod compat;
 pub mod digest;
 pub mod host;
 mod image;
+pub mod logo;
 mod manifest;
 pub mod project;
 pub mod schema;
@@ -60,6 +62,8 @@ pub struct Service {
     /// The Markdown file `readme` names in its `crab.toml`.
     #[serde(default)]
     pub readme: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<Logo>,
     /// sha256 of the image.
     pub digest: String,
     /// Its public tools.
@@ -141,15 +145,6 @@ pub struct Terms {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolTerms {
     pub budget: Budget,
-}
-
-/// A cron tool's expression, as its owner sets it.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Cron {
-    /// Five fields, minute to day of week, in UTC: `*/5 * * * *`. `None`
-    /// stops its calls.
-    pub cron: Option<String>,
 }
 
 /// One var of a service's `[vars]`, as its owners read it.
@@ -273,8 +268,7 @@ pub struct ToolSpec {
     /// What its `crab.toml` sets of one call's budget.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget: Option<Limits>,
-    /// Called by its host when the cron expression its deploy or its owner
-    /// sets fires. A cron tool is not public.
+    /// Called by its host on the manifest's schedule. A cron tool is not public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cron: bool,
     /// Called by its host with each Stripe event its daemon takes for the

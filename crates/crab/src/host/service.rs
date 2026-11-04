@@ -45,7 +45,7 @@ impl Node {
             digest,
             reference: deploy.reference,
             force: deploy.force,
-            crons: deploy.crons,
+
             size: deploy.size.unwrap_or_else(host::database_size),
             stopped: deploy.stopped,
             check_secrets: true,

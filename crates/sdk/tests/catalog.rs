@@ -2,14 +2,16 @@
 //! refused, and a job is checked against it.
 
 use crabtalk_sdk::catalog::{Catalog, Provider};
+use std::{fs, path::Path};
+use toml::Table;
 
 #[test]
 fn the_list_loads_in_the_order_written() {
     let catalog = Catalog::listed();
     let ids: Vec<&str> = catalog.categories.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids.len(), 13);
+    assert_eq!(ids.len(), 15);
     assert_eq!(ids[0], "web");
-    assert_eq!(ids[12], "accounts");
+    assert_eq!(ids.last(), Some(&"accounts"));
     assert_eq!(catalog.category("tiktok-shop").unwrap().title, "Commerce");
 }
 
@@ -85,4 +87,33 @@ fn providers_group_into_jobs_under_their_platform() {
         .map(|p| p.jobs.len())
         .sum();
     assert_eq!(listed, 2);
+}
+
+#[test]
+fn first_party_tools_have_registered_catalog_jobs() {
+    let catalog = Catalog::listed();
+    let services = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services");
+    for group in ["agents", "web", "ops"] {
+        for entry in fs::read_dir(services.join(group)).unwrap() {
+            let path = entry.unwrap().path().join("crab.toml");
+            if !path.is_file() {
+                continue;
+            }
+            let manifest: Table = fs::read_to_string(&path).unwrap().parse().unwrap();
+            for (name, tool) in manifest["tools"].as_table().unwrap() {
+                if tool.get("access").is_none() {
+                    continue;
+                }
+                let job = tool
+                    .get("catalog")
+                    .and_then(|job| job.as_str())
+                    .unwrap_or_else(|| {
+                        panic!("{}: tools.{name} has no catalog job", path.display())
+                    });
+                catalog
+                    .check(job)
+                    .unwrap_or_else(|error| panic!("{}: tools.{name}: {error}", path.display()));
+            }
+        }
+    }
 }

@@ -3,13 +3,23 @@
 use crate::{
     account::org::{
         AddMemberRequest, CreateOrgRequest, CreateOrgResponse, Invite, InviteRequest, Member, Org,
-        OrgView, UpdateMemberRequest, UpdateOrgRequest,
+        OrgCreation, OrgView, UpdateMemberRequest, UpdateOrgRequest,
     },
     client::{Client, Error},
 };
 use reqwest::Method;
 
 impl Client {
+    pub async fn org_creation(&self) -> Result<OrgCreation, Error> {
+        self.json(self.at(Method::GET, "/user/orgs/creation")).await
+    }
+
+    pub async fn transfer_org_sponsor(&self, org: &str, member: &str) -> Result<(), Error> {
+        self.ok(self.at(Method::PUT, &format!("/orgs/{org}/sponsor/{member}")))
+            .await?;
+        Ok(())
+    }
+
     /// The orgs the caller belongs to.
     pub async fn orgs(&self) -> Result<Vec<Org>, Error> {
         self.json(self.at(Method::GET, "/user/orgs")).await

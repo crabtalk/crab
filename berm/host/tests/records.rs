@@ -3,11 +3,22 @@
 //! cron's last run kept past the deletion.
 
 use anyhow::Result;
+use axum::http::StatusCode;
+use berm::{Callsite, Changes, Enter, Scope};
 use berm_api::{
     Output,
     host::{CallPage, Caller, RecordedLog, Records, RecordsPage},
 };
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::{self as host, Config, test::TestHost};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+};
 
 const FIXTURE: &str = "acct/fixture";
 
@@ -41,7 +52,8 @@ fn page() -> CallPage {
 
 async fn fixture() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy(FIXTURE, &test::build("berm-fixture")?).await?;
+    host.deploy(FIXTURE, &fixture::image("berm-fixture")?)
+        .await?;
     Ok(host)
 }
 
@@ -176,16 +188,13 @@ async fn a_failed_calls_replay_outlives_its_deletion() -> Result<()> {
 async fn a_crons_last_run_outlives_its_deletion() -> Result<()> {
     const FEED: &str = "http://127.0.0.1/feed.xml";
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed")?).await?;
+    host.deploy("feed", &fixture::image("berm-feed")?).await?;
     host.arrange(
         "GET",
         FEED,
         200,
         r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Feed</title></channel></rss>"#,
     );
-    host.host
-        .set_cron("feed", "tick", Some("* * * * *".to_owned()))
-        .await?;
     let wakes = host.wakes().await?;
     host.set_now(wakes[0].1);
     assert_eq!(host.fire().await?.len(), 1);
@@ -307,5 +316,116 @@ async fn replay_pages_bound_tapes_without_skipping_the_rest() -> Result<()> {
     assert_eq!(rest.calls.len(), 1);
     assert!(rest.calls[0].call.id > calls);
     assert!(rest.calls[0].tape.is_some());
+    Ok(())
+}
+
+#[derive(Default)]
+struct Scopes {
+    entered: Mutex<Vec<(String, u64, u32)>>,
+    closed: AtomicUsize,
+    dropped: AtomicUsize,
+    refuse: AtomicBool,
+}
+
+struct InvocationScope(Arc<Scopes>);
+
+impl Drop for InvocationScope {
+    fn drop(&mut self) {
+        self.0.dropped.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl Scope for InvocationScope {
+    fn own(&self) -> bool {
+        false
+    }
+
+    fn close(
+        self: Box<Self>,
+        changes: Changes,
+    ) -> Pin<Box<dyn Future<Output = Result<Changes>> + Send>> {
+        Box::pin(async move {
+            self.0.closed.fetch_add(1, Ordering::Relaxed);
+            Ok(changes)
+        })
+    }
+}
+
+impl Scopes {
+    fn enter(self: &Arc<Self>) -> Enter {
+        let scopes = self.clone();
+        Arc::new(move |_, at: &Callsite| {
+            let scopes = scopes.clone();
+            let entry = (at.service.to_string(), at.chain, at.span);
+            Box::pin(async move {
+                if scopes.refuse.load(Ordering::Relaxed) {
+                    return Err(host::deny(
+                        StatusCode::PAYMENT_REQUIRED,
+                        "execution credit exhausted",
+                    )
+                    .into());
+                }
+                scopes.entered.lock().unwrap().push(entry);
+                Ok(Box::new(InvocationScope(scopes)) as Box<dyn Scope>)
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn invocation_scopes_cover_nested_calls_and_failed_writes() -> Result<()> {
+    let scopes = Arc::new(Scopes::default());
+    let host = TestHost::open_with_scope(NOW, Config::default(), Some(scopes.enter())).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy(FIXTURE, &image).await?;
+    host.deploy("acct/inner", &image).await?;
+    let ran = host.call(FIXTURE, "relay", br#"{"word":"hello"}"#).await?;
+    assert!(matches!(ran.result, Output::Done(_)));
+    {
+        let entered = scopes.entered.lock().unwrap();
+        assert_eq!(entered.len(), 2);
+        assert_eq!(entered[0].0, FIXTURE);
+        assert_eq!(entered[1].0, "acct/inner");
+        assert_eq!(entered[0].1, entered[1].1);
+        assert_ne!(entered[0].2, entered[1].2);
+    }
+    assert_eq!(scopes.closed.load(Ordering::Relaxed), 2);
+    assert_eq!(scopes.dropped.load(Ordering::Relaxed), 2);
+    let failed = host.call(FIXTURE, "note", br#"{"word":"fail"}"#).await?;
+    assert!(matches!(failed.result, Output::Failed(_)));
+    assert_eq!(scopes.closed.load(Ordering::Relaxed), 2);
+    assert_eq!(scopes.dropped.load(Ordering::Relaxed), 3);
+    let state = host
+        .call_json(FIXTURE, "peek", serde_json::json!({}))
+        .await?;
+    assert!(state["note"].is_null());
+    Ok(())
+}
+
+#[tokio::test]
+async fn refused_invocation_scope_prevents_writes() -> Result<()> {
+    let scopes = Arc::new(Scopes::default());
+    let host = TestHost::open_with_scope(NOW, Config::default(), Some(scopes.enter())).await?;
+    host.deploy(FIXTURE, &fixture::image("berm-fixture")?)
+        .await?;
+    scopes.refuse.store(true, Ordering::Relaxed);
+    let denied = host
+        .host
+        .call(
+            FIXTURE,
+            Some(&caller()),
+            "note",
+            br#"{"word":"blocked"}"#.to_vec(),
+            false,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(denied.status, StatusCode::PAYMENT_REQUIRED);
+    assert!(scopes.entered.lock().unwrap().is_empty());
+    scopes.refuse.store(false, Ordering::Relaxed);
+    let state = host
+        .call_json(FIXTURE, "peek", serde_json::json!({}))
+        .await?;
+    assert!(state["note"].is_null());
     Ok(())
 }

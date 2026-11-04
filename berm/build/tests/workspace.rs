@@ -1,6 +1,4 @@
-//! Which of a workspace's services a command acts on: those named, the one
-//! whose directory it was run in, or every one but those whose `crab.toml`
-//! says `deploy = false`.
+//! Service selection by directory, explicit name and deployment eligibility.
 
 use berm_build::Workspace;
 use std::{fs, path::Path};
@@ -69,4 +67,75 @@ fn named_services_are_picked_from_anywhere_in_the_workspace() {
     both.sort();
     assert_eq!(both, [root.join("held"), root.join("two")]);
     assert!(named(&["three"]).is_err());
+}
+
+#[test]
+fn directory_groups_select_only_descendant_services() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    write(
+        &root,
+        "Cargo.toml",
+        r#"[workspace]
+members = ["connect/one", "connect/nested/deep", "connect/held", "connect/library", "connect-extra/other", "utilities/watch"]
+resolver = "3"
+"#,
+    );
+    service(&root.join("connect"), "one", "name = \"one\"\n");
+    service(&root.join("connect/nested"), "deep", "name = \"deep\"\n");
+    service(
+        &root.join("connect"),
+        "held",
+        "name = \"held\"\ndeploy = false\n",
+    );
+    service(&root.join("connect"), "library", "");
+    service(&root.join("connect-extra"), "other", "name = \"other\"\n");
+    service(&root.join("utilities"), "watch", "name = \"watch\"\n");
+
+    let group = root.join("connect");
+    let workspace = Workspace::read(&group.join("../connect"), &[], false).unwrap();
+    let mut selected = workspace.services;
+    selected.sort();
+    assert_eq!(selected, [group.join("nested/deep"), group.join("one")]);
+    assert_eq!(workspace.skipped, ["held"]);
+    assert_eq!(workspace.root, root);
+
+    let publishing = Workspace::read(&group, &[], true).unwrap();
+    let mut selected = publishing.services;
+    selected.sort();
+    assert_eq!(
+        selected,
+        [
+            group.join("held"),
+            group.join("nested/deep"),
+            group.join("one")
+        ]
+    );
+    assert!(publishing.skipped.is_empty());
+
+    let named = Workspace::read(&group, &["watch".to_owned()], false).unwrap();
+    assert_eq!(named.services, [root.join("utilities/watch")]);
+}
+
+#[test]
+fn directory_selection_does_not_read_unrelated_service_manifests() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    write(
+        &root,
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"connect/*\", \"outside\"]\nresolver = \"3\"\n",
+    );
+    service(&root.join("connect"), "one", "name = \"one\"\n");
+    service(&root, "outside", "invalid toml");
+
+    let group = root.join("connect");
+    let workspace = Workspace::read(&group, &[], true).unwrap();
+    assert_eq!(workspace.services, [group.join("one")]);
+
+    let empty = root.join("empty");
+    fs::create_dir(&empty).unwrap();
+    let workspace = Workspace::read(&empty, &[], true).unwrap();
+    assert!(workspace.services.is_empty());
+    assert!(workspace.skipped.is_empty());
 }

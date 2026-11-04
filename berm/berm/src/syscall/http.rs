@@ -22,6 +22,9 @@ const SECRET: &str = "{secret:";
 pub struct Request {
     /// What the asking service was deployed as.
     pub service: String,
+    /// The sending invocation, as `Callsite::chain` and `Callsite::span`.
+    pub chain: u64,
+    pub span: u32,
     pub method: String,
     pub url: String,
     /// The host `url` names, lowercased, without port or credentials.
@@ -261,6 +264,14 @@ where
             ))
             .into());
         }
+        if !at
+            .deps
+            .secret_hosts(name)
+            .iter()
+            .any(|allowed| allowed == host)
+        {
+            return Err(ungranted(at, name, host));
+        }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
             if at.deps.optional(name) {
                 return Ok(Substituted::Unset(name.to_owned()));
@@ -354,6 +365,8 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     let reach = permitted(at, syscall, &host)?;
     Ok(Request {
         service: at.service.to_string(),
+        chain: at.chain,
+        span: at.span,
         method,
         host,
         reach,

@@ -1,6 +1,8 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host};
+use crate::{
+    Access, Credential, DEFAULT_BUFFER, Deps, Limits, ToolRecord, ToolSpec, Var, host, logo::Logo,
+};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use regex::Regex;
@@ -32,6 +34,8 @@ pub struct Project {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub logo: Option<Logo>,
+    #[serde(default)]
     pub public: bool,
     #[serde(default)]
     pub template: bool,
@@ -40,7 +44,7 @@ pub struct Project {
     #[serde(default = "deployed")]
     pub deploy: bool,
     /// Each cron tool's expression, five fields in UTC, such as
-    /// `"*/5 * * * *"`. Absent, they are its owners' to set on the host.
+    /// `"*/5 * * * *"`. Absent, no cron tool is scheduled.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
     /// What it says of each tool, by name.
@@ -196,11 +200,8 @@ impl Project {
                     );
                 }
             }
-            if let Some(host) = credential.hosts.iter().find(|host| !Credential::host(host)) {
-                bail!(
-                    "{}: credentials.{id} suggests {host:?}, not a host named in full",
-                    path.display()
-                );
+            if let Err(why) = Credential::check_hosts(&credential.hosts) {
+                bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
         Ok(project)
@@ -271,6 +272,7 @@ impl Project {
     pub fn check_kit(&self) -> Result<()> {
         let service_only = [
             ("name", self.name.is_some()),
+            ("logo", self.logo.is_some()),
             ("public", self.public),
             ("template", self.template),
             ("deploy", !self.deploy),

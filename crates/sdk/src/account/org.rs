@@ -57,6 +57,8 @@ pub struct OrgView {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrgPrivate {
+    pub sponsor_id: Option<String>,
+    pub paused_until: Option<i64>,
     /// What the caller may do here. Present exactly when they are a member,
     /// since that is when `private` is present at all.
     pub role: Role,
@@ -111,9 +113,7 @@ pub enum Kind {
 
 berm_api::text_enum!(Kind);
 
-/// An account as anyone may see it — a person or an org. Identity only: nothing about what funds it, who is in it, or what it
-/// holds. This is what `GET /orgs/{org}` answers without a session, so knowing a
-/// handle discloses its profile, the way `github.com/rust-lang` does.
+/// Account profile fields, without billing or membership details.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicAccount {
@@ -300,4 +300,22 @@ pub struct UpdateMemberRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AvatarResponse {
     pub avatar: String,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgCreation {
+    pub hobby_available: bool,
+    pub reserved_until: Option<i64>,
+    pub pending: Option<PendingOrg>,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingOrg {
+    pub id: String,
+    pub name: String,
+    pub handle: String,
+    pub expires_at: i64,
+    pub checkout_url: Option<String>,
 }

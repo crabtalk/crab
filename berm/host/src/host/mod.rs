@@ -156,6 +156,7 @@ impl<E: Env> Host<E> {
             peers,
             secrets,
             layers,
+            enter,
             observe,
             clock,
         } = edges;
@@ -204,6 +205,7 @@ impl<E: Env> Host<E> {
                 host,
                 config.depth,
                 commits.clone(),
+                enter,
                 observe,
                 now.clone(),
                 pools.clone(),

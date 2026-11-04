@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
@@ -26,7 +27,7 @@ async fn count(host: &TestHost, service: &str) -> Result<String> {
 
 #[tokio::test]
 async fn a_service_starts_from_its_seed() -> Result<()> {
-    let image = test::build("berm-keeper")?;
+    let image = fixture::image("berm-keeper")?;
     let built = TestHost::open(0).await?;
     built.deploy("keeper", &image).await?;
     built.call("keeper", "put", br#"{"word":"hi"}"#).await?;
@@ -45,7 +46,7 @@ async fn a_service_starts_from_its_seed() -> Result<()> {
 
 #[tokio::test]
 async fn a_service_with_a_database_is_refused_a_seed() -> Result<()> {
-    let image = test::build("berm-keeper")?;
+    let image = fixture::image("berm-keeper")?;
     let host = TestHost::open(0).await?;
     host.deploy("keeper", &image).await?;
     host.call("keeper", "put", br#"{"word":"kept"}"#).await?;
@@ -67,7 +68,7 @@ async fn a_service_with_a_database_is_refused_a_seed() -> Result<()> {
 
 #[tokio::test]
 async fn a_seed_the_image_does_not_migrate_is_deleted() -> Result<()> {
-    let image = test::build("berm-keeper")?;
+    let image = fixture::image("berm-keeper")?;
     let seed = std::env::temp_dir().join("berm-seed-changed.sqlite");
     let _ = std::fs::remove_file(&seed);
     Connection::open(&seed)?.execute_batch(
@@ -94,7 +95,7 @@ async fn a_seed_the_image_does_not_migrate_is_deleted() -> Result<()> {
 
 #[tokio::test]
 async fn a_seeded_service_is_measured_at_its_seed() -> Result<()> {
-    let image = test::build("berm-keeper")?;
+    let image = fixture::image("berm-keeper")?;
     let built = TestHost::open(0).await?;
     built.deploy("keeper", &image).await?;
     for word in 0..2000 {

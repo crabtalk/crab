@@ -1,0 +1,25 @@
+[package]
+name = "crab-seo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Inspect a public page for basic technical SEO findings"
+readme = "README.md"
+
+[lib]
+name = "seo"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+scraper.workspace = true
+webpage.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

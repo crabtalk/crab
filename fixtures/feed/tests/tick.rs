@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use serde_json::Value;
 
 const FEED: &str = "http://127.0.0.1/feed.xml";
@@ -37,7 +38,7 @@ const C: (&str, &str) = ("c", "Sun, 11 Oct 2026 18:00:00 GMT");
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(NOW).await?;
-    host.deploy("feed", &test::build("berm-feed")?).await?;
+    host.deploy("feed", &fixture::image("berm-feed")?).await?;
     Ok(host)
 }
 
@@ -70,7 +71,7 @@ async fn logged(host: &TestHost, topic: &str) -> Result<Vec<Value>> {
 #[tokio::test]
 async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
     let host = TestHost::open(NOW).await?;
-    let service = host.deploy("feed", &test::build("berm-feed")?).await?;
+    let service = host.deploy("feed", &fixture::image("berm-feed")?).await?;
     let manifest = &service.manifest;
     assert_eq!(manifest.kits.len(), 1);
     assert_eq!(manifest.kits[0].name, "crabkit-lake");
@@ -91,10 +92,6 @@ async fn the_manifest_carries_lake_and_its_events() -> Result<()> {
 async fn a_tick_stores_new_items_once() -> Result<()> {
     let host = deployed().await?;
     host.arrange("GET", FEED, 200, feed(&[B, A]));
-    // As `[crons]` in a crab.toml would set it.
-    host.host
-        .set_cron("feed", "tick", Some("* * * * *".to_owned()))
-        .await?;
     let wakes = host.wakes().await?;
     assert_eq!(wakes.len(), 1);
     assert_eq!(wakes[0].0.tool, "tick");

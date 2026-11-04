@@ -3,6 +3,8 @@
 [![CI](https://github.com/crabtalk/crab/actions/workflows/ci.yml/badge.svg)](https://github.com/crabtalk/crab/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
 [![Docs](https://img.shields.io/badge/docs-crab.talk-blue)](https://crab.talk/docs)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/yGZDYnwbx6)
+[![WeChat](https://img.shields.io/badge/WeChat-07C160?logo=wechat&logoColor=white)](https://cdn.crabtalk.ai/crabtalk/wechat.jpg)
 
 Crab is the CLI and local host for CrabTalk. Build services, run them locally, and deploy them to CrabTalk Cloud.
 
@@ -42,7 +44,7 @@ crab deploy
 
 - [Documentation](https://crab.talk/docs) — guides for writing and deploying services.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
-- [Services](services/README.md) — integrations to deploy or reuse.
+- [Services](services/README.md) — Connect integrations and Utilities to call, deploy or reuse.
 - [Libraries](crates/crabkit/README.md) — libraries to include in your services.
 - [Berm](berm/berm/README.md) — the runtime that runs services.
 

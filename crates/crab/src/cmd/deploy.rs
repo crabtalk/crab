@@ -30,35 +30,27 @@ use tokio::fs::File as AsyncFile;
 /// Which services a deploy builds, and how.
 #[derive(Args)]
 pub struct Deploy {
+    /// Service directory or parent directory containing services.
     #[arg(default_value = ".")]
     pub dir: PathBuf,
-    /// This service of the workspace in place of the directory's; repeatable.
+    /// Select this service by name across the workspace; repeatable.
     #[arg(short = 'p', long = "package")]
     pub packages: Vec<String>,
     /// Push images to this registry, overriding the context, as `localhost:5001`.
     #[arg(long)]
     pub registry: Option<String>,
-    /// Deploy even when it breaks what callers used, or undoes a cron its
-    /// owners set.
+    /// Deploy even when it breaks what callers used.
     #[arg(long)]
     pub force: bool,
-    /// Write the crons its owners set into `[crons]` in `crab.toml` before
-    /// deploying.
-    #[arg(long, conflicts_with = "force")]
-    pub pull: bool,
     /// Deploy a published template, `owner/name`, as a new private service on Cloud.
-    #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "registry", "pull"])]
+    #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "registry"])]
     pub from: Option<String>,
     /// Provider value for the deploy page, SERVICE:KEY=VALUE; repeatable.
     #[arg(long = "copy", value_name = "SERVICE:KEY=VALUE")]
     pub copy: Vec<String>,
 }
 
-/// Deploy the services of the workspace `deploy.dir` is in that it selects,
-/// more than one together, every one checked before any switches; with
-/// `pull`, one service's crons its owners set on the host are written into
-/// `crab.toml`'s `[crons]` first. `stopped` installs them to serve once
-/// started. On Cloud, a person approves the deploy at a link unless `yes`.
+/// Deploy selected workspace services, checking every member before switching.
 pub fn run(
     client: &Client,
     deploy: &Deploy,
@@ -75,7 +67,6 @@ pub fn run(
         packages,
         registry,
         force,
-        pull,
         from,
         copy: copy_values,
     } = deploy;
@@ -83,23 +74,20 @@ pub fn run(
     if (yes || client.owner.is_none()) && !copy_values.is_empty() {
         bail!("--copy supplies values for the Cloud deploy page; deploy without --yes");
     }
-    if publish_only && (from.is_some() || *pull || !copy_values.is_empty()) {
-        bail!("publish builds local projects; --from, --pull and --copy apply to deployments");
+    if publish_only && (from.is_some() || !copy_values.is_empty()) {
+        bail!("publish builds local projects; --from and --copy apply to deployments");
     }
     if let Some(from) = from {
         return copy(client, from, *force, stopped, yes, copy_values);
     }
-    let (registry, force, pull) = (registry.as_deref().or(context_registry), *force, *pull);
+    let (registry, force) = (registry.as_deref().or(context_registry), *force);
     let workspace = Workspace::read(dir, packages, publish_only)?;
     if workspace.services.is_empty() {
         bail!(
-            "no {} in the workspace at {} names a service to deploy",
+            "no {} at or below {} names a service to deploy",
             project::FILE,
-            workspace.root.display()
+            dir.display()
         );
-    }
-    if workspace.services.len() > 1 && pull {
-        bail!("--pull takes one service; pick it with -p");
     }
     for name in &workspace.skipped {
         eprintln!("skipped   {name}: deploy = false");
@@ -115,10 +103,9 @@ pub fn run(
         .and_then(|name| name.to_str())
         .with_context(|| format!("{} names no project", workspace.root.display()))?
         .to_owned();
-    let one = workspace.services.len() == 1;
     let mut services = BTreeMap::new();
     for dir in &workspace.services {
-        let (project, bytes) = build(client, dir, one && pull, publish_only)?;
+        let (project, bytes) = build(dir, publish_only)?;
         let name = project.name()?.to_owned();
         let reference = reference(client, &name, registry, bytes)?;
         let seed = match &project.database.seed {
@@ -139,7 +126,7 @@ pub fn run(
             publish_only,
             reference,
             force,
-            crons: project.crons.clone(),
+
             size: Some(project.database.size()),
             seed,
             stopped,
@@ -211,7 +198,7 @@ fn approved(
     let asked = runtime::wait(client.ask_deploy_with_copy(services, copy, ""))?;
     let minutes = (asked.expires_at - asked.created_at) / 60;
     eprintln!(
-        "a person approves this deploy at the link, signed in, within {minutes} minutes; automation requires a key with auto scope"
+        "a person approves this deploy at the link, signed in, within {minutes} minutes; automation requires a key with deployments:write scope"
     );
     println!("{}", asked.url);
     let settled = request::settled(client, &asked.code, (minutes * 60) as u64)?;
@@ -309,7 +296,7 @@ fn copy(
         publish_only: false,
         reference,
         force,
-        crons: None,
+
         size: None,
         seed: None,
         stopped,
@@ -324,32 +311,15 @@ fn copy(
     report(client, name, &deployed)
 }
 
-/// Read and build the project in `dir`, refused when its `crab.toml` says
-/// `deploy = false`. With `pull`, the
-/// crons its owners set on the host are written into its `[crons]` first.
-fn build(
-    client: &Client,
-    dir: &Path,
-    pull: bool,
-    publish_only: bool,
-) -> Result<(Project, Vec<u8>)> {
-    let mut project = project::read(dir)?;
+/// Read and build a deployable project.
+fn build(dir: &Path, publish_only: bool) -> Result<(Project, Vec<u8>)> {
+    let project = project::read(dir)?;
     if !project.deploy && !publish_only {
         bail!(
             "{}'s {} says deploy = false",
             project.name.as_deref().unwrap_or("this service"),
             project::FILE
         );
-    }
-    if pull {
-        let live = runtime::wait(client.crons(project.name()?))?;
-        let crons = live
-            .crons
-            .into_iter()
-            .filter_map(|job| Some((job.tool, job.cron?)))
-            .collect();
-        project::write_crons(dir, &crons)?;
-        project = project::read(dir)?;
     }
     let built = berm_build::build(dir, None)?;
     let bytes = fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;

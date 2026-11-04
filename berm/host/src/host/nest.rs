@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use anyhow::{Result, bail};
-use berm::{Caller, Calls, Callsite, Ended, Meter, Now, Ran};
+use berm::{Caller, Calls, Callsite, Ended, Enter, Meter, Now, Ran};
 use berm_api::host::{Kind, Link, NestedCall, Outcome, Reply, Source, User};
 use std::{
     sync::{Arc, Weak},
@@ -25,6 +25,7 @@ pub(crate) fn calls<E: Env>(
     host: &Weak<Inner<E>>,
     depth: u32,
     commits: Commits,
+    enter: Option<Enter>,
     observe: E::Observe,
     now: Now,
     pools: Arc<Pools>,
@@ -92,10 +93,10 @@ pub(crate) fn calls<E: Env>(
                         },
                     );
                 }
-                observe.invoked(&at.service, tool, call, &used, at.spent());
+                observe.invoked(at, call, &used);
             })
         },
-        enter: commit::enter(commits),
+        enter: commit::enter(commits, enter),
         now,
         remote: {
             let host = host.clone();

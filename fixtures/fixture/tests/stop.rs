@@ -3,7 +3,8 @@
 
 use anyhow::Result;
 use berm_api::{Output, host::Caller};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 mod common;
 
@@ -90,7 +91,7 @@ async fn a_stopped_service_takes_no_calls_until_started() -> Result<()> {
 #[tokio::test]
 async fn a_service_deployed_stopped_serves_once_started_and_a_deploy_starts_it() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     host.pushed("acct/fixture", &image).await?;
     assert!(host.host.stopped("acct/fixture"));
     let caller = caller();

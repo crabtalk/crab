@@ -3,7 +3,8 @@
 
 use anyhow::{Context, Result};
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use serde_json::{Value, json};
 
 const GITHUB_TOKEN: &str = "https://github.com/login/oauth/access_token";
@@ -13,7 +14,7 @@ const GOOGLE_USER: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 
 async fn deployed() -> Result<TestHost> {
     let host = TestHost::open(1_700_000_000_000).await?;
-    host.deploy("account", &test::build("berm-account")?)
+    host.deploy("account", &fixture::image("berm-account")?)
         .await?;
     for (secret, to) in [
         ("GITHUB_CLIENT_ID", "github.com"),

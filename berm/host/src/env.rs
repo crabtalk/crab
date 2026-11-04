@@ -4,7 +4,7 @@
 use crate::Layers;
 use anyhow::{Result, bail};
 use berm::{
-    Meter, clock,
+    Callsite, Enter, Meter, clock,
     syscall::http::{Request, Response},
 };
 use berm_api::host::{Link, Reply, Used};
@@ -38,6 +38,9 @@ pub struct Edges<E: Env> {
     /// Put around every call from outside, outermost first. A refusal one
     /// answers with a `4xx` is counted as `refused`.
     pub layers: Layers,
+    /// Additional invocation scope, opened before the host database scope.
+    /// The host retains journal ownership. A returned `Denied` keeps its HTTP status.
+    pub enter: Option<Enter>,
     pub observe: E::Observe,
     /// What `berm.now` answers, when a wake is due, and the day a use or a
     /// meter is counted on.
@@ -91,28 +94,24 @@ pub trait Secrets: Send + Sync + 'static {
         host: &str,
     ) -> impl Future<Output = Result<Option<String>>> + Send;
 
-    /// The names of the secrets granted to `service` for at least one host.
+    /// The names of the secrets provisioned for `service`.
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
 }
 
-/// Told of each invocation this host runs once it ran, trapped or not, with
-/// what it used itself, the services it called left out. Cannot change how it
-/// ended.
+/// Told of each invocation after it ran, trapped or not. Cannot change how it ended.
 pub trait Observe: Send + Sync + 'static {
-    /// `call` is the run on this host the invocation is part of, as the
-    /// service's calls number it; `None` in a link from a peer. `spent` is the
-    /// CPU microseconds its chain spent through this invocation, `used`
-    /// included; a link from a peer counts from its own start.
-    fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter, spent: u64);
+    /// `call` is the recorded run on this host, or `None` for a peer link.
+    /// `used` excludes nested calls; `at.spent()` includes their CPU time.
+    fn invoked(&self, at: &Callsite, call: Option<u64>, used: &Meter);
 }
 
 impl Observe for () {
-    fn invoked(&self, _: &str, _: &str, _: Option<u64>, _: &Meter, _: u64) {}
+    fn invoked(&self, _: &Callsite, _: Option<u64>, _: &Meter) {}
 }
 
 impl<O: Observe> Observe for std::sync::Arc<O> {
-    fn invoked(&self, service: &str, tool: &str, call: Option<u64>, used: &Meter, spent: u64) {
-        (**self).invoked(service, tool, call, used, spent);
+    fn invoked(&self, at: &Callsite, call: Option<u64>, used: &Meter) {
+        (**self).invoked(at, call, used);
     }
 }
 

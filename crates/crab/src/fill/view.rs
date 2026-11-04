@@ -149,19 +149,14 @@ fn step(form: &Form, frame: &mut Frame, area: Rect) {
     for (row, field) in step.fields.iter().enumerate() {
         let area = areas[1 + copies + row];
         let focused = form.focus == copies + row;
-        frame.render_widget(Paragraph::new(self::field(field, focused)), area);
+        frame.render_widget(Paragraph::new(self::field(field)), area);
         if focused {
             let x = area.x + 2 + shown(field).chars().count() as u16;
             frame.set_cursor_position((x.min(area.right().saturating_sub(1)), area.y + 1));
         }
     }
     let area = areas[1 + copies + step.fields.len()];
-    let focused = form.focus == copies + step.fields.len();
-    frame.render_widget(Paragraph::new(hosts(step, focused)), area);
-    if focused {
-        let x = area.x + 2 + step.hosts.chars().count() as u16;
-        frame.set_cursor_position((x.min(area.right().saturating_sub(1)), area.y + 1));
-    }
+    frame.render_widget(Paragraph::new(hosts(step)), area);
     if let Some((said, wrong)) = &form.said {
         let style = match wrong {
             true => Style::default().fg(ACCENT),
@@ -191,37 +186,23 @@ fn shown(field: &Field) -> String {
 }
 
 /// The hosts the step's secrets are sent to, as typed.
-fn hosts(step: &Step, focused: bool) -> Text<'_> {
+fn hosts(step: &Step) -> Text<'_> {
     Text::from(vec![
         Line::from(vec![
             Span::styled("Hosts", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled("  sent to these alone, apart by commas", dim()),
+            Span::styled("  from the manifest", dim()),
         ]),
         Line::from(vec![
-            Span::styled(
-                "› ",
-                if focused {
-                    Style::default().fg(ACCENT)
-                } else {
-                    dim()
-                },
-            ),
+            Span::styled("› ", dim()),
             Span::raw(step.hosts.as_str()),
-            Span::styled(
-                if step.hosts.is_empty() {
-                    "none: such as api.example.com"
-                } else {
-                    ""
-                },
-                dim(),
-            ),
+            Span::styled(if step.hosts.is_empty() { "none" } else { "" }, dim()),
         ]),
     ])
 }
 
 /// A field: its label, the secret's name beside it when they differ, and
 /// what is typed under them.
-fn field<'a>(field: &'a Field, focused: bool) -> Text<'a> {
+fn field<'a>(field: &'a Field) -> Text<'a> {
     let mut label = vec![Span::styled(
         field.label(),
         Style::default().add_modifier(Modifier::BOLD),
@@ -237,14 +218,7 @@ fn field<'a>(field: &'a Field, focused: bool) -> Text<'a> {
     let mut lines = vec![
         Line::from(label),
         Line::from(vec![
-            Span::styled(
-                "› ",
-                if focused {
-                    Style::default().fg(ACCENT)
-                } else {
-                    dim()
-                },
-            ),
+            Span::styled("› ", dim()),
             Span::raw(shown(field)),
             Span::styled(hint, dim()),
         ]),

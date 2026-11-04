@@ -131,7 +131,7 @@ pub(crate) async fn install(
     size: u64,
     deprecated: Vec<String>,
     cron_tools: Vec<String>,
-    crons: Option<BTreeMap<String, String>>,
+    crons: BTreeMap<String, String>,
     stopped: bool,
     project: Option<String>,
     declared_vars: Vec<String>,
@@ -139,9 +139,7 @@ pub(crate) async fn install(
     now: i64,
 ) -> Result<()> {
     let row = [scope, name, reference, digest, version].map(str::to_owned);
-    let declared = crons
-        .map(|crons| declare(&cron_tools, &crons, now))
-        .transpose()?;
+    let declared = declare(&cron_tools, &crons, now)?;
     store
         .run(move |conn| {
             let [scope, name, reference, digest, version] = row;
@@ -168,7 +166,7 @@ pub(crate) async fn install(
                 ],
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;
-            schedule(&tx, &scope, &name, &cron_tools, declared.as_deref())?;
+            schedule(&tx, &scope, &name, &cron_tools, &declared)?;
             state::vars::deploy(&tx, &scope, &name, &declared_vars, &vars)?;
             tx.commit()
         })
@@ -233,14 +231,13 @@ fn deprecate(
     Ok(())
 }
 
-/// Keep `scope/name`'s cron wakes to `cron_tools`, set as `declared` when the
-/// deploy sets them and left as their owners set them otherwise.
+/// Install the manifest schedules, preserving the due time of unchanged expressions.
 fn schedule(
     tx: &Transaction,
     scope: &str,
     name: &str,
     cron_tools: &[String],
-    declared: Option<&[Declared]>,
+    declared: &[Declared],
 ) -> rusqlite::Result<()> {
     tx.execute(
         "DELETE FROM service_wakes
@@ -252,34 +249,19 @@ fn schedule(
             serde_json::to_string(cron_tools).unwrap_or_default()
         ],
     )?;
-    match declared {
-        // An expression that changes is due at its next firing; one that
-        // stays keeps its due.
-        Some(declared) => {
-            for Declared { tool, cron, due } in declared {
-                tx.execute(
-                    "INSERT INTO service_wakes
-                            (scope, name, slot, service, tool, args, due, cron, declared)
-                     VALUES (?1, ?2, ?3, ?2, ?3, '', ?5, ?4, ?4)
-                     ON CONFLICT (scope, name, slot) DO UPDATE
-                        SET due = IIF(service_wakes.cron IS excluded.cron,
-                                      service_wakes.due, excluded.due),
-                            cron = excluded.cron, declared = excluded.declared",
-                    params![scope, name, tool, cron, due],
-                )?;
-            }
-        }
-        None => {
-            for tool in cron_tools {
-                tx.execute(
-                    "INSERT INTO service_wakes (scope, name, slot, service, tool, args)
-                     VALUES (?1, ?2, ?3, ?2, ?3, '')
-                     ON CONFLICT (scope, name, slot) DO NOTHING",
-                    params![scope, name, tool],
-                )?;
-            }
-        }
+    for Declared { tool, cron, due } in declared {
+        tx.execute(
+            "INSERT INTO service_wakes
+                    (scope, name, slot, service, tool, args, due, cron, declared)
+             VALUES (?1, ?2, ?3, ?2, ?3, '', ?5, ?4, ?4)
+             ON CONFLICT (scope, name, slot) DO UPDATE
+                SET due = IIF(service_wakes.cron IS excluded.cron,
+                              service_wakes.due, excluded.due),
+                    cron = excluded.cron, declared = excluded.declared",
+            params![scope, name, tool, cron, due],
+        )?;
     }
+
     Ok(())
 }
 

@@ -7,7 +7,8 @@ use berm::{
     tape::{Answer, Tape, Taping},
 };
 use berm_api::host::{CallPage, Caller, Outcome};
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 use std::sync::Arc;
 
 const URL: &str = "http://127.0.0.1/status";
@@ -64,7 +65,7 @@ async fn replay(image: &[u8], tool: &str, args: &str, tape: Tape) -> Result<Outp
 #[tokio::test]
 async fn a_failed_call_replays_to_the_same_failure() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = test::build("berm-fixture")?;
+    let image = fixture::image("berm-fixture")?;
     host.deploy("acct/fixture", &image).await?;
     host.arrange("GET", URL, 503, "busy");
     let args = format!(r#"{{"url":"{URL}"}}"#);
@@ -106,7 +107,7 @@ async fn a_failed_call_replays_to_the_same_failure() -> Result<()> {
 #[tokio::test]
 async fn a_done_call_keeps_no_tape() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("acct/fixture", &test::build("berm-fixture")?)
+    host.deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     host.host
         .call("acct/fixture", Some(&caller()), "random", Vec::new(), false)
@@ -135,7 +136,7 @@ async fn a_trapped_call_is_recorded_as_failed_with_its_input_and_tape() -> Resul
         },
     )
     .await?;
-    host.deploy("acct/fixture", &test::build("berm-fixture")?)
+    host.deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     let trapped = host
         .host

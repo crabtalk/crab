@@ -34,7 +34,7 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// Mint a deploy key named `label`, expiring after `days` when given. The
+/// Mint an API key named `label`, expiring after `days` when given. The
 /// token is printed once.
 pub fn create(
     client: &Client,
@@ -98,24 +98,12 @@ pub fn ungrant(client: &Client, id: &str, service: &str) -> Result<()> {
 pub fn budget(client: &Client, id: &str, usd: u32, json: bool) -> Result<()> {
     let body = UpdateKeyRequest {
         budget: Some(i64::from(usd) * 1_000_000),
-        scope: None,
+        ..UpdateKeyRequest::default()
     };
     let key = runtime::wait(client.update_key(id, &body))?;
     if json {
         return terminal::json(&key);
     }
     eprintln!("key {id} spends at most ${usd} a UTC day on tool prices");
-    Ok(())
-}
-
-/// Replace key `id`'s token. The new token is printed once.
-pub fn roll(client: &Client, id: &str, yes: bool, json: bool) -> Result<()> {
-    terminal::confirm(yes, &format!("roll key {id}; its token stops working"))?;
-    let rolled = runtime::wait(client.roll_key(id))?;
-    if json {
-        return terminal::json(&rolled);
-    }
-    println!("{}", rolled.token);
-    eprintln!("key {id} rolled; the token above is shown once");
     Ok(())
 }

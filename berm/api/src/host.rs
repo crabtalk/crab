@@ -59,15 +59,9 @@ pub struct User {
 pub struct Deploy {
     pub reference: String,
     pub digest: String,
-    /// Deploy even when it breaks what callers used, or undoes a cron its
-    /// owner set.
+    /// Deploy even when it breaks what callers used.
     #[serde(default)]
     pub force: bool,
-    /// The cron expression of each cron tool, as the deploy's config sets
-    /// them; a cron tool it leaves out has none. `None` leaves each as its
-    /// owner set it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crons: Option<BTreeMap<String, String>>,
     /// Bytes the service's database may hold, from [`MIN_DATABASE_SIZE`] to
     /// [`MAX_DATABASE_SIZE`].
     #[serde(default = "database_size")]
@@ -890,5 +884,40 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.logged += used.logged;
         self.failed += used.failed;
         self.sent += used.sent;
+    }
+}
+
+impl std::ops::SubAssign<Meter> for Metered {
+    fn sub_assign(&mut self, used: Meter) {
+        self.runs = self.runs.saturating_sub(used.runs);
+        self.calls = self.calls.saturating_sub(used.calls);
+        self.cpu = self.cpu.saturating_sub(used.cpu);
+        self.held = self.held.saturating_sub(used.held);
+        self.read = self.read.saturating_sub(used.read);
+        self.written = self.written.saturating_sub(used.written);
+        self.sql_cpu = self.sql_cpu.saturating_sub(used.sql_cpu);
+        self.proxied = self.proxied.saturating_sub(used.proxied);
+        self.logged = self.logged.saturating_sub(used.logged);
+        self.failed = self.failed.saturating_sub(used.failed);
+        self.sent = self.sent.saturating_sub(used.sent);
+    }
+}
+
+impl From<Metered> for Meter {
+    fn from(used: Metered) -> Self {
+        Self {
+            runs: used.runs,
+            calls: used.calls,
+            cpu: used.cpu,
+            memory: used.memory,
+            held: used.held,
+            read: used.read,
+            written: used.written,
+            sql_cpu: used.sql_cpu,
+            proxied: used.proxied,
+            logged: used.logged,
+            failed: used.failed,
+            sent: used.sent,
+        }
     }
 }

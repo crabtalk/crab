@@ -36,6 +36,6 @@ Supported requests use scalar path parameters occupying whole segments, form que
 
 Closed objects generate Rust structs; maps generate `BTreeMap`. Open objects with named properties, unions and nullable values retain `serde_json::Value`. Imported schema constraints remain in tool metadata; generated serde code checks Rust types, not every JSON Schema constraint. Provider-specific body-level error handling remains with the caller.
 
-A build script can prepare the spec in `OUT_DIR`, then expose its path with `cargo::rustc-env=OPENAPI_SPEC=...`. Use `spec: env!("OPENAPI_SPEC")` in the invocation. Both the environment variable and the file are compiler-tracked. Download from a pinned source; downloaded specs belong in `OUT_DIR`, not the source tree.
+A build script can prepare the spec in `OUT_DIR`, then expose its path with `cargo::rustc-env=OPENAPI_SPEC=...`. Use `spec: env!("OPENAPI_SPEC")` in the invocation. Both the environment variable and the file are compiler-tracked. Fetch provider specs at build time and keep downloads in `OUT_DIR`, outside the source tree. Pin an upstream revision or a reviewed digest; refetch and review upstream changes before updating the pin.
 
 OpenAPI 3.0 schemas are normalized before generation: nullable types, exclusive numeric bounds, examples and reference sibling semantics. Example payloads and Schema Object extensions are preserved.

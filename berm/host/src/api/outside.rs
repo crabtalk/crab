@@ -251,6 +251,10 @@ impl<E: Env> Host<E> {
         let mut invoked = match invoked {
             Ok(invoked) => invoked,
             Err(e) => {
+                let denied = Denied::from(e);
+                if denied.status.is_client_error() {
+                    return Err(denied);
+                }
                 self.usage
                     .record(&service, Kind::Tool, &tool, source, who, Outcome::Failed);
                 self.calls.record(
@@ -264,7 +268,7 @@ impl<E: Env> Host<E> {
                     Some(input(kept)),
                     Some(&recorder.tape()),
                 );
-                return Err(deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")));
+                return Err(denied);
             }
         };
         let (Output::Done(body) | Output::Failed(body)) = &invoked.result;

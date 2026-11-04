@@ -8,6 +8,9 @@ use berm_api::{Budget, Meter};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Billionths of one USD micro in the billing numerator.
+pub const RATE_SCALE: u128 = 1_000_000_000;
+
 /// CPU microseconds a run spends, over every call in it, before those past
 /// them are charged as overage.
 pub const INCLUDED_CPU: u64 = 100;
@@ -62,6 +65,11 @@ impl Metering {
     /// its memory held to the deadline. Bytes proxied and the tool's calls to
     /// other services are left out.
     pub fn most(&self, budget: &Budget, deadline: u64) -> String {
+        decimal(self.maximum(budget, deadline))
+    }
+
+    /// The same bound as `most`, in billionths of a USD micro.
+    pub fn maximum(&self, budget: &Budget, deadline: u64) -> u128 {
         let meter = Meter {
             runs: 1,
             read: budget.read,
@@ -70,7 +78,7 @@ impl Metering {
             ..Meter::default()
         };
         self.rates
-            .cost_decimal(&meter, budget.cpu.saturating_sub(self.included_cpu))
+            .call_charge(&meter, budget.cpu.saturating_sub(self.included_cpu))
     }
 }
 
@@ -114,7 +122,7 @@ impl Rates {
 
     /// What `units` of [`UNITS`] cost in USD micros, rounded down.
     pub fn price(&self, units: [u64; 6]) -> i64 {
-        (self.metered(units) / 1_000_000_000).min(i64::MAX as u128) as i64
+        (self.metered(units) / RATE_SCALE).min(i64::MAX as u128) as i64
     }
 
     /// What `units` of [`UNITS`] past a plan's included amounts cost, by the
@@ -126,7 +134,7 @@ impl Rates {
             .zip(units)
             .zip(self.rates())
             .filter_map(|((unit, units), rate)| {
-                let micros = (units as u128 * rate as u128 / 1_000_000_000) as i64;
+                let micros = (units as u128 * rate as u128 / RATE_SCALE) as i64;
                 (micros > 0).then_some((unit?, micros))
             })
             .collect()
@@ -135,12 +143,17 @@ impl Rates {
     /// What `meter` costs with `overage`, exactly, as a decimal of USD micros:
     /// `0.120000005`.
     pub fn cost_decimal(&self, meter: &Meter, overage: u64) -> String {
-        decimal(self.metered(called(meter, overage)))
+        decimal(self.call_charge(meter, overage))
     }
 
     /// What `meter` costs with `overage`, in USD micros, rounded down.
     pub fn call_cost(&self, meter: &Meter, overage: u64) -> i64 {
-        self.price(called(meter, overage))
+        (self.call_charge(meter, overage) / RATE_SCALE).min(i64::MAX as u128) as i64
+    }
+
+    /// What `meter` costs with `overage`, in billionths of a USD micro.
+    pub fn call_charge(&self, meter: &Meter, overage: u64) -> u128 {
+        self.metered(called(meter, overage))
     }
 
     /// Each charged resource over `days`: its units, its rate, and what they
@@ -227,9 +240,9 @@ fn called(meter: &Meter, overage: u64) -> [u64; 6] {
 
 /// `billionths` of a USD micro as a decimal of USD micros: `0.120000005`.
 fn decimal(billionths: u128) -> String {
-    let fraction = format!("{:09}", billionths % 1_000_000_000);
+    let fraction = format!("{:09}", billionths % RATE_SCALE);
     match fraction.trim_end_matches('0') {
-        "" => (billionths / 1_000_000_000).to_string(),
-        fraction => format!("{}.{fraction}", billionths / 1_000_000_000),
+        "" => (billionths / RATE_SCALE).to_string(),
+        fraction => format!("{}.{fraction}", billionths / RATE_SCALE),
     }
 }

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
-    account::{billing::PortalFlow, request::Purchase},
+    account::{billing::PortalFlow, key::Scope, request::Purchase},
     client::{Client, Error, Owner},
 };
 use std::{io::IsTerminal, path::PathBuf, process::ExitCode};
@@ -93,8 +93,8 @@ enum Command {
         dir: PathBuf,
     },
     /// Build services and deploy each as its `crab.toml` names it, replacing
-    /// whatever holds the name, and serve it: the one whose directory this is,
-    /// or at a workspace's root every one not saying `deploy = false`. On
+    /// whatever holds the name, and serve it: the service in the selected
+    /// directory, or services beneath it not saying `deploy = false`. On
     /// Cloud it waits for a person to approve it at the link it prints last;
     /// `--yes` deploys without asking.
     Deploy(cmd::deploy::Deploy),
@@ -176,7 +176,7 @@ enum Command {
         #[command(subcommand)]
         action: Option<EarningsCommand>,
     },
-    /// A service's cron tools: listed, set, stopped.
+    /// List a service's cron schedules and runs.
     #[command(subcommand)]
     Cron(CronCommand),
     /// A service's vars: listed, set, returned to their defaults.
@@ -250,14 +250,6 @@ enum Shown {
 enum CronCommand {
     /// List a service's cron tools, each with its expression and next run.
     Ls { name: String },
-    /// Set a cron tool's expression, five fields in UTC, from its next firing.
-    Set {
-        name: String,
-        tool: String,
-        cron: String,
-    },
-    /// Stop a cron tool's calls until it is set again.
-    Stop { name: String, tool: String },
 }
 
 #[derive(Subcommand)]
@@ -277,26 +269,8 @@ enum VarCommand {
 #[derive(Subcommand)]
 enum SecretCommand {
     /// Set a secret of a service, its value read from stdin and sent only to
-    /// the hosts given, or to none. A set secret's value is changed only by
-    /// revoking it and setting it again.
-    Put {
-        name: String,
-        secret: String,
-        /// A host its value is sent to, named in full, such as
-        /// `api.stripe.com`. Repeat it for each host.
-        #[arg(long = "host")]
-        hosts: Vec<String>,
-    },
-    /// Send a secret of a service to these hosts alone, replacing those it
-    /// had.
-    Hosts {
-        name: String,
-        secret: String,
-        /// A host its value is sent to, named in full, such as
-        /// `api.stripe.com`. Repeat it for each host.
-        #[arg(long = "host", required = true)]
-        hosts: Vec<String>,
-    },
+    /// its manifest destinations, replacing any stored value.
+    Put { name: String, secret: String },
     /// List a service's secrets, by name, with the hosts each is sent to.
     Ls { name: String },
     /// Revoke a secret of a service.
@@ -397,21 +371,21 @@ enum DevCommand {
 enum KeyCommand {
     /// List the account's keys, active and revoked.
     Ls,
-    /// Mint a deploy key. Its token is printed once.
+    /// Mint an API key. Its token is printed once.
     Create {
         label: String,
         /// Days until it expires; never by default.
         #[arg(long)]
         days: Option<u32>,
-        /// Key permissions; auto allows operations without approval.
-        #[arg(long, default_value = "deploy")]
-        scope: Vec<crabtalk_sdk::account::key::Scope>,
+        /// Key permissions, replacing the default read permissions.
+        #[arg(long, default_values_t = Scope::defaults())]
+        scope: Vec<Scope>,
+        /// Create a key without management permissions.
+        #[arg(long, conflicts_with = "scope")]
+        no_scopes: bool,
     },
     /// Revoke a key.
     Rm { id: String },
-    /// Replace a key's token, keeping its scope, budget, grants and expiry.
-    /// The new token is printed once; the old one stops working at once.
-    Roll { id: String },
     /// Ask an owner of the account to let the key `crab` signs in with call
     /// other accounts' priced services, or spend more a day. Prints the link
     /// to send them.
@@ -477,6 +451,8 @@ enum OrgCommand {
         /// Its display name; the handle by default.
         #[arg(long)]
         name: Option<String>,
+        #[arg(long)]
+        plan: Option<String>,
     },
     /// One org, as much of it as you may see.
     Info { org: String },
@@ -488,6 +464,8 @@ enum OrgCommand {
         #[arg(long)]
         name: Option<String>,
     },
+    /// Assign an owner as the org's Hobby sponsor.
+    Sponsor { org: String, member_id: String },
     /// Delete an org.
     Rm { org: String },
     /// List an org's members.
@@ -541,7 +519,7 @@ enum ContextCommand {
         /// Registry used for image pushes; omitted, upload to the node.
         #[arg(long)]
         registry: Option<String>,
-        /// A Cloud key with `deploy` scope.
+        /// A Cloud API key.
         #[arg(long, conflicts_with = "token_stdin")]
         token: Option<String>,
         /// Read the key from stdin, keeping it out of the process arguments.
@@ -589,15 +567,6 @@ fn run() -> Result<ExitCode> {
     let yes = args.yes;
     let client = || {
         let client = Client::from(Contexts::load()?.get(args.context.as_deref())?);
-        if yes
-            && client.owner.is_some()
-            && !client
-                .token
-                .as_deref()
-                .is_some_and(|token| token.starts_with("ck_"))
-        {
-            anyhow::bail!("--yes on Cloud requires an API key with auto scope [E0022]");
-        }
         Ok::<_, anyhow::Error>(match &args.org {
             Some(org) => client.owner(Owner::Org(org.clone())),
             None => client,
@@ -727,12 +696,6 @@ fn run() -> Result<ExitCode> {
             action: Some(EarningsCommand::Dashboard),
         } => cmd::earnings::dashboard(&client()?)?,
         Command::Cron(CronCommand::Ls { name }) => cmd::cron::ls(&client()?, name, json)?,
-        Command::Cron(CronCommand::Set { name, tool, cron }) => {
-            cmd::cron::set(&client()?, name, tool, Some(cron))?
-        }
-        Command::Cron(CronCommand::Stop { name, tool }) => {
-            cmd::cron::set(&client()?, name, tool, None)?
-        }
         Command::Var(VarCommand::Ls { name }) => cmd::var::ls(&client()?, name, json)?,
         Command::Var(VarCommand::Set { name, var, value }) => {
             cmd::var::set(&client()?, name, var, Some(value))?
@@ -751,16 +714,9 @@ fn run() -> Result<ExitCode> {
         Command::Sunset { name, tool, on } => {
             cmd::sunset::run(&client()?, name, tool, on.as_deref())?
         }
-        Command::Secret(SecretCommand::Put {
-            name,
-            secret,
-            hosts,
-        }) => cmd::secret::put(&client()?, name, secret, hosts)?,
-        Command::Secret(SecretCommand::Hosts {
-            name,
-            secret,
-            hosts,
-        }) => cmd::secret::hosts(&client()?, name, secret, hosts)?,
+        Command::Secret(SecretCommand::Put { name, secret }) => {
+            cmd::secret::put(&client()?, name, secret)?
+        }
         Command::Secret(SecretCommand::Ls { name }) => cmd::secret::ls(&client()?, name, json)?,
         Command::Secret(SecretCommand::Rm { name, secret }) => {
             cmd::secret::rm(&client()?, name, secret, yes)?
@@ -809,11 +765,19 @@ fn run() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 KeyCommand::Ls => cmd::key::ls(&client, json)?,
-                KeyCommand::Create { label, days, scope } => {
-                    cmd::key::create(&client, label, *days, scope, json)?
-                }
+                KeyCommand::Create {
+                    label,
+                    days,
+                    scope,
+                    no_scopes,
+                } => cmd::key::create(
+                    &client,
+                    label,
+                    *days,
+                    if *no_scopes { &[] } else { scope },
+                    json,
+                )?,
                 KeyCommand::Rm { id } => cmd::key::rm(&client, id, yes)?,
-                KeyCommand::Roll { id } => cmd::key::roll(&client, id, yes, json)?,
                 KeyCommand::Ask {
                     services,
                     budget,
@@ -848,8 +812,11 @@ fn run() -> Result<ExitCode> {
             let client = client()?;
             match action {
                 OrgCommand::Ls => cmd::org::ls(&client, json)?,
-                OrgCommand::Create { handle, name } => {
-                    cmd::org::create(&client, handle, name.as_deref(), json)?
+                OrgCommand::Sponsor { org, member_id } => {
+                    cmd::org::sponsor(&client, org, member_id)?
+                }
+                OrgCommand::Create { handle, name, plan } => {
+                    cmd::org::create(&client, handle, name.as_deref(), plan.as_deref(), json)?
                 }
                 OrgCommand::Info { org } => cmd::org::info(&client, org, json)?,
                 OrgCommand::Update { org, handle, name } => {

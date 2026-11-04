@@ -1,0 +1,203 @@
+name = "litescrape"
+logo = "https://crab.talk/logos/templates/litescrape-v1.svg"
+template = true
+buffer = 8388608
+
+[syscalls]
+"berm.http.fetch" = ["api.litescrape.com"]
+
+[credentials.litescrape]
+title = "Litescrape API key"
+guide = "Create a key at https://litescrape.com. Calls use your prepaid Litescrape credits and account concurrency allowance."
+hosts = ["api.litescrape.com"]
+secrets = [{ name = "LITESCRAPE_API_KEY", label = "API key" }]
+
+[tools.apple_app_store_product]
+access = "public"
+title = "Apple app store product"
+catalog = "app-store.product"
+
+[tools.apple_app_store_reviews]
+access = "public"
+title = "Apple app store reviews"
+catalog = "app-store.reviews"
+
+[tools.apple_app_store_search]
+access = "public"
+title = "Apple app store search"
+catalog = "app-store.search.apps"
+
+[tools.apple_maps_places]
+access = "public"
+title = "Apple maps places"
+catalog = "apple-maps.places"
+
+[tools.apple_maps_reviews]
+access = "public"
+title = "Apple maps reviews"
+catalog = "apple-maps.reviews"
+
+[tools.bing_maps]
+access = "public"
+title = "Bing maps"
+catalog = "bing.maps.search"
+
+[tools.bing_search]
+access = "public"
+title = "Bing search"
+catalog = "bing.serp.organic"
+
+[tools.duckduckgo_maps]
+access = "public"
+title = "Duckduckgo maps"
+catalog = "duckduckgo.maps.search"
+
+[tools.duckduckgo_search]
+access = "public"
+title = "Duckduckgo search"
+catalog = "duckduckgo.serp.organic"
+
+[tools.google_ads]
+access = "public"
+title = "Google ads"
+catalog = "google.serp.ads"
+
+[tools.google_ai_mode]
+access = "public"
+title = "Google ai mode"
+catalog = "google.serp.ai_mode"
+
+[tools.google_ai_overview]
+access = "public"
+title = "Google ai overview"
+catalog = "google.serp.ai_overview"
+
+[tools.google_contributor_reviews]
+access = "public"
+title = "Google contributor reviews"
+catalog = "google.maps.contributor_reviews"
+
+[tools.google_local]
+access = "public"
+title = "Google local"
+catalog = "google.serp.local"
+
+[tools.google_maps]
+access = "public"
+title = "Google maps"
+catalog = "google.serp.maps"
+
+[tools.google_maps_photo_meta]
+access = "public"
+title = "Google maps photo meta"
+catalog = "google.maps.photo_metadata"
+
+[tools.google_maps_popular_times]
+access = "public"
+title = "Google maps popular times"
+catalog = "google.maps.popular_times"
+
+[tools.google_maps_posts]
+access = "public"
+title = "Google maps posts"
+catalog = "google.maps.posts"
+
+[tools.google_play_apps]
+access = "public"
+title = "Google play apps"
+catalog = "google-play.search.apps"
+
+[tools.google_play_books]
+access = "public"
+title = "Google play books"
+catalog = "google-play.search.books"
+
+[tools.google_play_games]
+access = "public"
+title = "Google play games"
+catalog = "google-play.search.games"
+
+[tools.google_play_movies]
+access = "public"
+title = "Google play movies"
+catalog = "google-play.search.movies"
+
+[tools.google_play_product]
+access = "public"
+title = "Google play product"
+catalog = "google-play.product"
+
+[tools.google_play_reviews]
+access = "public"
+title = "Google play reviews"
+catalog = "google-play.reviews"
+
+[tools.google_reviews]
+access = "public"
+title = "Google reviews"
+catalog = "google.maps.reviews"
+
+[tools.google_search]
+access = "public"
+title = "Google search"
+catalog = "google.serp.organic"
+
+[tools.google_shopping]
+access = "public"
+title = "Google shopping"
+catalog = "google.serp.shopping"
+
+[tools.google_shopping_product]
+access = "public"
+title = "Google shopping product"
+catalog = "google.shopping.product"
+
+[tools.tripadvisor_place]
+access = "public"
+title = "Tripadvisor place"
+catalog = "tripadvisor.place.detail"
+
+[tools.tripadvisor_reviews]
+access = "public"
+title = "Tripadvisor reviews"
+catalog = "tripadvisor.business.reviews"
+
+[tools.tripadvisor_search]
+access = "public"
+title = "Tripadvisor search"
+catalog = "tripadvisor.search.general"
+
+[tools.web_fetch]
+access = "public"
+title = "Web fetch"
+catalog = "web.extract"
+
+[tools.web_fetch_post]
+access = "public"
+title = "Web fetch post"
+catalog = "web.extract.advanced"
+
+[tools.web_screenshot]
+access = "public"
+title = "Web screenshot"
+catalog = "web.screenshot"
+
+[tools.web_screenshot_post]
+access = "public"
+title = "Web screenshot post"
+catalog = "web.screenshot.advanced"
+
+[tools.yelp_reviews]
+access = "public"
+title = "Yelp reviews"
+catalog = "yelp.business.reviews"
+
+[tools.yelp_search]
+access = "public"
+title = "Yelp search"
+catalog = "yelp.business.search"
+
+[tools.search_news]
+access = "public"
+title = "Search news"
+catalog = "google.serp.news"

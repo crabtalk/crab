@@ -2,12 +2,13 @@
 
 use anyhow::Result;
 use berm_api::Output;
-use berm_host::test::{self, TestHost};
+use berm_build::fixture;
+use berm_host::test::TestHost;
 
 #[tokio::test]
 async fn each_call_answers_fresh_bytes() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", &test::build("berm-fixture")?)
+    host.deploy("fixture", &fixture::image("berm-fixture")?)
         .await?;
     let mut answered = Vec::new();
     for _ in 0..2 {

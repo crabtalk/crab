@@ -18,6 +18,7 @@ berm-lang.workspace = true
 [dev-dependencies]
 anyhow.workspace = true
 berm-api.workspace = true
+berm-build.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 rusqlite.workspace = true
 serde_json.workspace = true

@@ -49,22 +49,130 @@ pub struct KeyService {
 pub const BUDGET: i64 = 5_000_000;
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Scope {
-    #[serde(rename = "deploy")]
-    Deploy,
-    /// Run operations without a person approving them.
-    #[serde(rename = "auto")]
-    Auto,
+    #[serde(rename = "services:read")]
+    ServicesRead,
+    #[serde(rename = "services:write")]
+    ServicesWrite,
+    #[serde(rename = "deployments:read")]
+    DeploymentsRead,
+    #[serde(rename = "deployments:write")]
+    DeploymentsWrite,
+    #[serde(rename = "calls:read")]
+    CallsRead,
+    #[serde(rename = "logs:read")]
+    LogsRead,
+    #[serde(rename = "usage:read")]
+    UsageRead,
+    #[serde(rename = "billing:read")]
+    BillingRead,
+    #[serde(rename = "earnings:read")]
+    EarningsRead,
+    #[serde(rename = "apps:read")]
+    AppsRead,
+    #[serde(rename = "apps:write")]
+    AppsWrite,
+    #[serde(rename = "orgs:read")]
+    OrgsRead,
+    #[serde(rename = "orgs:write")]
+    OrgsWrite,
+    #[serde(rename = "members:read")]
+    MembersRead,
+    #[serde(rename = "members:write")]
+    MembersWrite,
+    #[serde(rename = "invites:read")]
+    InvitesRead,
+    #[serde(rename = "invites:write")]
+    InvitesWrite,
+    #[serde(rename = "teams:read")]
+    TeamsRead,
+    #[serde(rename = "teams:write")]
+    TeamsWrite,
+    #[serde(rename = "keys:read")]
+    KeysRead,
+    #[serde(rename = "alerts:read")]
+    AlertsRead,
+    #[serde(rename = "alerts:write")]
+    AlertsWrite,
 }
 
 berm_api::text_enum!(Scope);
+
+impl Scope {
+    pub fn allows(self, required: Self) -> bool {
+        self == required
+            || matches!(
+                (self, required),
+                (Self::ServicesWrite, Self::ServicesRead)
+                    | (Self::DeploymentsWrite, Self::DeploymentsRead)
+                    | (Self::AppsWrite, Self::AppsRead)
+                    | (Self::OrgsWrite, Self::OrgsRead)
+                    | (Self::MembersWrite, Self::MembersRead)
+                    | (Self::InvitesWrite, Self::InvitesRead)
+                    | (Self::TeamsWrite, Self::TeamsRead)
+                    | (Self::AlertsWrite, Self::AlertsRead)
+            )
+    }
+
+    pub const ALL: [Self; 22] = [
+        Self::ServicesRead,
+        Self::ServicesWrite,
+        Self::DeploymentsRead,
+        Self::DeploymentsWrite,
+        Self::CallsRead,
+        Self::LogsRead,
+        Self::UsageRead,
+        Self::BillingRead,
+        Self::EarningsRead,
+        Self::AppsRead,
+        Self::AppsWrite,
+        Self::OrgsRead,
+        Self::OrgsWrite,
+        Self::MembersRead,
+        Self::MembersWrite,
+        Self::InvitesRead,
+        Self::InvitesWrite,
+        Self::TeamsRead,
+        Self::TeamsWrite,
+        Self::KeysRead,
+        Self::AlertsRead,
+        Self::AlertsWrite,
+    ];
+
+    pub const DEFAULT: [Self; 4] = [
+        Self::ServicesRead,
+        Self::DeploymentsRead,
+        Self::CallsRead,
+        Self::UsageRead,
+    ];
+
+    pub fn defaults() -> Vec<Self> {
+        Self::DEFAULT.to_vec()
+    }
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyDefaults {
+    pub scope: Vec<Scope>,
+    pub budget: i64,
+}
+
+impl Default for KeyDefaults {
+    fn default() -> Self {
+        Self {
+            scope: Scope::defaults(),
+            budget: BUDGET,
+        }
+    }
+}
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateKeyRequest {
     pub label: String,
-    #[serde(default)]
+    #[serde(default = "Scope::defaults")]
     pub scope: Vec<Scope>,
     pub expires_at: Option<i64>,
     /// Its daily budget, in USD micros; [`BUDGET`] when none is given.
@@ -82,6 +190,9 @@ pub struct UpdateKeyRequest {
     pub budget: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<Vec<Scope>>,
+    /// Replace priced service access; an empty list removes every grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub services: Option<Vec<String>>,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

@@ -11,7 +11,7 @@ use axum::{
     routing::{get, post, put},
 };
 use berm_api::{
-    Cron, Listing, Runtime, Service, Setting, Terms, VarValue,
+    Listing, Runtime, Service, Setting, Terms, VarValue,
     host::{
         CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
         Usage, Wakes,
@@ -62,7 +62,6 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
             "/tools/{tool}",
             post(call::<E>).get(query::<E>).patch(update::<E>),
         )
-        .route("/tools/{tool}/cron", put(cron::<E>))
         .route("/tools/{tool}/webhook", post(webhook::<E>))
         .route("/vars", get(vars::<E>))
         .route("/vars/{var}", put(var::<E>))
@@ -368,7 +367,6 @@ async fn update<E: Env>(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Set a cron tool's expression, until a deploy's config sets another.
 async fn vars<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
@@ -383,15 +381,5 @@ async fn var<E: Env>(
     Json(VarValue { value }): Json<VarValue>,
 ) -> Result<StatusCode, Denied> {
     host.set_var(&service, &var, value).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn cron<E: Env>(
-    State(host): State<Host<E>>,
-    Extension(Named(service)): Extension<Named>,
-    Path(Tool { tool }): Path<Tool>,
-    Json(Cron { cron }): Json<Cron>,
-) -> Result<StatusCode, Denied> {
-    host.set_cron(&service, &tool, cron).await?;
     Ok(StatusCode::NO_CONTENT)
 }

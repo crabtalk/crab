@@ -5,6 +5,14 @@
 title = "Web"
 platforms = ["web", "news"]
 
+[agents]
+title = "Agents"
+platforms = ["memory"]
+
+[ops]
+title = "Operations"
+platforms = ["uptime", "webhooks"]
+
 [search]
 title = "Search & SEO"
 platforms = ["google", "ai-search", "bing", "duckduckgo", "yahoo", "yandex", "baidu", "naver", "seznam"]

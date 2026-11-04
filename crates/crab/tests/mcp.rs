@@ -5,10 +5,11 @@ use axum::{
     http::{HeaderMap, Request, StatusCode},
 };
 use berm_api::host::{self, Deploy};
+use berm_build::fixture;
 use crab_agent::host::Node;
 use serde_json::{Value, json};
-use std::{fs, path::Path, time::Duration};
-use tokio::{task, time};
+use std::time::Duration;
+use tokio::time;
 use tower::ServiceExt;
 
 struct Client {
@@ -68,11 +69,7 @@ impl Client {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<()> {
-    let image = task::spawn_blocking(|| -> Result<Vec<u8>> {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/fixture");
-        Ok(fs::read(berm_build::build(&dir, None)?)?)
-    })
-    .await??;
+    let image = fixture::image("berm-fixture")?;
     let root = tempfile::tempdir()?;
     let node = Node::new(
         root.path().into(),

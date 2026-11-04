@@ -1,0 +1,26 @@
+[package]
+name = "crab-contextdev"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Context.dev brand intelligence, extraction and web tools"
+readme = "README.md"
+
+[lib]
+name = "contextdev"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+crab-openapi.workspace = true
+url.workspace = true
+
+[build-dependencies]
+berm-api.workspace = true
+berm-build.workspace = true
