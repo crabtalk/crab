@@ -2,7 +2,7 @@
 
 use crate::{Logged, Meter, Output};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, net::IpAddr};
 
 /// Header carrying a tool call's [`Meter`], summed over every
 /// service the call reached, as JSON.
@@ -32,7 +32,7 @@ pub struct Caller {
     /// The end user the call is made for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
-    /// For an app's anonymous call, the client's address.
+    /// For an app's call, the client's IP address.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
     /// For an app's call, the client's user agent.
@@ -41,6 +41,10 @@ pub struct Caller {
 }
 
 impl Caller {
+    pub fn client_ip(&self) -> Option<IpAddr> {
+        self.client.as_deref()?.parse().ok()
+    }
+
     /// An app's call with no user: no account stands behind it.
     pub fn anonymous(&self) -> bool {
         self.app.is_some() && self.user.is_none()
@@ -301,6 +305,8 @@ pub struct Link {
     /// The outside client's per-day key, as the chain's first host supplied it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_ip: Option<IpAddr>,
     pub depth: u32,
     pub query: bool,
     /// Milliseconds left before the chain's deadline.
@@ -754,9 +760,10 @@ pub struct CallInput {
     pub tool: String,
     /// Its arguments as sent: JSON, or a Stripe event's or a webhook's body.
     pub args: String,
-    /// Who it was made as; none for a wake, a Stripe event, a webhook or an anonymous
-    /// call.
+    /// The host-supplied caller context, including anonymous browser apps.
     pub caller: Option<Caller>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_key: Option<String>,
     /// The image it ran, as `sha256:` and hex.
     pub digest: String,
 }

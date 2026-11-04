@@ -20,3 +20,10 @@ pub fn fetch() -> Result<u16> {
 pub fn vouch() -> Result<()> {
     Ok(berm_lang::vouch("someone")?)
 }
+
+/// Read the outside IP without declaring the capability.
+#[tool]
+pub fn client_ip() -> Result<()> {
+    berm_lang::client_ip()?;
+    Ok(())
+}

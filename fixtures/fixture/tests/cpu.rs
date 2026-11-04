@@ -76,7 +76,7 @@ async fn time_asleep_inside_a_host_call_is_not_charged_as_cpu() -> Result<()> {
         .call_as(
             None,
             None,
-            None,
+            Default::default(),
             "wait",
             b"{}".to_vec(),
             meters.clone(),

@@ -11,7 +11,7 @@ use crate::{
 };
 use axum::http::StatusCode;
 use berm::{
-    Meters, Refused, Service,
+    Client, Meters, Refused, Service,
     tape::{Recorder, Taping},
 };
 use berm_api::{
@@ -515,7 +515,10 @@ impl<E: Env> Host<E> {
                         .as_deref()
                         .map(|caller| berm::Caller::Service(caller.into())),
                     user: link.user.as_ref().map(host::user),
-                    client: link.client.as_deref().map(Into::into),
+                    client: Client {
+                        key: link.client.as_deref().map(Into::into),
+                        ip: link.client_ip,
+                    },
                     depth: link.depth,
                     query: link.query,
                     deadline: Instant::now() + Duration::from_millis(link.timeout),
@@ -650,7 +653,7 @@ impl<E: Env> Host<E> {
                 started.id,
                 None,
                 None,
-                None,
+                Client::default(),
                 &tool,
                 event,
                 Taping::Record(recorder.clone()),
@@ -671,7 +674,7 @@ impl<E: Env> Host<E> {
             outcome,
             invoked.as_ref().ok(),
             (outcome == Outcome::Failed)
-                .then(|| calls::ran_with(&tool, kept, None, &deployed.digest)),
+                .then(|| calls::ran_with(&tool, kept, None, None, &deployed.digest)),
             (outcome == Outcome::Failed)
                 .then(|| recorder.tape())
                 .as_ref(),

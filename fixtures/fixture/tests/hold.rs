@@ -45,6 +45,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
         from: "acct/elsewhere".into(),
         user: None,
         client: None,
+        client_ip: None,
         depth: 1,
         query: false,
         timeout: 5_000,

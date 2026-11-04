@@ -161,11 +161,32 @@ fn builtins() -> Table {
     table.insert(
         abi::CLIENT.to_owned(),
         handler(|guest, _, _| {
-            let reply = match &guest.data().at.client {
+            let reply = match &guest.data().at.client.key {
                 Some(client) => abi::wire::request(&[client.as_bytes()]),
                 None => Vec::new(),
             };
             Ok(stage(guest, Ok(reply)))
+        }),
+    );
+
+    table.insert(
+        abi::CLIENT_IP.to_owned(),
+        handler(|guest, _, _| {
+            let at = &guest.data().at;
+            let reply = if !at.deps.syscalls.contains_key(abi::CLIENT_IP) {
+                Err(Refused(format!(
+                    "{} does not declare {}",
+                    at.service,
+                    abi::CLIENT_IP
+                ))
+                .into())
+            } else {
+                Ok(match at.client.ip {
+                    Some(ip) => abi::wire::request(&[ip.to_string().as_bytes()]),
+                    None => Vec::new(),
+                })
+            };
+            Ok(stage(guest, reply))
         }),
     );
 

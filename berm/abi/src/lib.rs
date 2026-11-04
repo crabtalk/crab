@@ -177,6 +177,11 @@ macro_rules! host_calls {
             /// key that names the client for one day. The runtime serves this one itself.
             CLIENT = "berm.client";
 
+            /// The outside client's IP address. `(ptr, len) -> staged length`, ignored.
+            /// The reply is no fields when the host supplied none, else one textual
+            /// IPv4 or IPv6 address. Requires a `berm.client.ip` manifest declaration.
+            CLIENT_IP = "berm.client.ip";
+
             /// Mark this invocation's failure as refusing its caller. `() -> 0`
             DENY = "berm.deny";
 

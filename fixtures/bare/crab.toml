@@ -6,3 +6,6 @@ access = "public"
 
 [tools.vouch]
 access = "public"
+
+[tools.client_ip]
+access = "public"

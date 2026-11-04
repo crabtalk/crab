@@ -1,4 +1,5 @@
 use anyhow::Result;
+use berm::Client;
 use berm_api::Output;
 use berm_build::fixture;
 use berm_host::test::TestHost;
@@ -163,7 +164,10 @@ async fn daily_client_keys_deduplicate_visitors_per_site_page_and_source() -> Re
                 &serde_json::to_vec(
                     &json!({"site":id,"page":page,"referrer":"https://chatgpt.com/"}),
                 )?,
-                client,
+                Client {
+                    key: Some(client.into()),
+                    ip: None,
+                },
             )
             .await?;
         assert!(matches!(ran.result, Output::Done(_)), "{:?}", ran.result);
@@ -190,7 +194,10 @@ async fn daily_client_keys_deduplicate_visitors_per_site_page_and_source() -> Re
             "analytics",
             "record",
             &serde_json::to_vec(&json!({"site":id,"page":"/docs"}))?,
-            "visitor-a-next-day",
+            Client {
+                key: Some("visitor-a-next-day".into()),
+                ip: None,
+            },
         )
         .await?;
     assert!(matches!(ran.result, Output::Done(_)), "{:?}", ran.result);

@@ -15,6 +15,7 @@ fn source(tool: &str, image: Option<Vec<u8>>) -> Result<Client> {
         tool: tool.to_owned(),
         args: r#"{"query":"fixed"}"#.to_owned(),
         caller: None,
+        client_key: None,
         digest: format!("sha256:{}", "0".repeat(64)),
     })?;
     let listener = TcpListener::bind("127.0.0.1:0")?;

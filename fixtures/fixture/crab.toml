@@ -14,6 +14,7 @@ greeting = { default = "hello", description = "What greet answers" }
 "berm.http.fetch" = ["127.0.0.1"]
 "berm.http.proxy" = ["127.0.0.1"]
 "berm.vouch" = []
+"berm.client.ip" = []
 
 [tools.reach]
 access = "public"
@@ -109,3 +110,6 @@ secrets = [{ name = "spare" }]
 title = "Hostless token"
 optional = true
 secrets = [{ name = "hostless" }]
+
+[tools.client_context]
+access = "public"

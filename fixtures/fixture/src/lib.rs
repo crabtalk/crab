@@ -10,7 +10,11 @@
 
 extern crate alloc;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use berm_lang::{Caller, Result, Schema, event, tool};
 
 berm_lang::declare_service!(fixture);
@@ -207,6 +211,22 @@ pub fn reach(url: String) -> Result<Option<u16>> {
         .next()
         .and_then(|fetched| fetched.ok())
         .map(|response| response.status))
+}
+
+/// Read the chain's daily client key and IP, optionally through another service.
+#[tool]
+pub fn client_context(target: Option<String>) -> Result<Vec<Option<String>>> {
+    if let Some(target) = target {
+        return Ok(berm_lang::json::from(&berm_lang::call(
+            &target,
+            "client_context",
+            "{}",
+        )?)?);
+    }
+    Ok(alloc::vec![
+        berm_lang::client()?,
+        berm_lang::client_ip()?.map(|ip| ip.to_string())
+    ])
 }
 
 /// Always fails, to exercise the error path.

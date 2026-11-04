@@ -44,7 +44,9 @@ extern crate self as berm_lang;
 
 pub use berm_abi as abi;
 pub use berm_codegen::{Schema, declare_service, error_code, event, syscalls, tool};
-pub use call::{CallError, Caller, User, after, call, caller, client, deny, limit, user, vouch};
+pub use call::{
+    CallError, Caller, User, after, call, caller, client, client_ip, deny, limit, user, vouch,
+};
 #[doc(hidden)]
 pub use emit::event as __event;
 pub use emit::{Event, emit};

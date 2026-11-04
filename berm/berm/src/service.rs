@@ -1,7 +1,7 @@
 //! One compiled service, and the state of one invocation of it.
 
 use crate::{
-    Caller, Callsite, Deps, Meter, Meters, Syscall, User, abi, chain,
+    Caller, Callsite, Client, Deps, Meter, Meters, Syscall, User, abi, chain,
     engine::{self, Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Pool, Running},
@@ -286,7 +286,7 @@ impl Service {
         self.call_as(
             caller,
             None,
-            None,
+            Client::default(),
             tool,
             args,
             Arc::default(),
@@ -304,7 +304,7 @@ impl Service {
         &self,
         caller: Option<Arc<str>>,
         user: Option<User>,
-        client: Option<Arc<str>>,
+        client: Client,
         tool: &str,
         args: impl Into<Vec<u8>>,
         meters: Arc<Meters>,
@@ -402,7 +402,7 @@ impl Service {
         args: Vec<u8>,
         caller: Option<Caller>,
         user: Option<User>,
-        client: Option<Arc<str>>,
+        client: Client,
         depth: u32,
         query: bool,
         deadline: Instant,
@@ -584,7 +584,7 @@ fn ended(finished: Invocation, buffer: usize) -> Result<Ended> {
 pub struct Link {
     pub caller: Option<Caller>,
     pub user: Option<User>,
-    pub client: Option<Arc<str>>,
+    pub client: Client,
     pub depth: u32,
     pub query: bool,
     pub deadline: Instant,

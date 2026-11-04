@@ -48,7 +48,7 @@ async fn replay(image: &[u8], tool: &str, args: &str, tape: Tape) -> Result<Outp
         .call_as(
             None,
             None,
-            None,
+            Default::default(),
             tool,
             args,
             Arc::default(),

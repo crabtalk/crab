@@ -29,3 +29,17 @@ async fn vouching_is_refused_without_the_declaration() -> Result<()> {
     assert!(failure.contains("does not declare berm.vouch"), "{failure}");
     Ok(())
 }
+
+#[tokio::test]
+async fn client_ip_is_refused_without_the_declaration() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    host.deploy("bare", &fixture::image("berm-bare")?).await?;
+    let Output::Failed(failure) = host.call("bare", "client_ip", b"{}").await?.result else {
+        panic!("client IP access is refused");
+    };
+    assert!(
+        failure.contains("does not declare berm.client.ip"),
+        "{failure}"
+    );
+    Ok(())
+}

@@ -9,7 +9,7 @@ use crate::{
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use berm::{
-    Meter,
+    Client, Meter,
     tape::{Recorder, Taping},
 };
 use berm_api::{
@@ -38,9 +38,7 @@ pub struct Call {
     pub query: bool,
     pub args: Vec<u8>,
     pub caller: Option<Caller>,
-    /// The outside client's per-day key, as a layer sets it; the chain reads it
-    /// through `berm.client`.
-    pub client: Option<String>,
+    pub client: Client,
     /// The request's, as the daemon received it.
     pub headers: HeaderMap,
 }
@@ -162,7 +160,10 @@ impl<E: Env> Host<E> {
             query: spec.query,
             args,
             caller: caller.clone(),
-            client: None,
+            client: Client {
+                key: None,
+                ip: caller.as_ref().and_then(Caller::client_ip),
+            },
             headers,
         };
         match self.outside.clone().oneshot(call).await {
@@ -228,7 +229,15 @@ impl<E: Env> Host<E> {
         let started = self.calls.start();
         let recorder = Recorder::default();
         let kept = args.clone();
-        let input = |args| calls::ran_with(&tool, args, caller.clone(), &deployed.digest);
+        let input = |args| {
+            calls::ran_with(
+                &tool,
+                args,
+                caller.clone(),
+                client.key.as_deref().map(str::to_owned),
+                &deployed.digest,
+            )
+        };
         let (source, who) = counted(caller.as_ref());
         let invoked = self
             .invoke(
@@ -242,7 +251,7 @@ impl<E: Env> Host<E> {
                     .as_ref()
                     .and_then(|caller| caller.user.as_ref())
                     .map(host::user),
-                client.map(Into::into),
+                client.clone(),
                 &tool,
                 args,
                 Taping::Record(recorder.clone()),

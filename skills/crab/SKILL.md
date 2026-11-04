@@ -48,6 +48,8 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 ## Local callers and MCP
 
+- `berm_lang::client()` reads the daily opaque client key. `berm_lang::client_ip()` reads the outside IPv4/IPv6 address, when supplied, and requires `"berm.client.ip" = []` in `[syscalls]`. Both follow nested calls; each service reading the IP needs the declaration.
+
 - `crab --context default call <service> <tool> '<arguments>'` calls a public tool locally as the unchecked caller `local`. Use `--caller alice` to override it, or `--anonymous` to call without a caller; only tools with `access = "anonymous"` accept anonymous calls. These flags are local-only; Cloud uses the credential.
 - Local MCP uses Streamable HTTP at `http://127.0.0.1:7777/mcp`. Send `x-berm-caller: {"id":"alice"}` to discover and call public tools as that caller. Local identities are unverified; keep the endpoint on loopback.
 

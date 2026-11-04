@@ -11,13 +11,31 @@ crab deploy --from owner/analytics
 crab call you/analytics add_site '{"domain":"example.com","name":"My website"}'
 ```
 
-Replace `owner` with the template publisher and `you` with your deploying account. Save the returned site `id`. No provider credentials are required. Register an [anonymous browser app](https://crab.talk/docs/guides/apps) restricted to your website origin and this deployment; its public app id lets a browser call `record` without an API key. Use `tracker.js` from this service's source as the page script:
+Replace `owner` with the template publisher and `you` with your deploying account. No provider credentials are required.
 
-```html
-<script defer src="/tracker.js" data-endpoint="https://api.crab.talk/services/you/analytics/tools/record" data-app="YOUR_APP_ID" data-site="SITE_ID"></script>
+`add_site` registers the website inside your analytics deployment and returns a site object. Use its `id` as `SITE_ID` in the tracker and as `site` in report calls. Each website has its own site ID. To find the IDs of websites already registered:
+
+```sh
+crab call you/analytics sites '{}'
 ```
 
-Host that file with your website. It records page loads and SPA path changes, sends page paths without queries or fragments and only the referring origin, skips common automation and localhost, and stores no browser identifier. Set `data-allow-localhost` to count local development. `localStorage.crab_analytics_ignore = "true"` opts that browser out.
+## Connect your website
+
+In your deploying account's dashboard, open **Apps** and create an [anonymous browser app](https://crab.talk/docs/guides/apps) with:
+
+- **Origins:** your website's origin, such as `https://example.com`.
+- **Services:** `you/analytics`, matching your deployment.
+- **Anonymous:** enabled. Leave **Issuers** empty; visitors do not need to sign in.
+
+Copy the app ID from the dashboard's **X-App** column and use it as `APP_ID`. You can also find it with `crab app ls`. This public ID lets the tracker call `record` from the allowed origin; it is separate from the `SITE_ID` created by `add_site`.
+
+Copy [tracker.js](https://github.com/crabtalk/crab/blob/dev/services/web/analytics/tracker.js) into your website's public assets so it is served at `/tracker.js`, then add this script to your pages, replacing `you`, `APP_ID` and `SITE_ID`:
+
+```html
+<script defer src="/tracker.js" data-endpoint="https://api.crab.talk/services/you/analytics/tools/record" data-app="APP_ID" data-site="SITE_ID"></script>
+```
+
+The tracker records page loads and SPA path changes, sends page paths without queries or fragments and only the referring origin, skips common automation and localhost, and stores no browser identifier. Set `data-allow-localhost` to count local development. `localStorage.crab_analytics_ignore = "true"` opts that browser out.
 
 ## Read reports
 

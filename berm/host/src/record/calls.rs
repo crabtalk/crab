@@ -262,6 +262,7 @@ pub(crate) fn ran_with(
     tool: &str,
     args: Vec<u8>,
     caller: Option<Caller>,
+    client_key: Option<String>,
     digest: &str,
 ) -> CallInput {
     CallInput {
@@ -269,6 +270,7 @@ pub(crate) fn ran_with(
         args: String::from_utf8(args)
             .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()),
         caller,
+        client_key,
         digest: digest::prefixed(digest),
     }
 }

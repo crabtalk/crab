@@ -141,6 +141,7 @@ impl<E: Env> Host<E> {
                     from,
                     user: None,
                     client: None,
+                    client_ip: None,
                     depth: 1,
                     query: false,
                     timeout: TIMEOUT,
@@ -173,7 +174,7 @@ impl<E: Env> Host<E> {
                     started.id,
                     None,
                     None,
-                    None,
+                    Default::default(),
                     &wake.tool,
                     wake.args.clone().into_bytes(),
                     Taping::Record(recorder.clone()),
@@ -203,6 +204,7 @@ impl<E: Env> Host<E> {
                     calls::ran_with(
                         &wake.tool,
                         wake.args.clone().into_bytes(),
+                        None,
                         None,
                         &target.digest,
                     )
