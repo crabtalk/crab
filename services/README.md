@@ -38,6 +38,19 @@ Choose a service directory from a catalog, such as `services/connect/github` or 
 
 For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and pass `--caller alice` when calling a public tool. See [local development](https://crab.talk/docs/guides/local).
 
+## Checking changes
+
+From the repository root, `cargo nextest run --release` and `cargo clippy` use Cargo’s default members: runtime, CLI, SDK, generator fixtures, stateful services and handwritten integrations. Pure generated adapters and the large TikHub fixture are checked explicitly.
+
+When changing or publishing a generated adapter, refetch and review its upstream specification, then run its native tests and build the service image. For example:
+
+```sh
+cargo nextest run --release -p crab-contextdev
+crab build services/connect/contextdev
+```
+
+`cargo nextest run --workspace --release` includes every package. Generator Wasm export and schema coverage lives in `crab-openapi` with a local fixture.
+
 ## Documentation
 
 Follow the [service README guide](README-guide.md) for READMEs displayed on crab.talk. Rust integration examples for deployable services live in their `LIBRARY.md` files when provided.

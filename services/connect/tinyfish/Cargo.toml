@@ -25,7 +25,3 @@ base64.workspace = true
 [build-dependencies]
 berm-api.workspace = true
 berm-build.workspace = true
-
-[dev-dependencies]
-berm-api.workspace = true
-berm-build.workspace = true

@@ -14,9 +14,8 @@ Schedule `Delivery::prune` daily. The signing credential is inherited; expose `D
 
 ## Runtime tests
 
-Build the image, then run the ignored host integration tests explicitly from the repository root. These require the prepared image and do not build inside a test:
+Run from the repository root. Nextest prepares the service image before running the host integration tests.
 
 ```sh
-crab build services/ops/webhooks
-BERM_TEST_IMAGE_CRAB_WEBHOOK_INBOX="$PWD/target/berm/webhook_inbox.wasm" cargo nextest run -p crab-webhook-inbox --test runtime --run-ignored only
+cargo nextest run --release -p crab-webhook-inbox --test runtime
 ```

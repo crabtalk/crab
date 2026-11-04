@@ -5,7 +5,6 @@ use berm_host::test::TestHost;
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn page_views_crawler_reports_and_restart_preserve_counts() -> Result<()> {
     let mut host = TestHost::open(40 * 86_400_000).await?;
     host.deploy("analytics", &fixture::image("crab-analytics")?)
@@ -75,7 +74,6 @@ async fn page_views_crawler_reports_and_restart_preserve_counts() -> Result<()> 
 }
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn retention_bad_ranges_and_site_removal_bound_the_data() -> Result<()> {
     let host = TestHost::open(40 * 86_400_000).await?;
     host.deploy("analytics", &fixture::image("crab-analytics")?)
@@ -140,7 +138,6 @@ async fn retention_bad_ranges_and_site_removal_bound_the_data() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn daily_client_keys_deduplicate_visitors_per_site_page_and_source() -> Result<()> {
     let host = TestHost::open(40 * 86_400_000).await?;
     host.deploy("analytics", &fixture::image("crab-analytics")?)

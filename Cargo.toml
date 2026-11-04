@@ -9,6 +9,34 @@ members = [
     "services/web/*",
     "services/kits/*",
 ]
+default-members = [
+    "berm/*",
+    "crates/*",
+    "fixtures/account",
+    "fixtures/bare",
+    "fixtures/billing",
+    "fixtures/broken",
+    "fixtures/feed",
+    "fixtures/fixture",
+    "fixtures/keeper",
+    "fixtures/kit",
+    "fixtures/linked-services",
+    "fixtures/openapi",
+    "fixtures/site",
+    "services/connect/dataforseo",
+    "services/connect/firecrawl",
+    "services/connect/github",
+    "services/connect/litescrape",
+    "services/connect/osv",
+    "services/connect/posthog",
+    "services/connect/resend",
+    "services/connect/tinyfish",
+    "services/connect/upstash",
+    "services/agents/*",
+    "services/ops/*",
+    "services/web/*",
+    "services/kits/*",
+]
 resolver = "3"
 
 [workspace.package]

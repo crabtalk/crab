@@ -39,33 +39,6 @@ command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--exampl
 [scripts.setup.crab-analytics]
 command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-analytics"]
 
-[scripts.setup.crab-pdl]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-pdl"]
-
-[scripts.setup.crab-tinyfish]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-tinyfish"]
-
-[scripts.setup.crab-companyenrich]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-companyenrich"]
-
-[scripts.setup.crab-dataforseo]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-dataforseo"]
-
-[scripts.setup.crab-anyapi]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-anyapi"]
-
-[scripts.setup.crab-litescrape]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-litescrape"]
-
-[scripts.setup.crab-contextdev]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-contextdev"]
-
-[scripts.setup.crab-firecrawl]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "crab-firecrawl"]
-
-[scripts.setup.berm-tikhub]
-command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-tikhub"]
-
 [scripts.setup.berm-openapi]
 command = ["cargo", "run", "--release", "--quiet", "-p", "berm-build", "--example", "prepare", "--", "berm-openapi"]
 
@@ -134,42 +107,6 @@ setup = "crab-webhook-inbox"
 [[profile.default.scripts]]
 filter = 'package(=crab-analytics) & binary(=runtime)'
 setup = "crab-analytics"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-pdl) & binary(=wasm) & test(=image_exports_active_tools_and_full_query_constraints)'
-setup = "crab-pdl"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-tinyfish) & binary(=wasm) & test(=image_keeps_the_nine_tool_names_and_existing_input_shapes)'
-setup = "crab-tinyfish"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-companyenrich) & binary(=wasm) & test(=image_exports_the_complete_scope_and_upstream_input_constraints)'
-setup = "crab-companyenrich"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-dataforseo) & binary(=wasm) & test(=image_exports_the_verified_scope_and_array_task_schemas)'
-setup = "crab-dataforseo"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-anyapi) & binary(=wasm) & test(=image_contains_the_complete_service_scope_and_imported_constraints)'
-setup = "crab-anyapi"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-litescrape) & binary(=wasm) & test(=image_contains_the_scoped_tools_and_nested_browser_constraints)'
-setup = "crab-litescrape"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-contextdev) & binary(=wasm) & test(=image_exports_seven_tools_with_lookup_variants_and_recursive_parse_rules)'
-setup = "crab-contextdev"
-
-[[profile.default.scripts]]
-filter = 'package(=crab-firecrawl) & binary(=wasm) & test(=image_exports_only_the_seven_bounded_tools)'
-setup = "crab-firecrawl"
-
-[[profile.default.scripts]]
-filter = 'package(=berm-tikhub) & test(=all_supported_tikhub_operations_build_into_a_wasm_service)'
-setup = "berm-tikhub"
 
 [[profile.default.scripts]]
 filter = 'package(=crab-openapi) & binary(=wasm)'

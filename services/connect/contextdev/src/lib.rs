@@ -7,9 +7,8 @@ const CLIENT: Client<'static> = Client {
     headers: &[("Authorization", "Bearer {secret:CONTEXT_DEV_API_KEY}")],
 };
 
-// Reviewed snapshot from https://docs.context.dev/openapi.json.
 crab_openapi::service! {
-    spec: "openapi.json",
+    spec: env!("OPENAPI_SPEC"),
     client: crate::CLIENT,
     tools: cfg(feature = "tools"),
     operations: {

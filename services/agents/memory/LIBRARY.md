@@ -14,9 +14,8 @@ Memories persist until deleted. Callers share the same namespace and key space.
 
 ## Runtime tests
 
-Build the image, then run the ignored host integration tests explicitly from the repository root. These require the prepared image and do not build inside a test:
+Run from the repository root. Nextest prepares the service image before running the host integration tests.
 
 ```sh
-crab build services/agents/memory
-BERM_TEST_IMAGE_CRAB_AGENT_MEMORY="$PWD/target/berm/agent_memory.wasm" cargo nextest run -p crab-agent-memory --test runtime --run-ignored only
+cargo nextest run --release -p crab-agent-memory --test runtime
 ```

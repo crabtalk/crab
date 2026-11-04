@@ -5,7 +5,6 @@ use berm_host::test::TestHost;
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn consecutive_failures_recovery_staleness_and_history_survive_restart() -> Result<()> {
     let mut host = TestHost::open(10_000).await?;
     host.deploy("uptime", &fixture::image("crab-uptime")?)
@@ -86,7 +85,6 @@ async fn consecutive_failures_recovery_staleness_and_history_survive_restart() -
 }
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn scheduled_work_is_bounded_and_invalid_targets_never_fetch() -> Result<()> {
     let host = TestHost::open(10_000).await?;
     host.deploy("uptime", &fixture::image("crab-uptime")?)

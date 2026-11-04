@@ -521,7 +521,6 @@ dependencies = [
 name = "berm-tikhub"
 version = "0.1.2"
 dependencies = [
- "berm-api",
  "berm-build",
  "berm-lang",
  "crab-openapi",
@@ -948,7 +947,6 @@ dependencies = [
 name = "crab-anyapi"
 version = "0.1.2"
 dependencies = [
- "berm-api",
  "berm-build",
  "berm-lang",
  "crab-openapi",
@@ -982,7 +980,6 @@ dependencies = [
 name = "crab-dataforseo"
 version = "0.1.2"
 dependencies = [
- "berm-api",
  "berm-build",
  "berm-lang",
  "crab-openapi",
@@ -995,7 +992,6 @@ dependencies = [
 name = "crab-firecrawl"
 version = "0.1.2"
 dependencies = [
- "berm-api",
  "berm-build",
  "berm-lang",
  "crab-openapi",
@@ -1057,7 +1053,6 @@ dependencies = [
 name = "crab-pdl"
 version = "0.1.2"
 dependencies = [
- "berm-api",
  "berm-build",
  "berm-lang",
  "crab-openapi",

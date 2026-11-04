@@ -5,7 +5,6 @@ use berm_host::test::TestHost;
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn duplicate_delivery_acknowledgment_and_restart_keep_one_event() -> Result<()> {
     let mut host = TestHost::open(10_000).await?;
     host.deploy("inbox", &fixture::image("crab-webhook-inbox")?)
@@ -61,7 +60,6 @@ async fn duplicate_delivery_acknowledgment_and_restart_keep_one_event() -> Resul
 }
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn cursor_retention_and_payload_limit_are_explicit() -> Result<()> {
     let host = TestHost::open(10_000).await?;
     host.deploy("inbox", &fixture::image("crab-webhook-inbox")?)

@@ -5,7 +5,6 @@ use berm_host::test::TestHost;
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn revisions_pagination_namespaces_and_restart_preserve_memories() -> Result<()> {
     let mut host = TestHost::open(10_000).await?;
     host.deploy("memory", &fixture::image("crab-agent-memory")?)
@@ -88,7 +87,6 @@ async fn revisions_pagination_namespaces_and_restart_preserve_memories() -> Resu
 }
 
 #[tokio::test]
-#[ignore = "requires a prepared Wasm image; see LIBRARY.md"]
 async fn maximum_escaped_content_fits_a_paginated_reply_and_oversize_fails() -> Result<()> {
     let host = TestHost::open(10_000).await?;
     host.deploy("memory", &fixture::image("crab-agent-memory")?)
