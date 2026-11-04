@@ -1,6 +1,6 @@
 name = "seo"
 public = true
-template = true
+template = false
 buffer = 1048576
 
 [database]

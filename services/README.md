@@ -11,7 +11,7 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 
 The catalog directory matches its intended publisher org: `connect`, `agents`, `web` or `ops`. Select the publishing account explicitly; for example, `crab --org web publish services/web` on an authenticated Cloud context. A directory does not select an account automatically.
 
-Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. Stateful services may require a private copy; each service documents its setup and state ownership.
+Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. `web/seo` and `web/markdown` are configured as public services without templates. Each service documents its setup and state ownership.
 
 Tools declare their discovery classification with `catalog` in `crab.toml`. See the [Service catalog guide](https://crab.talk/docs/guides/catalog) for categories, platform prefixes and job names.
 

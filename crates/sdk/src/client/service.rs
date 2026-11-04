@@ -33,6 +33,12 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
+    pub async fn delete_template(&self, name: &str) -> Result<(), Error> {
+        let path = format!("{}/template", self.service(name)?);
+        self.ok(self.at(Method::DELETE, &path)).await?;
+        Ok(())
+    }
+
     pub async fn inspect(&self, name: &str) -> Result<Service, Error> {
         let path = format!("{}/idl", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await

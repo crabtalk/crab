@@ -14,16 +14,6 @@ Returns the final URL, title, description, canonical URL, HTML language, h1 head
 
 Checks missing or multiple titles, missing descriptions, missing/invalid/multiple canonical links, missing language, missing or multiple h1 headings, images without alt attributes, and noindex directives. Informational findings identify things to review; an absent canonical or multiple h1 headings are not automatically errors. Empty alt attributes remain valid for decorative images.
 
-## Deploy your own
-
-If this page offers **Deploy your own**, deploy a copy without a local build:
-
-```sh
-crab deploy --from owner/seo
-```
-
-No credentials or settings are required. Calls use the selected deployment's execution allowance.
-
 ## Limits
 
 Inspects the returned UTF-8 HTML and X-Robots-Tag headers. It does not render JavaScript, crawl the site, fetch robots.txt, check rankings or verify that Google indexed the page. Robots directives are reported as observed; crawler-specific policies still need interpretation.

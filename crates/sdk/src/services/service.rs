@@ -72,6 +72,8 @@ pub struct TemplateSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published: Option<bool>,
     pub name: String,
     pub digest: String,
     pub version: String,

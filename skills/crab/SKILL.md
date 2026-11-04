@@ -39,7 +39,9 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - An optional `logo = "https://example.com/logo.svg"` in `crab.toml` names the service logo. It must be an absolute HTTPS URL; build and host validation do not fetch it. The logo stays with the image and template copies, and is not inherited from linked libraries.
 - `public` exposes a Cloud deployment; `template` publishes its image for other accounts to deploy. Both default to `false`, independently of each tool's `access`.
 - `crab publish [dir]` publishes or withdraws templates selected by directory or `-p`, including services marked `deploy = false`, without running instances. For example, `crab publish services/connect` selects that catalog without a catalog-level `crab.toml`. `crab deploy --from owner/name` creates a private copy without a local build, with its own credentials and state. Existing copies keep their version until upgraded.
+- `web/seo` and `web/markdown` are configured as public services without templates. Deploy them with `crab deploy`; `crab publish` alone does not start them.
 - The `connect`, `agents`, `web` and `ops` catalog directories match the intended publisher orgs. Select the account explicitly, such as `crab --org web publish services/web`; the directory does not select an org.
+- A signed-in account owner can delete a template and its retained versions from the account page’s Templates actions menu, or through `DELETE /services/{owner}/{name}/template`. Running services and existing copies remain. Withdrawing with `template = false` retains the versions.
 - Images upload to the selected host by default. A context registry or `--registry` selects OCI publication instead; `image` is not a `crab.toml` key.
 
 ## Calling another account's service

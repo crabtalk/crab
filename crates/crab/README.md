@@ -149,6 +149,8 @@ Images upload to the selected host by default. `crab context add local http://lo
 
 `crab deploy --from owner/name` creates a private copy of a published template without building it locally. The copy has its own credentials and state.
 
+An account owner can delete a template and all retained versions from the account page’s Templates actions menu. Running services and existing copies remain. Deletion requires a signed-in owner session; withdrawing with `template = false` retains the versions.
+
 ## License
 
 AGPL-3.0-only
