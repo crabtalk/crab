@@ -17,44 +17,53 @@ budget = { cpu = 100000, read = 1000000, written = 1000000, memory = 16 }
 [tools.add_site]
 access = "public"
 title = "Add website"
+catalog = "web.analytics.add_site"
 budget = { cpu = 100000, read = 500000, written = 2, memory = 16 }
 
 [tools.sites]
 access = "public"
 title = "List websites"
+catalog = "web.analytics.sites"
 budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
 
 [tools.remove_site]
 access = "public"
 title = "Remove website"
+catalog = "web.analytics.remove_site"
 budget = { cpu = 100000, read = 500000, written = 1000000, memory = 16 }
 
 [tools.record]
 access = "anonymous"
 title = "Record page view"
+catalog = "web.analytics.record"
 budget = { cpu = 100000, read = 500000, written = 20, memory = 16 }
 
 [tools.days]
 access = "public"
 title = "Daily analytics"
+catalog = "web.analytics.days"
 budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
 
 [tools.pages]
 access = "public"
 title = "Popular pages"
+catalog = "web.analytics.pages"
 budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
 
 [tools.sources]
 access = "public"
 title = "Referring websites"
+catalog = "web.analytics.sources"
 budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
 
 [tools.crawlers]
 access = "public"
 title = "AI crawler requests"
+catalog = "web.analytics.crawlers"
 budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }
 
 [tools.events]
 access = "public"
 title = "Recorded page views"
+catalog = "web.analytics.events"
 budget = { cpu = 100000, read = 500000, written = 1, memory = 16 }

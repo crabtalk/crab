@@ -20,29 +20,35 @@ budget = { cpu = 100000, read = 200000, written = 25000, memory = 16 }
 [tools.watch]
 access = "public"
 title = "Watch URL"
+catalog = "uptime.watch"
 budget = { cpu = 100000, read = 20000, written = 5000, memory = 16 }
 
 [tools.unwatch]
 access = "public"
 title = "Remove monitor"
+catalog = "uptime.unwatch"
 budget = { cpu = 100000, read = 20000, written = 5000, memory = 16 }
 
 [tools.monitors]
 access = "public"
 title = "List monitors"
+catalog = "uptime.monitors"
 budget = { cpu = 100000, read = 20000, written = 5000, memory = 16 }
 
 [tools.check]
 access = "public"
 title = "Check now"
+catalog = "uptime.check"
 budget = { cpu = 100000, read = 20000, written = 5000, memory = 16 }
 
 [tools.history]
 access = "public"
 title = "Read uptime history"
+catalog = "uptime.history"
 budget = { cpu = 100000, read = 20000, written = 5000, memory = 16 }
 
 [tools.status]
 access = "anonymous"
 title = "Service status"
+catalog = "uptime.status"
 budget = { cpu = 100000, read = 20000, written = 5000, memory = 16 }

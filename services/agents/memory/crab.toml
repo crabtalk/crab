@@ -11,19 +11,23 @@ size = "64MiB"
 [tools.put]
 access = "public"
 title = "Save memory"
+catalog = "memory.put"
 budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
 
 [tools.get]
 access = "public"
 title = "Read memory"
+catalog = "memory.get"
 budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
 
 [tools.search]
 access = "public"
 title = "Search memories"
+catalog = "memory.search"
 budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
 
 [tools.delete]
 access = "public"
 title = "Delete memory"
+catalog = "memory.delete"
 budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }

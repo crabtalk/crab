@@ -84,6 +84,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | Writing a service README for crab.talk | `services/README-guide.md` |
 | Linking service libraries | https://crab.talk/docs/development/reuse |
 | A service or library's API and setup | `services/{connect,agents,web,ops}/<name>/README.md`, or `services/kits/<name>/README.md` for a library |
+| Classifying tools for discovery and choosing catalog jobs | https://crab.talk/docs/guides/catalog |
 | Building a service from OpenAPI | https://crab.talk/docs/development/openapi; macro reference: `crates/openapi/README.md` |
 
 ## A local crab checkout

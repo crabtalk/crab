@@ -13,6 +13,8 @@ The catalog directory matches its intended publisher org: `connect`, `agents`, `
 
 Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. Stateful services may require a private copy; each service documents its setup and state ownership.
 
+Tools declare their discovery classification with `catalog` in `crab.toml`. See the [Service catalog guide](https://crab.talk/docs/guides/catalog) for categories, platform prefixes and job names.
+
 Library-only packages live under [services/kits](kits/) and are listed in [crabkit](../crates/crabkit/README.md).
 
 `crab build` operates on one service directory. `crab deploy [dir]` and `crab publish [dir]` also accept a catalog directory, selecting only its descendant services; the directory defaults to `.`. For example, run `crab publish services/connect` from the repository root or `crab publish` inside `services/connect`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
