@@ -13,4 +13,4 @@ fetch = ["*"]
 access = "public"
 title = "Read webpage"
 catalog = "web.scrape"
-budget = { cpu = 500000, memory = 64 }
+budget = { cpu = 60_000, read = 1, written = 1, memory = 12 }

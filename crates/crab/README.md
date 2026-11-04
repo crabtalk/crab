@@ -143,6 +143,16 @@ Local MCP clients can send `x-berm-caller: {"id":"alice"}` on requests to `/mcp`
 
 A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the service, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
 
+## Benchmarking
+
+```sh
+crab bench services/web/markdown read --cases cases.jsonl --runs 10
+```
+
+`bench DIRECTORY TOOL` builds and runs JSON Lines workloads on a temporary local host. Cases supply argument objects and HTTP responses, including headers, body files and optional response delays. Each case starts with a fresh migrated database; repetitions share its state. `--live-http` sends real requests instead of fixtures. The command uploads nothing.
+
+The report separates the tool's own CPU, rows and peak memory from whole-chain cost, prices with the selected Cloud's rates, and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. `--json` gives structured measurements, and `--offline` uses labeled SDK default rates. [Case format and limits](https://crab.talk/docs/guides/bench).
+
 ## Publication and images
 
 `public` exposes your Cloud deployment; `template` publishes its image so others can deploy private copies. Both default to `false`. `crab publish` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab publish services/connect` selects only that catalog; running `crab publish` inside it selects the same services. No catalog-level `crab.toml` is needed.

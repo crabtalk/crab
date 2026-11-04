@@ -1,4 +1,5 @@
 use anyhow::Result;
+use berm_host::Denied;
 use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
@@ -92,6 +93,8 @@ enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
+    /// Build and measure local WebAssembly workloads in a temporary host.
+    Bench(cmd::bench::Bench),
     /// Build services and deploy each as its `crab.toml` names it, replacing
     /// whatever holds the name, and serve it: the service in the selected
     /// directory, or services beneath it not saying `deploy = false`. On
@@ -543,11 +546,16 @@ fn main() -> ExitCode {
         Err(e) => e,
     };
     eprintln!("Error: {e:?}");
-    let refusal = e.chain().find_map(|cause| match cause.downcast_ref() {
-        Some(Error::Api {
+    let refusal = e.chain().find_map(|cause| {
+        if let Some(Error::Api {
             explain, request, ..
-        }) => Some((explain, request)),
-        _ => None,
+        }) = cause.downcast_ref()
+        {
+            return Some((explain.as_deref(), request.as_deref()));
+        }
+        cause
+            .downcast_ref::<Denied>()
+            .map(|denied| (denied.explain, None))
     });
     if let Some((_, Some(request))) = refusal {
         eprintln!(
@@ -633,6 +641,7 @@ fn run() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
+        Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
         Command::Deploy(deploy) => cmd::deploy::run(
             &client()?,
             deploy,

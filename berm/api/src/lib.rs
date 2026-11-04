@@ -182,6 +182,19 @@ pub struct Budget {
     pub memory: u64,
 }
 
+impl Budget {
+    pub fn past(&self, most: &Self) -> Option<&'static str> {
+        [
+            ("cpu", self.cpu, most.cpu),
+            ("read", self.read, most.read),
+            ("written", self.written, most.written),
+            ("memory", self.memory, most.memory),
+        ]
+        .into_iter()
+        .find_map(|(key, value, most)| (value > most).then_some(key))
+    }
+}
+
 /// A tool's `budget` in its `crab.toml`: CPU time in microseconds, rows read,
 /// rows written, and memory in MiB. A key left out takes the host's.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -199,6 +212,22 @@ pub struct Limits {
 }
 
 impl Limits {
+    /// Memory is measured in bytes and returned in MiB. Host ceilings are not applied.
+    pub fn for_usage(
+        cpu: Option<u64>,
+        read: Option<u64>,
+        written: Option<u64>,
+        memory: u64,
+    ) -> Self {
+        let fit = |value: u64| value.saturating_add(value.div_ceil(2)).max(1);
+        Self {
+            cpu: cpu.map(fit),
+            read: read.map(fit),
+            written: written.map(fit),
+            memory: Some(((u128::from(memory) * 3).div_ceil(2 << 20) as u64).max(1)),
+        }
+    }
+
     /// `budget` with each key this sets in its place.
     pub fn over(&self, budget: Budget) -> Budget {
         Budget {

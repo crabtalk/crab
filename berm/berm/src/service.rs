@@ -110,7 +110,7 @@ impl Service {
         }
 
         for (name, tool) in &tools {
-            if let Some(key) = engine::past(&tool.budget, &compiled.most) {
+            if let Some(key) = tool.budget.past(&compiled.most) {
                 return Err(engine::PastMost {
                     tool: name.clone(),
                     key,

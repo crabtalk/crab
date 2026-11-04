@@ -86,6 +86,17 @@ impl Default for Config {
     }
 }
 
+impl Config {
+    pub fn most(&self) -> Budget {
+        Budget {
+            cpu: self.cpu.as_micros() as u64,
+            read: self.read,
+            written: self.written,
+            memory: self.memory as u64,
+        }
+    }
+}
+
 /// A compilation target, shared by every service a runtime holds.
 ///
 /// Cheap to clone; each compiled image keeps its own handle.
@@ -130,13 +141,8 @@ impl Engine {
         tick(&engine);
         let reserve = Arc::new(Pool::default());
         reserve.limit(config.reserved);
-        let most = Budget {
-            cpu: config.cpu.as_micros() as u64,
-            read: config.read,
-            written: config.written,
-            memory: config.memory as u64,
-        };
-        if let Some(key) = past(&config.budget, &most) {
+        let most = config.most();
+        if let Some(key) = config.budget.past(&most) {
             bail!("the default budget's {key} is past the most one invocation may use");
         }
         Ok(Self {
@@ -427,18 +433,6 @@ fn memory(caller: &mut Caller<'_, Invocation>) -> Result<Memory> {
         .context("service exports no memory")?;
     caller.data_mut().memory = Some(memory);
     Ok(memory)
-}
-
-/// The first key of `budget` past `most`, by name.
-pub(crate) fn past(budget: &Budget, most: &Budget) -> Option<&'static str> {
-    [
-        ("cpu", budget.cpu, most.cpu),
-        ("read", budget.read, most.read),
-        ("written", budget.written, most.written),
-        ("memory", budget.memory, most.memory),
-    ]
-    .into_iter()
-    .find_map(|(key, value, most)| (value > most).then_some(key))
 }
 
 /// A deploy refused for a tool whose budget sets `key` past the most one

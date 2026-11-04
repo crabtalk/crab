@@ -19,6 +19,7 @@ use crate::{
     Installed,
     api::outside::Layers,
     env::{Alone, Clock, Edges},
+    fixture::Http,
     host::{self, Host},
     state::service,
     wake::table,
@@ -30,7 +31,6 @@ use berm::{
         http::{Request, Response},
         sql::Statement,
     },
-    tape::Taping,
 };
 use berm_api::{
     Logged, Output, digest,
@@ -39,14 +39,12 @@ use berm_api::{
 use parking_lot::Mutex;
 use std::{
     collections::HashMap,
-    future::Future,
     path::{Path, PathBuf},
-    pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    task::{self, Poll},
+    time::Duration,
 };
 use tokio::sync::MutexGuard;
 
@@ -63,7 +61,7 @@ pub struct Test;
 pub struct TestHost {
     /// The host itself, for what this does not wrap.
     pub host: Host<Test>,
-    fetch: Arranged,
+    fetch: Http,
     images: Given,
     secrets: Granted,
     clock: Manual,
@@ -76,7 +74,7 @@ pub struct TestHost {
 async fn opened(
     dir: &Path,
     config: &crate::Config,
-    fetch: &Arranged,
+    fetch: &Http,
     images: &Given,
     secrets: &Granted,
     clock: &Manual,
@@ -152,7 +150,7 @@ impl TestHost {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
-        let (fetch, images, secrets) = (Arranged::default(), Given::default(), Granted::default());
+        let (fetch, images, secrets) = (Http::default(), Given::default(), Granted::default());
         let clock = Manual(Arc::new(AtomicU64::new(now)));
         let host = opened(
             &dir,
@@ -195,19 +193,21 @@ impl TestHost {
 
     /// Answer `method` on `url` with `status` and `body`, from now on.
     pub fn arrange(&self, method: &str, url: &str, status: u16, body: impl Into<Vec<u8>>) {
-        self.fetch.0.lock().answers.insert(
-            (method.to_owned(), url.to_owned()),
+        self.fetch.respond(
+            method,
+            url,
             Response {
                 status,
                 headers: Vec::new(),
                 body: body.into(),
             },
+            Duration::ZERO,
         );
     }
 
     /// Every request sent so far, in order, with its secrets substituted.
     pub fn fetched(&self) -> Vec<Request> {
-        self.fetch.0.lock().sent.clone()
+        self.fetch.fetched()
     }
 
     /// Grant `service` the secret `secret` for `host`.
@@ -430,22 +430,9 @@ impl TestHost {
         user: Option<User>,
         client: Client,
     ) -> Result<Ran> {
-        let deployed = self
-            .host
-            .get(service)
-            .with_context(|| format!("no service named {service:?} is deployed"))?;
         let invoked = self
             .host
-            .invoke(
-                &deployed,
-                self.host.calls.start().id,
-                None,
-                user,
-                client,
-                tool,
-                args.to_vec(),
-                Taping::Off,
-            )
+            .execute(service, tool, args.to_vec(), None, user, client)
             .await?;
         Ok(Ran {
             result: invoked.result,
@@ -587,50 +574,6 @@ impl Drop for TestHost {
 pub fn build(package: &str) -> Result<Vec<u8>> {
     let image = berm_build::build(&std::env::current_dir()?, Some(package))?;
     std::fs::read(&image).with_context(|| format!("reading {}", image.display()))
-}
-
-/// Answers what the test arranged, by method and URL, and refuses the rest.
-#[derive(Clone, Default)]
-pub struct Arranged(Arc<Mutex<Fetches>>);
-
-#[derive(Default)]
-struct Fetches {
-    answers: HashMap<(String, String), Response>,
-    sent: Vec<Request>,
-}
-
-impl tower::Service<Request> for Arranged {
-    type Response = Response;
-    type Error = anyhow::Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Response>> + Send>>;
-
-    fn poll_ready(&mut self, _: &mut task::Context<'_>) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, request: Request) -> Self::Future {
-        let mut fetches = self.0.lock();
-        let answer = match fetches
-            .answers
-            .get(&(request.method.clone(), request.url.clone()))
-        {
-            Some(response) => Ok(Response {
-                status: response.status,
-                headers: response.headers.clone(),
-                body: response.body[..request
-                    .limit
-                    .map_or(response.body.len(), |limit| limit.min(response.body.len()))]
-                    .to_vec(),
-            }),
-            None => Err(anyhow::anyhow!(
-                "no response arranged for {} {}",
-                request.method,
-                request.url
-            )),
-        };
-        fetches.sent.push(request);
-        Box::pin(std::future::ready(answer))
-    }
 }
 
 /// The images the test deployed, by digest.

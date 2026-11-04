@@ -47,11 +47,9 @@ use tokio::{
 use tower::Layer;
 
 pub use deploy::Installed;
-pub(crate) use invoke::Invoked;
 
 mod deploy;
 mod fetch;
-mod invoke;
 mod nest;
 mod set;
 

@@ -49,7 +49,7 @@ cargo nextest run --release -p crab-contextdev
 crab build services/connect/contextdev
 ```
 
-Before publishing or requesting deployment, profile the built WebAssembly image on the local host with representative and largest supported workloads, including error paths. Add headroom, check every budget key against the destination host's ceilings, then rebuild and repeat the workload under the chosen budgets. Native tests and image builds do not establish valid runtime budgets; `crab budget` suggestions do not check ceilings. See [Sizing a budget](https://crab.talk/docs/guides/budgets#size-a-budget-before-deployment).
+Before publishing or requesting deployment, use `crab bench <service-directory> <tool> --cases cases.jsonl --runs 10` ([case format](https://crab.talk/docs/guides/bench)) to profile the built WebAssembly image with representative and largest supported workloads, including error paths. Add headroom, check every budget key against the destination host's ceilings, then rebuild and repeat the workload under the chosen budgets. Native tests and image builds do not establish valid runtime budgets; `crab budget` suggestions do not check ceilings. See [Sizing a budget](https://crab.talk/docs/guides/budgets#size-a-budget-before-deployment).
 
 `cargo nextest run --workspace --release` includes every package. Generator Wasm export and schema coverage lives in `crab-openapi` with a local fixture.
 

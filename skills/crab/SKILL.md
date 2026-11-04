@@ -21,8 +21,8 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 ## Sizing tool budgets
 
-1. Define and enforce supported input bounds, including response sizes, batch counts, parser complexity and database size. Deploy locally with a provisional budget within the destination's ceilings; exercise representative and worst-case workloads repeatedly, including error paths. Use `crab --context default call <service> <tool> '<arguments>'` or real-host tests with arranged HTTP responses.
-2. Read CPU, rows and peak linear memory from the run. CLI CPU is in microseconds and memory in KiB; `crab.toml` memory is in MiB. Start with `ceil(1.5 × maximum)` per key, at least `1`. A budget-stopped run does not measure the work needed to finish. CLI and host-test meters include nested calls; exercise called tools separately too.
+1. Define and enforce supported input bounds, including response sizes, batch counts, parser complexity and database size. Deploy locally with a provisional budget within the destination's ceilings; exercise representative and worst-case workloads repeatedly, including error paths. Use `crab bench <directory> <tool> --cases cases.jsonl --runs 10`, with representative and largest supported inputs and arranged HTTP responses; the [benchmark guide](https://crab.talk/docs/guides/bench) defines the JSON Lines format. `delay_ms` on a response accounts for memory held while waiting; `--live-http` executes real requests on every repetition.
+2. Read the benchmark's own-tool CPU, rows and peak linear memory. CPU is in microseconds and memory in bytes; `crab.toml` memory is in MiB. Start with `ceil(1.5 × maximum)` per key, at least `1`. A budget-stopped run does not measure the work needed to finish. `crab call` and host-test meters include nested calls; `crab bench` separates own usage from chain cost. Exercise called tools separately too.
 3. Check every value against the destination host. Default ceilings are `cpu = 100_000` (100 ms), `read = 1_000_000`, `written = 1_000_000`, `memory = 128`. `cpu = 500_000` is 500 ms and is refused by a default host. Omitted keys use defaults: the ceilings above except `written = 10_000`. Raising the local CPU ceiling does not change Cloud's.
 4. Write the budget, rebuild, redeploy locally and repeat the workload before requesting Cloud approval or publishing. If it cannot fit with headroom, reduce resource use or supported input bounds; use batching or pagination when the operation supports them. Do not just lower the declaration.
 
@@ -92,6 +92,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | Every `berm_lang` function and type, with its signature | https://crab.talk/docs/development/api |
 | Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crab.talk/docs/development, as `/docs/development/http` |
 | `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[http]`, secrets, credentials, libraries | https://crab.talk/docs/development/crab-toml |
+| `crab bench`, JSON Lines workloads, HTTP fixtures and local cost estimates | https://crab.talk/docs/guides/bench |
 | Budget units, measurement, headroom, host ceilings and E0013 | https://crab.talk/docs/guides/budgets |
 | `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/guides/local |
 | Deploying to Cloud, images and registries | https://crab.talk/docs/guides/deploy |
@@ -115,8 +116,8 @@ Read these before writing code. Paths are relative to the crab repository.
   crabkit-auth = { path = "../crab/services/kits/auth" }
   ```
 
-- Run Rust tests with `cargo nextest run`; the Crab workspace requires nextest 0.9.98 or newer, and its CI uses `cargo nextest run --workspace --release`. Tests belong in each crate's `tests/` directory.
-- Workspace Wasm behavior tests read `berm_build::fixture::image(package)`. Register each image and its consuming tests in `.config/nextest.toml`; setup scripts build selected images before tests run. Only tests of the builder or CLI build behavior should compile inside a test.
+- Run Rust tests with `cargo nextest run`; the Crab workspace requires nextest 0.9.98 or newer, and its CI uses `cargo nextest run --release`. Tests belong in each crate's `tests/` directory.
+- Workspace Wasm behavior tests read `berm_build::fixture::image(package)`. Register images in `berm/build/examples/prepare.rs`; one Nextest setup builds the full test-image set before tests run, including focused runs. Test names need no configuration. Only tests of the builder or CLI build behavior should compile inside a test.
 - Update affected READMEs, examples, website guides and this skill alongside behavior or layout changes.
 - What a service needs from berm or a library and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.
 - To check a fix against a failed call's tape, run `crab replay <service> <id> --build` in the service crate. It builds locally, prints both digests, and reaches no live services. `--build` and `--on` exclude each other.
