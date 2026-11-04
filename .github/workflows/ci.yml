@@ -7,6 +7,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check changelog contains the current version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -er '.packages[] | select(.name == "crab-agent") | .version')
+          if ! .github/scripts/release-notes "$version" > /dev/null; then
+            echo "::error file=changelog.json::Add a changelog entry for crab-agent $version before merging."
+            exit 1
+          fi
+
   test:
     env:
       RUSTFLAGS: -D warnings
