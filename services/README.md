@@ -36,7 +36,7 @@ crab deploy
 
 Choose a service directory from a catalog, such as `services/connect/github` or `services/ops/uptime`. `crab deploy` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
 
-For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and pass `--caller alice` when calling a public tool. See [local development](https://crab.talk/docs/guides/local).
+For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crab.talk/docs/guides/local).
 
 ## Checking changes
 

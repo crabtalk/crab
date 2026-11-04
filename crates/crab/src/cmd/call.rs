@@ -1,13 +1,13 @@
 //! `crab call` — call one of a service's tools.
 
 use crate::{format, runtime};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use berm_api::{
     Output,
     host::{Caller, User},
 };
 use clap::Args;
-use crabtalk_sdk::client::Client;
+use crabtalk_sdk::client::{self, Client};
 use std::{
     io::{IsTerminal, Read},
     process::ExitCode,
@@ -26,12 +26,15 @@ pub struct Call {
     pub tool: String,
     /// The argument object. Read from stdin when omitted.
     pub arguments: Option<String>,
-    /// On the local host, the caller the service is told called it.
+    /// On the local host, override the default caller `local`.
     #[arg(long)]
     pub caller: Option<String>,
+    /// On the local host, call without a caller.
+    #[arg(long, conflicts_with_all = ["caller", "issuer", "user"])]
+    pub anonymous: bool,
     /// On the local host, the end user's issuer the service is told it is
     /// called for.
-    #[arg(long, requires = "user", requires = "caller")]
+    #[arg(long, requires = "user")]
     pub issuer: Option<String>,
     /// On the local host, the end user's subject the service is told it is
     /// called for.
@@ -39,20 +42,38 @@ pub struct Call {
     pub user: Option<String>,
 }
 
-/// Call the tool `call` names, as the caller it names, priced at `cloud`'s
-/// rates.
+impl Call {
+    pub fn caller(&self, client: &Client) -> Result<Option<Caller>> {
+        if client.owner.is_some() {
+            ensure!(
+                !self.anonymous
+                    && self.caller.is_none()
+                    && self.issuer.is_none()
+                    && self.user.is_none(),
+                "caller identity flags are only available on the local host; Cloud uses your credential"
+            );
+            return Ok(None);
+        }
+        Ok((!self.anonymous).then(|| Caller {
+            id: self
+                .caller
+                .clone()
+                .unwrap_or_else(|| client::LOCAL.to_owned()),
+            app: None,
+            user: self
+                .issuer
+                .clone()
+                .zip(self.user.clone())
+                .map(|(issuer, subject)| User { issuer, subject }),
+            client: None,
+            agent: None,
+        }))
+    }
+}
+
+/// Call the tool `call` names, priced at `cloud`'s rates.
 pub fn run(client: &Client, cloud: &Client, call: &Call) -> Result<ExitCode> {
-    let caller = call.caller.as_ref().map(|id| Caller {
-        id: id.clone(),
-        app: None,
-        user: call
-            .issuer
-            .clone()
-            .zip(call.user.clone())
-            .map(|(issuer, subject)| User { issuer, subject }),
-        client: None,
-        agent: None,
-    });
+    let caller = call.caller(client)?;
     tool(
         client,
         cloud,
