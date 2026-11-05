@@ -2,9 +2,9 @@ use berm_lang::{
     Result,
     http::{self, Response},
 };
-use html5ever::{driver, tendril::TendrilSink};
+use html5ever::{driver, ns, tendril::TendrilSink};
 use lol_html::{HtmlRewriter, Settings, element};
-use scraper::{Html, HtmlTreeSink, Node, Selector};
+use scraper::{ElementRef, Html, HtmlTreeSink, Node, Selector};
 use std::collections::BTreeSet;
 use url::Url;
 
@@ -89,9 +89,18 @@ impl Page {
         unreachable!()
     }
 
-    pub fn title(&self) -> Option<String> {
+    pub fn titles(&self) -> impl Iterator<Item = ElementRef<'_>> {
         self.document
-            .select(&Selector::parse("title").expect("static selector"))
+            .tree
+            .nodes()
+            .filter_map(ElementRef::wrap)
+            .filter(|element| {
+                element.value().name() == "title" && element.value().name.ns == ns!(html)
+            })
+    }
+
+    pub fn title(&self) -> Option<String> {
+        self.titles()
             .next()
             .map(|element| element.text().collect::<String>().trim().to_owned())
             .filter(|title| !title.is_empty())

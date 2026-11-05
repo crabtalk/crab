@@ -113,3 +113,52 @@ fn uses_the_shared_page_complexity_limit() {
             .contains("HTML node limit")
     );
 }
+
+#[test]
+fn svg_titles_are_not_page_titles() {
+    for (head, expected, missing) in [
+        ("<title>Page</title>", Some("Page"), false),
+        ("", None, true),
+    ] {
+        page(
+            &format!(
+                "<html><head>{head}</head><body><svg><title>Icon</title></svg><svg><title>Another icon</title></svg></body></html>"
+            ),
+            &[],
+        );
+        let report = tools::check("https://example.com/page".into()).unwrap();
+        assert_eq!(report.title.as_deref(), expected);
+        assert_eq!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == Code::MissingTitle),
+            missing
+        );
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.code == Code::MultipleTitles)
+        );
+    }
+}
+
+#[test]
+fn duplicate_html_titles_are_still_reported() {
+    page(
+        "<head><title>First</title><title>Second</title></head><body><svg><title>Icon</title></svg></body>",
+        &[],
+    );
+    let report = tools::check("https://example.com/page".into()).unwrap();
+    assert_eq!(report.title.as_deref(), Some("First"));
+    let finding = report
+        .findings
+        .iter()
+        .find(|finding| finding.code == Code::MultipleTitles)
+        .unwrap();
+    assert_eq!(
+        finding.message,
+        "The returned HTML contains 2 title elements."
+    );
+}
