@@ -3,7 +3,10 @@
 //! as them, approve a deploy, verify on GitHub, or let an API key spend.
 
 use crate::{
-    account::{key::KeyService, org::PublicAccount},
+    account::{
+        key::{CreateKeyRequest, KeyService},
+        org::PublicAccount,
+    },
     services::service::DeployRequest,
 };
 use berm_api::{Credential, Deployed, Manifest};
@@ -204,6 +207,12 @@ pub struct Request {
     /// What a grant request asks for its key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<Access>,
+    /// The dedicated key's settings, reviewed when authorizing a client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorization: Option<CreateKeyRequest>,
+    /// The issued key, absent until the client exchanges its code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
 }
 
 /// What a grant request asks for one API key, beside what the key holds now.
@@ -323,6 +332,13 @@ pub struct SecretValues {
     pub values: BTreeMap<String, String>,
 }
 
+/// Ask for a dedicated agent key at `POST /requests/login`.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentLoginRequest {
+    pub client_name: String,
+}
+
 /// A sign-in request a device made, at `POST /requests/login`: RFC 8628's
 /// device authorization response.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -348,12 +364,14 @@ pub struct DeviceTokenRequest {
     pub device_code: String,
 }
 
-/// The session an approved sign-in opens, answered to the first poll after
-/// approval.
+/// The credential issued to the first poll after approval.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceToken {
     pub token: String,
+    /// The account an agent key acts for. Personal sessions omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<PublicAccount>,
 }
 
 /// RFC 8628's error codes a poll answers, in [`Error::Api`]'s `code`.

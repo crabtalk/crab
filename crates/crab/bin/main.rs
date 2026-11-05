@@ -47,11 +47,11 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
-        /// Print a code for a person to approve at `/device` in place of
-        /// opening a browser here, as when none opens.
+        /// Request a dedicated agent key through browser approval at `/device`.
+        /// Also used when no browser opens here.
         #[arg(long, conflicts_with = "github")]
         device: bool,
-        /// The context to keep the session as.
+        /// The context to keep the credential as.
         #[arg(long, default_value = "cloud")]
         name: String,
     },
