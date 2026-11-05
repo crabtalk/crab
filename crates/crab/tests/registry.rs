@@ -42,6 +42,9 @@ async fn a_context_registry_deploys_to_a_local_node_and_survives_restart() {
         registry: None,
         force: false,
         from: None,
+        version: None,
+        auto_upgrade: false,
+        notes: None,
         copy: Vec::new(),
     };
     tokio::task::spawn_blocking(move || {

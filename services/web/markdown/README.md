@@ -14,18 +14,8 @@ Returns the final URL, title, description, selected HTML region and Markdown. Yo
 
 The reader prefers the first main region, then the first article, then the body. It removes navigation, scripts, styles, footers, sidebars and forms. Relative links and image sources resolve against the page's base URL. HTTP(S), mail and telephone links are retained.
 
-## Deploy your own
-
-If this page offers **Deploy your own**, deploy a copy without a local build:
-
-```sh
-crab deploy --from owner/markdown
-```
-
-No credentials or settings are required. Calls use the selected deployment's execution allowance.
-
 ## Limits
 
-Fetches server-returned UTF-8 HTML, without JavaScript execution, browser login or PDF parsing. Each request has a ten-second timeout; at most three redirects are followed. HTML over 512 KiB, extracted Markdown over 128 KiB, unsupported content types and unsuccessful HTTP responses fail explicitly. A page requiring JavaScript may return incomplete content or no readable content.
+Fetches server-returned UTF-8 HTML, without JavaScript execution, browser login or PDF parsing. Each request has a ten-second timeout; at most three redirects are followed. HTML over 512 KiB, extracted Markdown over 128 KiB, unsupported content types and unsuccessful HTTP responses fail explicitly. HTML complexity is bounded to 12,000 DOM nodes, 12,000 start tags, 12,000 total attributes, depth 128 and 128 attributes per element. A page requiring JavaScript may return incomplete content or no readable content.
 
 [Source deployment](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/dev/services/web/markdown/LIBRARY.md)

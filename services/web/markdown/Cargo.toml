@@ -18,6 +18,8 @@ tools = []
 
 [dependencies]
 berm-lang = { workspace = true, features = ["std"] }
+html5ever.workspace = true
+lol_html.workspace = true
 htmd.workspace = true
 scraper.workspace = true
 url.workspace = true

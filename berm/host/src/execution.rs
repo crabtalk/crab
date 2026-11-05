@@ -1,12 +1,39 @@
 //! Running a tool as the first link of a chain.
 
 use crate::{env::Env, host::Host};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use berm::{ByTool, Client, Meter, Meters, Service, User, chain, tape::Taping};
 use berm_api::{Output, host::NestedCall};
 use std::sync::Arc;
 
 impl<E: Env> Host<E> {
+    /// Direct execution bypasses outside-call admission and retains runtime errors.
+    /// The embedder supplies and verifies the caller identity.
+    pub async fn execute(
+        &self,
+        service: &str,
+        tool: &str,
+        args: Vec<u8>,
+        caller: Option<&str>,
+        user: Option<User>,
+        client: Client,
+    ) -> Result<Invoked> {
+        let deployed = self
+            .get(service)
+            .with_context(|| format!("no service named {service:?} is deployed"))?;
+        self.invoke(
+            &deployed,
+            self.calls.start().id,
+            caller,
+            user,
+            client,
+            tool,
+            args,
+            Taping::Off,
+        )
+        .await
+    }
+
     /// Run `tool` on `service` as the first link of a chain, as call `call`,
     /// and commit what it wrote. A writing call into a service with a database
     /// commits that database when it returns. What the chain emits is kept
@@ -84,13 +111,13 @@ impl<E: Env> Host<E> {
 }
 
 /// How a call ended.
-pub(crate) struct Invoked {
+pub struct Invoked {
     pub result: Output,
     /// The tool refused its caller; `result` is then [`Output::Failed`].
     pub denied: bool,
     /// What the chain used, over every service it reached.
     pub meter: Meter,
-    /// What the tool's own invocation used, as its budget counts it.
+    /// This service's usage across its invocations in the chain.
     pub own: Meter,
     /// The calls the run made past its first, on this host.
     pub nested: Arc<[NestedCall]>,

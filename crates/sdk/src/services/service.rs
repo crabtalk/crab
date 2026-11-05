@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 /// uploaded through `POST /services/{owner}/{name}/image`, named by its digest,
 /// `sha256:` and its SHA-256 in hex.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeployRequest {
     pub reference: String,
@@ -22,6 +22,10 @@ pub struct DeployRequest {
     pub template: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<TemplateSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_upgrade: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_notes: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub create: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -72,6 +76,8 @@ pub struct TemplateSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published: Option<bool>,
     pub name: String,
     pub digest: String,
     pub version: String,
@@ -86,6 +92,8 @@ pub struct Template {
     pub name: String,
     pub digest: String,
     pub manifest: berm_api::Manifest,
+    #[serde(default)]
+    pub yanked: bool,
     /// Existing service copies across all versions, stopped services included.
     #[serde(default)]
     pub deployments: u64,
@@ -99,6 +107,45 @@ pub struct Terms {
     pub tools: BTreeMap<String, ToolTerms>,
     /// Milliseconds a chain of calls runs before the host stops it.
     pub deadline: u64,
+}
+
+/// A published version's identity remains after its image is pruned.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateRelease {
+    pub version: String,
+    pub digest: String,
+    pub created_at: i64,
+    pub notes: Option<String>,
+    pub available: bool,
+    pub yanked: bool,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpgradePolicy {
+    pub enabled: bool,
+    pub last_attempt: Option<i64>,
+    pub target: Option<String>,
+    pub last_error: Option<String>,
+    pub explain: Option<String>,
+}
+
+impl UpgradePolicy {
+    pub fn accepts(&self, current: &str, next: &str) -> bool {
+        let (Ok(next), Ok(current)) = (
+            next.parse::<semver::Version>(),
+            current.parse::<semver::Version>(),
+        ) else {
+            return false;
+        };
+        self.enabled
+            && next.pre.is_empty()
+            && current.pre.is_empty()
+            && next.major == current.major
+            && next.minor == current.minor
+            && next.patch > current.patch
+    }
 }
 
 /// What one call of a tool is held to, and what it costs its caller.
@@ -366,10 +413,10 @@ pub struct ToolCosted {
     /// What its runs use; none before one ended `done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate: Option<Estimate>,
-    /// A budget that fits its runs: 1.5× the CPU time, rows read and rows
-    /// written of its slowest run that ended `done`, and 1.5× the most linear
-    /// memory one of its own invocations reached in MiB, each rounded up;
-    /// none before one ran.
+    /// Suggested budget: 1.5× each CPU and row measure in `estimate.slow`
+    /// (nested calls included), and 1.5× its own peak linear memory in MiB,
+    /// rounded up. Host ceilings are not checked; none before memory was
+    /// recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fits: Option<berm_api::Limits>,
 }

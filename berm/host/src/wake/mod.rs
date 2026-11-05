@@ -4,7 +4,8 @@
 
 use crate::{
     env::{Env, Peers},
-    host::{self, Host, Inner, Invoked},
+    execution::Invoked,
+    host::{self, Host, Inner},
     record::calls,
 };
 use anyhow::{Result, bail};

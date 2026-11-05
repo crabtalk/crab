@@ -1,4 +1,5 @@
 pub mod app;
+pub mod bench;
 pub mod billing;
 pub mod budget;
 pub mod build;

@@ -15,7 +15,7 @@ pub fn variable(package: &str) -> String {
 /// Read the image prepared for `package`; never compile during a behavior test.
 pub fn image(package: &str) -> Result<Vec<u8>> {
     let path = env::var_os(variable(package)).with_context(|| {
-        format!("no prepared image for {package}; configure its nextest setup script")
+        format!("no prepared image for {package}; add it to berm/build/examples/prepare.rs")
     })?;
     fs::read(&path).with_context(|| format!("reading prepared image {}", path.to_string_lossy()))
 }

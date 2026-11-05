@@ -1,6 +1,6 @@
 name = "seo"
 public = true
-template = true
+template = false
 buffer = 1048576
 
 [database]
@@ -10,4 +10,4 @@ size = "1MiB"
 access = "public"
 title = "Check page SEO"
 catalog = "web.seo"
-budget = { cpu = 500000, memory = 64 }
+budget = { cpu = 50_000, read = 1, written = 1, memory = 8 }

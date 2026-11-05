@@ -5,7 +5,8 @@ use crate::{
     client::{Client, Error},
     services::service::{
         Billing, Costed, DeployRequest, DeploySetRequest, Deployment, MeteredDay, Secret,
-        SetSecret, Template, Terms, ToolCosted, Upload, UploadRequest, Visibility,
+        SetSecret, Template, TemplateRelease, Terms, ToolCosted, UpgradePolicy, Upload,
+        UploadRequest, Visibility,
     },
 };
 use berm_api::{
@@ -31,6 +32,51 @@ impl Client {
     pub async fn template(&self, name: &str) -> Result<Template, Error> {
         let path = format!("{}/template", self.path_of(name));
         self.json(self.at(Method::GET, &path)).await
+    }
+
+    pub async fn template_version(&self, name: &str, version: &str) -> Result<Template, Error> {
+        let path = format!("{}/template", self.path_of(name));
+        self.json(self.at(Method::GET, &path).query(&[("version", version)]))
+            .await
+    }
+
+    pub async fn template_releases(&self, name: &str) -> Result<Vec<TemplateRelease>, Error> {
+        let path = format!("{}/template/releases", self.path_of(name));
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    pub async fn yank_template(
+        &self,
+        name: &str,
+        version: &str,
+        yanked: bool,
+    ) -> Result<(), Error> {
+        let path = format!("{}/template/yank", self.service(name)?);
+        self.ok(self
+            .at(Method::PUT, &path)
+            .json(&serde_json::json!({"version": version, "yanked": yanked})))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn upgrade_policy(&self, name: &str) -> Result<UpgradePolicy, Error> {
+        let path = format!("{}/upgrades", self.service(name)?);
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    pub async fn set_upgrade_policy(&self, name: &str, enabled: bool) -> Result<(), Error> {
+        let path = format!("{}/upgrades", self.service(name)?);
+        self.ok(self
+            .at(Method::PUT, &path)
+            .json(&serde_json::json!({"enabled": enabled})))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_template(&self, name: &str) -> Result<(), Error> {
+        let path = format!("{}/template", self.service(name)?);
+        self.ok(self.at(Method::DELETE, &path)).await?;
+        Ok(())
     }
 
     pub async fn inspect(&self, name: &str) -> Result<Service, Error> {

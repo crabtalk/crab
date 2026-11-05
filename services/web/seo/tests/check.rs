@@ -101,3 +101,15 @@ fn reports_noindex_from_meta_and_bounds_heading_evidence() {
     assert_eq!(report.h1_count, 25);
     assert_eq!(report.h1.len(), 20);
 }
+
+#[test]
+fn uses_the_shared_page_complexity_limit() {
+    page(&"<p>x</p>".repeat(webpage::page::MAX_NODES), &[]);
+    assert!(
+        tools::check("https://example.com/page".into())
+            .err()
+            .unwrap()
+            .message
+            .contains("HTML node limit")
+    );
+}

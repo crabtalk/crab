@@ -4,7 +4,8 @@
 //! in `service_replays`, past its row.
 
 use crate::{
-    host::{self, Invoked},
+    execution::Invoked,
+    host,
     record::{
         flight::{Flight, Table, Taken, Unflushed},
         logs::Emitted,

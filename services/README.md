@@ -11,7 +11,7 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 
 The catalog directory matches its intended publisher org: `connect`, `agents`, `web` or `ops`. Select the publishing account explicitly; for example, `crab --org web publish services/web` on an authenticated Cloud context. A directory does not select an account automatically.
 
-Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. Stateful services may require a private copy; each service documents its setup and state ownership.
+Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. `web/seo` and `web/markdown` are configured as public services without templates. Each service documents its setup and state ownership.
 
 Tools declare their discovery classification with `catalog` in `crab.toml`. See the [Service catalog guide](https://crab.talk/docs/guides/catalog) for categories, platform prefixes and job names.
 
@@ -48,6 +48,8 @@ When changing or publishing a generated adapter, refetch and review its upstream
 cargo nextest run --release -p crab-contextdev
 crab build services/connect/contextdev
 ```
+
+Before publishing or requesting deployment, use `crab bench <service-directory> <tool> --cases cases.jsonl --runs 10` ([case format](https://crab.talk/docs/guides/bench)) to profile the built WebAssembly image with representative and largest supported workloads, including error paths. Add headroom, check every budget key against the destination host's ceilings, then rebuild and repeat the workload under the chosen budgets. Native tests and image builds do not establish valid runtime budgets; `crab budget` suggestions do not check ceilings. See [Sizing a budget](https://crab.talk/docs/guides/budgets#size-a-budget-before-deployment).
 
 `cargo nextest run --workspace --release` includes every package. Generator Wasm export and schema coverage lives in `crab-openapi` with a local fixture.
 

@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.1.3",
+    "date": "2026-11-05",
+    "summary": "Measure service budgets with reproducible Wasm benchmarks, select template versions and control automatic patch updates. The SDK exposes release history, upgrade policies, yanking and template deletion; Markdown and SEO are public services.",
+    "new": [
+      "Measure CPU, rows, peak memory, elapsed time and estimated costs with crab bench, using repeatable JSON Lines cases and arranged HTTP responses",
+      "Select an exact template release with crab deploy --from owner/name --version, and opt into stable patch updates with --auto-upgrade",
+      "Read retained template releases and manage upgrade policies, release yanking and template deletion through the SDK"
+    ],
+    "changed": [
+      "Configure web/markdown and web/seo as public running services without publishing templates",
+      "Document measured budget sizing, required headroom and destination host ceilings before deployment or publication"
+    ],
+    "fixed": [
+      "Bound webpage parsing by nodes, nesting, tags and attributes, and size Markdown and SEO tool budgets from WebAssembly workloads",
+      "Keep OSV tool CPU budgets within the default 100 ms host ceiling after measuring large responses and maximum-size batches"
+    ]
+  },
+  {
     "version": "0.1.2",
     "date": "2026-11-04",
     "summary": "New agent, web and ops services join Connect integrations. Deploy and publish catalogs by directory, configure service logos, and manage API keys with granular permissions. Schedules and secret destinations now belong to the service image.",

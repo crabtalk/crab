@@ -31,6 +31,24 @@ impl std::fmt::Display for Break {
 }
 
 impl Manifest {
+    pub fn upgrade_requires_review(&self, next: &Self) -> bool {
+        self.deps != next.deps
+            || self.crons != next.crons
+            || !self.breaks(next).is_empty()
+            || next.tools.iter().any(|tool| {
+                self.tools
+                    .iter()
+                    .find(|old| old.name == tool.name)
+                    .map_or_else(
+                        || tool.public || tool.webhook || tool.stripe || tool.cron,
+                        |old| {
+                            (old.access(), old.webhook, old.stripe, old.cron)
+                                != (tool.access(), tool.webhook, tool.stripe, tool.cron)
+                        },
+                    )
+            })
+    }
+
     /// Every way `next` breaks a caller of this manifest: its public tools,
     /// its stripe and webhook tools, and its events. Empty when it is compatible.
     pub fn breaks(&self, next: &Manifest) -> Vec<Break> {

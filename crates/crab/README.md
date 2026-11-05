@@ -56,7 +56,7 @@ seed = "seed.sqlite"
 
 `logo` is optional and must be an absolute HTTPS URL. Builds, deployments and publication reject invalid values without fetching the image. The URL belongs to the service image and is retained by template copies; linked libraries do not contribute a logo.
 
-`access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml), and `budget = { cpu, read, written, memory }` sets what one call may use, each key at least 1, `memory` in MiB, a key left out the host's default. A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title`, `catalog` and `budget` into the image, and a deploy carries `price`.
+`access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml), and `budget = { cpu, read, written, memory }` sets what one call may use, each key at least 1, CPU in microseconds, rows read and written, `memory` in MiB, a key left out the host's default. A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title`, `catalog` and `budget` into the image, and a deploy carries `price`.
 
 The build embeds `[crons]` in the image. Every deploy applies those schedules; an omitted tool has no schedule. Change `crab.toml` and redeploy to change them, including for template copies. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's database starts as it, held to the image's migrations: those it records applied are the image's first, unchanged. A service with a database takes no seed, and the local host takes none.
 
@@ -135,19 +135,39 @@ When pushing to an OCI registry with `--registry` or a context registry, `GITHUB
 
 `inspect` prints a service's README, a table of its tools with each one's access, title, catalog job, price, marks and description, and each tool's JSON Schema as the argument list it describes. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
 
-`inspect` shows the most one call of each tool may use, which `budget` on its `[tools.<tool>]` in `crab.toml` sets; `budget NAME TOOL` prints what its runs used and the `budget` they fit. `call` calls one public tool and prints what the call used on stderr; `usage` prints a service's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `call` defaults to the unchecked caller `local`; `--anonymous` calls without a caller and reaches only anonymous tools. `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a service reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud. These identity flags are local-only; Cloud uses the credential.
+`inspect` shows the most one call of each tool may use, which `budget` on its `[tools.<tool>]` in `crab.toml` sets; `budget NAME TOOL` prints what its runs used and a suggested `budget`, without checking host ceilings. `call` calls one public tool and prints what the call used on stderr; `usage` prints a service's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `call` defaults to the unchecked caller `local`; `--anonymous` calls without a caller and reaches only anonymous tools. `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a service reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud. These identity flags are local-only; Cloud uses the credential.
+
+Before deployment or template publication, measure the built WebAssembly tool on the local host with the largest supported workloads, add headroom, and check every key against the destination's ceilings. Default ceilings are 100,000 µs CPU (100 ms), 1,000,000 rows read, 1,000,000 written and 128 MiB memory. Rebuild and retest under the chosen budget. Native tests and image builds do not establish that it fits; CLI call meters include nested calls. See [Sizing a budget](https://crab.talk/docs/guides/budgets#size-a-budget-before-deployment).
 
 Local MCP clients can send `x-berm-caller: {"id":"alice"}` on requests to `/mcp` to discover and call public tools as that caller. This identity is unverified; without the header, only anonymous tools are discoverable and callable.
 
 A call that failed, trapped included, keeps its tool, arguments, caller and the digest of the image it ran, and its tape: every answer it had from outside the service, in order, up to 4 MiB a call and 64 MiB a service, counted in what the service stores. `crab --context cloud replay NAME ID` pulls that image and runs the call again in the process, each answer taken off the tape, so it fails as it failed in production without reaching a database, the network or another service; its logs print to stderr. A request that differs from the recorded one stops it, naming the syscall. `--on CONTEXT` runs the call on that context's host instead, against its state: its database, real fetches, its secrets.
 
+## Benchmarking
+
+```sh
+crab bench services/web/markdown read --cases cases.jsonl --runs 10
+```
+
+`bench DIRECTORY TOOL` builds and runs JSON Lines workloads on a temporary local host. Cases supply argument objects and HTTP responses, including headers, body files and optional response delays. Each case starts with a fresh migrated database; repetitions share its state. `--live-http` sends real requests instead of fixtures. The command uploads nothing.
+
+The report separates the tool's own CPU, rows and peak memory from whole-chain cost, prices with the selected Cloud's rates, and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. `--json` gives structured measurements, and `--offline` uses labeled SDK default rates. [Case format and limits](https://crab.talk/docs/guides/bench).
+
 ## Publication and images
+
+Template versions are immutable: changing an image requires a new package version. Each template retains three release images; its Versions tab selects exact images and lets publishers yank or unyank releases. New copies use the latest non-yanked stable release, or the latest non-yanked prerelease when no stable release is retained. Yanked releases cannot create new copies; existing copies keep working. `crab publish DIR --notes "Fix pagination"` attaches up to 2000 characters of release notes. Pruned images become unavailable for new deployments; version identities remain reserved.
+
+`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crab.talk/docs/guides/deploy#automatic-patch-updates).
+
+Deploy history retains the current image and two previous successful images; older records remain without their uploaded image. Existing template copies retain their own images, independently of the publisher’s releases.
 
 `public` exposes your Cloud deployment; `template` publishes its image so others can deploy private copies. Both default to `false`. `crab publish` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab publish services/connect` selects only that catalog; running `crab publish` inside it selects the same services. No catalog-level `crab.toml` is needed.
 
 Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. Repositories use the service name, and deployments pin the OCI artifact digest.
 
 `crab deploy --from owner/name` creates a private copy of a published template without building it locally. The copy has its own credentials and state.
+
+An account owner can delete a template and all retained versions from the account page’s Templates actions menu. Running services and existing copies remain. Deletion requires a signed-in owner session; withdrawing with `template = false` retains the versions.
 
 ## License
 

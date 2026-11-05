@@ -43,10 +43,15 @@ crab deploy
 ## Explore
 
 - [Documentation](https://crab.talk/docs) — guides for writing and deploying services.
+- [Benchmarking](https://crab.talk/docs/guides/bench) — measure local WebAssembly workloads and estimate execution cost with `crab bench`.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
 - [Services](services/README.md) — Connect integrations and Utilities to call, deploy or reuse.
 - [Libraries](crates/crabkit/README.md) — libraries to include in your services.
 - [Berm](berm/berm/README.md) — the runtime that runs services.
+
+## Development
+
+Run `cargo nextest run --release`. One setup prepares all registered test images before tests run, including focused runs; Wasm behavior tests execute those images through Wasmtime. Add images to `berm/build/examples/prepare.rs` and read them with `berm_build::fixture::image(package)`. Cargo caches the separate package builds.
 
 ## License
 

@@ -1,10 +1,11 @@
 use crate::{
     env::{Alone, Env},
-    test::{Arranged, Given, Granted, Manual, Test},
+    fixture::Http,
+    test::{Given, Granted, Manual, Test},
 };
 
 impl Env for Test {
-    type Fetch = Arranged;
+    type Fetch = Http;
     type Images = Given;
     type Peers = Alone;
     type Secrets = Granted;
