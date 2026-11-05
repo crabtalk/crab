@@ -10,6 +10,7 @@ keywords = ["crabtalk", "sdk", "client", "agent", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
 [dependencies]
+semver.workspace = true
 berm-api.workspace = true
 reqwest = { workspace = true, optional = true, features = ["json", "query", "rustls", "stream"] }
 serde = { workspace = true, features = ["std"] }

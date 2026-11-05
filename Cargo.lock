@@ -1213,6 +1213,7 @@ version = "0.1.2"
 dependencies = [
  "berm-api",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "tokio",

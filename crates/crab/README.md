@@ -155,6 +155,12 @@ The report separates the tool's own CPU, rows and peak memory from whole-chain c
 
 ## Publication and images
 
+Template versions are immutable: changing an image requires a new package version. Each template retains three release images; its Versions tab selects exact images and lets publishers change the recommended release. `crab publish DIR --notes "Fix pagination"` attaches up to 2000 characters of release notes. Pruned images become unavailable for new deployments; version identities remain reserved.
+
+`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the recommendation. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crab.talk/docs/guides/deploy#automatic-patch-updates).
+
+Deploy history retains the current image and two previous successful images; older records remain without their uploaded image. Existing template copies retain their own images, independently of the publisher’s releases.
+
 `public` exposes your Cloud deployment; `template` publishes its image so others can deploy private copies. Both default to `false`. `crab publish` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab publish services/connect` selects only that catalog; running `crab publish` inside it selects the same services. No catalog-level `crab.toml` is needed.
 
 Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. Repositories use the service name, and deployments pin the OCI artifact digest.

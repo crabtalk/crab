@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 /// uploaded through `POST /services/{owner}/{name}/image`, named by its digest,
 /// `sha256:` and its SHA-256 in hex.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeployRequest {
     pub reference: String,
@@ -22,6 +22,10 @@ pub struct DeployRequest {
     pub template: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<TemplateSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_upgrade: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_notes: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub create: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -101,6 +105,45 @@ pub struct Terms {
     pub tools: BTreeMap<String, ToolTerms>,
     /// Milliseconds a chain of calls runs before the host stops it.
     pub deadline: u64,
+}
+
+/// A published version's identity remains after its image is pruned.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateRelease {
+    pub version: String,
+    pub digest: String,
+    pub created_at: i64,
+    pub notes: Option<String>,
+    pub available: bool,
+    pub recommended: bool,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpgradePolicy {
+    pub enabled: bool,
+    pub last_attempt: Option<i64>,
+    pub target: Option<String>,
+    pub last_error: Option<String>,
+    pub explain: Option<String>,
+}
+
+impl UpgradePolicy {
+    pub fn accepts(&self, current: &str, next: &str) -> bool {
+        let (Ok(next), Ok(current)) = (
+            next.parse::<semver::Version>(),
+            current.parse::<semver::Version>(),
+        ) else {
+            return false;
+        };
+        self.enabled
+            && next.pre.is_empty()
+            && current.pre.is_empty()
+            && next.major == current.major
+            && next.minor == current.minor
+            && next.patch > current.patch
+    }
 }
 
 /// What one call of a tool is held to, and what it costs its caller.

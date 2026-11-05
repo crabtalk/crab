@@ -45,6 +45,15 @@ pub struct Deploy {
     /// Deploy a published template, `owner/name`, as a new private service on Cloud.
     #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "registry"])]
     pub from: Option<String>,
+    /// Select an exact retained template version.
+    #[arg(long, requires = "from")]
+    pub version: Option<String>,
+    /// Automatically install stable patches in the same major and minor version.
+    #[arg(long, requires = "from")]
+    pub auto_upgrade: bool,
+    /// Release notes for template publication, at most 2000 characters.
+    #[arg(long, conflicts_with = "from")]
+    pub notes: Option<String>,
     /// Provider value for the deploy page, SERVICE:KEY=VALUE; repeatable.
     #[arg(long = "copy", value_name = "SERVICE:KEY=VALUE")]
     pub copy: Vec<String>,
@@ -68,7 +77,9 @@ pub fn run(
         registry,
         force,
         from,
+        notes,
         copy: copy_values,
+        ..
     } = deploy;
     let copy_values = copies(copy_values)?;
     if (yes || client.owner.is_none()) && !copy_values.is_empty() {
@@ -77,8 +88,8 @@ pub fn run(
     if publish_only && (from.is_some() || !copy_values.is_empty()) {
         bail!("publish builds local projects; --from and --copy apply to deployments");
     }
-    if let Some(from) = from {
-        return copy(client, from, *force, stopped, yes, copy_values);
+    if from.is_some() {
+        return copy(client, deploy, stopped, yes, copy_values);
     }
     let (registry, force) = (registry.as_deref().or(context_registry), *force);
     let workspace = Workspace::read(dir, packages, publish_only)?;
@@ -122,6 +133,8 @@ pub fn run(
             public: (!publish_only).then_some(project.public),
             template: Some(project.template),
             source: None,
+            auto_upgrade: None,
+            release_notes: notes.clone(),
             create: false,
             publish_only,
             reference,
@@ -273,17 +286,24 @@ fn copies(values: &[String]) -> Result<BTreeMap<String, BTreeMap<String, String>
 /// Deploy a published template through the approval flow.
 fn copy(
     client: &Client,
-    from: &str,
-    force: bool,
+    deploy: &Deploy,
     stopped: bool,
     yes: bool,
     copy: BTreeMap<String, BTreeMap<String, String>>,
 ) -> Result<()> {
+    let from = deploy.from.as_deref().context("--from takes owner/name")?;
+    let (version, auto_upgrade, force) =
+        (deploy.version.as_deref(), deploy.auto_upgrade, deploy.force);
     if client.owner.is_none() {
         bail!("--from deploys a published Cloud template");
     }
     let (_, name) = from.split_once('/').context("--from takes owner/name")?;
-    let template = runtime::wait(client.template(from))?;
+    let template = runtime::wait(async {
+        match version {
+            Some(version) => client.template_version(from, version).await,
+            None => client.template(from).await,
+        }
+    })?;
     let reference = template.digest;
     let request = DeployRequest {
         public: Some(false),
@@ -292,6 +312,8 @@ fn copy(
             owner: template.owner,
             name: template.name,
         }),
+        auto_upgrade: Some(auto_upgrade),
+        release_notes: None,
         create: true,
         publish_only: false,
         reference,

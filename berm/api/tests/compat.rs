@@ -58,3 +58,22 @@ fn nullable_objects_keep_comparing_their_required_fields() {
         "result.key is no longer always present"
     );
 }
+
+#[test]
+fn automatic_upgrades_require_review_for_exposure_permissions_and_breaking_schemas() {
+    let old = manifest(json!({"type":"string"}), json!({"type":"string"}));
+    assert!(!old.upgrade_requires_review(&old));
+    let mut exposed = old.clone();
+    exposed.tools[0].anonymous = true;
+    assert!(old.upgrade_requires_review(&exposed));
+    let mut added = old.clone();
+    let mut tool = added.tools[0].clone();
+    tool.name = "new-tool".into();
+    added.tools.push(tool);
+    assert!(old.upgrade_requires_review(&added));
+    let mut permissions = old.clone();
+    permissions.deps.http.fetch.push("example.com".into());
+    assert!(old.upgrade_requires_review(&permissions));
+    let changed = manifest(json!({"type":"integer"}), json!({"type":"string"}));
+    assert!(old.upgrade_requires_review(&changed));
+}
