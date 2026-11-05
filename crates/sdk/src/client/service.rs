@@ -4,8 +4,8 @@
 use crate::{
     client::{Client, Error},
     services::service::{
-        Billing, Costed, DeployRequest, DeploySetRequest, Deployment, MeteredDay, Secret,
-        SetSecret, Template, TemplateRelease, Terms, ToolCosted, UpgradePolicy, Upload,
+        Billing, Costed, DeployRequest, DeploySetRequest, Deployment, DeploymentStatus, MeteredDay,
+        Secret, SetSecret, Template, TemplateRelease, Terms, ToolCosted, UpgradePolicy, Upload,
         UploadRequest, Visibility,
     },
 };
@@ -110,6 +110,13 @@ impl Client {
     /// ones included.
     pub async fn deploys(&self, name: &str) -> Result<Vec<Deployment>, Error> {
         let path = format!("{}/deploys", self.service(name)?);
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// Pending approvals and recorded attempts, including a service not yet deployed.
+    pub async fn deployment_status(&self, name: &str) -> Result<DeploymentStatus, Error> {
+        self.account()?;
+        let path = format!("{}/deploys/status", self.service(name)?);
         self.json(self.at(Method::GET, &path)).await
     }
 

@@ -6,11 +6,23 @@ use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
 pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
-    let deploys = runtime::wait(client.deploys(name))?;
+    let status = runtime::wait(client.deployment_status(name))?;
     if json {
-        return terminal::json(&deploys);
+        return terminal::json(&status);
     }
-    if deploys.is_empty() {
+    for approval in &status.approvals {
+        println!(
+            "{}  v{}  {}",
+            approval.status, approval.version, approval.reference
+        );
+        println!(
+            "  approval expires {}",
+            format::instant(approval.expires_at as u64 * 1000)
+        );
+        println!("  {}", approval.request.url);
+    }
+    let deploys = status.deploys;
+    if deploys.is_empty() && status.approvals.is_empty() {
         println!("no deploys recorded");
     }
     for deploy in &deploys {

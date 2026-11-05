@@ -27,8 +27,9 @@ struct Args {
     #[arg(long, global = true)]
     json: bool,
 
-    /// Answer yes to every confirmation. Without a terminal, a command that
-    /// asks refuses unless this is given.
+    /// Confirm terminal prompts. Commands with terminal prompts refuse without
+    /// a terminal unless this is given. Cloud deploys with --yes require an API
+    /// key with deployments:write; CLI sessions use browser approval instead.
     #[arg(long, short, global = true)]
     yes: bool,
 
@@ -98,8 +99,9 @@ enum Command {
     /// Build services and deploy each as its `crab.toml` names it, replacing
     /// whatever holds the name, and serve it: the service in the selected
     /// directory, or services beneath it not saying `deploy = false`. On
-    /// Cloud it waits for a person to approve it at the link it prints last;
-    /// `--yes` deploys without asking.
+    /// Cloud a CLI session always waits for browser approval at the printed
+    /// link, even without a terminal. Only an API key with deployments:write
+    /// can skip approval with --yes.
     Deploy(cmd::deploy::Deploy),
     /// Publish or withdraw a template according to crab.toml, without running it.
     Publish(cmd::deploy::Deploy),

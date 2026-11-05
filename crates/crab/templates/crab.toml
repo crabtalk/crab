@@ -23,6 +23,15 @@ access = "public"
 # The catalog job it does: a listed platform, `.`, then the job.
 # catalog = "web.search"
 
+# Durable state is shared by every caller of this deployment.
+[tools.remember]
+access = "public"
+catalog = "memory.put"
+
+[tools.recall]
+access = "public"
+catalog = "memory.get"
+
 # Outbound HTTP destinations. Omitted or empty lists allow none.
 # [http]
 # fetch = ["example.com"]
@@ -32,9 +41,9 @@ access = "public"
 # [vars]
 # keywords = { default = "rust, wasm", description = "Words to watch" }
 
-# [database]
-# What its database may hold.
-# size = "1GiB"
+# Storage reservation.
+[database]
+size = "64MiB"
 # A directory of `*.sql` migrations, applied in name order.
 # migrations = "migrations"
 

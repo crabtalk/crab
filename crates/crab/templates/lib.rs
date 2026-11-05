@@ -1,7 +1,5 @@
 //! __NAME__ — a berm service.
 
-// `no_std` is the guest's shape. Off a guest target this is an ordinary
-// library, so `cargo test` runs the tools below natively.
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 extern crate alloc;
@@ -22,4 +20,19 @@ pub fn echo(
 #[derive(Schema)]
 pub struct Echo {
     pub query: String,
+}
+
+const MESSAGE: &str = "message";
+
+/// Store a message that survives calls and restarts, shared by all callers.
+#[tool]
+pub fn remember(message: String) -> Result<()> {
+    berm_lang::set_json(MESSAGE, &message)?;
+    Ok(())
+}
+
+/// Read the message saved by remember, or null if none has been saved.
+#[tool(query)]
+pub fn recall() -> Result<Option<String>> {
+    Ok(berm_lang::get_json(MESSAGE)?)
 }

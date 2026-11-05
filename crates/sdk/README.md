@@ -38,6 +38,8 @@ The token is a session token or an API key. Without `owner`, the client addresse
 
 `Client::health` probes `/meta/health` on Cloud and the local host. `Client::plans` requires a Cloud owner; local clients return `Error::Host` with login guidance.
 
+`Client::deployment_status` returns pending approvals and recorded deploy attempts, including before a service exists. `Client::deploys` returns recorded attempts only.
+
 `Client::update_key` applies budget, scope and service access together. `UpdateKeyRequest::services` replaces the granted `owner/name` list; `Some(vec![])` clears it, and `None` preserves it. Updating keys requires a session.
 
 A `429` that names its `Retry-After` is sent again after that wait, up to three times, unless its body streams. `Error::retryable` is true for transport failures, `429` and `5xx` only. A structured refusal carries its stable `code` (e.g. `orgs_closed`); branch on that rather than on the status.

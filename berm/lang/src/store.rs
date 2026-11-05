@@ -1,8 +1,5 @@
-//! This service's own bytes, surviving its invocations.
-//!
-//! Neither door names a service: the keyspace is whichever one is asking, as
-//! the host reads it off the call. A host that registers nothing for these
-//! traps them as unknown host calls.
+//! Persistent values scoped to a service, shared by all its callers.
+//! Caller isolation requires caller-scoped keys.
 
 use crate::{
     abi::wire,
@@ -12,6 +9,7 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 
 /// Read `key`, or `None` if this service has never written it.
+/// All callers of the service read the same keyspace.
 ///
 /// ```ignore
 /// let seen = berm_lang::get("last-run")?.unwrap_or_default();
