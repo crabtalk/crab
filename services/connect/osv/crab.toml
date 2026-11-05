@@ -12,14 +12,14 @@ fetch = ["api.osv.dev"]
 access = "public"
 title = "Query vulnerabilities"
 catalog = "packages.vulnerabilities"
-budget = { cpu = 500000, memory = 64 }
+budget = { cpu = 100000, memory = 64 }
 [tools.query_batch]
 access = "public"
 title = "Query batch"
 catalog = "packages.vulnerabilities.batch"
-budget = { cpu = 500000, memory = 64 }
+budget = { cpu = 100000, memory = 64 }
 [tools.advisory]
 access = "public"
 title = "Read advisory"
 catalog = "packages.advisory"
-budget = { cpu = 500000, memory = 64 }
+budget = { cpu = 100000, memory = 64 }
