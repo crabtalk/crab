@@ -1,12 +1,9 @@
 //! The services of a cargo workspace.
 
-use crate::metadata::Metadata;
+use crate::{metadata::Metadata, toolchain::Toolchain};
 use anyhow::{Context, Result, bail};
 use berm_api::project::{self, Project};
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 /// A workspace and the services in it a command acts on.
 pub struct Workspace {
@@ -24,8 +21,8 @@ impl Workspace {
     /// the service in `dir`, or services beneath it. Directory groups omit
     /// `deploy = false` unless `include_disabled` is set.
     pub fn read(dir: &Path, named: &[String], include_disabled: bool) -> Result<Self> {
-        let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-        let metadata = Metadata::read(&cargo, dir)?;
+        let toolchain = Toolchain::new(dir)?;
+        let metadata = Metadata::read(&toolchain, dir)?;
         let mut services = Vec::new();
         let mut skipped = Vec::new();
         let here = dir

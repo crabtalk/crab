@@ -24,7 +24,7 @@ irm https://crab.talk/install.ps1 | iex
 
 ## Quick start
 
-Writing services requires a Rust toolchain. From a new directory, create and run a service locally:
+`crab build` installs missing build tools automatically. From a new directory, create and run a service locally without an account:
 
 ```sh
 crab new example

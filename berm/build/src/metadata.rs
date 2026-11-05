@@ -1,11 +1,11 @@
 //! What `cargo metadata` reports of a workspace's own packages.
 
+use crate::toolchain::Toolchain;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::{
     ops::Deref,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 /// `cargo metadata --no-deps`.
@@ -37,10 +37,10 @@ pub struct Target {
 
 impl Metadata {
     /// The workspace `dir` is in, as `cargo` reports it.
-    pub fn read(cargo: &str, dir: &Path) -> Result<Self> {
-        let output = Command::new(cargo)
+    pub fn read(toolchain: &Toolchain, dir: &Path) -> Result<Self> {
+        let output = toolchain
+            .command("cargo", dir)
             .args(["metadata", "--format-version", "1", "--no-deps"])
-            .current_dir(dir)
             .output()
             .context("cannot run cargo")?;
         if !output.status.success() {

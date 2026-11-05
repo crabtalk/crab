@@ -18,8 +18,13 @@ impl Client {
         self.json(self.at(Method::GET, "/meta/keys")).await
     }
 
-    /// Every plan it sells.
+    /// Every plan Cloud sells. A local host returns [`Error::Host`].
     pub async fn plans(&self) -> Result<Vec<PublicPlan>, Error> {
+        if self.owner.is_none() {
+            return Err(Error::Host(
+                "plans require logging in to crab Cloud; run `crab login`",
+            ));
+        }
         self.json(self.at(Method::GET, "/meta/plans")).await
     }
 

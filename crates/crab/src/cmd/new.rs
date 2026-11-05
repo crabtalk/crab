@@ -42,7 +42,6 @@ pub fn run(name: &str) -> Result<()> {
     println!("created {name}/");
     println!();
     println!("  cd {name}");
-    println!("  cargo test");
     println!("  crab build");
     println!("  crab deploy");
     Ok(())

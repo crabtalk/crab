@@ -28,6 +28,8 @@ use rmcp::transport::{
 use serde::Deserialize;
 use std::{collections::BTreeMap, sync::Arc};
 
+const HEALTH: &str = "/meta/health";
+
 impl Node {
     /// The control API, at Cloud's paths for the one account [`LOCAL`], and
     /// MCP, at `/mcp`.
@@ -58,6 +60,7 @@ impl Node {
             .route_layer(middleware::from_fn(named));
 
         Router::new()
+            .route(HEALTH, get(|| async { StatusCode::NO_CONTENT }))
             .route(&format!("/users/{LOCAL}/services"), get(list))
             .route(
                 &format!("/users/{LOCAL}/services/deploys"),

@@ -16,6 +16,8 @@ crab usage example
 crab rm example
 ```
 
+`crab build` installs missing build tools automatically. It uses the official rustup installer for Rust and adds the `wasm32-unknown-unknown` target. Installed tools are available to the same invocation without restarting the shell. The local loop needs no account or login.
+
 ## crab.toml
 
 Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Missing or empty lists allow none; linked libraries contribute their destinations.
@@ -66,6 +68,8 @@ The build embeds `[crons]` in the image. Every deploy applies those schedules; a
 
 `crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: services reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy [dir]` selects the service in that directory, or all Cargo workspace services beneath it whose `crab.toml` does not say `deploy = false`. The directory defaults to `.`; `-p <name>`, repeatable, selects services by name anywhere in the workspace instead. `crab push` deploys the same way and installs each service stopped; `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
+`crab --context default status` probes the local host at `/meta/health`.
+
 ## Contexts
 
 `crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab dev`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
@@ -88,6 +92,8 @@ Contexts are kept in `~/.crab/contexts.toml`.
 `crab login` signs in to Cloud in the browser, keeps the session as the `cloud` context and uses it. A session reaches everything below; a deploy key is refused by all of it but `usage`.
 
 `crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
+
+`crab plans` lists Cloud plans. On a local context it asks you to sign in with `crab login`.
 
 `crab billing` shows Purchased credit separately from Trial credit, including trial expiry, the recovery deadline and funds reserved for running or unsettled work. Trial credit runs services; priced tools require Purchased credit.
 
