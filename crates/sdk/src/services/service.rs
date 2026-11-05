@@ -92,6 +92,8 @@ pub struct Template {
     pub name: String,
     pub digest: String,
     pub manifest: berm_api::Manifest,
+    #[serde(default)]
+    pub yanked: bool,
     /// Existing service copies across all versions, stopped services included.
     #[serde(default)]
     pub deployments: u64,
@@ -116,7 +118,7 @@ pub struct TemplateRelease {
     pub created_at: i64,
     pub notes: Option<String>,
     pub available: bool,
-    pub recommended: bool,
+    pub yanked: bool,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

@@ -45,11 +45,16 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    pub async fn recommend_template(&self, name: &str, version: &str) -> Result<(), Error> {
-        let path = format!("{}/template/recommended", self.service(name)?);
+    pub async fn yank_template(
+        &self,
+        name: &str,
+        version: &str,
+        yanked: bool,
+    ) -> Result<(), Error> {
+        let path = format!("{}/template/yank", self.service(name)?);
         self.ok(self
             .at(Method::PUT, &path)
-            .json(&serde_json::json!({"version": version})))
+            .json(&serde_json::json!({"version": version, "yanked": yanked})))
             .await?;
         Ok(())
     }
