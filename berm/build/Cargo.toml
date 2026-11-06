@@ -15,6 +15,4 @@ berm-abi.workspace = true
 berm-api.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }
-
-[dev-dependencies]
 tempfile.workspace = true

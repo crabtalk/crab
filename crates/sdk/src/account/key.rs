@@ -180,6 +180,18 @@ pub struct CreateKeyRequest {
     pub budget: Option<i64>,
 }
 
+impl CreateKeyRequest {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.label.trim().is_empty() || self.label.trim().chars().count() > 100 {
+            return Err("a key name is 1 to 100 characters");
+        }
+        if let Some(budget) = self.budget {
+            validate_budget(budget)?;
+        }
+        Ok(())
+    }
+}
+
 /// What changes of a key, at `PATCH …/keys/{key_id}`; what is left out
 /// stays.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -200,4 +212,11 @@ pub struct UpdateKeyRequest {
 pub struct CreateKeyResponse {
     pub key: Key,
     pub token: String,
+}
+
+pub fn validate_budget(budget: i64) -> Result<i64, &'static str> {
+    if budget < 0 {
+        return Err("a budget is zero or more USD micros");
+    }
+    Ok(budget)
 }

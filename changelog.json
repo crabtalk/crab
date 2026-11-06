@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.1.4",
+    "date": "2026-11-06",
+    "summary": "Build services without manual Rust setup, start with durable state, and inspect pending deployment approvals. Device login requests dedicated agent credentials; webpage tools distinguish HTML titles from SVG titles.",
+    "new": [
+      "Show pending approval links alongside recorded attempts with crab deploys, including before a service is first deployed",
+      "Expose agent login authorizations and pending deployment approvals through the SDK"
+    ],
+    "changed": [
+      "Request a dedicated agent API key for device login, with its account, permissions and daily budget reviewed in the browser",
+      "Include durable remember and recall tools and a 64 MiB storage reservation in crab new scaffolds"
+    ],
+    "fixed": [
+      "Install missing Rust build tools and the WebAssembly target automatically, making installed tools available to the same build invocation",
+      "Check local host status through its health endpoint and explain that crab plans requires a Cloud login",
+      "Exclude SVG titles from webpage titles and SEO title counts"
+    ]
+  },
+  {
     "version": "0.1.3",
     "date": "2026-11-05",
     "summary": "Measure service budgets with reproducible Wasm benchmarks, select template versions and control automatic patch updates. The SDK exposes release history, upgrade policies, yanking and template deletion; Markdown and SEO are public services.",

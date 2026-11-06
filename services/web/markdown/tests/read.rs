@@ -220,3 +220,17 @@ fn bounds_total_token_work_even_when_the_dom_would_be_small() {
         );
     }
 }
+
+#[test]
+fn svg_titles_do_not_supply_the_page_title() {
+    let page = Page::try_from((
+        "https://example.com/".parse().unwrap(),
+        response(
+            200,
+            &[("content-type", "text/html")],
+            b"<body><svg><title>Icon label</title></svg><main>Content</main></body>",
+        ),
+    ))
+    .unwrap();
+    assert_eq!(page.title(), None);
+}

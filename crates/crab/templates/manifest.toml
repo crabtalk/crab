@@ -3,8 +3,7 @@ name = "__NAME__"
 version = "0.1.0"
 edition = "2024"
 
-# A cdylib is the image `crab build` finishes; the rlib is what `cargo test`
-# links.
+# A cdylib is the service image; an rlib supports native tests.
 [lib]
 crate-type = ["cdylib", "rlib"]
 

@@ -65,3 +65,18 @@ fn write_permissions_include_only_their_own_resource_reads() {
         }
     }
 }
+
+#[test]
+fn key_creation_rejects_unusable_names_and_negative_budgets() {
+    for body in [
+        json!({"label":"   "}),
+        json!({"label":"x".repeat(101)}),
+        json!({"label":"agent","budget":-1}),
+    ] {
+        let settings: CreateKeyRequest = serde_json::from_value(body).unwrap();
+        assert!(settings.validate().is_err());
+    }
+    let settings: CreateKeyRequest =
+        serde_json::from_value(json!({"label":" Agent ","budget":0,"scope":[]})).unwrap();
+    assert!(settings.validate().is_ok());
+}

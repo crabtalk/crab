@@ -10,11 +10,10 @@ const SDK: &str = env!("CARGO_PKG_VERSION");
 
 /// Each template beside the path it is written to. Each placeholder is a valid
 /// Rust identifier, and each file parses as the language it is.
-const FILES: [(&str, &str); 4] = [
+const FILES: [(&str, &str); 3] = [
     ("Cargo.toml", include_str!("../../templates/manifest.toml")),
     (project::FILE, include_str!("../../templates/crab.toml")),
     ("src/lib.rs", include_str!("../../templates/lib.rs")),
-    ("tests/tools.rs", include_str!("../../templates/tools.rs")),
 ];
 
 pub fn run(name: &str) -> Result<()> {
@@ -25,7 +24,6 @@ pub fn run(name: &str) -> Result<()> {
         bail!("{name} already exists");
     }
 
-    let krate = name.replace('-', "_");
     for (path, template) in FILES {
         let path = root.join(path);
         if let Some(parent) = path.parent() {
@@ -34,7 +32,6 @@ pub fn run(name: &str) -> Result<()> {
         }
         let contents = template
             .replace("__NAME__", name)
-            .replace("__CRATE__", &krate)
             .replace("__VERSION__", SDK);
         fs::write(&path, contents).with_context(|| format!("cannot write {}", path.display()))?;
     }
@@ -42,7 +39,6 @@ pub fn run(name: &str) -> Result<()> {
     println!("created {name}/");
     println!();
     println!("  cd {name}");
-    println!("  cargo test");
     println!("  crab build");
     println!("  crab deploy");
     Ok(())

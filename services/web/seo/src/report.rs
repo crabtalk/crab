@@ -54,10 +54,7 @@ impl TryFrom<&Page> for Report {
     fn try_from(page: &Page) -> Result<Self> {
         let title = page.title();
         let description = page.meta("description").map(str::to_owned);
-        let titles = page
-            .document
-            .select(&Selector::parse("title").expect("static selector"))
-            .count();
+        let titles = page.titles().count();
         let canonicals: Vec<_> = page
             .document
             .select(&Selector::parse("link[rel]").expect("static selector"))

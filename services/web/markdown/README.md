@@ -10,7 +10,7 @@ With Crab signed in to Cloud, replace `owner/markdown` with an accessible runnin
 crab call owner/markdown read '{"url":"https://example.com"}'
 ```
 
-Returns the final URL, title, description, selected HTML region and Markdown. You can also call it through [CrabTalk MCP](https://crab.talk/docs/guides/mcp).
+Returns the final URL, HTML page title, description, selected HTML region and Markdown. SVG titles do not supply the page title. You can also call it through [CrabTalk MCP](https://crab.talk/docs/guides/mcp).
 
 The reader prefers the first main region, then the first article, then the body. It removes navigation, scripts, styles, footers, sidebars and forms. Relative links and image sources resolve against the page's base URL. HTTP(S), mail and telephone links are retained.
 

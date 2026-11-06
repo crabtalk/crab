@@ -12,6 +12,7 @@
 use crate::{
     artifact::Artifact,
     metadata::{ManifestPath, Metadata},
+    toolchain::Toolchain,
 };
 use anyhow::{Context, Result, bail};
 use berm_abi::{KITS_SECTION, SERVICE_SECTION};
@@ -20,7 +21,7 @@ use berm_api::{
     project::{self, Project},
 };
 use std::{
-    env, fs,
+    fs,
     path::{Path, PathBuf},
     process,
 };
@@ -48,8 +49,9 @@ const OUT: &str = "berm";
 ///
 /// One build at a time across processes, on a lock in the target directory.
 pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
-    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-    let metadata = Metadata::read(&cargo, dir)?;
+    let mut toolchain = Toolchain::new(dir)?;
+    toolchain.target(dir)?;
+    let metadata = Metadata::read(&toolchain, dir)?;
     let service = metadata.package(dir, package)?;
     let project = Project::read(&service.manifest_path.dir().join(project::FILE))?;
     project.name()?;
@@ -91,10 +93,9 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
     let lock = fs::File::create(out.join("build.lock"))?;
     lock.lock()?;
 
-    toolchain::ensure(dir)?;
     let spec = format!("{}@{}", service.name, service.version);
     let artifacts = Artifact::build(
-        &cargo,
+        &toolchain,
         dir,
         &["--release", "--target", TARGET, "--lib", "-p", &spec],
     )

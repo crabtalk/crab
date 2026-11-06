@@ -1,5 +1,5 @@
 //! `crab login` — sign in to Cloud in the browser, or by a person approving a
-//! code at `/device`, and keep the session as a context.
+//! code at `/device`, and keep the credential as a context.
 
 use crate::{
     context::{self, Context, Contexts},
@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::{Context as _, Result, bail};
 use crabtalk_sdk::{
-    account::request::device,
+    account::{org::PublicAccount, request::device},
     client::{Client, Error, Owner},
 };
 use std::{
@@ -43,7 +43,7 @@ pub fn run(name: &str, host: &str, github: bool, device: bool) -> Result<()> {
     eprintln!("waiting for the browser to sign in");
     let (token, browser) = receive(&listener)?;
 
-    if let Err(e) = keep(name, host, token) {
+    if let Err(e) = keep(name, host, token, None) {
         answer(
             browser,
             "400 Bad Request",
@@ -55,10 +55,10 @@ pub fn run(name: &str, host: &str, github: bool, device: bool) -> Result<()> {
 }
 
 /// Sign in to `host` once a person signed in there approves the code this
-/// prints, at its `/device` page, and use the session as context `name`.
+/// prints, at its `/device` page, and keep its dedicated key as context `name`.
 fn device(name: &str, host: &str) -> Result<()> {
     let client = Client::new(host);
-    let asked = runtime::wait(client.ask_login())?;
+    let asked = runtime::wait(client.ask_agent_login(&format!("crab ({name})")))?;
     println!("{}", asked.verification_uri_complete);
     eprintln!(
         "sign crab in: open the link, or enter {} at {}, within {} minutes",
@@ -67,10 +67,10 @@ fn device(name: &str, host: &str) -> Result<()> {
         asked.expires_in / 60
     );
     let mut interval = Duration::from_secs(asked.interval);
-    let token = loop {
+    let signed = loop {
         thread::sleep(interval);
         match runtime::wait(client.login_token(&asked.device_code)) {
-            Ok(signed) => break signed.token,
+            Ok(signed) => break signed,
             Err(Error::Api { status: 429, .. }) => interval += Duration::from_secs(5),
             Err(Error::Api {
                 code: Some(code), ..
@@ -84,13 +84,18 @@ fn device(name: &str, host: &str) -> Result<()> {
             Err(e) => return Err(e.into()),
         }
     };
-    keep(name, host, token)
+    keep(name, host, signed.token, signed.account)
 }
 
 /// Keep `token` as context `name` on `host`, and use it from now on.
-fn keep(name: &str, host: &str, token: String) -> Result<()> {
-    let me = runtime::wait(Client::new(host).token(&token).me())?;
-    let who = me.user.handle.unwrap_or(me.user.id);
+fn keep(name: &str, host: &str, token: String, account: Option<PublicAccount>) -> Result<()> {
+    let who = match account {
+        Some(account) => account.handle.unwrap_or(account.id),
+        None => {
+            let me = runtime::wait(Client::new(host).token(&token).me())?;
+            me.user.handle.unwrap_or(me.user.id)
+        }
+    };
     let mut contexts = Contexts::load()?;
     contexts.contexts.insert(
         name.to_owned(),

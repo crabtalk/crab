@@ -3,7 +3,8 @@
 
 use crate::{
     account::request::{
-        CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest, Purchase, Request,
+        AgentLoginRequest, CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest,
+        Purchase, Request,
     },
     client::{Client, Error},
     services::service::DeployRequest,
@@ -118,7 +119,16 @@ impl Client {
         self.json(self.at(Method::POST, "/requests/login")).await
     }
 
-    /// The session the sign-in `device_code` opened, once a person approved
+    /// Ask a person to authorize a named agent with a dedicated key.
+    pub async fn ask_agent_login(&self, client_name: &str) -> Result<DeviceAuthorization, Error> {
+        let body = AgentLoginRequest {
+            client_name: client_name.to_owned(),
+        };
+        self.json(self.at(Method::POST, "/requests/login").json(&body))
+            .await
+    }
+
+    /// The credential the sign-in `device_code` opened, once a person approved
     /// it; refused with a [`device`](crate::account::request::device) code
     /// until then. Takes no token.
     pub async fn login_token(&self, device_code: &str) -> Result<DeviceToken, Error> {

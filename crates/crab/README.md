@@ -16,11 +16,13 @@ crab usage example
 crab rm example
 ```
 
+`crab build` installs missing build tools automatically. It uses the official rustup installer for Rust and adds the `wasm32-unknown-unknown` target. Installed tools are available to the same invocation without restarting the shell. The local loop needs no account or login.
+
 ## crab.toml
 
 Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Missing or empty lists allow none; linked libraries contribute their destinations.
 
-`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `crab.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`.
+`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` builds it the same way and deploys it as the `crab.toml` beside its `Cargo.toml` says. `crab new` writes one, beside a library crate built as a `cdylib`. It includes `echo`, `remember` and `recall`; the latter two share a persistent message across callers and restarts. Tool-specific tests are added by the developer; the [development guide](https://crab.talk/docs/development/complete-service) has an example.
 
 ```toml
 # The name it deploys as.
@@ -66,6 +68,8 @@ The build embeds `[crons]` in the image. Every deploy applies those schedules; a
 
 `crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: services reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy [dir]` selects the service in that directory, or all Cargo workspace services beneath it whose `crab.toml` does not say `deploy = false`. The directory defaults to `.`; `-p <name>`, repeatable, selects services by name anywhere in the workspace instead. `crab push` deploys the same way and installs each service stopped; `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
+`crab --context default status` probes the local host at `/meta/health`.
+
 ## Contexts
 
 `crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab dev`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
@@ -79,15 +83,19 @@ crab context use default
 
 A service's manifest declares its secrets and their destinations. `crab secret ls NAME` lists names and hosts, never values. `crab secret fill NAME`, run by a person at a terminal, shows each credential's guide and fixed manifest hosts, then provisions or replaces the values they enter. On Cloud it requires a signed-in owner; API keys cannot provision or revoke secrets. `crab secret request NAME` prints a link where an owner supplies unset credentials; `--credential ID` requests one again for rotation. `--copy KEY=VALUE` supplies provider setup values such as a callback URL. For direct provisioning, `printf %s "$VALUE" | crab secret put NAME SECRET` provisions or replaces a declared secret; `crab secret rm NAME SECRET` revokes one. Outbound credentials need `hosts` in `[credentials]`; a bare secret has no outbound destinations. Changing manifest destinations requires fresh provisioning. Saved values are never returned, including fields with `masked = false`.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud retains it for deployments and optional template publication. A context registry or `--registry` selects an OCI registry instead. A write permission includes read access to the same resource. A key uses explicit resource permissions; direct deployment requires `deployments:write`, configuration changes require `services:write`; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crab.talk/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; other pending requests remain valid. `--yes` deploys without asking. The local host never asks.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. `deploy` sends the image itself, to the local host and to Cloud alike, and Cloud retains it for deployments and optional template publication. A context registry or `--registry` selects an OCI registry instead. A write permission includes read access to the same resource. A key uses explicit resource permissions; direct deployment requires `deployments:write`, configuration changes require `services:write`; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crab.talk/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; other pending requests remain valid. `--yes` skips Cloud approval only with an API key that has `deployments:write`. Personal CLI sessions always require browser approval and wait for it even without a terminal. Device logins use dedicated keys with the permissions approved in the browser. The local host never asks.
+
+`crab deploys NAME` shows pending approval links and recorded attempts, including before the first deployment. Calls to an undeployed service awaiting approval return `E0046` to its owners. Pending uploads still count toward storage.
 
 Contexts are kept in `~/.crab/contexts.toml`.
 
 ## Cloud account
 
-`crab login` signs in to Cloud in the browser, keeps the session as the `cloud` context and uses it. A session reaches everything below; a deploy key is refused by all of it but `usage`.
+`crab login` signs in to Cloud in the browser, keeps the personal session as the `cloud` context and uses it. API keys reach only operations their permissions allow; identity, payment and security operations require a personal session.
 
-`crab login --device`, or `crab login` where no browser opens, prints a link and a code and waits: a person signed in to Cloud opens the link, or enters the code at `/device`, and approves, and the session is theirs.
+`crab login --device`, or `crab login` where no browser opens, requests a dedicated agent key. It prints a link and a code and waits while a person signed in to Cloud reviews the connection name, account, permissions and daily budget. The default name is `crab (<context>)`; `--name` chooses the context. The key initially requests the standard read permissions and a $5 daily budget. Manage or revoke it under Settings → API keys. Existing personal sessions remain active; reconnect the agent and revoke its old session under Settings → Security to switch it to a key.
+
+`crab plans` lists Cloud plans. On a local context it asks you to sign in with `crab login`.
 
 `crab billing` shows Purchased credit separately from Trial credit, including trial expiry, the recovery deadline and funds reserved for running or unsettled work. Trial credit runs services; priced tools require Purchased credit.
 

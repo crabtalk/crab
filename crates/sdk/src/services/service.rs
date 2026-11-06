@@ -1,6 +1,6 @@
 //! Service wire types.
 
-use crate::services::price::Price;
+use crate::{account::request::RequestStatus, error::RequestLink, services::price::Price};
 use berm_api::{
     Meter, Service,
     host::{self, Call, ServedDay},
@@ -419,6 +419,24 @@ pub struct ToolCosted {
     /// recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fits: Option<berm_api::Limits>,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploymentStatus {
+    pub approvals: Vec<DeploymentApproval>,
+    pub deploys: Vec<Deployment>,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploymentApproval {
+    pub request: RequestLink,
+    pub status: RequestStatus,
+    pub version: String,
+    pub reference: String,
+    pub at: i64,
+    pub expires_at: i64,
 }
 
 /// One deploy of a service, refused and failed ones included.

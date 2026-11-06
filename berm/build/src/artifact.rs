@@ -1,14 +1,14 @@
 //! What `cargo build` reports compiling, one `compiler-artifact` message per
 //! crate, fresh or not.
 
-use crate::metadata::ManifestPath;
+use crate::{metadata::ManifestPath, toolchain::Toolchain};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
     io::Read,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Stdio,
 };
 
 /// One crate a build compiled, or found fresh.
@@ -23,12 +23,12 @@ impl Artifact {
     /// Run `cargo build` with `args` in `dir` and answer each crate it
     /// compiled or found fresh, host crates included. Diagnostics go to
     /// stderr as cargo renders them.
-    pub fn build(cargo: &str, dir: &Path, args: &[&str]) -> Result<Vec<Self>> {
-        let mut child = Command::new(cargo)
+    pub fn build(toolchain: &Toolchain, dir: &Path, args: &[&str]) -> Result<Vec<Self>> {
+        let mut child = toolchain
+            .command("cargo", dir)
             .arg("build")
             .args(args)
             .args(["--message-format", "json-render-diagnostics"])
-            .current_dir(dir)
             .stdout(Stdio::piped())
             .spawn()
             .context("cannot run cargo")?;
