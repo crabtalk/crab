@@ -19,7 +19,7 @@ Library-only packages live under [services/kits](kits/) and are listed in [crabk
 
 `crab build` operates on one service directory. `crab deploy [dir]` and `crab publish [dir]` also accept a catalog directory, selecting only its descendant services; the directory defaults to `.`. For example, run `crab publish services/connect` from the repository root or `crab publish` inside `services/connect`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
 
-To reuse a deployable service as a library, add the package as a dependency with `default-features = false`. This disables its standalone `tools` exports. Call the Rust functions from your own tools. `berm-build` inherits the dependency's credentials, host permissions and migrations, while its deployment name, logo, tool access, cron settings, variables and database sizing stay with its own deployment. A dependency keeping migrations needs a stable migration ID.
+To reuse a deployable service as a library, pin it to the same release tag as `berm-lang` and set `default-features = false`. This disables its standalone `tools` exports. Call the Rust functions from your own tools. `berm-build` inherits the dependency's credentials, host permissions and migrations, while its deployment name, logo, tool access, cron settings, variables and database sizing stay with its own deployment. A dependency keeping migrations needs a stable migration ID.
 
 All linked code executes inside the consuming service and uses its secrets and database. Calling a separately deployed service instead uses that deployment's execution and state.
 
@@ -28,7 +28,7 @@ All linked code executes inside the consuming service and uses its secrets and d
 Calling an existing deployment or deploying a published template needs no local build. To modify a service or deploy one without a published template, install [Crab](https://crab.talk/docs/guides/quickstart#1-install-the-cli), clone this repository, and select the service directory:
 
 ```sh
-git clone https://github.com/crabtalk/crab
+git clone --branch main --single-branch https://github.com/crabtalk/crab
 cd crab/services/connect/github
 crab login
 crab deploy --build
@@ -36,7 +36,7 @@ crab deploy --build
 
 Choose a service directory from a catalog, such as `services/connect/github` or `services/ops/uptime`. `crab deploy --build` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
 
-For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crab.talk/docs/guides/local).
+For local development, start the host with `crab dev -d`, use `crab --context default deploy --build` in the selected service directory, set local credentials with `crab --context default secret fill github`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crab.talk/docs/guides/local).
 
 ## Checking changes
 

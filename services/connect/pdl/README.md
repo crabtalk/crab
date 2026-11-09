@@ -24,7 +24,7 @@ crab deploy --from owner/pdl
 
 Set `PDL_API_KEY` through the copy’s credential setup. Enrichment consumes credits per match and search consumes credits per returned record.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -34,4 +34,4 @@ HTTP 404 no-match replies are errors. Successful replies retain upstream JSON, t
 
 The service exposes person/company enrichment and search. Autocomplete and other provider operations are not included.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/pdl) · [Provider documentation](https://docs.peopledatalabs.com/)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/pdl) · [Provider documentation](https://docs.peopledatalabs.com/)

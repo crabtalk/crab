@@ -24,7 +24,7 @@ crab deploy --from owner/contextdev
 
 Set `CONTEXT_DEV_API_KEY` through the copy’s credential setup. Requests consume the connected Context.dev account’s credits.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -34,4 +34,4 @@ Responses retain source evidence, partial results and credit metadata. Scrape su
 
 ISIN and NAICS brand lookup, people/company/news search, batches, monitors and account administration are not included. Brand industry labels use EIC.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/contextdev) · [Provider documentation](https://docs.context.dev)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/contextdev) · [Provider documentation](https://docs.context.dev)

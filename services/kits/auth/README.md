@@ -10,7 +10,7 @@ Add the library to your service's crate:
 
 ```toml
 [dependencies]
-crabkit = { version = "0.1", features = ["auth"] }
+crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features = ["auth"] }
 ```
 
 The library is also the crate `crabkit-auth` on its own.
@@ -43,7 +43,7 @@ access = "anonymous"
 access = "anonymous"
 ```
 
-GitHub code exchange and profile requests use the [GitHub service](https://github.com/crabtalk/crab/blob/dev/services/connect/github/README.md) as a library. Auth maps that profile to an identity and manages account linking and sessions. Its OAuth app credentials are distinct from the optional repository API token.
+GitHub code exchange and profile requests use the [GitHub service](https://github.com/crabtalk/crab/blob/main/services/connect/github/README.md) as a library. Auth maps that profile to an identity and manages account linking and sessions. Its OAuth app credentials are distinct from the optional repository API token.
 
 The service declares nothing the library already declares: auth and its dependencies declare the secrets, HTTP hosts and migrations, and they reach the service's manifest when the service links the library. Its tables are `auth_accounts`, `auth_identities` and `auth_sessions`, in the service's database.
 

@@ -38,7 +38,7 @@ crab var set posthog POSTHOG_REGION eu
 crab var set posthog POSTHOG_PROJECT_ID 123
 ```
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -48,4 +48,4 @@ Inspect `errors_while_computing_flags`; missing flags are unknown and partial re
 
 Queries run blocking HogQL. Include a descriptive name and a SQL `LIMIT`. Pagination, polling and retries are explicit. Self-hosted PostHog is not supported.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/posthog/LIBRARY.md) · [Provider documentation](https://posthog.com/docs/api)
+[Rust library integration](https://github.com/crabtalk/crab/blob/main/services/connect/posthog/LIBRARY.md) · [Provider documentation](https://posthog.com/docs/api)

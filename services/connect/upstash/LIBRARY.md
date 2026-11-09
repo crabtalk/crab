@@ -2,7 +2,7 @@
 
 ```toml
 [dependencies]
-upstash = { package = "crab-upstash", git = "https://github.com/crabtalk/crab", branch = "dev", default-features = false }
+upstash = { package = "crab-upstash", git = "https://github.com/crabtalk/crab", tag = "v0.1.4", default-features = false }
 ```
 
 ```rust,ignore

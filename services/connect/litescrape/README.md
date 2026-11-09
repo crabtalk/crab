@@ -24,7 +24,7 @@ crab deploy --from owner/litescrape
 
 Set `LITESCRAPE_API_KEY` through the copy’s credential setup. Calls consume the connected account’s prepaid credits and concurrency allowance.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -34,4 +34,4 @@ Pass pagination parameters explicitly. Responses retain provider metadata and sc
 
 Non-2xx errors retain the provider body and retry metadata. Calls do not automatically paginate or retry. Account, billing, async and additional scraper operations are not included.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/litescrape) · [Provider documentation](https://litescrape.com/docs/reference)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/litescrape) · [Provider documentation](https://litescrape.com/docs/reference)

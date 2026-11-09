@@ -9,7 +9,7 @@ A deployable service's README appears on crab.talk and in MCP service resources.
 - Explain the choice between calling an accessible running deployment and deploying a private copy. A template listing is not necessarily callable. Mention MCP with a link to the shared connection guide.
 - For a published template, point to **Deploy your own** and show `crab deploy --from owner/name`. Make availability conditional unless publication is verified. Describe required credentials, variables, provider permissions and state ownership. Link to source deployment as a fallback; do not require a local build to consume a published image.
 - Keep behavior that changes how a person uses results: pagination, asynchronous job follow-up, partial failures, quotas, retry/idempotency rules and significant omissions. Use the service's actual boundaries, not a provider's whole feature list.
-- Use absolute links that work on crab.talk and GitHub. Keep paragraphs on one line. Keep setup steps and examples short; do not duplicate every tool schema or price table.
+- Use absolute links that work on crab.talk and GitHub. Link repository files on `main`; pin Rust dependencies to a released tag matching `berm-lang`. Never link or depend on `dev`. Keep paragraphs on one line. Keep setup steps and examples short; do not duplicate every tool schema or price table.
 
 ## What belongs elsewhere
 

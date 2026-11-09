@@ -24,7 +24,7 @@ crab deploy --from owner/companyenrich
 
 Set `COMPANYENRICH_API_KEY` through the copy’s credential setup. Enrichment, search and background jobs consume the connected account’s credits; email enrichment endpoints are beta.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -32,4 +32,4 @@ Responses preserve upstream JSON. Pagination, job polling, retries and result do
 
 Company/person operations, batch jobs, exports, taxonomies, geography and account reads are included. Saved-list CRUD, standalone education lookup and similar-company preview are not included. Education and workforce expansion options on supported tools are retained.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/companyenrich) · [Provider documentation](https://docs.companyenrich.com)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/companyenrich) · [Provider documentation](https://docs.companyenrich.com)

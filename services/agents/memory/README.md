@@ -23,4 +23,4 @@ Namespaces are 1–64 bytes, keys 1–128 bytes, and content 1–16384 bytes. Se
 
 Keep the deployment private: making it public opens its shared memory tools to other authenticated accounts. The platform's account membership and keys control access; namespaces are organization, not an authorization boundary.
 
-[Source deployment](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/dev/services/agents/memory/LIBRARY.md)
+[Source deployment](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/main/services/agents/memory/LIBRARY.md)

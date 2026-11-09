@@ -37,4 +37,4 @@ Sources are 1–64 bytes, ids 1–256 bytes and serialized payloads at most 16 K
 
 Daily cleanup deletes events older than thirty days, including unacknowledged events. `delete` removes one immediately. Either operation also removes its deduplication record, so that id can be accepted again. Keep the deployment private so other accounts cannot read or acknowledge events.
 
-[Cloud webhook setup](https://crab.talk/docs/guides/webhooks) · [Source deployment](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/dev/services/ops/webhooks/LIBRARY.md)
+[Cloud webhook setup](https://crab.talk/docs/guides/webhooks) · [Source deployment](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/main/services/ops/webhooks/LIBRARY.md)

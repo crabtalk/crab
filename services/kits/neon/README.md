@@ -8,7 +8,7 @@ Neon's SQL over HTTP for berm services: parameterized statements and transaction
 
 ```toml
 [dependencies]
-crabkit = { version = "0.1", features = ["neon"] }
+crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features = ["neon"] }
 ```
 
 The library is also the crate `crabkit-neon` on its own.

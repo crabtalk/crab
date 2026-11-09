@@ -2,7 +2,7 @@
 
 ```toml
 [dependencies]
-posthog = { package = "crab-posthog", git = "https://github.com/crabtalk/crab", branch = "dev", default-features = false }
+posthog = { package = "crab-posthog", git = "https://github.com/crabtalk/crab", tag = "v0.1.4", default-features = false }
 ```
 
 ```rust,ignore
