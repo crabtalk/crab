@@ -9,7 +9,7 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 - [Web](web/README.md): SEO checks, webpage-to-Markdown extraction and website analytics.
 - [Ops](ops/README.md): uptime and webhook inboxes.
 
-The catalog directory matches its intended publisher org: `connect`, `agents`, `web` or `ops`. Select the publishing account explicitly; for example, `crab --org web publish services/web` on an authenticated Cloud context. A directory does not select an account automatically.
+The catalog directories are `connect`, `agents`, `web` and `ops`. Each service's `image` address selects its publication account; for example, `image = "connect/tinyfish"` publishes to `connect/tinyfish`. A context supplies the server and credentials, which must authorize publication there.
 
 Call an accessible running deployment or deploy a published template as a private copy. Catalog membership does not make a deployment public. `web/seo` and `web/markdown` are configured as public services without templates. Each service documents its setup and state ownership.
 
@@ -25,16 +25,16 @@ All linked code executes inside the consuming service and uses its secrets and d
 
 ## Building from source
 
-Calling an existing deployment or deploying a published template needs no local build. To modify a service or deploy one without a published template, install [Crab](https://crab.talk/docs/guides/quickstart#1-install-the-cli) and a Rust toolchain, clone this repository, and select the service directory:
+Calling an existing deployment or deploying a published template needs no local build. To modify a service or deploy one without a published template, install [Crab](https://crab.talk/docs/guides/quickstart#1-install-the-cli), clone this repository, and select the service directory:
 
 ```sh
 git clone https://github.com/crabtalk/crab
 cd crab/services/connect/github
 crab login
-crab deploy
+crab deploy --build
 ```
 
-Choose a service directory from a catalog, such as `services/connect/github` or `services/ops/uptime`. `crab deploy` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
+Choose a service directory from a catalog, such as `services/connect/github` or `services/ops/uptime`. `crab deploy --build` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
 
 For local development, use `crab --context default deploy`, set local credentials with `crab --context default secret fill github`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crab.talk/docs/guides/local).
 

@@ -1,4 +1,4 @@
-name = "tinyfish"
+image = "connect/tinyfish"
 logo = "https://crab.talk/logos/templates/tinyfish-v1.svg"
 template = true
 buffer = 8388608

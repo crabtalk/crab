@@ -1,4 +1,4 @@
-name = "uptime"
+image = "ops/uptime"
 id = "fcdebd754bbf495a8d4ca14af5d76ecf"
 public = false
 template = true

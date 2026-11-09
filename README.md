@@ -40,6 +40,15 @@ crab login
 crab deploy
 ```
 
+A repo can declare its published address in `crab.toml`, without a separate name:
+
+```toml
+image = "connect/tinyfish"
+template = true
+```
+
+`crab publish` builds and publishes to that address, using the Cargo version and checking publication permissions. `crab deploy` consumes that release under your selected account without building. `crab deploy --build` deploys local source. An image is optional for building; a standalone file selects a release with `image = "connect/tinyfish:1.2.3"`.
+
 ## Explore
 
 - [Documentation](https://crab.talk/docs) — guides for writing and deploying services.

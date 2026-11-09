@@ -2,7 +2,7 @@
 
 use crate::{
     Access, Credential, DEFAULT_BUFFER, Deps, Http, Limits, ToolRecord, ToolSpec, Var, host,
-    logo::Logo,
+    logo::Logo, reference::Reference,
 };
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
@@ -17,7 +17,7 @@ use std::{
 /// What the project file is called.
 pub const FILE: &str = "crab.toml";
 
-/// The project file. A service's names it; a kit's declares only `id`,
+/// A service image's declarations. A library declares only `id`,
 /// `formerly`, `secrets`, `[credentials]`, `calls`, `[http]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
@@ -31,9 +31,8 @@ pub struct Project {
     /// package names it had.
     #[serde(default)]
     pub formerly: Vec<String>,
-    /// The name it deploys as.
     #[serde(default)]
-    pub name: Option<String>,
+    pub image: Option<Reference>,
     #[serde(default)]
     pub logo: Option<Logo>,
     #[serde(default)]
@@ -205,14 +204,24 @@ impl Project {
         Ok(project)
     }
 
-    /// The name a service deploys as. A reusable service may also declare a migration ID.
-    pub fn name(&self) -> Result<&str> {
+    pub fn instance<'a>(&'a self, package: &'a str) -> &'a str {
+        self.image
+            .as_ref()
+            .map_or(package, |image| image.name.as_str())
+    }
+
+    pub fn check_service(&self) -> Result<()> {
         if self.id.is_some() || !self.formerly.is_empty() {
             self.check_dependency()?;
         }
-        self.name
-            .as_deref()
-            .context("a service names itself: `name = \"…\"`")
+        Ok(())
+    }
+
+    pub fn check_deploy(&self) -> Result<()> {
+        if !self.deploy {
+            bail!("{FILE} says deploy = false");
+        }
+        Ok(())
     }
 
     pub fn deps(&self) -> Deps {
@@ -260,7 +269,7 @@ impl Project {
     /// Refuse what only a service declares, for a kit's `crab.toml`.
     pub fn check_kit(&self) -> Result<()> {
         let service_only = [
-            ("name", self.name.is_some()),
+            ("image", self.image.is_some()),
             ("logo", self.logo.is_some()),
             ("public", self.public),
             ("template", self.template),

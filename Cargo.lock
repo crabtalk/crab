@@ -290,6 +290,7 @@ dependencies = [
  "hex",
  "object 0.40.0",
  "regex",
+ "semver",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -616,6 +617,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo_toml"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f4b26e751e711a5302649417f2da046dce6391b2ea30a4820f37462314f0b9"
+dependencies = [
+ "semver",
+ "serde",
+ "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
 name = "castaway"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -893,6 +905,7 @@ dependencies = [
  "berm-host",
  "berm-oci",
  "berm-rusqlite",
+ "cargo_toml",
  "chrono",
  "clap",
  "crabtalk-sdk",

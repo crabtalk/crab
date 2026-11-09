@@ -1,4 +1,4 @@
-name = "analytics"
+image = "web/analytics"
 id = "bc3917c09124402fa0444a8b7a5adba1"
 public = false
 template = true

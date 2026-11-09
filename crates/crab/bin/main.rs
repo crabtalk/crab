@@ -96,9 +96,9 @@ enum Command {
     },
     /// Build and measure local WebAssembly workloads in a temporary host.
     Bench(cmd::bench::Bench),
-    /// Build services and deploy each as its `crab.toml` names it, replacing
-    /// whatever holds the name, and serve it: the service in the selected
-    /// directory, or services beneath it not saying `deploy = false`. On
+    /// Deploy published images, or local source with --build or no image.
+    /// Select the service in a directory, or services beneath it not saying
+    /// `deploy = false`. Published copies require an unused instance name. On
     /// Cloud a CLI session always waits for browser approval at the printed
     /// link, even without a terminal. Only an API key with deployments:write
     /// can skip approval with --yes.

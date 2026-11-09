@@ -1,4 +1,4 @@
-name = "feed"
+image = "fixtures/feed"
 deploy = false
 
 [http]

@@ -1,4 +1,4 @@
-name = "contextdev"
+image = "connect/contextdev"
 logo = "https://crab.talk/logos/templates/contextdev-v1.png"
 template = true
 buffer = 8388608

@@ -24,6 +24,7 @@ berm-host.workspace = true
 berm-oci.workspace = true
 chrono.workspace = true
 clap.workspace = true
+cargo_toml.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
 hex = { workspace = true, features = ["std"] }
 parking_lot.workspace = true

@@ -1,4 +1,4 @@
-name = "keeper"
+image = "fixtures/keeper"
 deploy = false
 calls = ["inner"]
 

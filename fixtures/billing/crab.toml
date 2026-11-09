@@ -1,4 +1,4 @@
-name = "billing"
+image = "fixtures/billing"
 deploy = false
 
 [tools.checkout]

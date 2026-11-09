@@ -42,9 +42,15 @@ impl Workspace {
                 continue;
             }
             let project = Project::read(&path)?;
-            let Some(name) = project.name else {
+            if project.image.is_none()
+                && !package
+                    .targets
+                    .iter()
+                    .any(|target| target.crate_types.iter().any(|kind| kind == "cdylib"))
+            {
                 continue;
-            };
+            }
+            let name = project.instance(&package.name).to_owned();
             if !named.is_empty() {
                 if named.contains(&name) {
                     services.push(dir.to_path_buf());

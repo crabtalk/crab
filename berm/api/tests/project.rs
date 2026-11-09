@@ -12,7 +12,7 @@ fn read(toml: &str) -> anyhow::Result<Project> {
 }
 
 const GITHUB: &str = r#"
-name = "app"
+image = "fixtures/app"
 secrets = ["OPENAI_KEY"]
 
 [credentials.github]
@@ -68,7 +68,7 @@ fn the_auth_kits_credentials_parse() {
 #[test]
 fn a_services_tools_are_read_and_a_kits_are_refused() {
     let service = read(
-        "name = \"app\"\n\n[tools.search]\naccess = \"services\"\ntitle = \"Search\"\nprice = 2_000\ncatalog = \"web.search\"\n",
+        "image = \"fixtures/app\"\n\n[tools.search]\naccess = \"services\"\ntitle = \"Search\"\nprice = 2_000\ncatalog = \"web.search\"\n",
     )
     .unwrap();
     let search = &service.tools["search"];
@@ -85,7 +85,10 @@ fn a_services_tools_are_read_and_a_kits_are_refused() {
 #[test]
 fn a_price_or_catalog_on_an_internal_tool_is_refused() {
     for key in ["price = 2_000", "catalog = \"web.search\""] {
-        let error = read(&format!("name = \"app\"\n[tools.search]\n{key}\n")).unwrap_err();
+        let error = read(&format!(
+            "image = \"fixtures/app\"\n[tools.search]\n{key}\n"
+        ))
+        .unwrap_err();
         assert!(error.to_string().contains("internal tool"), "{error}");
     }
 }
@@ -95,13 +98,13 @@ fn a_title_past_sixty_characters_or_one_line_is_refused() {
     let long = "x".repeat(61);
     for title in [long.as_str(), "two\\nlines"] {
         let error = read(&format!(
-            "name = \"app\"\n[tools.search]\ntitle = \"{title}\"\n"
+            "image = \"fixtures/app\"\n[tools.search]\ntitle = \"{title}\"\n"
         ))
         .unwrap_err();
         assert!(error.to_string().contains("one line"), "{error}");
     }
     read(&format!(
-        "name = \"app\"\n[tools.search]\ntitle = \"{}\"\n",
+        "image = \"fixtures/app\"\n[tools.search]\ntitle = \"{}\"\n",
         "é".repeat(60)
     ))
     .unwrap();
@@ -109,8 +112,8 @@ fn a_title_past_sixty_characters_or_one_line_is_refused() {
 
 #[test]
 fn an_unknown_access_or_key_is_refused() {
-    assert!(read("name = \"app\"\n[tools.search]\naccess = \"everyone\"\n").is_err());
-    assert!(read("name = \"app\"\n[tools.search]\nprices = 1\n").is_err());
+    assert!(read("image = \"fixtures/app\"\n[tools.search]\naccess = \"everyone\"\n").is_err());
+    assert!(read("image = \"fixtures/app\"\n[tools.search]\nprices = 1\n").is_err());
 }
 
 #[test]
@@ -127,7 +130,7 @@ fn a_pattern_that_is_not_a_regular_expression_is_refused() {
 fn a_budget_key_of_zero_or_unknown_is_refused() {
     let budget = |set: &str| {
         read(&format!(
-            "name = \"app\"\n[tools.search]\nbudget = {{ {set} }}\n"
+            "image = \"fixtures/app\"\n[tools.search]\nbudget = {{ {set} }}\n"
         ))
     };
     let error = budget("cpu = 5_000, written = 0").unwrap_err();
@@ -147,7 +150,7 @@ fn a_budget_key_of_zero_or_unknown_is_refused() {
 #[test]
 fn linked_services_validate_migration_identity_without_rejecting_deployment_settings() {
     let service =
-        read("name = \"github\"\n[tools.repository]\naccess = \"public\"\n[vars]\nlimit = {}\n")
+        read("image = \"fixtures/github\"\n[tools.repository]\naccess = \"public\"\n[vars]\nlimit = {}\n")
             .unwrap();
     service.check_dependency().unwrap();
     assert_eq!(service.tools.len(), 1);
@@ -158,34 +161,34 @@ fn linked_services_validate_migration_identity_without_rejecting_deployment_sett
 #[test]
 fn stateful_services_can_deploy_and_link_with_a_stable_migration_identity() {
     let service = read(
-        r#"name = "watch"
+        r#"image = "fixtures/watch"
 id = "732e70b4fd594e91a94da0f60f50a948"
 [database]
 migrations = "migrations"
 "#,
     )
     .unwrap();
-    assert_eq!(service.name().unwrap(), "watch");
+    assert_eq!(service.instance("package"), "watch");
     service.check_dependency().unwrap();
     assert!(
         read(
-            r#"name = "watch"
+            r#"image = "fixtures/watch"
 id = "invalid"
 "#
         )
         .unwrap()
-        .name()
+        .check_service()
         .is_err()
     );
 }
 
 #[test]
 fn publication_is_opt_in_and_independent() {
-    let private = read(r#"name = "app""#).unwrap();
+    let private = read(r#"image = "fixtures/app""#).unwrap();
     assert!(!private.public && !private.template);
     for (public, template) in [(false, true), (true, false), (true, true)] {
         let project = read(&format!(
-            "name = \"app\"\npublic = {public}\ntemplate = {template}\n"
+            "image = \"fixtures/app\"\npublic = {public}\ntemplate = {template}\n"
         ))
         .unwrap();
         assert_eq!((project.public, project.template), (public, template));
@@ -194,8 +197,8 @@ fn publication_is_opt_in_and_independent() {
 
 #[test]
 fn logos_are_optional_and_require_absolute_https_urls() {
-    assert!(read("name = \"app\"\n").unwrap().logo.is_none());
-    let logo = read("name = \"app\"\nlogo = \"https://example.com/logo.svg\"\n")
+    assert!(read("image = \"fixtures/app\"\n").unwrap().logo.is_none());
+    let logo = read("image = \"fixtures/app\"\nlogo = \"https://example.com/logo.svg\"\n")
         .unwrap()
         .logo
         .unwrap();
@@ -208,7 +211,7 @@ fn logos_are_optional_and_require_absolute_https_urls() {
         "data:image/png;base64,AA==",
         "",
     ] {
-        let error = read(&format!("name = \"app\"\nlogo = {url:?}\n")).unwrap_err();
+        let error = read(&format!("image = \"fixtures/app\"\nlogo = {url:?}\n")).unwrap_err();
         assert!(format!("{error:#}").contains("logo must be an absolute HTTPS URL"));
     }
 }
@@ -228,7 +231,7 @@ fn library_only_packages_do_not_declare_logos() {
 #[test]
 fn http_settings_replace_syscall_declarations() {
     let project = read(
-        r#"name = "http"
+        r#"image = "fixtures/http"
 [http]
 fetch = ["api.example"]
 proxy = ["*.example"]
@@ -239,7 +242,7 @@ proxy = ["*.example"]
     assert_eq!(project.deps().http.proxy, ["*.example"]);
     assert!(
         read(
-            r#"name = "old"
+            r#"image = "fixtures/old"
 [syscalls]
 "berm.vouch" = []
 "#
@@ -248,12 +251,28 @@ proxy = ["*.example"]
     );
     assert!(
         read(
-            r#"name = "typo"
+            r#"image = "fixtures/typo"
 [http]
 ftech = []
 "#
         )
         .is_err()
     );
-    assert!(read(r#"name = "plain""#).unwrap().deps().http.is_empty());
+    assert!(
+        read(r#"image = "fixtures/plain""#)
+            .unwrap()
+            .deps()
+            .http
+            .is_empty()
+    );
+}
+
+#[test]
+fn builds_need_no_image_and_the_old_name_key_is_rejected() {
+    let project = read("").unwrap();
+    assert!(project.image.is_none());
+    assert_eq!(project.instance("local-package"), "local-package");
+    assert!(read("name = \"old-name\"").is_err());
+    let project = read("image = \"connect/tinyfish\"").unwrap();
+    assert_eq!(project.instance("crab-tinyfish"), "tinyfish");
 }

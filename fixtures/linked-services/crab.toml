@@ -1,4 +1,4 @@
-name = "linked-services"
+image = "fixtures/linked-services"
 deploy = false
 
 [tools.inspect]

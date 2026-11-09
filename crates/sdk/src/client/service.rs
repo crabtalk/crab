@@ -4,9 +4,9 @@
 use crate::{
     client::{Client, Error},
     services::service::{
-        Billing, Costed, DeployRequest, DeploySetRequest, Deployment, DeploymentStatus, MeteredDay,
-        Secret, SetSecret, Template, TemplateRelease, Terms, ToolCosted, UpgradePolicy, Upload,
-        UploadRequest, Visibility,
+        Billing, Costed, DeployRequest, DeployResult, DeploySetRequest, Deployment,
+        DeploymentStatus, MeteredDay, Secret, SetSecret, Template, TemplateRelease, Terms,
+        ToolCosted, UpgradePolicy, Upload, UploadRequest, Visibility,
     },
 };
 use berm_api::{
@@ -101,8 +101,17 @@ impl Client {
     pub async fn deploy_set(
         &self,
         set: &DeploySetRequest,
-    ) -> Result<BTreeMap<String, crate::services::service::DeployResult>, Error> {
+    ) -> Result<BTreeMap<String, DeployResult>, Error> {
         let path = format!("{}/deploys", self.addressed().services());
+        self.json(self.at(Method::POST, &path).json(set)).await
+    }
+
+    pub async fn publish_set(
+        &self,
+        owner: &str,
+        set: &DeploySetRequest,
+    ) -> Result<BTreeMap<String, DeployResult>, Error> {
+        let path = format!("/services/{owner}");
         self.json(self.at(Method::POST, &path).json(set)).await
     }
 

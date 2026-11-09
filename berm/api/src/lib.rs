@@ -23,6 +23,7 @@ mod image;
 pub mod logo;
 mod manifest;
 pub mod project;
+pub mod reference;
 pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;

@@ -1,4 +1,4 @@
-name = "seo"
+image = "web/seo"
 public = true
 template = false
 buffer = 1048576

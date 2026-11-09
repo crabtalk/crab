@@ -1,4 +1,4 @@
-name = "markdown"
+image = "web/markdown"
 public = true
 template = false
 buffer = 1048576

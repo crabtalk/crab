@@ -1,5 +1,5 @@
-# The name it deploys as.
-name = "__NAME__"
+# Published image address; omit it for source-only development.
+# image = "your-account/__NAME__"
 # Public deployment and reusable image publication are opt-in.
 # public = true
 # template = true

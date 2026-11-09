@@ -1,4 +1,4 @@
-name = "webhooks"
+image = "ops/webhooks"
 id = "0d154f8e873f4082bf93ff0583e7d185"
 public = false
 template = true

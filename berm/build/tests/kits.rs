@@ -36,7 +36,7 @@ fn service(root: &Path, dependencies: &str, dev: &str) {
         ),
     );
     write(root, "service/src/lib.rs", "");
-    write(root, "service/crab.toml", "name = \"service\"\n");
+    write(root, "service/crab.toml", "image = \"fixtures/service\"\n");
 }
 
 /// A `crab.toml` a kit may not have, so taking the crate for a kit fails the
@@ -108,7 +108,7 @@ fn a_service_without_a_cdylib_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
     package(root, "service", "service", "0.1.0", "");
-    write(root, "service/crab.toml", "name = \"service\"\n");
+    write(root, "service/crab.toml", "image = \"fixtures/service\"\n");
     // Its own workspace, apart from the one the test runs in.
     let manifest = root.join("service/Cargo.toml");
     let text = fs::read_to_string(&manifest).unwrap();
@@ -116,17 +116,6 @@ fn a_service_without_a_cdylib_is_refused() {
 
     let error = berm_build::build(&root.join("service"), None).unwrap_err();
     assert!(error.to_string().contains("builds no cdylib"), "{error:#}");
-}
-
-#[test]
-fn a_service_naming_no_name_is_refused() {
-    let root = TempDir::new().unwrap();
-    let root = root.path();
-    service(root, "", "");
-    write(root, "service/crab.toml", "deploy = true\n");
-
-    let error = berm_build::build(&root.join("service"), None).unwrap_err();
-    assert!(error.to_string().contains("names itself"), "{error:#}");
 }
 
 /// A service `name` in `root/name` whose only tool, `run`, is a record and an
@@ -153,7 +142,7 @@ fn tooled(root: &Path, name: &str, dependencies: &str) {
     write(
         root,
         &format!("{name}/crab.toml"),
-        &format!("name = \"{name}\"\n"),
+        &format!("image = \"fixtures/{name}\"\n"),
     );
 }
 
@@ -215,7 +204,7 @@ fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
     write(
         root,
         "provider/crab.toml",
-        "name = \"provider\"\nlogo = \"https://example.com/provider.svg\"\n",
+        "image = \"fixtures/provider\"\nlogo = \"https://example.com/provider.svg\"\n",
     );
 
     let built = berm_build::build(&root.join("app"), None).unwrap();
@@ -225,7 +214,7 @@ fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
     write(
         root,
         "app/crab.toml",
-        "name = \"app\"\nlogo = \"https://example.com/app.svg\"\n",
+        "image = \"fixtures/app\"\nlogo = \"https://example.com/app.svg\"\n",
     );
     let built = berm_build::build(&root.join("app"), None).unwrap();
     let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();

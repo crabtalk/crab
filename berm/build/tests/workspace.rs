@@ -30,8 +30,8 @@ fn a_service_saying_deploy_false_is_left_out_unless_named() {
         "Cargo.toml",
         "[workspace]\nmembers = [\"shown\", \"held\"]\nresolver = \"3\"\n",
     );
-    service(&root, "shown", "name = \"shown\"\n");
-    service(&root, "held", "name = \"held\"\ndeploy = false\n");
+    service(&root, "shown", "image = \"fixtures/shown\"\n");
+    service(&root, "held", "image = \"fixtures/held\"\ndeploy = false\n");
 
     let workspace = Workspace::read(&root, &[], false).unwrap();
     assert_eq!(workspace.services, [root.join("shown")]);
@@ -54,9 +54,9 @@ fn named_services_are_picked_from_anywhere_in_the_workspace() {
         "Cargo.toml",
         "[workspace]\nmembers = [\"one\", \"two\", \"held\"]\nresolver = \"3\"\n",
     );
-    service(&root, "one", "name = \"one\"\n");
-    service(&root, "two", "name = \"two\"\n");
-    service(&root, "held", "name = \"held\"\ndeploy = false\n");
+    service(&root, "one", "image = \"fixtures/one\"\n");
+    service(&root, "two", "image = \"fixtures/two\"\n");
+    service(&root, "held", "image = \"fixtures/held\"\ndeploy = false\n");
 
     let named = |names: &[&str]| {
         let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
@@ -81,16 +81,28 @@ members = ["connect/one", "connect/nested/deep", "connect/held", "connect/librar
 resolver = "3"
 "#,
     );
-    service(&root.join("connect"), "one", "name = \"one\"\n");
-    service(&root.join("connect/nested"), "deep", "name = \"deep\"\n");
+    service(&root.join("connect"), "one", "image = \"fixtures/one\"\n");
+    service(
+        &root.join("connect/nested"),
+        "deep",
+        "image = \"fixtures/deep\"\n",
+    );
     service(
         &root.join("connect"),
         "held",
-        "name = \"held\"\ndeploy = false\n",
+        "image = \"fixtures/held\"\ndeploy = false\n",
     );
     service(&root.join("connect"), "library", "");
-    service(&root.join("connect-extra"), "other", "name = \"other\"\n");
-    service(&root.join("utilities"), "watch", "name = \"watch\"\n");
+    service(
+        &root.join("connect-extra"),
+        "other",
+        "image = \"fixtures/other\"\n",
+    );
+    service(
+        &root.join("utilities"),
+        "watch",
+        "image = \"fixtures/watch\"\n",
+    );
 
     let group = root.join("connect");
     let workspace = Workspace::read(&group.join("../connect"), &[], false).unwrap();
@@ -126,7 +138,7 @@ fn directory_selection_does_not_read_unrelated_service_manifests() {
         "Cargo.toml",
         "[workspace]\nmembers = [\"connect/*\", \"outside\"]\nresolver = \"3\"\n",
     );
-    service(&root.join("connect"), "one", "name = \"one\"\n");
+    service(&root.join("connect"), "one", "image = \"fixtures/one\"\n");
     service(&root, "outside", "invalid toml");
 
     let group = root.join("connect");

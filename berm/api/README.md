@@ -12,7 +12,7 @@ for tool in &manifest.tools {
 }
 ```
 
-`Manifest::try_from(&[u8])` reads the `.berm.abi`, `.berm.service` and `.berm.kits` sections without compiling or running the image. An image built against a different `ABI_VERSION`, or without the `.berm.service` section `crab build` appends, is refused here. `project::Project` reads a service's or a kit's `crab.toml`. `Manifest.imports` comes from the linked Wasm imports; `Deps.http` holds the merged HTTP destinations configured under `[http]`.
+`Manifest::try_from(&[u8])` reads the `.berm.abi`, `.berm.service` and `.berm.kits` sections without compiling or running the image. An image built against a different `ABI_VERSION`, or without the `.berm.service` section `crab build` appends, is refused here. `project::Project` reads a service's or a kit's `crab.toml`; its optional `image` is an `owner/service` publication address, parsed by `reference::Reference`. `Manifest.imports` comes from the linked Wasm imports; `Deps.http` holds the merged HTTP destinations configured under `[http]`.
 
 `Service`, `ToolSpec` and `Output` are the control API's own shapes.
 `Output::Failed` is the service's own report and arrives with the same `200` a

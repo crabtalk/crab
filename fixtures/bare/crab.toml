@@ -1,4 +1,4 @@
-name = "bare"
+image = "fixtures/bare"
 deploy = false
 
 [tools.fetch]
