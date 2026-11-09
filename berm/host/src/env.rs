@@ -4,7 +4,7 @@
 use crate::Layers;
 use anyhow::{Result, bail};
 use berm::{
-    Callsite, Enter, Meter, clock,
+    Callsite, Enter, Meter, Refused, clock,
     syscall::http::{Request, Response},
 };
 use berm_api::host::{Link, Reply, Used};
@@ -66,6 +66,17 @@ pub trait Peers: Send + Sync + 'static {
         args: Vec<u8>,
         link: Link,
     ) -> impl Future<Output = Result<Reply>> + Send;
+
+    /// Call a qualified deployment through the account authorization boundary.
+    fn call(
+        &self,
+        service: &str,
+        _tool: &str,
+        _args: Vec<u8>,
+        _link: Link,
+    ) -> impl Future<Output = Result<Reply>> + Send {
+        async move { Err(Refused(format!("this host has no account gateway for {service:?}")).into()) }
+    }
 
     /// Hand `peer` the uses counted here of services it runs.
     fn ship(&self, peer: &str, used: &[Used]) -> impl Future<Output = Result<()>> + Send;

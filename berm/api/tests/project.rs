@@ -276,3 +276,9 @@ fn builds_need_no_image_and_the_old_name_key_is_rejected() {
     let project = read("image = \"connect/tinyfish\"").unwrap();
     assert_eq!(project.instance("crab-tinyfish"), "tinyfish");
 }
+
+#[test]
+fn service_call_destinations_are_not_manifest_declarations() {
+    let error = read("calls = [\"alice/weather\"]").unwrap_err();
+    assert!(format!("{error:#}").contains("calls"), "{error:#}");
+}

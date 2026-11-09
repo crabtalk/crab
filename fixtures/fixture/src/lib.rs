@@ -421,3 +421,19 @@ pub struct Attempts {
     pub after: String,
     pub call: String,
 }
+
+/// Calls or schedules a tool at a deployment address.
+#[tool]
+pub fn invoke(service: String, tool: String, args: String, delay: Option<u64>) -> Result<String> {
+    if let Some(delay) = delay {
+        berm_lang::after(delay, &service, &tool, &args)?;
+        return Ok(String::new());
+    }
+    Ok(berm_lang::call(&service, &tool, &args)?)
+}
+
+/// Answers `ok`; only accounts may call it.
+#[tool]
+pub fn fromaccounts() -> Result<String> {
+    Ok("ok".into())
+}

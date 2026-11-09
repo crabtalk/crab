@@ -1,6 +1,5 @@
 image = "fixtures/keeper"
 deploy = false
-calls = ["inner"]
 
 [database]
 migrations = "migrations"

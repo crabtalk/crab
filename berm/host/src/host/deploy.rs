@@ -292,7 +292,6 @@ impl<E: Env> Host<E> {
         }
         Ok(Checked {
             version: manifest.version.clone(),
-            calls: manifest.deps.calls.clone(),
             migrations,
             breaks,
             secrets: manifest.deps.secrets.clone(),

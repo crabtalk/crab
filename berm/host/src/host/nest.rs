@@ -1,5 +1,4 @@
-//! `berm.call` as this host serves it: a service calling services in its
-//! scope, here or on the peer each runs on.
+//! `berm.call`: local deployment names and qualified account addresses.
 
 use crate::{
     env::{Env, Observe, Peers},
@@ -11,7 +10,10 @@ use crate::{
 };
 use anyhow::{Result, bail};
 use berm::{Caller, Calls, Callsite, Ended, Enter, Meter, Now, Ran};
-use berm_api::host::{Kind, Link, NestedCall, Outcome, Reply, Source, User};
+use berm_api::{
+    address::Address,
+    host::{Kind, Link, NestedCall, Outcome, Reply, Source, User},
+};
 use std::{
     sync::{Arc, Weak},
     time::Instant,
@@ -37,10 +39,12 @@ pub(crate) fn calls<E: Env>(
             Arc::new(move |at: &Callsite, target: &str, _: &str| {
                 let key = resolve(at, target)?;
                 let alive = host::alive(&host)?;
-                if alive.holds.holds(host::split(&key).0) {
+                if host::split(&key).0 == host::split(&at.service).0
+                    && alive.holds.holds(host::split(&key).0)
+                {
                     bail!("{target} is held");
                 }
-                if alive.stops.stopped(&key) {
+                if host::split(&key).0 == host::split(&at.service).0 && alive.stops.stopped(&key) {
                     bail!("{target} is stopped");
                 }
                 Ok(key)
@@ -54,7 +58,9 @@ pub(crate) fn calls<E: Env>(
                     let Some(host) = host.upgrade() else {
                         return;
                     };
-                    if host.berm.get(deployed).is_none() {
+                    if host.berm.get(deployed).is_none()
+                        || host::split(deployed).0 != host::split(&at.service).0
+                    {
                         return;
                     }
                     host.usage.record(
@@ -68,9 +74,7 @@ pub(crate) fn calls<E: Env>(
                 },
             )
         },
-        // A callee is told the calling service's name; it is in the same
-        // scope.
-        named: Arc::new(|service: &str| host::split(service).1.to_owned()),
+        named: Arc::new(str::to_owned),
         invoked: {
             let host = host.clone();
             Arc::new(move |at: &Callsite, tool: &str, used: Meter, ran: Ran| {
@@ -82,7 +86,7 @@ pub(crate) fn calls<E: Env>(
                         NestedCall {
                             id: at.span,
                             parent,
-                            service: host::split(&at.service).1.to_owned(),
+                            service: at.service.to_string(),
                             tool: tool.to_owned(),
                             at: ran.at,
                             ms: ran.ms,
@@ -102,7 +106,15 @@ pub(crate) fn calls<E: Env>(
             let host = host.clone();
             Arc::new(move |at, deployed, tool, args, link| {
                 let host = host.upgrade()?;
-                let peer = host.routes.peer(deployed)?;
+                let cross = host::split(&at.service).0 != host::split(deployed).0;
+                if !cross && host.berm.get(deployed).is_some() {
+                    return None;
+                }
+                let peer = if cross {
+                    None
+                } else {
+                    Some(host.routes.peer(deployed)?)
+                };
                 let from = at.service.to_string();
                 let (service, tool) = (deployed.to_owned(), tool.to_owned());
                 let link = Link {
@@ -134,7 +146,10 @@ pub(crate) fn calls<E: Env>(
                         result,
                         denied,
                         meters,
-                    } = host.peers.link(&peer, &service, &tool, args, link).await?;
+                    } = match peer {
+                        Some(peer) => host.peers.link(&peer, &service, &tool, args, link).await?,
+                        None => host.peers.call(&service, &tool, args, link).await?,
+                    };
                     for (service, tools) in meters {
                         for (tool, used) in tools {
                             at.meter_of(&service, &tool, used);
@@ -148,15 +163,14 @@ pub(crate) fn calls<E: Env>(
     }
 }
 
-/// A `berm.call` target: the calling service itself or one its manifest
-/// declares in `calls`, by name in the caller's scope.
 fn resolve(at: &Callsite, target: &str) -> Result<String> {
     if target.contains('/') {
-        bail!("a service calls services in its own scope, by name");
+        let _: Address = target.parse()?;
+        return Ok(target.to_owned());
     }
-    let (scope, name) = host::split(&at.service);
-    if target != name && !at.deps.calls.iter().any(|declared| declared == target) {
-        bail!("{name} does not declare {target:?} in its calls");
+    let (scope, _) = host::split(&at.service);
+    if target.is_empty() || target == "." || target == ".." || target.contains(':') {
+        bail!("a service address is owner/service or a local deployment name");
     }
     Ok(host::join(scope, target))
 }

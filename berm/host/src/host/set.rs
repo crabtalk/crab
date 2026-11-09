@@ -13,8 +13,7 @@ use std::collections::BTreeMap;
 impl<E: Env> Host<E> {
     /// Deploy `members`, services of one scope, together. Each is checked as
     /// [`Host::check`] checks it, and one refused refuses the set, naming each
-    /// one's reasons. Then each switches in the [`Plan`]'s order, deployed with
-    /// its exempt callers; one that fails to switch puts those switched before
+    /// one's reasons. Then each switches in name order; a failure puts those switched before
     /// it back on what they ran, removing one that ran nothing. Migrations
     /// they applied stay applied.
     pub async fn deploy_set(
@@ -80,7 +79,7 @@ impl<E: Env> Host<E> {
         &self,
         scope: &str,
         mut members: Vec<(String, Deploy)>,
-        mut plan: Plan,
+        plan: Plan,
     ) -> Result<Vec<(String, Installed)>, Denied> {
         let mut switched: Vec<(String, Option<Deploy>)> = Vec::new();
         let mut installed = Vec::new();
@@ -94,8 +93,7 @@ impl<E: Env> Host<E> {
                         "a planned service is not in the set",
                     )
                 })?;
-            let (service, mut deploy) = members.swap_remove(at);
-            deploy.exempt = plan.exempt.remove(name).unwrap_or_default();
+            let (service, deploy) = members.swap_remove(at);
             let before = service::row(&self.store, scope, name)
                 .await?
                 .map(|row| Deploy {
@@ -196,8 +194,7 @@ impl<E: Env> Host<E> {
                 .iter()
                 .position(|(service, _)| host::split(service).1 == name)
                 .expect("planned service");
-            let (service, mut deploy) = members.swap_remove(at);
-            deploy.exempt = plan.exempt.remove(name).unwrap_or_default();
+            let (service, deploy) = members.swap_remove(at);
             let result = self.deploy(&service, deploy, None).await;
             results.push((service, result));
         }

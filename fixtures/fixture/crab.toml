@@ -1,8 +1,5 @@
 image = "fixtures/fixture"
 deploy = false
-# `inner` is what `nest`, `relay` and `recurse` reach for. It is not resolved
-# here, only declared.
-calls = ["inner"]
 
 [vars]
 greeting = { default = "hello", description = "What greet answers" }
@@ -108,3 +105,9 @@ secrets = [{ name = "hostless" }]
 
 [tools.client_context]
 access = "public"
+
+[tools.invoke]
+access = "public"
+
+[tools.fromaccounts]
+access = "accounts"

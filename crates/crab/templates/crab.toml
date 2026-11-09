@@ -5,8 +5,6 @@
 # template = true
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
-# Services it calls by name.
-# calls = ["inner"]
 # The most bytes a call's arguments, and a tool's result, may hold.
 # buffer = 16384
 

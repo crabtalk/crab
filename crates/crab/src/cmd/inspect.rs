@@ -71,10 +71,6 @@ pub fn show(
     };
     println!("  berm-lang {}", runtime.lang);
     println!("  host calls {}", runtime.imports.join(", "));
-    for dep in &runtime.deps.calls {
-        let missing = runtime.unresolved.calls.contains(dep);
-        println!("  service {dep}{}", answered(missing));
-    }
     for (name, hosts) in [
         ("fetch", &runtime.deps.http.fetch),
         ("proxy", &runtime.deps.http.proxy),

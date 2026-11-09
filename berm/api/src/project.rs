@@ -18,7 +18,7 @@ use std::{
 pub const FILE: &str = "crab.toml";
 
 /// A service image's declarations. A library declares only `id`,
-/// `formerly`, `secrets`, `[credentials]`, `calls`, `[http]` and
+/// `formerly`, `secrets`, `[credentials]`, `[http]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,9 +57,6 @@ pub struct Project {
     /// to get them, by id.
     #[serde(default)]
     pub credentials: BTreeMap<String, Credential>,
-    /// Services it calls by name.
-    #[serde(default)]
-    pub calls: Vec<String>,
     /// The most bytes a call's arguments, and a tool's result, may hold;
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
@@ -226,7 +223,6 @@ impl Project {
 
     pub fn deps(&self) -> Deps {
         Deps {
-            calls: self.calls.clone(),
             http: self.http.clone(),
             secrets: self
                 .secrets
@@ -288,7 +284,7 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit declares only id, formerly, secrets, [credentials], calls, [http] and [database] migrations, not {}",
+                "a kit declares only id, formerly, secrets, [credentials], [http] and [database] migrations, not {}",
                 declared.join(", ")
             );
         }

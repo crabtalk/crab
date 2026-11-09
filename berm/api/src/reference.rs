@@ -1,4 +1,5 @@
-use anyhow::{Context, Result, bail};
+use crate::address::Address;
+use anyhow::{Context, Result};
 use semver::Version;
 use serde::{Deserialize, Deserializer, de::Error};
 use std::{fmt, str::FromStr};
@@ -31,22 +32,10 @@ impl FromStr for Reference {
             ),
             None => (text, None),
         };
-        let (owner, name) = address
-            .split_once('/')
-            .context("an image address is owner/service")?;
-        if [owner, name].iter().any(|part| {
-            part.is_empty()
-                || !part
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
-        }) {
-            bail!(
-                "an image address is owner/service, using lowercase letters, digits, `-` and `_`"
-            );
-        }
+        let Address { owner, name } = address.parse()?;
         Ok(Self {
-            owner: owner.to_owned(),
-            name: name.to_owned(),
+            owner,
+            name,
             version,
         })
     }

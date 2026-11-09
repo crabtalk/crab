@@ -191,6 +191,27 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                 // takes.
                 let deployed = resolve(&at, service, tool)
                     .map_err(|error| Refused(format!("{service}.{tool}: {error:#}")))?;
+                let caller = Some(Caller::Service(named(&at.service).into()));
+                let link = Link {
+                    caller: caller.clone(),
+                    user: at.user.clone(),
+                    client: at.client.clone(),
+                    depth: at.depth + 1,
+                    query: at.query,
+                    deadline: at.deadline,
+                    stack: at
+                        .stack
+                        .iter()
+                        .cloned()
+                        .chain([Arc::from(deployed.as_str())])
+                        .collect(),
+                };
+                if let Some(reaching) = remote(&at, &deployed, tool, args.as_bytes().to_vec(), link)
+                {
+                    let invoked = reaching.await;
+                    called(&at, &deployed, tool, ended(&invoked));
+                    return answer(invoked);
+                }
                 let target = {
                     let Ok(services) = runtime.services.try_read() else {
                         return Err(Refused(format!(
@@ -200,37 +221,10 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     };
                     services.get(&deployed).cloned()
                 };
-
-                let caller = Some(Caller::Service(named(&at.service).into()));
                 let Some(target) = target else {
-                    let link = Link {
-                        caller,
-                        user: at.user.clone(),
-                        client: at.client.clone(),
-                        depth: at.depth + 1,
-                        query: at.query,
-                        deadline: at.deadline,
-                        stack: at
-                            .stack
-                            .iter()
-                            .cloned()
-                            .chain([Arc::from(deployed.as_str())])
-                            .collect(),
-                    };
-                    let Some(reaching) =
-                        remote(&at, &deployed, tool, args.as_bytes().to_vec(), link)
-                    else {
-                        let missing = match deployed == service {
-                            true => format!("no service named {service:?} is deployed"),
-                            false => {
-                                format!("{service:?} reaches {deployed:?}, which is not deployed")
-                            }
-                        };
-                        return Err(Refused(missing).into());
-                    };
-                    let invoked = reaching.await;
-                    called(&at, &deployed, tool, ended(&invoked));
-                    return answer(invoked);
+                    return Err(
+                        Refused(format!("no service named {deployed:?} is deployed")).into(),
+                    );
                 };
                 let refuse = |message: String| -> Result<Vec<u8>> {
                     called(&at, &deployed, tool, Outcome::Refused);

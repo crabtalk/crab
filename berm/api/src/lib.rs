@@ -15,6 +15,7 @@ pub use manifest::{
     ServiceRecord, ToolRecord, Var,
 };
 
+pub mod address;
 mod compat;
 pub mod digest;
 pub mod host;

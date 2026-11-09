@@ -10,6 +10,8 @@ The `test` feature adds `berm_host::test`: a host whose edges a test holds, runn
 
 `Config` controls instance capacity, the most and the default budget of CPU, rows read, rows written and memory, call depth, the compiled-code cache, and the database directory. See [`crab dev`](../../crates/crab) for a daemon using this host.
 
+Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway.
+
 ## License
 
 AGPL-3.0-only

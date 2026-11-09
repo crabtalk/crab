@@ -20,7 +20,11 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
     let fail =
         |message: &str| syn::Error::new(name.span(), format!("{}: {message}", path.display()));
 
-    let service = idl["name"].as_str().ok_or_else(|| fail("no `name`"))?;
+    let service_name = idl["name"].as_str().ok_or_else(|| fail("no `name`"))?;
+    let service = match idl["owner"].as_str().filter(|owner| !owner.is_empty()) {
+        Some(owner) => format!("{owner}/{service_name}"),
+        None => service_name.to_owned(),
+    };
     let tools = idl["tools"].as_array().ok_or_else(|| fail("no `tools`"))?;
 
     // Every titled object anywhere in the IDL is one struct, by its title.

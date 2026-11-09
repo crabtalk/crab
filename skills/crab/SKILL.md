@@ -64,6 +64,7 @@ Memory is billed at the reserved budget for the call's full duration, waiting in
 
 ## Local callers and MCP
 
+- Service code calls running deployments with `berm_lang::call("owner/service", tool, args)`; no `calls` manifest field is used. Cross-account targets must be public and accept service callers; priced calls charge the calling service's account.
 - `berm_lang::client()` reads the daily opaque client key. `berm_lang::client_ip()` reads the outside IPv4/IPv6 address, when supplied. Both follow nested calls.
 
 - `crab --context default call <service> <tool> '<arguments>'` calls a public tool locally as the unchecked caller `local`. Use `--caller alice` to override it, or `--anonymous` to call without a caller; only tools with `access = "anonymous"` accept anonymous calls. These flags are local-only; Cloud uses the credential.

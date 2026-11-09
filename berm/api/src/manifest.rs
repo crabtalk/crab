@@ -173,9 +173,6 @@ pub struct EventSpec {
 /// What a service reaches for once it runs, by kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Deps {
-    /// Services it calls by name.
-    #[serde(default)]
-    pub calls: Vec<String>,
     #[serde(default)]
     pub http: Http,
     /// Secrets it names in `{secret:NAME}`, which the host substitutes and
@@ -359,10 +356,7 @@ impl Deps {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.calls.is_empty()
-            && self.http.is_empty()
-            && self.secrets.is_empty()
-            && self.vars.is_empty()
+        self.http.is_empty() && self.secrets.is_empty() && self.vars.is_empty()
     }
 
     /// Add what `other` reaches that this does not. Refused when both declare
@@ -375,7 +369,6 @@ impl Deps {
                 }
             }
         };
-        missing(&mut self.calls, &other.calls);
         missing(&mut self.secrets, &other.secrets);
         missing(&mut self.http.fetch, &other.http.fetch);
         missing(&mut self.http.proxy, &other.http.proxy);
@@ -478,7 +471,7 @@ impl Deps {
 
 impl fmt::Display for Deps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut items = self.calls.clone();
+        let mut items = Vec::new();
         for (name, hosts) in [("fetch", &self.http.fetch), ("proxy", &self.http.proxy)] {
             if !hosts.is_empty() {
                 items.push(format!("http {name} ({})", hosts.join(", ")));

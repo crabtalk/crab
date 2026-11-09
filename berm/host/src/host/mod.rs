@@ -1,6 +1,6 @@
 //! The services this host runs: one [`Berm`] holding every deployed service,
 //! under the name its daemon gave it. A name's part before its last `/` is its
-//! scope, and a service reaches services by name within its own.
+//! scope. Qualified calls cross scopes through the daemon's account gateway.
 
 use crate::{
     api::outside::{Bottom, Outside},
