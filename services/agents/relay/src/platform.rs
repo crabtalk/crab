@@ -1,5 +1,5 @@
 use alloc::string::String;
-use berm_lang::{Result, Schema};
+use berm_lang::{Result, Schema, abi::secrets::Id};
 use url::Url;
 
 #[derive(Schema)]
@@ -12,7 +12,7 @@ pub enum Platform {
 pub struct GrokConnection {
     pub webhook_url: String,
     /// A host-managed credential reference; never the webhook key itself.
-    pub credential: String,
+    pub secret_id: String,
 }
 
 #[derive(Schema)]
@@ -39,17 +39,7 @@ impl GrokConnection {
         {
             return Err("Use an HTTPS webhook URL up to 4096 bytes without embedded credentials or a fragment".into());
         }
-        if self.credential.is_empty()
-            || self.credential.len() > 64
-            || !self
-                .credential
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        {
-            return Err(
-                "Use a credential reference of 1–64 letters, digits, or underscores".into(),
-            );
-        }
+        Id::try_from(self.secret_id.as_str())?;
         Ok(())
     }
 }

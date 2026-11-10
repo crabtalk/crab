@@ -79,6 +79,9 @@ pub fn show(
             println!("  http {name} -> {}", hosts.join(", "));
         }
     }
+    if runtime.deps.secret_resources {
+        println!("  runtime secrets -> explicit service grants");
+    }
     for name in &runtime.deps.secrets {
         let missing = runtime.unresolved.secrets.contains(name);
         let note = match missing && runtime.deps.optional(name) {

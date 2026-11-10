@@ -53,6 +53,8 @@ pub struct Project {
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
+    #[serde(default)]
+    pub secret_resources: bool,
     /// Secrets it names in `{secret:NAME}`, grouped by what a person sets up
     /// to get them, by id.
     #[serde(default)]
@@ -198,6 +200,7 @@ impl Project {
                 bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
+        project.deps().check_secret_declarations()?;
         Ok(project)
     }
 
@@ -224,6 +227,7 @@ impl Project {
     pub fn deps(&self) -> Deps {
         Deps {
             http: self.http.clone(),
+            secret_resources: self.secret_resources,
             secrets: self
                 .secrets
                 .iter()

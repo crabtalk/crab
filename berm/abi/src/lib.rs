@@ -17,6 +17,7 @@
 extern crate alloc;
 
 pub mod events;
+pub mod secrets;
 pub mod wire;
 
 /// The version of the framing a service is built against and a host speaks:

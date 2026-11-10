@@ -3,7 +3,7 @@
 
 use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, events::Source, logo::Logo};
 use anyhow::{Context, Result, bail};
-use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
+use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION, secrets::Id};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use std::{
@@ -183,6 +183,9 @@ pub struct Deps {
     /// the guest never holds. Every credential's secrets are among them.
     #[serde(default)]
     pub secrets: Vec<String>,
+    /// Whether host-granted secret resources may be used in HTTP requests.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret_resources: bool,
     /// How a person gets its secrets, grouped by what they set up, by id. A
     /// secret is in one credential at most.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -306,6 +309,17 @@ fn masked() -> bool {
 }
 
 impl Deps {
+    pub fn check_secret_declarations(&self) -> Result<()> {
+        if self
+            .secrets
+            .iter()
+            .any(|name| Id::try_from(name.as_str()).is_ok())
+        {
+            bail!("Secret resource IDs cannot be declared as fixed secret names");
+        }
+        Ok(())
+    }
+
     // Images built before [http] stored destinations under syscall names.
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
@@ -360,7 +374,10 @@ impl Deps {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.http.is_empty() && self.secrets.is_empty() && self.vars.is_empty()
+        self.http.is_empty()
+            && self.secrets.is_empty()
+            && !self.secret_resources
+            && self.vars.is_empty()
     }
 
     /// Add what `other` reaches that this does not. Refused when both declare
@@ -373,6 +390,7 @@ impl Deps {
                 }
             }
         };
+        self.secret_resources |= other.secret_resources;
         missing(&mut self.secrets, &other.secrets);
         missing(&mut self.http.fetch, &other.http.fetch);
         missing(&mut self.http.proxy, &other.http.proxy);
@@ -482,6 +500,9 @@ impl fmt::Display for Deps {
             }
         }
         items.extend(self.secrets.iter().map(|name| format!("secret {name}")));
+        if self.secret_resources {
+            items.push("runtime secret resources".into());
+        }
         f.write_str(&items.join(", "))
     }
 }
@@ -520,6 +541,7 @@ impl Manifest {
         if self.tools.is_empty() {
             bail!("service declares no tools");
         }
+        self.deps.check_secret_declarations()?;
         for credential in self.deps.credentials.values() {
             Credential::check_hosts(&credential.hosts).map_err(anyhow::Error::msg)?;
         }

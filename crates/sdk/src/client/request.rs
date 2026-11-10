@@ -2,9 +2,12 @@
 //! or to verify on GitHub, by a code.
 
 use crate::{
-    account::request::{
-        AgentLoginRequest, CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest,
-        Purchase, Request,
+    account::{
+        request::{
+            AgentLoginRequest, CreateRequest, DeviceAuthorization, DeviceToken, DeviceTokenRequest,
+            Purchase, Request,
+        },
+        secret::Setup,
     },
     client::{Client, Error},
     services::service::DeployRequest,
@@ -44,8 +47,25 @@ impl Client {
             account: self.account()?.name().to_owned(),
             service: service.to_owned(),
             credential: credential.map(str::to_owned),
+            resource: None,
             copy,
             context: context.to_owned(),
+        })
+        .await
+    }
+    pub async fn ask_secret_resource(
+        &self,
+        service: &str,
+        resource: Setup,
+        context: &str,
+    ) -> Result<Request, Error> {
+        self.ask(&CreateRequest::Secret {
+            account: self.account()?.name().to_owned(),
+            service: service.into(),
+            credential: None,
+            resource: Some(resource),
+            copy: BTreeMap::new(),
+            context: context.into(),
         })
         .await
     }

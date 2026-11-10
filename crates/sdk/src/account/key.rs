@@ -55,6 +55,8 @@ pub enum Scope {
     ServicesRead,
     #[serde(rename = "services:write")]
     ServicesWrite,
+    #[serde(rename = "secrets:read")]
+    SecretsRead,
     #[serde(rename = "deployments:read")]
     DeploymentsRead,
     #[serde(rename = "deployments:write")]
@@ -115,9 +117,10 @@ impl Scope {
             )
     }
 
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::ServicesRead,
         Self::ServicesWrite,
+        Self::SecretsRead,
         Self::DeploymentsRead,
         Self::DeploymentsWrite,
         Self::CallsRead,

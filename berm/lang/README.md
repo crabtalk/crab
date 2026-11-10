@@ -73,6 +73,10 @@ Leaving `[build] target` unset keeps the host build, and therefore `cargo nextes
 
 The resulting `.wasm` is the whole artifact: one file, every platform.
 
+## Runtime secret resources
+
+Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. The owner grants a resource ID to the deployed service for exact hosts. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
+
 ## Reaching a runtime
 
 Past its arguments, a service reaches who called, its own state, a database, its vars, logs, HTTP, other services, wakes and the clock, each through a syscall its host serves. [The Guest API](https://crab.talk/docs/development/api) covers each.

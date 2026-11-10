@@ -9,6 +9,7 @@
 
 use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
 use anyhow::{Result, anyhow, bail};
+use berm_abi::secrets::Id;
 use futures_util::future;
 use std::{future::Future, str, sync::Arc, time::Duration};
 use url::{Host, Url};
@@ -257,23 +258,32 @@ where
             bail!("{SECRET} is opened and never closed");
         };
         let name = str::from_utf8(&after[..end])?;
-        if !at.deps.secrets.iter().any(|declared| declared == name) {
-            return Err(Refused(format!(
-                "{} does not declare the secret {name:?}",
-                at.service
-            ))
-            .into());
-        }
-        if !at
-            .deps
-            .secret_hosts(name)
-            .iter()
-            .any(|allowed| allowed == host)
-        {
-            return Err(ungranted(at, name, host));
+        let resource = Id::try_from(name).is_ok();
+        if resource {
+            if !at.deps.secret_resources {
+                return Err(
+                    Refused(format!("{} does not declare secret_resources", at.service)).into(),
+                );
+            }
+        } else {
+            if !at.deps.secrets.iter().any(|declared| declared == name) {
+                return Err(Refused(format!(
+                    "{} does not declare the secret {name:?}",
+                    at.service
+                ))
+                .into());
+            }
+            if !at
+                .deps
+                .secret_hosts(name)
+                .iter()
+                .any(|allowed| allowed == host)
+            {
+                return Err(ungranted(at, name, host));
+            }
         }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
-            if at.deps.optional(name) {
+            if !resource && at.deps.optional(name) {
                 return Ok(Substituted::Unset(name.to_owned()));
             }
             return Err(ungranted(at, name, host));

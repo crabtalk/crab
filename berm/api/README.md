@@ -25,3 +25,5 @@ result does: the call was fine and the tool said no.
 ## License
 
 Apache-2.0
+
+`Deps::secret_resources` permits host-granted runtime secret IDs in HTTP placeholders. `project::Project` reads `secret_resources = true`; linked dependencies merge this capability and permission changes require upgrade review. Individual resources and grants are managed separately from image declarations. Fixed secret names cannot be opaque resource IDs.

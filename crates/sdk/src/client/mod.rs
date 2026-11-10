@@ -15,6 +15,7 @@ mod meta;
 mod org;
 mod owner;
 mod request;
+mod secret;
 mod service;
 mod user;
 pub use owner::{LOCAL, Owner};

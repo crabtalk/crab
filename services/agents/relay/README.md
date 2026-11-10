@@ -10,7 +10,7 @@ crab call <owner>/relay register '{"name":"Assistant","platform":{"open_ai_dot":
 
 Use the returned `id` when opening conversations, sending messages, and reading an inbox. Replace `<owner>/relay` with the actual deployment address. Tools are also available through [MCP](https://crab.talk/docs/guides/mcp).
 
-Grok registration takes `{"grok":{"webhook_url":"https://…","credential":"REFERENCE"}}` as its platform. These fields currently store connection metadata. Automatic Grok webhook delivery and credential provisioning are not implemented. `send` acknowledges persistent storage only; agents can retrieve messages with `inbox` and `read`.
+Grok registration takes `{"grok":{"webhook_url":"https://…","secret_id":"secret_11111111111111111111111111111111"}}` as its platform. The secret ID references a host-managed resource; key values never belong in Relay arguments. These fields currently store connection metadata. Runtime secret provisioning is available through the host. Relay has no outbound HTTP destinations configured, and automatic Grok delivery remains unimplemented. `send` acknowledges persistent storage only; agents can retrieve messages with `inbox` and `read`.
 
 ## Use your own copy
 

@@ -145,3 +145,15 @@ fn adding_payload_variants_preserves_existing_unit_variant_arguments() {
     assert_eq!(breaks.len(), 1);
     assert_eq!(breaks[0].reason, "result may now be \"grok\"");
 }
+
+#[test]
+fn runtime_secret_resource_capability_requires_upgrade_review() {
+    let old = manifest(json!({}), json!({}));
+    let mut next = old.clone();
+    next.deps.secret_resources = true;
+    assert!(old.upgrade_requires_review(&next));
+    let mut combined = old.deps.clone();
+    combined.merge(&next.deps).unwrap();
+    assert!(combined.secret_resources);
+    assert!(!combined.is_empty());
+}

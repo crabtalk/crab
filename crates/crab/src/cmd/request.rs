@@ -40,6 +40,11 @@ pub fn asked(request: &Request, json: bool) -> Result<()> {
         .url
         .trim_end_matches(&request.code)
         .trim_end_matches('/');
+    for credential in &request.credentials {
+        if let Some(id) = &credential.secret_id {
+            eprintln!("secret resource: {id}");
+        }
+    }
     println!("{}", request.url);
     eprintln!(
         "{}: open the link, or enter {} at {section}, within {} minutes",

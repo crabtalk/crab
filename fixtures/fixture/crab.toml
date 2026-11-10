@@ -1,3 +1,4 @@
+secret_resources = true
 image = "fixtures/fixture"
 deploy = false
 

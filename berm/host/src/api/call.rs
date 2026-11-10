@@ -81,6 +81,7 @@ impl<E: Env> Host<E> {
             .and_then(|row| row.project);
         Ok(berm_api::Runtime {
             unresolved: Deps {
+                secret_resources: false,
                 http: Default::default(),
                 credentials: Default::default(),
                 vars: Default::default(),

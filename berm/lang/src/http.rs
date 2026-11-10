@@ -3,7 +3,8 @@
 //! proxy.
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
-//! manifest declares. The host substitutes it, and this service never holds the value.
+//! manifest declares, or `{secret:ID}` for a host-granted resource when the
+//! manifest enables `secret_resources`. The service never holds the value.
 
 use crate::{
     Error, Result,

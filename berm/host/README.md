@@ -19,3 +19,5 @@ Nested calls use qualified `owner/service` addresses or bare names within the ca
 AGPL-3.0-only
 
 An invocation scope can refuse admission with `berm_host::Denied`; outside calls keep that HTTP status. HTTP transports receive the sending invocation’s `chain` and `span` on each request.
+
+A service declaring `secret_resources = true` can use `{secret:ID}` for a runtime secret resource. `Secrets::grant` must authorize the complete deployment, resource ID and destination host. Missing grants refuse the request before dispatch; HTTP permissions remain independently enforced. Individual resource IDs are not added to `Deps.secrets`.

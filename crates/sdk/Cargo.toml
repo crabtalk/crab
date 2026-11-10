@@ -12,6 +12,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 [dependencies]
 semver.workspace = true
 berm-api.workspace = true
+berm-abi.workspace = true
 reqwest = { workspace = true, optional = true, features = ["json", "query", "rustls", "stream"] }
 serde = { workspace = true, features = ["std"] }
 tokio = { workspace = true, optional = true, features = ["fs", "time"] }

@@ -50,8 +50,8 @@ async fn register(host: &TestHost, owner: &str, name: &str) -> Result<u64> {
 #[tokio::test]
 async fn several_bots_and_a_dot_keep_their_identities_and_history_after_restart() -> Result<()> {
     let mut host = opened().await?;
-    let research = call(&host, "alice", "register", json!({"name":"Research","platform":{"grok":{"webhook_url":"https://bots.example/research","credential":"RESEARCH_KEY"}}})).await?;
-    let sales = call(&host, "alice", "register", json!({"name":"Sales","platform":{"grok":{"webhook_url":"https://bots.example/sales","credential":"SALES_KEY"}}})).await?;
+    let research = call(&host, "alice", "register", json!({"name":"Research","platform":{"grok":{"webhook_url":"https://bots.example/research","secret_id":"secret_11111111111111111111111111111111"}}})).await?;
+    let sales = call(&host, "alice", "register", json!({"name":"Sales","platform":{"grok":{"webhook_url":"https://bots.example/sales","secret_id":"secret_22222222222222222222222222222222"}}})).await?;
     let dot = register(&host, "alice", "Assistant").await?;
     let from = research["id"].as_u64().unwrap();
     assert_ne!(research["id"], sales["id"]);

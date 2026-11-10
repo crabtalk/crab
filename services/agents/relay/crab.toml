@@ -3,6 +3,7 @@ id = "aade4fa1a9694e6fa7853cf7c319f29c"
 public = false
 template = true
 buffer = 262144
+secret_resources = true
 
 [database]
 migrations = "migrations"

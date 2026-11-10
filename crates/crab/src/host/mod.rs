@@ -18,6 +18,7 @@ mod dev;
 mod env;
 mod fetch;
 mod mcp;
+mod secret_resources;
 pub mod secrets;
 mod service;
 

@@ -273,6 +273,11 @@ enum VarCommand {
 
 #[derive(Subcommand)]
 enum SecretCommand {
+    /// Manage account-owned runtime secrets and service grants.
+    Resource {
+        #[command(subcommand)]
+        action: SecretResourceCommand,
+    },
     /// Set a secret of a service, its value read from stdin and sent only to
     /// its manifest destinations, replacing any stored value.
     Put { name: String, secret: String },
@@ -304,6 +309,38 @@ enum SecretCommand {
         #[arg(long = "copy", value_parser = cmd::secret::copy)]
         copies: Vec<(String, String)>,
         /// What they are for, shown to the person who sets them.
+        #[arg(long, default_value = "")]
+        r#for: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecretResourceCommand {
+    /// Create a secret from stdin; prints its ID, never the value.
+    Create { name: String },
+    /// List secret metadata and grants.
+    Ls,
+    /// Replace a secret value from stdin, keeping its ID and grants.
+    Rotate { id: String },
+    /// Delete a secret and all its grants.
+    Rm { id: String },
+    /// Grant one service access at the exact destination hosts.
+    Grant {
+        id: String,
+        service: String,
+        #[arg(long = "host", required = true)]
+        hosts: Vec<String>,
+    },
+    /// Remove one service's grant.
+    Revoke { id: String, service: String },
+    /// Ask an owner to supply a value and approve a service grant on Cloud.
+    Request {
+        service: String,
+        name: String,
+        #[arg(long = "host", required = true)]
+        hosts: Vec<String>,
+        #[arg(long)]
+        id: Option<String>,
         #[arg(long, default_value = "")]
         r#for: String,
     },
@@ -724,6 +761,38 @@ fn run() -> Result<ExitCode> {
         )?,
         Command::Sunset { name, tool, on } => {
             cmd::sunset::run(&client()?, name, tool, on.as_deref())?
+        }
+        Command::Secret(SecretCommand::Resource { action }) => {
+            let client = client()?;
+            match action {
+                SecretResourceCommand::Create { name } => {
+                    cmd::secret::create_resource(&client, name)?
+                }
+                SecretResourceCommand::Ls => cmd::secret::resources(&client)?,
+                SecretResourceCommand::Rotate { id } => cmd::secret::rotate_resource(&client, id)?,
+                SecretResourceCommand::Rm { id } => cmd::secret::delete_resource(&client, id, yes)?,
+                SecretResourceCommand::Grant { id, service, hosts } => {
+                    cmd::secret::grant_resource(&client, id, service, hosts)?
+                }
+                SecretResourceCommand::Revoke { id, service } => {
+                    cmd::secret::revoke_resource(&client, id, service, yes)?
+                }
+                SecretResourceCommand::Request {
+                    service,
+                    name,
+                    hosts,
+                    id,
+                    r#for,
+                } => cmd::secret::request_resource(
+                    &client,
+                    service,
+                    name,
+                    hosts,
+                    id.as_deref(),
+                    r#for,
+                    json,
+                )?,
+            }
         }
         Command::Secret(SecretCommand::Put { name, secret }) => {
             cmd::secret::put(&client()?, name, secret)?

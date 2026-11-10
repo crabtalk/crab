@@ -8,4 +8,5 @@ pub mod billing;
 pub mod key;
 pub mod org;
 pub mod request;
+pub mod secret;
 pub mod user;

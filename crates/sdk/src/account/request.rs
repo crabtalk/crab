@@ -6,6 +6,7 @@ use crate::{
     account::{
         key::{CreateKeyRequest, KeyService},
         org::PublicAccount,
+        secret::Setup,
     },
     services::service::DeployRequest,
 };
@@ -94,6 +95,8 @@ pub enum CreateRequest {
         service: String,
         #[serde(default)]
         credential: Option<String>,
+        #[serde(default)]
+        resource: Option<Setup>,
         /// The values its credentials' `copy` labels, by key; one fills
         /// every credential declaring its key.
         #[serde(default)]
@@ -238,6 +241,8 @@ pub struct Access {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AskedCredential {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_id: Option<String>,
     #[serde(default)]
     pub title: String,
     /// How to get its secrets, in Markdown.
@@ -261,6 +266,7 @@ impl AskedCredential {
     pub fn new(id: String, credential: Credential, copy: &BTreeMap<String, String>) -> Self {
         Self {
             id,
+            secret_id: None,
             title: credential.title,
             guide: credential.guide,
             copy: credential
