@@ -413,6 +413,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tower",
  "tracing",
+ "wasmparser 0.255.0",
 ]
 
 [[package]]

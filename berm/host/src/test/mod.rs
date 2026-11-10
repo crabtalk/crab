@@ -50,6 +50,7 @@ use tokio::sync::MutexGuard;
 
 mod clock;
 mod env;
+pub mod image;
 mod images;
 mod secrets;
 

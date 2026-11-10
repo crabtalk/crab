@@ -12,10 +12,9 @@ pub struct Agent {
 
 impl Agent {
     pub fn register(name: String, platform: Platform) -> Result<Self> {
-        Account::require_owner()?;
+        let owner = Account::require_owner()?.id;
         Self::validate_name(&name)?;
         platform.validate()?;
-        let owner = Account::current()?.id;
         let (id,) = berm_lang::rows::<(u64,)>(
             "INSERT INTO relay_agents (owner, name, platform) VALUES (?, ?, ?) RETURNING id",
             &(&owner, &name, serde_json::to_string(&platform)?),
@@ -31,32 +30,17 @@ impl Agent {
     }
 
     pub fn get(id: u64) -> Result<Self> {
-        let stored = Self::stored(id)?;
-        if stored.owner != Account::current()?.id {
-            return Err(berm_lang::deny("No accessible Relay agent with that id"));
-        }
-        Ok(stored.agent)
+        Self::load(id, Some(&Account::current()?.id))
     }
 
-    pub(crate) fn stored(id: u64) -> Result<Stored> {
-        let (owner, generation, id, name, platform, enabled) = berm_lang::rows::<(
-            String,
-            u64,
-            u64,
-            String,
-            String,
-            u8,
-        )>(
-            "SELECT owner, generation, id, name, platform, enabled FROM relay_agents WHERE id = ?",
-            &(id,),
+    pub(crate) fn load(id: u64, owner: Option<&str>) -> Result<Self> {
+        let row = berm_lang::rows::<(u64, String, String, u8)>(
+            "SELECT id, name, platform, enabled FROM relay_agents WHERE id = ? AND (? IS NULL OR owner = ?)",
+            &(id, owner, owner),
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible Relay agent with that id"))?;
-        Ok(Stored {
-            owner,
-            generation,
-            agent: Self::try_from((id, name, platform, enabled))?,
-        })
+        Self::try_from(row)
     }
 
     pub fn list(after: u64, limit: Option<u64>) -> Result<Vec<Self>> {
@@ -74,8 +58,7 @@ impl Agent {
         platform: Option<Platform>,
         enabled: Option<bool>,
     ) -> Result<Self> {
-        Account::require_owner()?;
-        let mut agent = Self::get(id)?;
+        let mut agent = Self::load(id, Some(&Account::require_owner()?.id))?;
         if let Some(name) = name {
             Self::validate_name(&name)?;
             agent.name = name;
@@ -83,20 +66,18 @@ impl Agent {
         let mut connection_changed = false;
         if let Some(platform) = platform {
             platform.validate()?;
-            connection_changed =
-                serde_json::to_string(&agent.platform)? != serde_json::to_string(&platform)?;
+            connection_changed = agent.platform != platform;
             agent.platform = platform;
         }
         if let Some(enabled) = enabled {
             agent.enabled = enabled;
         }
         berm_lang::rows::<()>(
-            "UPDATE relay_agents SET name = ?, platform = ?, enabled = ?, generation = generation + ? WHERE id = ?",
+            "UPDATE relay_agents SET name = ?, platform = ?, enabled = ? WHERE id = ?",
             &(
                 &agent.name,
                 serde_json::to_string(&agent.platform)?,
                 agent.enabled,
-                connection_changed,
                 id,
             ),
         )?;
@@ -110,8 +91,7 @@ impl Agent {
     }
 
     pub fn keys(id: u64) -> Result<Vec<String>> {
-        Account::require_owner()?;
-        Self::get(id)?;
+        Self::load(id, Some(&Account::require_owner()?.id))?;
         Ok(berm_lang::rows::<(String,)>(
             "SELECT key_id FROM relay_agent_keys WHERE agent = ? ORDER BY key_id",
             &(id,),
@@ -122,8 +102,7 @@ impl Agent {
     }
 
     pub fn grant_key(id: u64, key: String) -> Result<()> {
-        Account::require_owner()?;
-        Self::get(id)?;
+        Self::load(id, Some(&Account::require_owner()?.id))?;
         if key.is_empty() || key.len() > 128 || key.chars().any(char::is_control) {
             return Err("Use an API key ID of 1–128 bytes".into());
         }
@@ -135,8 +114,7 @@ impl Agent {
     }
 
     pub fn revoke_key(id: u64, key: String) -> Result<()> {
-        Account::require_owner()?;
-        Self::get(id)?;
+        Self::load(id, Some(&Account::require_owner()?.id))?;
         berm_lang::rows::<()>(
             "DELETE FROM relay_agent_keys WHERE agent = ? AND key_id = ?",
             &(id, key),
@@ -144,17 +122,13 @@ impl Agent {
         Ok(())
     }
 
-    pub(crate) fn allows_key(&self, key: &str) -> Result<bool> {
-        Ok(!berm_lang::rows::<(u8,)>(
-            "SELECT 1 FROM relay_agent_keys WHERE agent = ? AND key_id = ?",
-            &(self.id, key),
-        )?
-        .is_empty())
-    }
-
     pub(crate) fn require_key(&self) -> Result<()> {
         if let Some(key) = key::id()?
-            && !self.allows_key(&key)?
+            && berm_lang::rows::<(u8,)>(
+                "SELECT 1 FROM relay_agent_keys WHERE agent = ? AND key_id = ?",
+                &(self.id, key),
+            )?
+            .is_empty()
         {
             return Err(berm_lang::deny(
                 "This API key has no grant for the Relay agent",
@@ -189,10 +163,4 @@ impl TryFrom<(u64, String, String, u8)> for Agent {
             enabled: enabled != 0,
         })
     }
-}
-
-pub(crate) struct Stored {
-    pub owner: String,
-    pub generation: u64,
-    pub agent: Agent,
 }

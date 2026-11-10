@@ -6,14 +6,14 @@ pub(crate) struct Account {
 }
 
 impl Account {
-    pub(crate) fn require_owner() -> Result<()> {
-        Self::current()?;
+    pub(crate) fn require_owner() -> Result<Self> {
+        let account = Self::current()?;
         if key::id()?.is_some() {
             return Err(berm_lang::deny(
                 "Use an owner session to manage Relay agents and conversations",
             ));
         }
-        Ok(())
+        Ok(account)
     }
 
     pub(crate) fn current() -> Result<Self> {

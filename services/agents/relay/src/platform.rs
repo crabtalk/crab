@@ -2,20 +2,20 @@ use alloc::string::String;
 use berm_lang::{Caller, Result, Schema, abi::secrets::Id, secret};
 use url::Url;
 
-#[derive(Schema)]
+#[derive(Schema, PartialEq, Eq)]
 pub enum Platform {
     Grok(GrokConnection),
     OpenAiDot(DotConnection),
 }
 
-#[derive(Schema)]
+#[derive(Schema, PartialEq, Eq)]
 pub struct GrokConnection {
     pub webhook_url: String,
     /// A host-managed credential reference; never the webhook key itself.
     pub secret_id: String,
 }
 
-#[derive(Schema)]
+#[derive(Schema, PartialEq, Eq)]
 pub struct DotConnection {}
 
 impl Platform {

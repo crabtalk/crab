@@ -13,7 +13,7 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn open(members: Vec<u64>, budget: Option<u64>) -> Result<Self> {
-        Account::require_owner()?;
+        let owner = Account::require_owner()?.id;
         if !(2..=16).contains(&members.len()) {
             return Err("A conversation needs 2–16 agents".into());
         }
@@ -21,13 +21,12 @@ impl Conversation {
             if members[..at].contains(id) {
                 return Err("List each conversation member once".into());
             }
-            Agent::get(*id)?.require_enabled()?;
+            Agent::load(*id, Some(&owner))?.require_enabled()?;
         }
         let budget = budget.unwrap_or(100);
         if !(1..=1000).contains(&budget) {
             return Err("A conversation budget must be 1–1000 messages".into());
         }
-        let owner = Account::current()?.id;
         let (id,) = berm_lang::rows::<(u64,)>(
             "INSERT INTO relay_conversations (owner, budget) VALUES (?, ?) RETURNING id",
             &(owner, budget),
@@ -51,33 +50,25 @@ impl Conversation {
 
     pub fn get(id: u64) -> Result<Self> {
         let owner = Account::current()?.id;
-        let (paused, budget, sent) = berm_lang::rows::<(u8, u64, u64)>(
-            "SELECT paused, budget, sent FROM relay_conversations WHERE id = ? AND owner = ?",
-            &(id, owner),
+        let key = key::id()?;
+        let (paused, budget, sent, permitted) = berm_lang::rows::<(u8, u64, u64, u8)>(
+            "SELECT paused, budget, sent, (? IS NULL OR EXISTS (SELECT 1 FROM relay_members m JOIN relay_agent_keys k ON k.agent = m.agent WHERE m.conversation = c.id AND k.key_id = ?)) FROM relay_conversations c WHERE id = ? AND owner = ?",
+            &(&key, &key, id, owner),
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible conversation with that id"))?;
-        let members: Vec<u64> = berm_lang::rows::<(u64,)>(
+        if permitted == 0 {
+            return Err(berm_lang::deny(
+                "This API key has no agent in the conversation",
+            ));
+        }
+        let members = berm_lang::rows::<(u64,)>(
             "SELECT agent FROM relay_members WHERE conversation = ? ORDER BY agent",
             &(id,),
         )?
         .into_iter()
         .map(|(id,)| id)
         .collect();
-        if let Some(key) = key::id()? {
-            let mut permitted = false;
-            for member in &members {
-                if Agent::get(*member)?.allows_key(&key)? {
-                    permitted = true;
-                    break;
-                }
-            }
-            if !permitted {
-                return Err(berm_lang::deny(
-                    "This API key has no agent in the conversation",
-                ));
-            }
-        }
         Ok(Self {
             id,
             members,

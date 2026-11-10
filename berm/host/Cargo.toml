@@ -26,10 +26,11 @@ serde_json = { workspace = true, features = ["std"] }
 tokio.workspace = true
 tower.workspace = true
 tracing.workspace = true
+wasmparser = { workspace = true, optional = true }
 
 [features]
 # `berm_host::test`: a host whose edges a test holds.
-test = ["dep:berm-build"]
+test = ["dep:berm-build", "dep:wasmparser"]
 
 [dev-dependencies]
 berm-host = { workspace = true, features = ["test"] }

@@ -67,11 +67,11 @@ impl Delivery {
     }
 
     pub(crate) fn enqueue(message: &Message) -> Result<()> {
-        let recipient = Agent::stored(message.to)?;
-        if matches!(recipient.agent.platform, Platform::Grok(_)) {
+        let recipient = Agent::load(message.to, None)?;
+        if matches!(recipient.platform, Platform::Grok(_)) {
             berm_lang::rows::<()>(
-                "INSERT INTO relay_deliveries (message, generation, next_attempt) VALUES (?, ?, ?)",
-                &(message.id, recipient.generation, berm_lang::now()),
+                "INSERT INTO relay_deliveries (message, next_attempt) VALUES (?, ?)",
+                &(message.id, berm_lang::now()),
             )?;
         }
         Ok(())
@@ -80,9 +80,9 @@ impl Delivery {
     pub fn retry(message: u64) -> Result<Self> {
         Account::require_owner()?;
         let message = Message::get(message)?;
-        let recipient = Agent::stored(message.to)?;
-        recipient.agent.require_enabled()?;
-        let Platform::Grok(connection) = &recipient.agent.platform else {
+        let recipient = Agent::load(message.to, None)?;
+        recipient.require_enabled()?;
+        let Platform::Grok(connection) = &recipient.platform else {
             return Err("This agent uses MCP event delivery".into());
         };
         connection.validate()?;
@@ -91,8 +91,8 @@ impl Delivery {
             return Err("Retry only a failed or cancelled delivery".into());
         }
         berm_lang::rows::<()>(
-            "UPDATE relay_deliveries SET generation = ?, state = 'pending', attempts = 0, next_attempt = ?, status = NULL, reason = NULL WHERE message = ?",
-            &(recipient.generation, berm_lang::now(), message.id),
+            "UPDATE relay_deliveries SET state = 'pending', attempts = 0, next_attempt = ?, status = NULL, reason = NULL WHERE message = ?",
+            &(berm_lang::now(), message.id),
         )?;
         Self::stored(message.id)?.ok_or_else(|| "No delivery record".into())
     }
@@ -103,25 +103,20 @@ impl Delivery {
                 "Delivery runs only as a scheduled invocation",
             ));
         }
-        let due = berm_lang::rows::<(u64, u64)>(
-            "SELECT d.message, d.generation FROM relay_deliveries d JOIN relay_messages m ON m.id = d.message JOIN relay_agents a ON a.id = m.recipient JOIN relay_conversations c ON c.id = m.conversation WHERE d.state = 'pending' AND d.next_attempt <= ? AND a.enabled = 1 AND c.paused = 0 AND NOT EXISTS (SELECT 1 FROM relay_deliveries earlier JOIN relay_messages prior ON prior.id = earlier.message WHERE earlier.state = 'pending' AND prior.recipient = m.recipient AND prior.id < m.id) ORDER BY d.next_attempt, d.message LIMIT ?",
+        let due = berm_lang::rows::<(u64,)>(
+            "SELECT d.message FROM relay_deliveries d JOIN relay_messages m ON m.id = d.message JOIN relay_agents a ON a.id = m.recipient JOIN relay_conversations c ON c.id = m.conversation WHERE d.state = 'pending' AND d.next_attempt <= ? AND a.enabled = 1 AND c.paused = 0 AND NOT EXISTS (SELECT 1 FROM relay_deliveries earlier JOIN relay_messages prior ON prior.id = earlier.message WHERE earlier.state = 'pending' AND prior.recipient = m.recipient AND prior.id < m.id) ORDER BY d.next_attempt, d.message LIMIT ?",
             &(berm_lang::now(), BATCH),
         )?;
         let mut attempted = 0;
-        for (id, generation) in due {
+        for (id,) in due {
             let mut delivery = Self::stored(id)?.ok_or("No delivery record")?;
             let message = Message::stored(id)?;
-            let recipient = Agent::stored(message.to)?;
-            if recipient.generation != generation
-                || !matches!(recipient.agent.platform, Platform::Grok(_))
-            {
+            let recipient = Agent::load(message.to, None)?;
+            let Platform::Grok(connection) = recipient.platform else {
                 delivery.state = State::Cancelled;
                 delivery.reason = Some(Reason::ConnectionChanged);
                 delivery.save()?;
                 continue;
-            }
-            let Platform::Grok(connection) = recipient.agent.platform else {
-                unreachable!()
             };
             let authorization = format!("Bearer {{secret:{}}}", connection.secret_id);
             let body = serde_json::to_vec(&Payload {

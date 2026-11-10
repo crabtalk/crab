@@ -52,11 +52,15 @@ impl Message {
         let after = cursor
             .parse::<u64>()
             .map_err(|_| "Invalid message cursor")?;
+        let blocked_at = berm_lang::rows::<(u64,)>(
+            "SELECT m.id FROM relay_messages m JOIN relay_conversations c ON c.id = m.conversation WHERE m.recipient = ? AND m.id > ? AND c.paused = 1 ORDER BY m.id LIMIT 1",
+            &(agent, after),
+        )?.pop().map(|(id,)| id);
         let page = Self::page(None, Some(agent), after, None)?;
         let mut events = Vec::new();
         let mut blocked = false;
         for message in page.items {
-            if Conversation::get(message.conversation)?.paused {
+            if blocked_at.is_some_and(|id| message.id >= id) {
                 blocked = true;
                 break;
             }
