@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.1.5",
+    "date": "2026-11-10",
+    "summary": "Publish and deploy services by image address, call running services across accounts, and ship smaller release binaries.",
+    "new": [
+      "Address service calls as owner/service with berm_lang::call, preserving qualified service caller identities",
+      "Retain the target owner in generated bindings from crab idl owner/service"
+    ],
+    "changed": [
+      "Replace name in crab.toml with image = \"owner/service\"; source-only services use their Cargo package name",
+      "Build and publish to the image address with crab publish; crab deploy consumes the published version under the selected account, while --build selects local source",
+      "Resolve directly selected published images without Cargo or Rust; standalone manifests require an exact version suffix",
+      "Remove calls declarations from service manifests",
+      "Strip symbols from release binaries"
+    ],
+    "fixed": [
+      "Use main for service source links and released tags for Rust dependency examples; correct moved provider source paths and source-deployment commands"
+    ]
+  },
+  {
     "version": "0.1.4",
     "date": "2026-11-06",
     "summary": "Build services without manual Rust setup, start with durable state, and inspect pending deployment approvals. Device login requests dedicated agent credentials; webpage tools distinguish HTML titles from SVG titles.",
