@@ -15,7 +15,8 @@
       "Strip symbols from release binaries"
     ],
     "fixed": [
-      "Use main for service source links and released tags for Rust dependency examples; correct moved provider source paths and source-deployment commands"
+      "Use main for service source links and released tags for Rust dependency examples; correct moved provider source paths and source-deployment commands",
+      "Restore clean builds of TinyFish and Litescrape against their reviewed OpenAPI documents"
     ]
   },
   {
