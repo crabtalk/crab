@@ -12,6 +12,8 @@ The `test` feature adds `berm_host::test`: a host whose edges a test holds, runn
 
 Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway.
 
+`Host::event_page` reads a named `#[tool(events = "name")]` source under the supplied caller's authorization and checks its page framing before returning a resume position. A read without a cursor returns the current checkpoint. Tool authorization refusals return `403`; ordinary source failures return `400`. Native discovery metadata comes from `berm_api::events::Source`. MCP subscription management and callback delivery are not implemented.
+
 ## License
 
 AGPL-3.0-only

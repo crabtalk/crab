@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use berm_api::{Output, host::Caller};
+use berm_api::{Output, events::Source, host::Caller};
 use berm_build::fixture;
 use berm_host::test::TestHost;
 use serde_json::{Value, json};
@@ -267,5 +267,255 @@ async fn escaped_messages_fit_pages_and_cursors_survive_a_restart() -> Result<()
     assert_eq!(next["items"].as_array().unwrap().len(), 1);
     assert_eq!(next["has_more"], false);
     assert!(call(&host, "alice", "send", json!({"conversation":conversation,"from":a,"to":b,"body":"x".repeat(4097),"key":"oversize"})).await.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn committed_events_are_targeted_deduplicated_and_resumable() -> Result<()> {
+    let mut host = opened().await?;
+    let a = register(&host, "alice", "Sender").await?;
+    let b = register(&host, "alice", "Recipient").await?;
+    let c = register(&host, "alice", "Other").await?;
+    let conversation = call(&host, "alice", "open", json!({"members":[a,b,c]})).await?["id"]
+        .as_u64()
+        .unwrap();
+    let caller = Caller {
+        id: "alice".into(),
+        app: None,
+        user: None,
+        client: None,
+        agent: None,
+    };
+    let initial = host
+        .host
+        .event_page(
+            "relay",
+            Some(&caller),
+            "message.created",
+            json!({"agent":b}),
+            None,
+        )
+        .await?;
+    assert!(initial.events.is_empty());
+    let input = json!({"conversation":conversation,"from":a,"to":b,"body":"Once","key":"once"});
+    let first = call(&host, "alice", "send", input.clone()).await?;
+    call(&host, "alice", "send", input).await?;
+    call(
+        &host,
+        "alice",
+        "send",
+        json!({"conversation":conversation,"from":a,"to":c,"body":"Other","key":"other"}),
+    )
+    .await?;
+    assert!(
+        call(
+            &host,
+            "alice",
+            "send",
+            json!({"conversation":conversation,"from":a,"to":b,"body":"","key":"failed"})
+        )
+        .await
+        .is_err()
+    );
+    host.reopen().await?;
+    let page = host
+        .host
+        .event_page(
+            "relay",
+            Some(&caller),
+            "message.created",
+            json!({"agent":b}),
+            Some(&initial.cursor),
+        )
+        .await?;
+    assert_eq!(page.events.len(), 1);
+    assert_eq!(page.events[0].data, first);
+    assert_eq!(page.events[0].id, first["id"].to_string());
+    assert_eq!(page.events[0].at, first["created_at"].as_u64().unwrap());
+    let tail = host
+        .host
+        .event_page(
+            "relay",
+            Some(&caller),
+            "message.created",
+            json!({"agent":b}),
+            None,
+        )
+        .await?;
+    assert!(tail.events.is_empty());
+    assert_eq!(tail.cursor, page.cursor);
+    let empty = host
+        .host
+        .event_page(
+            "relay",
+            Some(&caller),
+            "message.created",
+            json!({"agent":b}),
+            Some(&page.cursor),
+        )
+        .await?;
+    assert!(empty.events.is_empty());
+    let bob = Caller {
+        id: "bob".into(),
+        ..caller.clone()
+    };
+    assert!(
+        host.host
+            .event_page(
+                "relay",
+                Some(&bob),
+                "message.created",
+                json!({"agent":b}),
+                Some("0")
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        host.host
+            .event_page("relay", None, "message.created", json!({"agent":b}), None)
+            .await
+            .is_err()
+    );
+    assert!(
+        host.host
+            .event_page(
+                "relay",
+                Some(&caller),
+                "message.created",
+                json!({"agent":b,"cursor":"0"}),
+                None
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        host.host
+            .event_page(
+                "relay",
+                Some(&caller),
+                "message.created",
+                json!({"agent":b}),
+                Some("invalid")
+            )
+            .await
+            .is_err()
+    );
+    call(
+        &host,
+        "alice",
+        "update_agent",
+        json!({"id":b,"enabled":false}),
+    )
+    .await?;
+    assert!(
+        host.host
+            .event_page(
+                "relay",
+                Some(&caller),
+                "message.created",
+                json!({"agent":b}),
+                Some("0")
+            )
+            .await
+            .is_err()
+    );
+    let idl = host.host.idl("relay")?;
+    let spec = idl
+        .tools
+        .iter()
+        .find(|tool| tool.name == "message_events")
+        .unwrap();
+    assert!(spec.query);
+    let source = Source::try_from(spec)?.qualify("relay");
+    assert_eq!(source.definition.name, "relay.message.created");
+    assert_eq!(source.definition.payload_schema["title"], "Message");
+    assert!(
+        source.definition.input_schema["properties"]
+            .get("cursor")
+            .is_none()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn event_pages_can_resume_after_individual_acknowledgments() -> Result<()> {
+    let mut host = opened().await?;
+    let a = register(&host, "alice", "Sender").await?;
+    let b = register(&host, "alice", "Recipient").await?;
+    let conversation = call(&host, "alice", "open", json!({"members":[a,b]})).await?["id"]
+        .as_u64()
+        .unwrap();
+    for key in 0..11 {
+        call(&host, "alice", "send", json!({"conversation":conversation,"from":a,"to":b,"body":"\u{0001}".repeat(4096),"key":key.to_string()})).await?;
+    }
+    let page = call(
+        &host,
+        "alice",
+        "message_events",
+        json!({"agent":b,"cursor":"0"}),
+    )
+    .await?;
+    assert_eq!(page["events"].as_array().unwrap().len(), 10);
+    assert_eq!(page["has_more"], true);
+    host.reopen().await?;
+    let resumed = call(
+        &host,
+        "alice",
+        "message_events",
+        json!({"agent":b,"cursor":page["events"][2]["cursor"]}),
+    )
+    .await?;
+    assert_eq!(resumed["events"].as_array().unwrap().len(), 8);
+    assert_eq!(resumed["events"][0], page["events"][3]);
+    assert_eq!(resumed["has_more"], false);
+    Ok(())
+}
+
+#[tokio::test]
+async fn paused_conversations_hold_the_event_position_until_resumed() -> Result<()> {
+    let host = opened().await?;
+    let from = register(&host, "alice", "Sender").await?;
+    let to = register(&host, "alice", "Recipient").await?;
+    let conversation =
+        call(&host, "alice", "open", json!({"members":[from,to]})).await?["id"].clone();
+    let message = call(
+        &host,
+        "alice",
+        "send",
+        json!({"conversation":conversation,"from":from,"to":to,"body":"Queued","key":"queued"}),
+    )
+    .await?;
+    call(
+        &host,
+        "alice",
+        "pause",
+        json!({"conversation":conversation,"paused":true}),
+    )
+    .await?;
+    let paused = call(
+        &host,
+        "alice",
+        "message_events",
+        json!({"agent":to,"cursor":"0"}),
+    )
+    .await?;
+    assert_eq!(paused["events"], json!([]));
+    assert_eq!(paused["cursor"], "0");
+    call(
+        &host,
+        "alice",
+        "pause",
+        json!({"conversation":conversation,"paused":false}),
+    )
+    .await?;
+    let resumed = call(
+        &host,
+        "alice",
+        "message_events",
+        json!({"agent":to,"cursor":paused["cursor"]}),
+    )
+    .await?;
+    assert_eq!(resumed["events"][0]["data"], message);
     Ok(())
 }

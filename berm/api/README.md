@@ -14,6 +14,10 @@ for tool in &manifest.tools {
 
 `Manifest::try_from(&[u8])` reads the `.berm.abi`, `.berm.service` and `.berm.kits` sections without compiling or running the image. An image built against a different `ABI_VERSION`, or without the `.berm.service` section `crab build` appends, is refused here. `project::Project` reads a service's or a kit's `crab.toml`; its optional `image` is an `owner/service` publication address, parsed by `reference::Reference`. `Manifest.imports` comes from the linked Wasm imports; `Deps.http` holds the merged HTTP destinations configured under `[http]`.
 
+`events::Source::try_from(&ToolSpec)` checks a durable event hook and extracts its filter and payload schemas. `Source::qualify` prefixes the external event name with its deployment address. `Source::page` decodes a source response and checks its resume framing. The cursor stays in the source's tool arguments and is excluded from subscription filters. Manifest loading rejects malformed sources and duplicate event names. These definitions do not implement MCP subscriptions or delivery.
+
+Tool responses carry `host::DENIED` (`berm-denied: 1`) when the tool refused its caller. The `Output::Failed` body remains unchanged.
+
 `Service`, `ToolSpec` and `Output` are the control API's own shapes.
 `Output::Failed` is the service's own report and arrives with the same `200` a
 result does: the call was fine and the tool said no.

@@ -14,6 +14,7 @@ anyhow.workspace = true
 axum.workspace = true
 berm = { workspace = true, features = ["sqlite"] }
 berm-api = { workspace = true, features = ["rusqlite"] }
+berm-abi.workspace = true
 berm-build = { workspace = true, optional = true }
 chrono.workspace = true
 croner.workspace = true

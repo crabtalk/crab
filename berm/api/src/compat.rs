@@ -42,8 +42,14 @@ impl Manifest {
                     .map_or_else(
                         || tool.public || tool.webhook || tool.stripe || tool.cron,
                         |old| {
-                            (old.access(), old.webhook, old.stripe, old.cron)
-                                != (tool.access(), tool.webhook, tool.stripe, tool.cron)
+                            (old.access(), old.webhook, old.stripe, old.cron, &old.events)
+                                != (
+                                    tool.access(),
+                                    tool.webhook,
+                                    tool.stripe,
+                                    tool.cron,
+                                    &tool.events,
+                                )
                         },
                     )
             })
@@ -111,6 +117,9 @@ fn tool(old: &ToolSpec, new: &ToolSpec, found: &mut Vec<String>) {
     }
     if old.query && !new.query {
         found.push("no longer a query".to_owned());
+    }
+    if old.events.is_some() && old.events != new.events {
+        found.push("event source removed or renamed".to_owned());
     }
     if old.anonymous && !new.anonymous {
         found.push("no longer takes anonymous calls".to_owned());

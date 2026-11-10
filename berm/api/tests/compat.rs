@@ -1,6 +1,22 @@
 use berm_api::Manifest;
 use serde_json::{self, Value, json};
 
+#[test]
+fn removing_or_renaming_a_durable_event_requires_review() {
+    let mut old = manifest(json!({}), json!({}));
+    old.tools[0].query = true;
+    old.tools[0].events = Some("message.created".into());
+    let mut next = old.clone();
+    next.tools[0].events = Some("changed".into());
+    assert!(old.upgrade_requires_review(&next));
+    assert_eq!(
+        old.breaks(&next)[0].reason,
+        "event source removed or renamed"
+    );
+    next.tools[0].events = None;
+    assert!(old.upgrade_requires_review(&next));
+}
+
 fn manifest(parameters: Value, returns: Value) -> Manifest {
     serde_json::from_value(json!({
         "abi_version": 1, "tools": [{

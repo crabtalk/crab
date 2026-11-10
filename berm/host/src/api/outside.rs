@@ -308,6 +308,12 @@ impl<E: Env> Host<E> {
             HeaderValue::from_str(&serde_json::to_string(&invoked.meter).expect("a meter is JSON"))
                 .expect("JSON of numbers is a header value"),
         );
+        if invoked.denied {
+            headers.insert(
+                HeaderName::from_static(wire::DENIED),
+                HeaderValue::from_static("1"),
+            );
+        }
         Ok(Called {
             headers,
             output: invoked.result,

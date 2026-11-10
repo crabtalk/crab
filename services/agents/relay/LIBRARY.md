@@ -6,6 +6,8 @@ Build the consuming service with `crab build` to include Relay's migrations. Its
 
 `Platform::Grok(GrokConnection)` carries a webhook URL and credential reference. `Platform::OpenAiDot(DotConnection {})` identifies a Dot. Both currently support persistent messaging through the service's read tools. Provider delivery is not implemented.
 
+`Message::events(agent, cursor)` returns `berm_lang::abi::events::Page<Message>` for an enabled recipient owned by the caller. `None` captures the current checkpoint; `Some("0".into())` replays history. Message rows are the event history. Identical send retries retain the same event ID and cursor. A paused conversation holds the stream at its first queued message until resumed.
+
 Run the Wasm integration tests from the workspace root:
 
 ```sh

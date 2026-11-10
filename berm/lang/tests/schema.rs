@@ -1,5 +1,6 @@
 use berm_lang::{
     Schema,
+    abi::events::Page,
     schema::{self, Field, Piece, Shape},
     serde_json::{self, Value, json},
 };
@@ -15,6 +16,21 @@ const SHAPE: Shape = Shape::Object {
 };
 const PIECES: &[Piece] = &[Piece::Shape(&SHAPE)];
 const BYTES: [u8; schema::len(PIECES)] = schema::render(PIECES);
+
+#[test]
+fn durable_event_pages_keep_their_typed_payload_schema() {
+    const PIECES: &[Piece] = &[Piece::Shape(&Page::<Entry>::SHAPE)];
+    const OUT: [u8; schema::len(PIECES)] = schema::render(PIECES);
+    let rendered: Value = serde_json::from_slice(&OUT).unwrap();
+    assert_eq!(
+        rendered["required"],
+        json!(["events", "cursor", "has_more"])
+    );
+    let record = &rendered["properties"]["events"]["items"];
+    assert_eq!(record["required"], json!(["id", "cursor", "at", "data"]));
+    assert_eq!(record["properties"]["data"]["title"], "Entry");
+    assert_eq!(record["properties"]["data"]["required"], json!(["key"]));
+}
 
 #[test]
 fn arbitrary_json_has_an_unconstrained_schema_with_its_description() {

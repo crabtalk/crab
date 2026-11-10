@@ -264,6 +264,9 @@ dependencies = [
 [[package]]
 name = "berm-abi"
 version = "0.1.5"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "berm-account"
@@ -395,6 +398,7 @@ dependencies = [
  "anyhow",
  "axum",
  "berm",
+ "berm-abi",
  "berm-api",
  "berm-build",
  "berm-host",

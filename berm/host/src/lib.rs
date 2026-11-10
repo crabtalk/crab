@@ -25,6 +25,7 @@ pub use state::store::Store;
 mod api;
 mod config;
 mod env;
+mod events;
 pub mod execution;
 pub mod fixture;
 mod host;

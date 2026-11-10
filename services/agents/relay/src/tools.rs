@@ -5,7 +5,7 @@ use crate::{
     platform::Platform,
 };
 use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, tool};
+use berm_lang::{Result, abi::events::Page, tool};
 
 /// Register an existing agent under the authenticated account.
 #[tool]
@@ -65,4 +65,10 @@ pub fn read(conversation: u64, after: Option<u64>, limit: Option<u64>) -> Result
 #[tool(query)]
 pub fn inbox(agent: u64, after: Option<u64>, limit: Option<u64>) -> Result<Messages> {
     Message::inbox(agent, after.unwrap_or(0), limit)
+}
+
+/// Receive committed messages addressed to an enabled agent.
+#[tool(events = "message.created")]
+pub fn message_events(agent: u64, cursor: Option<String>) -> Result<Page<Message>> {
+    Message::events(agent, cursor)
 }

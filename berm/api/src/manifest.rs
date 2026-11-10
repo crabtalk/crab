@@ -1,12 +1,16 @@
 //! What a service says it is, read from its image's [`ABI_SECTION`],
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, logo::Logo};
+use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, events::Source, logo::Logo};
 use anyhow::{Context, Result, bail};
 use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
-use std::{collections::BTreeMap, fmt, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    str::FromStr,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -518,6 +522,14 @@ impl Manifest {
         }
         for credential in self.deps.credentials.values() {
             Credential::check_hosts(&credential.hosts).map_err(anyhow::Error::msg)?;
+        }
+        let mut event_names = BTreeSet::new();
+        for tool in self.tools.iter().filter(|tool| tool.events.is_some()) {
+            let source =
+                Source::try_from(tool).with_context(|| format!("event source {}", tool.name))?;
+            if !event_names.insert(source.definition.name) {
+                bail!("event sources must have distinct names");
+            }
         }
         for name in self.crons.keys() {
             if !self

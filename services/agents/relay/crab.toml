@@ -55,3 +55,9 @@ access = "accounts"
 title = "Read agent inbox"
 catalog = "relay.inbox"
 budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.message_events]
+access = "accounts"
+title = "Agent message events"
+catalog = "relay.events"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }

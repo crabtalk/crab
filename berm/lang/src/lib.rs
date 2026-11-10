@@ -65,6 +65,7 @@ mod call;
 pub mod dispatch;
 mod emit;
 mod error;
+mod events;
 mod heap;
 #[doc(hidden)]
 pub mod host;

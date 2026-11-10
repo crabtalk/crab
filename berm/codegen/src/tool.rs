@@ -23,20 +23,29 @@ pub(crate) struct Options {
     stripe: bool,
     /// `webhook`.
     webhook: bool,
+    events: Option<String>,
 }
 
 impl Options {
     /// Read one option of `#[tool(...)]`.
     pub(crate) fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+        if meta.path.is_ident("events") {
+            if self.events.is_some() {
+                return Err(meta.error("duplicate `events` option"));
+            }
+            self.events = Some(meta.value()?.parse::<syn::LitStr>()?.value());
+            self.query = true;
+            return Ok(());
+        }
         let flag = match &meta.path {
             path if path.is_ident("query") => &mut self.query,
             path if path.is_ident("cron") => &mut self.cron,
             path if path.is_ident("stripe") => &mut self.stripe,
             path if path.is_ident("webhook") => &mut self.webhook,
             _ => {
-                return Err(
-                    meta.error("unknown option (expected `query`, `cron`, `stripe` or `webhook`)")
-                );
+                return Err(meta.error(
+                    "unknown option (expected `query`, `cron`, `stripe`, `webhook` or `events`)",
+                ));
             }
         };
         *flag = true;
@@ -116,15 +125,20 @@ impl Tool {
         }
 
         let ident = &function.sig.ident;
-        if [options.cron, options.stripe, options.webhook]
-            .into_iter()
-            .filter(|set| *set)
-            .count()
+        if [
+            options.cron,
+            options.stripe,
+            options.webhook,
+            options.events.is_some(),
+        ]
+        .into_iter()
+        .filter(|set| *set)
+        .count()
             > 1
         {
             return Err(syn::Error::new_spanned(
                 ident,
-                "a tool is at most one of `cron`, `stripe` and `webhook`",
+                "a tool is at most one of `cron`, `stripe`, `webhook` and `events`",
             ));
         }
         if options.cron && !params.is_empty() {
@@ -188,6 +202,12 @@ impl Tool {
             out.shape(quote!(<#reply as ::berm_lang::Schema>::SHAPE));
         }
         let options = &self.options;
+        if let Some(name) = &options.events {
+            out.text(&format!(
+                r#","events":{}"#,
+                serde_json::Value::from(name.as_str())
+            ));
+        }
         for (set, key) in [
             (options.query, "query"),
             (self.deprecated, "deprecated"),

@@ -1,6 +1,12 @@
 use crate::{agent::Agent, conversation::Conversation};
-use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, Schema};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use berm_lang::{
+    Result, Schema,
+    abi::events::{Event, Page},
+};
 
 const MAX_BODY: usize = 4096;
 
@@ -23,6 +29,49 @@ pub struct Messages {
 }
 
 impl Message {
+    pub fn events(agent: u64, cursor: Option<String>) -> Result<Page<Self>> {
+        Agent::get(agent)?.require_enabled()?;
+        let Some(cursor) = cursor else {
+            let (head,) = berm_lang::rows::<(u64,)>(
+                "SELECT COALESCE(MAX(id), 0) FROM relay_messages WHERE recipient = ?",
+                &(agent,),
+            )?
+            .pop()
+            .ok_or("No message checkpoint")?;
+            return Ok(Page {
+                events: Vec::new(),
+                cursor: head.to_string(),
+                has_more: false,
+            });
+        };
+        let after = cursor
+            .parse::<u64>()
+            .map_err(|_| "Invalid message cursor")?;
+        let page = Self::page(None, Some(agent), after, None)?;
+        let mut events = Vec::new();
+        let mut blocked = false;
+        for message in page.items {
+            if Conversation::get(message.conversation)?.paused {
+                blocked = true;
+                break;
+            }
+            events.push(Event {
+                id: message.id.to_string(),
+                cursor: message.id.to_string(),
+                at: message.created_at,
+                data: message,
+            });
+        }
+        let cursor = events
+            .last()
+            .map_or_else(|| after.to_string(), |event| event.cursor.clone());
+        Ok(Page {
+            events,
+            cursor,
+            has_more: !blocked && page.has_more,
+        })
+    }
+
     pub fn send(
         conversation: u64,
         from: u64,
