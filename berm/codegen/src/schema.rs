@@ -4,7 +4,9 @@
 use berm_abi::ABI_SECTION;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, ext::IdentExt};
+use syn::{
+    Data, DeriveInput, Fields, FieldsNamed, GenericArgument, PathArguments, Type, ext::IdentExt,
+};
 
 pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
     if !input.generics.params.is_empty() {
@@ -24,31 +26,7 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
                     "a Schema struct has named fields — the names are the JSON object's keys",
                 ));
             };
-            let shapes = fields.named.iter().map(|field| {
-                let name = field.ident.as_ref().expect("named").unraw().to_string();
-                let description = match crate::docs(&field.attrs) {
-                    docs if docs.is_empty() => docs,
-                    docs => serde_json::Value::from(docs).to_string(),
-                };
-                let ty = &field.ty;
-                quote! {
-                    ::berm_lang::schema::Field {
-                        name: #name,
-                        description: #description,
-                        shape: &<#ty as ::berm_lang::Schema>::SHAPE,
-                    }
-                }
-            });
-            let mirrored = fields.named.iter().map(|field| {
-                let name = &field.ident;
-                let ty = &field.ty;
-                // The schema leaves an optional field out of `required` rather
-                // than allowing `null`, so an absent value is an absent key.
-                let skip = optional(ty).then(|| {
-                    quote!(#[serde(default, skip_serializing_if = "::core::option::Option::is_none")])
-                });
-                quote!(#skip #name: #ty,)
-            });
+            let (shapes, mirrored) = named_fields(fields);
             (
                 quote! {
                     ::berm_lang::schema::Shape::Object {
@@ -59,17 +37,16 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
                 quote!(struct Remote { #(#mirrored)* }),
             )
         }
-        Data::Enum(data) => {
-            let mut values = Vec::new();
-            for variant in &data.variants {
-                if !matches!(variant.fields, Fields::Unit) {
-                    return Err(syn::Error::new_spanned(
-                        variant,
-                        "a Schema enum's variants carry nothing — it is a string that is one of them",
-                    ));
-                }
-                values.push(snake(&variant.ident.to_string()));
-            }
+        Data::Enum(data)
+            if data
+                .variants
+                .iter()
+                .all(|v| matches!(v.fields, Fields::Unit)) =>
+        {
+            let values = data
+                .variants
+                .iter()
+                .map(|variant| snake(&variant.ident.unraw().to_string()));
             let variants = data.variants.iter().map(|variant| &variant.ident);
             (
                 quote! {
@@ -81,6 +58,50 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
                 quote! {
                     #[serde(rename_all = "snake_case")]
                     enum Remote { #(#variants),* }
+                },
+            )
+        }
+        Data::Enum(data) => {
+            let mut shapes = Vec::new();
+            let mut mirrored = Vec::new();
+            for variant in &data.variants {
+                let ident = &variant.ident;
+                let name = snake(&ident.unraw().to_string());
+                let description = crate::docs(&variant.attrs);
+                let description = if description.is_empty() {
+                    description
+                } else {
+                    serde_json::Value::from(description).to_string()
+                };
+                let payload = match &variant.fields {
+                    Fields::Unit => {
+                        mirrored.push(quote!(#ident,));
+                        quote!(::core::option::Option::None)
+                    }
+                    Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                        let ty = &fields.unnamed[0].ty;
+                        mirrored.push(quote!(#ident(#ty),));
+                        quote!(::core::option::Option::Some(&<#ty as ::berm_lang::Schema>::SHAPE))
+                    }
+                    Fields::Named(fields) => {
+                        let (field_shapes, field_mirrors) = named_fields(fields);
+                        mirrored.push(quote!(#ident { #(#field_mirrors)* },));
+                        quote!(::core::option::Option::Some(&::berm_lang::schema::Shape::Object { title: "", fields: &[#(#field_shapes),*] }))
+                    }
+                    Fields::Unnamed(_) => {
+                        return Err(syn::Error::new_spanned(
+                            variant,
+                            "a Schema tuple variant has exactly one field",
+                        ));
+                    }
+                };
+                shapes.push(quote!(::berm_lang::schema::Variant { name: #name, description: #description, payload: #payload }));
+            }
+            (
+                quote!(::berm_lang::schema::Shape::Union { title: #title, variants: &[#(#shapes),*] }),
+                quote! {
+                    #[serde(rename_all = "snake_case")]
+                    enum Remote { #(#mirrored)* }
                 },
             )
         }
@@ -121,6 +142,19 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
             }
         };
     })
+}
+
+fn named_fields(fields: &FieldsNamed) -> (Vec<TokenStream>, Vec<TokenStream>) {
+    fields.named.iter().map(|field| {
+        let ident = &field.ident;
+        let name = ident.as_ref().expect("named").unraw().to_string();
+        let description = crate::docs(&field.attrs);
+        let description = if description.is_empty() { description } else { serde_json::Value::from(description).to_string() };
+        let ty = &field.ty;
+        let shape = quote!(::berm_lang::schema::Field { name: #name, description: #description, shape: &<#ty as ::berm_lang::Schema>::SHAPE });
+        let skip = optional(ty).then(|| quote!(#[serde(default, skip_serializing_if = "::core::option::Option::is_none")]));
+        (shape, quote!(#skip #ident: #ty,))
+    }).unzip()
 }
 
 /// `#[event]`: a `Schema` struct emitted as a log under its name, and its

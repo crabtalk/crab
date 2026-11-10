@@ -77,3 +77,55 @@ fn automatic_upgrades_require_review_for_exposure_permissions_and_breaking_schem
     let changed = manifest(json!({"type":"integer"}), json!({"type":"string"}));
     assert!(old.upgrade_requires_review(&changed));
 }
+
+fn platforms(required: bool, additional: bool) -> Value {
+    let mut variants = vec![json!({
+        "type":"object", "properties":{"grok":{
+            "type":"object", "properties":{"url":{"type":"string"}},
+            "required": if required { vec!["url"] } else { vec![] }
+        }}, "required":["grok"], "additionalProperties":false
+    })];
+    if additional {
+        variants.push(json!({"type":"object","properties":{"dot":{"type":"object","properties":{}}},"required":["dot"],"additionalProperties":false}));
+    }
+    json!({"title":"Platform","oneOf":variants})
+}
+
+#[test]
+fn payload_enums_check_added_and_removed_branches_in_both_directions() {
+    let old = manifest(platforms(true, false), platforms(true, false));
+    let new = manifest(platforms(true, true), platforms(true, true));
+    let breaks = old.breaks(&new);
+    assert_eq!(breaks.len(), 1);
+    assert_eq!(breaks[0].reason, "result may now be \"dot\"");
+    let breaks = new.breaks(&old);
+    assert_eq!(breaks.len(), 1);
+    assert_eq!(breaks[0].reason, "arguments no longer takes \"dot\"");
+    assert!(old.upgrade_requires_review(&new));
+}
+
+#[test]
+fn payload_enum_fields_keep_their_argument_and_result_compatibility_rules() {
+    let required = manifest(platforms(true, false), platforms(true, false));
+    let optional = manifest(platforms(false, false), platforms(false, false));
+    assert_eq!(
+        required.breaks(&optional)[0].reason,
+        "result.grok.url is no longer always present"
+    );
+    assert_eq!(
+        optional.breaks(&required)[0].reason,
+        "arguments.grok.url is newly required"
+    );
+}
+
+#[test]
+fn adding_payload_variants_preserves_existing_unit_variant_arguments() {
+    let unit = json!({"type":"string","enum":["local"]});
+    let mut expanded = platforms(true, false);
+    expanded["oneOf"].as_array_mut().unwrap().push(unit.clone());
+    let old = manifest(unit.clone(), unit);
+    let new = manifest(expanded.clone(), expanded);
+    let breaks = old.breaks(&new);
+    assert_eq!(breaks.len(), 1);
+    assert_eq!(breaks[0].reason, "result may now be \"grok\"");
+}

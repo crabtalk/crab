@@ -5,7 +5,7 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 ## Catalogs
 
 - [Connect](connect/README.md): third-party API integrations.
-- [Agents](agents/README.md): shared agent memory.
+- [Agents](agents/README.md): shared agent memory, identities and conversations.
 - [Web](web/README.md): SEO checks, webpage-to-Markdown extraction and website analytics.
 - [Ops](ops/README.md): uptime and webhook inboxes.
 

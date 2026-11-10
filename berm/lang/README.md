@@ -33,6 +33,8 @@ pub struct Echo {
 
 A function marked `#[tool(...)]`, in any module of the service's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. An `Option<T>` result permits `null`, represented by `anyOf` in its JSON Schema. `#[tool]` takes `query`, `cron`, `stripe` and `webhook`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
 
+Enums with payloads use external snake-case tags: `Platform::Grok(Connection { … })` is `{"grok":{…}}`. Payload variants accept one unnamed field or named fields. Enums containing only unit variants remain strings.
+
 **A tool is internal unless its table in `crab.toml` gives it `access`.** Only the host calls an internal tool, for the service's own wakes, crons, Stripe events and webhooks.
 
 ```toml

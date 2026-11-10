@@ -129,6 +129,7 @@ pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {
 /// A struct with named fields is an object titled by its name: a field's doc
 /// comment is its description, and an `Option` field may be absent. An enum
 /// of unit variants is a string, each variant in `snake_case`.
+/// Payload variants use serde's external tag with a named object or one field.
 #[proc_macro_derive(Schema)]
 pub fn derive_schema(input: TokenStream) -> TokenStream {
     schema::derive(&parse_macro_input!(input as DeriveInput))

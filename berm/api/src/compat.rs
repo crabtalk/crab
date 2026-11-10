@@ -136,13 +136,16 @@ fn accepts(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
     }
     let old = old_inner.unwrap_or(old);
     let new = new_inner.unwrap_or(new);
+    if payload_variants(at, old, new, found, false) {
+        return;
+    }
     if !same_type(at, old, new, found) {
         return;
     }
     if old.get("minimum").is_none() && new.get("minimum").is_some() {
         found.push(format!("{at} no longer takes a negative integer"));
     }
-    match (values(old), values(new)) {
+    match (schema::values(old), schema::values(new)) {
         (None, Some(_)) => found.push(format!("{at} takes only some strings")),
         (Some(old), Some(new)) => {
             for value in old.iter().filter(|value| !new.contains(value)) {
@@ -169,13 +172,16 @@ fn writes(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
     }
     let old = old_inner.unwrap_or(old);
     let new = new_inner.unwrap_or(new);
+    if payload_variants(at, old, new, found, true) {
+        return;
+    }
     if !same_type(at, old, new, found) {
         return;
     }
     if old.get("minimum").is_some() && new.get("minimum").is_none() {
         found.push(format!("{at} may now be a negative integer"));
     }
-    match (values(old), values(new)) {
+    match (schema::values(old), schema::values(new)) {
         (Some(_), None) => found.push(format!("{at} may now be any string")),
         (Some(old), Some(new)) => {
             for value in new.iter().filter(|value| !old.contains(value)) {
@@ -191,6 +197,41 @@ fn writes(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
         }
     }
     each_shared(at, old, new, found, writes);
+}
+
+fn payload_variants(
+    at: &str,
+    old: &Value,
+    new: &Value,
+    found: &mut Vec<String>,
+    output: bool,
+) -> bool {
+    if old.get("oneOf").is_none() && new.get("oneOf").is_none() {
+        return false;
+    }
+    let (Some(old), Some(new)) = (schema::variants(old), schema::variants(new)) else {
+        return false;
+    };
+    let branches = if output { &new } else { &old };
+    for name in branches.keys() {
+        let (Some(previous), Some(next)) = (old.get(name), new.get(name)) else {
+            found.push(if output {
+                format!("{at} may now be {name:?}")
+            } else {
+                format!("{at} no longer takes {name:?}")
+            });
+            continue;
+        };
+        match (previous, next) {
+            (Some(previous), Some(next)) => {
+                let compare = if output { writes } else { accepts };
+                compare(&format!("{at}.{name}"), previous, next, found);
+            }
+            (None, None) => {}
+            _ => found.push(format!("{at}.{name} changed its payload representation")),
+        }
+    }
+    true
 }
 
 /// `false`, having said so, when the two do not have the same JSON type.
@@ -235,12 +276,6 @@ fn each_shared(
             compare(&format!("{at}[]"), old, new, found);
         }
     }
-}
-
-/// The strings a string enum is one of.
-fn values(schema: &Value) -> Option<Vec<&str>> {
-    let values = schema.get("enum")?.as_array()?;
-    Some(values.iter().filter_map(Value::as_str).collect())
 }
 
 fn required(schema: &Value) -> Vec<String> {

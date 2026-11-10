@@ -47,6 +47,17 @@ pub enum Shape {
         title: &'static str,
         values: &'static [&'static str],
     },
+    /// Externally tagged enum variants, each with an optional payload.
+    Union {
+        title: &'static str,
+        variants: &'static [Variant],
+    },
+}
+
+pub struct Variant {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub payload: Option<&'static Shape>,
 }
 
 /// One property of a [`Shape::Object`].
@@ -208,6 +219,41 @@ const fn shape_into(sink: &mut Sink, shape: &Shape, description: &str) {
                     sink.put(",");
                 }
                 sink.quoted(values[at]);
+                at += 1;
+            }
+            sink.put("]");
+        }
+        Shape::Union { title, variants } => {
+            sink.put(r#"{"title":"#);
+            sink.quoted(title);
+            sink.put(r#","oneOf":["#);
+            let mut at = 0;
+            while at < variants.len() {
+                if at > 0 {
+                    sink.put(",");
+                }
+                let variant = &variants[at];
+                match variant.payload {
+                    None => {
+                        sink.put(r#"{"type":"string","enum":["#);
+                        sink.quoted(variant.name);
+                        sink.put("]");
+                    }
+                    Some(payload) => {
+                        sink.put(r#"{"type":"object","properties":{"#);
+                        sink.quoted(variant.name);
+                        sink.put(":");
+                        shape_into(sink, payload, "");
+                        sink.put(r#"},"required":["#);
+                        sink.quoted(variant.name);
+                        sink.put(r#"],"additionalProperties":false"#);
+                    }
+                }
+                if !variant.description.is_empty() {
+                    sink.put(r#","description":"#);
+                    sink.put(variant.description);
+                }
+                sink.put("}");
                 at += 1;
             }
             sink.put("]");

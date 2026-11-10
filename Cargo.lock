@@ -943,6 +943,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-agent-relay"
+version = "0.1.5"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "crab-analytics"
 version = "0.1.5"
 dependencies = [

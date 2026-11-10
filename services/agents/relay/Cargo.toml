@@ -1,0 +1,28 @@
+[package]
+name = "crab-agent-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Persistent identities and conversations for agents across platforms"
+
+[lib]
+name = "agent_relay"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tools"]
+tools = []
+
+[dependencies]
+berm-lang.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+berm-api.workspace = true
+berm-build.workspace = true
+berm-host = { workspace = true, features = ["test"] }
+serde_json.workspace = true
+tokio.workspace = true
