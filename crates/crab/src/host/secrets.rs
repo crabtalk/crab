@@ -2,7 +2,10 @@
 use anyhow::{Context, Result};
 use berm::clock;
 use berm_host::Secrets;
-use crabtalk_sdk::account::secret::{Create, Grant, Resource};
+use crabtalk_sdk::{
+    account::secret::{Create, Grant, Resource},
+    client::LOCAL,
+};
 use parking_lot::Mutex;
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
@@ -243,6 +246,20 @@ impl Secrets for Grants {
                         })
                         .map(|kept| kept.value.clone())
                 })
+        })
+    }
+
+    async fn resource_owner(&self, service: &str, id: &str, host: &str) -> Result<Option<String>> {
+        self.with(|table| {
+            table
+                .resources
+                .get(id)
+                .filter(|kept| {
+                    kept.resource.grants.iter().any(|grant| {
+                        grant.service == service && grant.hosts.iter().any(|to| to == host)
+                    })
+                })
+                .map(|_| String::from(LOCAL))
         })
     }
 

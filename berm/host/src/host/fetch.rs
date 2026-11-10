@@ -21,6 +21,7 @@ use tower::ServiceExt;
 pub(crate) enum Door {
     Fetch,
     FetchAll,
+    FetchAllLiteralBody,
     Proxy,
     ProxyAll,
 }
@@ -67,6 +68,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     match door {
         Door::Fetch => http::fetch(send, secret),
         Door::FetchAll => http::fetch_all(send, secret),
+        Door::FetchAllLiteralBody => http::fetch_all_literal_body(send, secret),
         Door::Proxy => http::proxy(send, secret),
         Door::ProxyAll => http::proxy_all(send, secret),
     }

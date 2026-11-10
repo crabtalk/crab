@@ -952,6 +952,7 @@ name = "crab-agent-relay"
 version = "0.1.5"
 dependencies = [
  "anyhow",
+ "berm",
  "berm-api",
  "berm-build",
  "berm-host",

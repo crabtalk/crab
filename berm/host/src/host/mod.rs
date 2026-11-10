@@ -51,6 +51,7 @@ pub use deploy::Installed;
 mod deploy;
 mod fetch;
 mod nest;
+mod secrets;
 mod set;
 
 /// Every service, compiled and callable.
@@ -189,7 +190,8 @@ impl<E: Env> Host<E> {
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
             let mut syscalls = vec![
                 fetch::syscall(host, fetch.clone(), Door::Fetch),
-                fetch::syscall(host, fetch, Door::FetchAll),
+                fetch::syscall(host, fetch.clone(), Door::FetchAll),
+                fetch::syscall(host, fetch, Door::FetchAllLiteralBody),
             ];
             if let Some(proxy) = proxy {
                 syscalls.push(fetch::syscall(host, proxy.clone(), Door::Proxy));
@@ -198,6 +200,7 @@ impl<E: Env> Host<E> {
             syscalls.extend(state::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
+            syscalls.push(secrets::syscall(host));
             syscalls.push(wake::syscall(host));
             let calls = nest::calls(
                 host,

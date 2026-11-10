@@ -1,6 +1,6 @@
 use crate::{account::Account, agent::Agent};
 use alloc::vec::Vec;
-use berm_lang::{Result, Schema};
+use berm_lang::{Result, Schema, key};
 
 #[derive(Schema)]
 pub struct Conversation {
@@ -13,6 +13,7 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn open(members: Vec<u64>, budget: Option<u64>) -> Result<Self> {
+        Account::require_owner()?;
         if !(2..=16).contains(&members.len()) {
             return Err("A conversation needs 2–16 agents".into());
         }
@@ -56,13 +57,27 @@ impl Conversation {
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible conversation with that id"))?;
-        let members = berm_lang::rows::<(u64,)>(
+        let members: Vec<u64> = berm_lang::rows::<(u64,)>(
             "SELECT agent FROM relay_members WHERE conversation = ? ORDER BY agent",
             &(id,),
         )?
         .into_iter()
         .map(|(id,)| id)
         .collect();
+        if let Some(key) = key::id()? {
+            let mut permitted = false;
+            for member in &members {
+                if Agent::get(*member)?.allows_key(&key)? {
+                    permitted = true;
+                    break;
+                }
+            }
+            if !permitted {
+                return Err(berm_lang::deny(
+                    "This API key has no agent in the conversation",
+                ));
+            }
+        }
         Ok(Self {
             id,
             members,
@@ -73,6 +88,7 @@ impl Conversation {
     }
 
     pub fn pause(id: u64, paused: bool) -> Result<Self> {
+        Account::require_owner()?;
         let mut conversation = Self::get(id)?;
         berm_lang::rows::<()>(
             "UPDATE relay_conversations SET paused = ? WHERE id = ?",

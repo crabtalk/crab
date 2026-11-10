@@ -54,6 +54,9 @@ pub fn tape(from: &Client, service: &str, id: u64, build: Option<&Path>) -> Resu
                 .filter(|caller| !caller.anonymous())
                 .map(|caller| caller.id.as_str().into()),
             caller
+                .and_then(|caller| caller.key.as_deref())
+                .map(Into::into),
+            caller
                 .and_then(|caller| caller.user.as_ref())
                 .map(|user| User {
                     issuer: user.issuer.as_str().into(),

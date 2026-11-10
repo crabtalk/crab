@@ -5,6 +5,7 @@ extern crate alloc;
 mod account;
 pub mod agent;
 pub mod conversation;
+pub mod delivery;
 pub mod message;
 pub mod platform;
 #[cfg(feature = "tools")]

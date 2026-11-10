@@ -15,7 +15,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use berm_lang::{Caller, Result, Schema, event, tool};
+use berm_lang::{Caller, Result, Schema, event, key, tool};
 
 berm_lang::declare_service!(fixture);
 
@@ -145,6 +145,9 @@ pub fn whoami() -> Result<String> {
     };
     if let Some(user) = berm_lang::user()? {
         said.push_str(&format!(" user {} {}", user.issuer, user.subject));
+    }
+    if let Some(key) = key::id()? {
+        said.push_str(&format!(" key {key}"));
     }
     Ok(said)
 }

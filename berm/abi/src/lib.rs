@@ -97,6 +97,10 @@ macro_rules! host_calls {
             /// substitutes; the guest never holds the value.
             HTTP_FETCH = "berm.http.fetch";
 
+            /// Resource ID and destination host in; the granted resource's owner out,
+            /// or no fields if no grant exists. Never returns a value.
+            SECRET_RESOURCE = "berm.secret.resource";
+
             /// Make one HTTP request through the host's proxy. The request and reply are
             /// [`HTTP_FETCH`]'s.
             HTTP_PROXY = "berm.http.proxy";
@@ -108,6 +112,10 @@ macro_rules! host_calls {
             /// field answers the request in its place, framed: `ok`, then
             /// [`HTTP_FETCH`]'s reply fields; or `refused` or `failed`, then why.
             HTTP_FETCH_ALL = "berm.http.fetch_all";
+
+            /// [`HTTP_FETCH_ALL`] with body bytes sent literally. Only header values
+            /// undergo secret substitution. The request and reply framing are unchanged.
+            HTTP_FETCH_ALL_LITERAL_BODY = "berm.http.fetch_all.literal_body";
 
             /// [`HTTP_FETCH_ALL`] through the host's proxy, each request to a host
             /// the manifest declares under [`HTTP_PROXY`]. The request and reply are
@@ -161,6 +169,10 @@ macro_rules! host_calls {
             /// The reply is no fields when neither the embedder nor a service vouched for
             /// one, else the issuer and the subject. The runtime serves this one itself.
             USER = "berm.user";
+
+            /// The authenticated API key ID for this chain. Empty when none was supplied;
+            /// otherwise one field containing the ID, never the token.
+            KEY_ID = "berm.key.id";
 
             /// Vouch for the end user the chain runs for from here on. `(ptr, len) ->
             /// staged length`

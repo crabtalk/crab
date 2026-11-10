@@ -83,6 +83,8 @@ pub struct Callsite {
     /// service in the chain vouched for through `berm.vouch`. Carried into
     /// every call made after.
     pub user: Option<User>,
+    /// The API key authenticated at the chain's start, carried into nested calls.
+    pub key: Option<Arc<str>>,
     /// The outside client supplied at the chain's first call, carried into
     /// every nested call.
     pub client: Client,

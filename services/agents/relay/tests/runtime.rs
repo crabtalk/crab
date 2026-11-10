@@ -1,55 +1,27 @@
-use anyhow::{Result, bail};
-use berm_api::{Output, events::Source, host::Caller};
-use berm_build::fixture;
-use berm_host::test::TestHost;
-use serde_json::{Value, json};
+use crate::common::{call, call_as, opened, register};
+use anyhow::Result;
+use berm_api::{events::Source, host::Caller};
+use serde_json::json;
 
-async fn call(host: &TestHost, owner: &str, tool: &str, input: Value) -> Result<Value> {
-    let caller = Caller {
-        id: owner.into(),
-        app: None,
-        user: None,
-        client: None,
-        agent: None,
-    };
-    let (_, output) = host
-        .host
-        .call(
-            "relay",
-            Some(&caller),
-            tool,
-            serde_json::to_vec(&input)?,
-            false,
-        )
-        .await?;
-    match output {
-        Output::Done(value) => Ok(serde_json::from_str(&value)?),
-        Output::Failed(error) => bail!("{error}"),
-    }
-}
-
-async fn opened() -> Result<TestHost> {
-    let host = TestHost::open(1000).await?;
-    host.deploy("relay", &fixture::image("crab-agent-relay")?)
-        .await?;
-    Ok(host)
-}
-
-async fn register(host: &TestHost, owner: &str, name: &str) -> Result<u64> {
-    Ok(call(
-        host,
-        owner,
-        "register",
-        json!({"name":name,"platform":{"open_ai_dot":{}}}),
-    )
-    .await?["id"]
-        .as_u64()
-        .unwrap())
-}
+mod common;
 
 #[tokio::test]
 async fn several_bots_and_a_dot_keep_their_identities_and_history_after_restart() -> Result<()> {
     let mut host = opened().await?;
+    host.grant_resource(
+        "relay",
+        "secret_11111111111111111111111111111111",
+        "bots.example",
+        "alice",
+        "research-key",
+    );
+    host.grant_resource(
+        "relay",
+        "secret_22222222222222222222222222222222",
+        "bots.example",
+        "alice",
+        "sales-key",
+    );
     let research = call(&host, "alice", "register", json!({"name":"Research","platform":{"grok":{"webhook_url":"https://bots.example/research","secret_id":"secret_11111111111111111111111111111111"}}})).await?;
     let sales = call(&host, "alice", "register", json!({"name":"Sales","platform":{"grok":{"webhook_url":"https://bots.example/sales","secret_id":"secret_22222222222222222222222222222222"}}})).await?;
     let dot = register(&host, "alice", "Assistant").await?;
@@ -285,6 +257,7 @@ async fn committed_events_are_targeted_deduplicated_and_resumable() -> Result<()
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     let initial = host
         .host
@@ -517,5 +490,180 @@ async fn paused_conversations_hold_the_event_position_until_resumed() -> Result<
     )
     .await?;
     assert_eq!(resumed["events"][0]["data"], message);
+    Ok(())
+}
+
+#[tokio::test]
+async fn api_keys_act_only_as_granted_agents_and_revocation_survives_restart() -> Result<()> {
+    let mut host = opened().await?;
+    let a = register(&host, "alice", "Research").await?;
+    let b = register(&host, "alice", "Assistant").await?;
+    let c = register(&host, "alice", "Sales").await?;
+    let conversation = call(&host, "alice", "open", json!({"members":[a,b]})).await?["id"].clone();
+    let private = call(&host, "alice", "open", json!({"members":[b,c]})).await?["id"].clone();
+    let input =
+        json!({"conversation":conversation,"from":a,"to":b,"body":"Investigate","key":"first"});
+    assert!(
+        call_as(&host, "alice", Some("research-key"), "send", input.clone())
+            .await
+            .is_err()
+    );
+    call(
+        &host,
+        "alice",
+        "grant_agent",
+        json!({"agent":a,"key_id":"research-key"}),
+    )
+    .await?;
+    call(
+        &host,
+        "alice",
+        "grant_agent",
+        json!({"agent":b,"key_id":"assistant-key"}),
+    )
+    .await?;
+    assert_eq!(
+        call(&host, "alice", "agent_keys", json!({"agent":a})).await?,
+        json!(["research-key"])
+    );
+    let first = call_as(&host, "alice", Some("research-key"), "send", input.clone()).await?;
+    assert_eq!(
+        call_as(&host, "alice", Some("research-key"), "send", input.clone()).await?,
+        first
+    );
+    assert_eq!(
+        call_as(&host, "alice", Some("research-key"), "agents", json!({})).await?[0]["id"],
+        a
+    );
+    assert!(
+        call_as(
+            &host,
+            "alice",
+            Some("research-key"),
+            "inbox",
+            json!({"agent":b})
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        call_as(
+            &host,
+            "alice",
+            Some("research-key"),
+            "message_events",
+            json!({"agent":b,"cursor":"0"})
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        call_as(
+            &host,
+            "alice",
+            Some("research-key"),
+            "read",
+            json!({"conversation":private})
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        call_as(
+            &host,
+            "bob",
+            Some("research-key"),
+            "inbox",
+            json!({"agent":a})
+        )
+        .await
+        .is_err()
+    );
+    let mut impersonated = input.clone();
+    impersonated["from"] = json!(b);
+    impersonated["to"] = json!(a);
+    assert!(
+        call_as(&host, "alice", Some("research-key"), "send", impersonated)
+            .await
+            .is_err()
+    );
+    for (tool, args) in [
+        (
+            "register",
+            json!({"name":"Escalate","platform":{"open_ai_dot":{}}}),
+        ),
+        ("update_agent", json!({"id":a,"enabled":false})),
+        ("grant_agent", json!({"agent":b,"key_id":"research-key"})),
+        ("revoke_agent", json!({"agent":b,"key_id":"assistant-key"})),
+        ("agent_keys", json!({"agent":b})),
+        ("open", json!({"members":[a,c]})),
+        ("pause", json!({"conversation":conversation,"paused":true})),
+    ] {
+        assert!(
+            call_as(&host, "alice", Some("research-key"), tool, args)
+                .await
+                .is_err(),
+            "{tool}"
+        );
+    }
+    host.reopen().await?;
+    assert_eq!(
+        call_as(
+            &host,
+            "alice",
+            Some("assistant-key"),
+            "inbox",
+            json!({"agent":b})
+        )
+        .await?["items"],
+        json!([first.clone()])
+    );
+    assert_eq!(
+        call_as(
+            &host,
+            "alice",
+            Some("assistant-key"),
+            "message_events",
+            json!({"agent":b,"cursor":"0"})
+        )
+        .await?["events"][0]["data"],
+        first
+    );
+    call(
+        &host,
+        "alice",
+        "revoke_agent",
+        json!({"agent":a,"key_id":"research-key"}),
+    )
+    .await?;
+    host.reopen().await?;
+    assert!(
+        call_as(&host, "alice", Some("research-key"), "send", input)
+            .await
+            .is_err()
+    );
+    assert!(
+        call_as(
+            &host,
+            "alice",
+            Some("research-key"),
+            "read",
+            json!({"conversation":conversation})
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(
+        call_as(&host, "alice", Some("research-key"), "agents", json!({})).await?,
+        json!([])
+    );
+    call_as(
+        &host,
+        "alice",
+        Some("assistant-key"),
+        "send",
+        json!({"conversation":conversation,"from":b,"to":a,"body":"Found it","key":"reply"}),
+    )
+    .await?;
     Ok(())
 }

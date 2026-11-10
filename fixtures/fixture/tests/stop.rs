@@ -15,6 +15,7 @@ fn caller() -> Caller {
         user: None,
         client: None,
         agent: None,
+        key: None,
     }
 }
 

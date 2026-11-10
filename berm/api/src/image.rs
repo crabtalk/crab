@@ -1,6 +1,8 @@
 //! A service's wasm module, and the custom sections its manifest is read from.
 
+use crate::{Deps, ServiceRecord};
 use anyhow::{Context, Result, bail};
+use berm_abi::SERVICE_SECTION;
 use object::{Object, ObjectSection};
 use wasmparser::{Parser, Payload};
 
@@ -38,6 +40,33 @@ impl<'a> Image<'a> {
         }
         names.sort();
         Ok(names)
+    }
+
+    pub fn with_deps(&self, deps: Deps) -> Result<Vec<u8>> {
+        let mut record: ServiceRecord = serde_json::from_slice(
+            self.section(SERVICE_SECTION)?
+                .context("service has no metadata")?,
+        )?;
+        record.deps = deps;
+        self.replace_section(SERVICE_SECTION, &serde_json::to_vec(&record)?)
+    }
+
+    pub fn replace_section(&self, name: &str, payload: &[u8]) -> Result<Vec<u8>> {
+        let mut start = 8;
+        for section in Parser::new(0).parse_all(self.0) {
+            let section = section?;
+            if let Payload::CustomSection(custom) = &section
+                && custom.name() == name
+            {
+                let mut image = self.0[..start].to_vec();
+                image.extend_from_slice(&self.0[custom.range().end..]);
+                return Image(&image).with_section(name, payload);
+            }
+            if let Some((_, range)) = section.as_section() {
+                start = range.end;
+            }
+        }
+        bail!("service has no {name} section")
     }
 
     /// Its bytes with `payload` appended as the custom section `name`.

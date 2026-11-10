@@ -19,7 +19,7 @@ impl Http {
     /// A name wins over any matching pattern.
     pub fn reach(&self, syscall: &str, host: &str) -> Option<Reach> {
         let declared = match syscall {
-            abi::HTTP_FETCH | abi::HTTP_FETCH_ALL => &self.fetch,
+            abi::HTTP_FETCH | abi::HTTP_FETCH_ALL | abi::HTTP_FETCH_ALL_LITERAL_BODY => &self.fetch,
             abi::HTTP_PROXY | abi::HTTP_PROXY_ALL => &self.proxy,
             _ => return None,
         };

@@ -25,6 +25,7 @@ impl<E: Env> Host<E> {
             &deployed,
             self.calls.start().id,
             caller,
+            None,
             user,
             client,
             tool,
@@ -44,6 +45,7 @@ impl<E: Env> Host<E> {
         deployed: &Service,
         call: u64,
         caller: Option<&str>,
+        key: Option<&str>,
         user: Option<User>,
         client: Client,
         tool: &str,
@@ -56,6 +58,7 @@ impl<E: Env> Host<E> {
         let outcome = deployed
             .call_as(
                 caller.map(Into::into),
+                key.map(Into::into),
                 user,
                 client,
                 tool,

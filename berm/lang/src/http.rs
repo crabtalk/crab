@@ -56,6 +56,11 @@ impl Response {
         header(&self.headers, name)
     }
 
+    /// Numeric Retry-After delay in seconds; HTTP-date values return `None`.
+    pub fn retry_after(&self) -> Option<u64> {
+        self.header("retry-after")?.trim().parse().ok()
+    }
+
     /// Format an upstream refusal, including failures carried in a 2xx body.
     pub fn failure(&self, provider: &str) -> Error {
         let detail = String::from_utf8_lossy(&self.body);
@@ -135,6 +140,13 @@ pub struct Request<'a> {
 /// and answer each in its place: a [`Response`], or why nothing was.
 pub fn fetch_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
     send_all(sys::HTTP_FETCH_ALL, requests)
+}
+
+/// Send literal body bytes; secret placeholders are substituted only in headers.
+pub fn fetch_all_literal_body(
+    requests: &[Request<'_>],
+) -> Result<Vec<Result<Response, CallError>>, CallError> {
+    send_all(sys::HTTP_FETCH_ALL_LITERAL_BODY, requests)
 }
 
 /// [`fetch_all`], through the host's proxy, each request to a host the

@@ -23,6 +23,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
         }),
         client: None,
         agent: None,
+        key: None,
     };
     let call = |tool: &'static str, args: &'static [u8]| {
         host.host

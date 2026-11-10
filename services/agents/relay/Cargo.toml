@@ -20,6 +20,7 @@ berm-lang.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+berm.workspace = true
 anyhow.workspace = true
 berm-api.workspace = true
 berm-build.workspace = true

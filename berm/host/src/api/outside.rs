@@ -247,6 +247,7 @@ impl<E: Env> Host<E> {
                     .as_ref()
                     .filter(|caller| !caller.anonymous())
                     .map(|caller| caller.id.as_str()),
+                caller.as_ref().and_then(|caller| caller.key.as_deref()),
                 caller
                     .as_ref()
                     .and_then(|caller| caller.user.as_ref())

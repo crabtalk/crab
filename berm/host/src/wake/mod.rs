@@ -139,6 +139,7 @@ impl<E: Env> Host<E> {
                 };
                 let link = Link {
                     caller: None,
+                    key: None,
                     from,
                     user: None,
                     client: None,
@@ -173,6 +174,7 @@ impl<E: Env> Host<E> {
                 .invoke(
                     &target,
                     started.id,
+                    None,
                     None,
                     None,
                     Default::default(),

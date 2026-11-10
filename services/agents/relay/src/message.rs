@@ -1,4 +1,4 @@
-use crate::{agent::Agent, conversation::Conversation};
+use crate::{agent::Agent, conversation::Conversation, delivery::Delivery, platform::Platform};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -30,7 +30,12 @@ pub struct Messages {
 
 impl Message {
     pub fn events(agent: u64, cursor: Option<String>) -> Result<Page<Self>> {
-        Agent::get(agent)?.require_enabled()?;
+        let recipient = Agent::get(agent)?;
+        recipient.require_key()?;
+        recipient.require_enabled()?;
+        if !matches!(recipient.platform, Platform::OpenAiDot(_)) {
+            return Err(berm_lang::deny("Use a Dot agent for MCP event delivery"));
+        }
         let Some(cursor) = cursor else {
             let (head,) = berm_lang::rows::<(u64,)>(
                 "SELECT COALESCE(MAX(id), 0) FROM relay_messages WHERE recipient = ?",
@@ -82,7 +87,7 @@ impl Message {
     ) -> Result<Self> {
         let context = Conversation::get(conversation)?;
         // Authorize before resolving a sender's idempotency key.
-        Agent::get(from)?;
+        Agent::get(from)?.require_key()?;
         if key.is_empty() || key.len() > 128 {
             return Err("Use an idempotency key of 1–128 bytes".into());
         }
@@ -133,7 +138,7 @@ impl Message {
             "UPDATE relay_conversations SET sent = sent + 1 WHERE id = ?",
             &(conversation,),
         )?;
-        Ok(Self {
+        let message = Self {
             id,
             conversation,
             from,
@@ -141,15 +146,22 @@ impl Message {
             body,
             reply_to,
             created_at,
-        })
+        };
+        Delivery::enqueue(&message)?;
+        Ok(message)
     }
 
     pub fn get(id: u64) -> Result<Self> {
+        let message = Self::stored(id)?;
+        Conversation::get(message.conversation)?;
+        Ok(message)
+    }
+
+    pub(crate) fn stored(id: u64) -> Result<Self> {
         let (conversation, from, to, body, reply_to, created_at) = berm_lang::rows::<(u64, u64, u64, String, Option<u64>, u64)>(
             "SELECT conversation, sender, recipient, body, reply_to, created_at FROM relay_messages WHERE id = ?",
             &(id,),
         )?.pop().ok_or("No such message")?;
-        Conversation::get(conversation)?;
         Ok(Self {
             id,
             conversation,
@@ -167,7 +179,7 @@ impl Message {
     }
 
     pub fn inbox(agent: u64, after: u64, limit: Option<u64>) -> Result<Messages> {
-        Agent::get(agent)?;
+        Agent::get(agent)?.require_key()?;
         Self::page(None, Some(agent), after, limit)
     }
 

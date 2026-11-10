@@ -105,7 +105,23 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, send, secret)
+    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, false, send, secret)
+}
+
+pub fn fetch_all_literal_body<S, Sent, R, Found>(send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
+    serve_all(
+        abi::HTTP_FETCH_ALL_LITERAL_BODY,
+        abi::HTTP_FETCH,
+        true,
+        send,
+        secret,
+    )
 }
 
 /// Serve `berm.http.proxy_all`: [`fetch_all`], each request to a host the
@@ -118,13 +134,14 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, send, secret)
+    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, false, send, secret)
 }
 
 /// The batch syscall `name`, each request allowed under `syscall`.
 fn serve_all<S, Sent, R, Found>(
     name: &'static str,
     syscall: &'static str,
+    literal_body: bool,
     send: S,
     secret: R,
 ) -> Syscall
@@ -141,12 +158,11 @@ where
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
                 let requests = abi::wire::fields(&batch)?;
-                let answers = future::join_all(
-                    requests
-                        .iter()
-                        .map(|request| answer(&at, syscall, request, &*send, &*secret)),
-                )
-                .await;
+                let answers =
+                    future::join_all(requests.iter().map(|request| {
+                        answer(&at, syscall, literal_body, request, &*send, &*secret)
+                    }))
+                    .await;
                 let framed: Vec<Vec<u8>> = answers
                     .iter()
                     .map(|answered| match answered {
@@ -180,7 +196,7 @@ where
         call: Arc::new(move |at: Callsite, request: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let response = answer(&at, name, &request, &*send, &*secret).await?;
+                let response = answer(&at, name, false, &request, &*send, &*secret).await?;
                 Ok(write(&response))
             })
         }),
@@ -192,6 +208,7 @@ where
 async fn answer<S, Sent, R, Found>(
     at: &Callsite,
     syscall: &str,
+    literal_body: bool,
     request: &[u8],
     send: &S,
     secret: &R,
@@ -212,10 +229,12 @@ where
         }
     }
     request.headers = headers;
-    match substitute(at, secret, &request.host, &request.body).await? {
-        Substituted::Untouched => {}
-        Substituted::Done(found) => request.body = found,
-        Substituted::Unset(name) => return Err(ungranted(at, &name, &request.host)),
+    if !literal_body {
+        match substitute(at, secret, &request.host, &request.body).await? {
+            Substituted::Untouched => {}
+            Substituted::Done(found) => request.body = found,
+            Substituted::Unset(name) => return Err(ungranted(at, &name, &request.host)),
+        }
     }
     send(at.clone(), request).await
 }

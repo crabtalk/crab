@@ -20,6 +20,7 @@ fn caller() -> Caller {
         user: None,
         client: None,
         agent: None,
+        key: None,
     }
 }
 
@@ -46,6 +47,7 @@ async fn replay(image: &[u8], tool: &str, args: &str, tape: Tape) -> Result<Outp
     let service = berm.deploy("fixture", image)?;
     let outcome = service
         .call_as(
+            None,
             None,
             None,
             Default::default(),

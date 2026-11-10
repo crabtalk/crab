@@ -99,6 +99,25 @@ async fn runtime_resources_survive_restarts_and_grants_rotate_and_revoke_indepen
         store.grant("relay", &resource.id, "other.example").await?,
         None
     );
+    assert_eq!(
+        store
+            .resource_owner("relay", &resource.id, "api.example.com")
+            .await?
+            .as_deref(),
+        Some("local")
+    );
+    assert_eq!(
+        store
+            .resource_owner("other", &resource.id, "api.example.com")
+            .await?,
+        None
+    );
+    assert_eq!(
+        store
+            .resource_owner("relay", &resource.id, "evil.example")
+            .await?,
+        None
+    );
     assert!(store.rotate_resource(&resource.id, "rotated-key")?);
     let reopened = Grants::open(path);
     assert_eq!(

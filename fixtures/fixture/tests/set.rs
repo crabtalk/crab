@@ -125,6 +125,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     for service in ["acct/one", "acct/two", "acct/three"] {
         host.host

@@ -105,6 +105,16 @@ pub trait Secrets: Send + Sync + 'static {
         host: &str,
     ) -> impl Future<Output = Result<Option<String>>> + Send;
 
+    /// Owner of a resource granted to this deployment and destination; no value.
+    fn resource_owner(
+        &self,
+        _service: &str,
+        _id: &str,
+        _host: &str,
+    ) -> impl Future<Output = Result<Option<String>>> + Send {
+        async { Ok(None) }
+    }
+
     /// The names of the secrets provisioned for `service`.
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
 }

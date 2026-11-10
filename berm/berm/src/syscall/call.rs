@@ -194,6 +194,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                 let caller = Some(Caller::Service(named(&at.service).into()));
                 let link = Link {
                     caller: caller.clone(),
+                    key: at.key.clone(),
                     user: at.user.clone(),
                     client: at.client.clone(),
                     depth: at.depth + 1,
@@ -248,6 +249,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                         tool,
                         args.as_bytes().to_vec(),
                         caller,
+                        at.key.clone(),
                         at.user.clone(),
                         at.client.clone(),
                         at.depth + 1,

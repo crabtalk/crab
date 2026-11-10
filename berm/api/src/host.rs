@@ -29,6 +29,9 @@ pub const MAX_DATABASE_SIZE: u64 = 10 << 30;
 pub struct Caller {
     /// The account calling, or for an app's call, the account owning the app.
     pub id: String,
+    /// The authenticated API key ID; never its token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// The app a browser called through.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
@@ -261,6 +264,8 @@ pub struct Link {
     pub caller: Option<String>,
     /// The key of the service the call is counted against.
     pub from: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
     /// The outside client's per-day key, as the chain's first host supplied it.

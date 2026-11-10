@@ -72,7 +72,9 @@ pub mod host;
 pub mod http;
 #[doc(hidden)]
 pub mod json;
+pub mod key;
 pub mod schema;
+pub mod secret;
 mod sql;
 mod store;
 pub mod test;

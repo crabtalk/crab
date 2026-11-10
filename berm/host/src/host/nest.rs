@@ -122,6 +122,7 @@ pub(crate) fn calls<E: Env>(
                         Caller::Outside(name) | Caller::Service(name) => name.to_string(),
                     }),
                     from,
+                    key: link.key.as_deref().map(str::to_owned),
                     user: link.user.map(|user| User {
                         issuer: user.issuer.to_string(),
                         subject: user.subject.to_string(),

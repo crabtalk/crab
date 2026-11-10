@@ -507,6 +507,7 @@ impl<E: Env> Host<E> {
                         .caller
                         .as_ref()
                         .map(|_| berm::Caller::Service(link.from.as_str().into())),
+                    key: link.key.as_deref().map(Into::into),
                     user: link.user.as_ref().map(host::user),
                     client: Client {
                         key: link.client.as_deref().map(Into::into),
@@ -644,6 +645,7 @@ impl<E: Env> Host<E> {
             .invoke(
                 &deployed,
                 started.id,
+                None,
                 None,
                 None,
                 Client::default(),

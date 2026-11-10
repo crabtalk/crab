@@ -34,6 +34,7 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     for service in ["acct/fixture", "acct/inner", "other/fixture"] {
         host.host
@@ -84,6 +85,7 @@ async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     for word in ["Order-42", "other"] {
         let args = format!(r#"{{"word":"{word}"}}"#);
@@ -139,6 +141,7 @@ async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     for service in [
         "acct/fixture",

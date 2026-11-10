@@ -49,6 +49,8 @@ Off the guest's target this is an ordinary library, which is why the `cfg_attr` 
 
 ## Durable event sources
 
+`berm_lang::key::id()` returns the API key ID authenticated by the host, or `None` when no key was supplied. It persists across nested calls and never contains a token. `caller()` still identifies the immediate caller; `user()` identifies the verified end user.
+
 `#[tool(events = "message.created")]` marks a read-only history source. It takes `cursor: Option<String>` alongside its filters and returns `berm_lang::abi::events::Page<T>`, where `T: Schema` is the event payload. Give the tool ordinary caller access in `crab.toml`; each read runs under that authorization.
 
 With no cursor, return an empty page at the current head. With a cursor, return committed events strictly after it, in order. Every event carries a stable `id`, its own resume `cursor`, creation time `at` in epoch milliseconds, and typed `data`. The page cursor equals its last event's cursor; an empty page preserves or advances the checkpoint. Cursors must survive restarts. Report expired history as an error. Persist history in the same transaction as the application change. Diagnostic `emit` logs remain available after failed calls and cannot serve this contract.
@@ -84,3 +86,5 @@ Past its arguments, a service reaches who called, its own state, a database, its
 ## License
 
 Apache-2.0
+
+`berm_lang::secret::owner(id, host)` reads ownership metadata for a resource granted to the deployment at that host, never its value. `http::fetch_all_literal_body` sends body bytes unchanged and substitutes secrets only in header values. Use it for user-supplied message content.

@@ -371,3 +371,23 @@ fn old_image_metadata_keeps_http_destinations_without_inventing_imports() {
     let encoded = serde_json::to_value(restored).unwrap();
     assert!(encoded["deps"].get("syscalls").is_none());
 }
+
+#[test]
+fn replacing_metadata_preserves_other_sections_and_rejects_missing_names() {
+    let original = Image(EMPTY).with_section(".a", b"old").unwrap();
+    let original = Image(&original).with_section(".b", b"keep").unwrap();
+    let changed = Image(&original)
+        .replace_section(".a", b"longer payload")
+        .unwrap();
+    assert_eq!(
+        Image(&changed).section(".a").unwrap(),
+        Some(&b"longer payload"[..])
+    );
+    assert_eq!(Image(&changed).section(".b").unwrap(), Some(&b"keep"[..]));
+    assert_eq!(Image(&changed).section("padding").unwrap(), Some(&b""[..]));
+    assert!(
+        Image(&original)
+            .replace_section("missing", b"value")
+            .is_err()
+    );
+}

@@ -19,6 +19,7 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     for tool in ["nest", "echo"] {
         host.host
