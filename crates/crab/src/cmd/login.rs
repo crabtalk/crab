@@ -18,7 +18,7 @@ use std::{
 };
 
 /// The Cloud `crab login` signs in to unless told another.
-pub const CLOUD: &str = "https://api.crab.talk";
+pub const CLOUD: &str = "https://api.crabtalk.ai";
 
 /// Sign in to `host` through Google, or GitHub with `github`, in a browser
 /// this machine opens, or as [`device`] does when `device` or when no browser

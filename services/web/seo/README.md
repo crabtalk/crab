@@ -10,7 +10,7 @@ With Crab signed in to Cloud, replace `owner/seo` with an accessible running dep
 crab call owner/seo check '{"url":"https://example.com"}'
 ```
 
-Returns the final URL, title, description, canonical URL, HTML language, h1 headings, image counts, robots directives and findings. You can also call it through [CrabTalk MCP](https://crab.talk/docs/guides/mcp).
+Returns the final URL, title, description, canonical URL, HTML language, h1 headings, image counts, robots directives and findings. You can also call it through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp).
 
 Checks missing or multiple HTML page titles (excluding SVG titles), missing descriptions, missing/invalid/multiple canonical links, missing language, missing or multiple h1 headings, images without alt attributes, and noindex directives. Informational findings identify things to review; an absent canonical or multiple h1 headings are not automatically errors. Empty alt attributes remain valid for decorative images.
 

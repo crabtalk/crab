@@ -1,6 +1,6 @@
 # crabtalk-sdk
 
-Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`. The same client also talks to the local host, `crab dev`.
+Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crabtalk.ai`. The same client also talks to the local host, `crab dev`.
 
 ## Install
 
@@ -23,7 +23,7 @@ use crabtalk_sdk::client::{Client, Error, Owner};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let client = Client::new("https://api.crab.talk")
+    let client = Client::new("https://api.crabtalk.ai")
         .token(std::env::var("CRABTALK_TOKEN").expect("CRABTALK_TOKEN"))
         .owner(Owner::User("alice".into()));
 

@@ -12,7 +12,7 @@ crab call owner/osv query '{"package":{"ecosystem":"crates.io","name":"serde","v
 
 Returns OSV advisory records and an optional `next_page_token`. Use `query_batch` for multiple packages and `advisory` for full details by advisory ID.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls run on the selected deployment; no provider credential is needed.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls run on the selected deployment; no provider credential is needed.
 
 ## Deploy your own
 

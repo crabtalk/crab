@@ -1,5 +1,5 @@
 image = "connect/firecrawl"
-logo = "https://crab.talk/logos/templates/firecrawl-v1.png"
+logo = "https://crabtalk.ai/logos/templates/firecrawl-v1.png"
 template = true
 buffer = 8388608
 

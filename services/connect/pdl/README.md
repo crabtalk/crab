@@ -12,7 +12,7 @@ crab call owner/pdl enrich_person '{"input":{"query":{"email":"person@example.co
 
 Returns the upstream record, match likelihood and matched fields when available. Use `search_people` or `search_companies` for discovery, and `enrich_company` for a known company.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

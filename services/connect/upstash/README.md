@@ -12,7 +12,7 @@ crab call owner/upstash get '{"key":"report:42"}'
 
 Returns the stored string, or `null` when the key is missing. Use `set` to write, `ttl` to inspect expiry, and `increment` for counters.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials and shared state.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials and shared state.
 
 ## Deploy your own
 

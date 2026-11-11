@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs `crab` from the latest release of github.com/crabtalk/crab.
 #
-#   curl -fsSL https://crab.talk/install.sh | sh
+#   curl -fsSL https://crabtalk.ai/install.sh | sh
 #
 # CRAB_INSTALL_DIR sets where `crab` goes; it defaults to ~/.local/bin.
 
@@ -37,7 +37,7 @@ case "$os" in
     target=aarch64-apple-darwin
     ;;
   Linux) target="$arch-unknown-linux-gnu" ;;
-  *) err "no release for $os; on Windows, run \`irm https://crab.talk/install.ps1 | iex\` in PowerShell" ;;
+  *) err "no release for $os; on Windows, run \`irm https://crabtalk.ai/install.ps1 | iex\` in PowerShell" ;;
 esac
 
 if command -v sha256sum >/dev/null 2>&1; then

@@ -11,7 +11,7 @@ crab deploy --from owner/memory
 crab call you/memory put '{"namespace":"project","key":"release-notes","content":"The next release needs a migration guide.","expected_revision":0}'
 ```
 
-Replace `owner` with the template publisher and `you` with your deploying account. Connect the same copy to multiple agents through [MCP](https://crab.talk/docs/guides/mcp). No provider credentials or settings are required. The copy owns its data and execution bill.
+Replace `owner` with the template publisher and `you` with your deploying account. Connect the same copy to multiple agents through [MCP](https://crabtalk.ai/docs/guides/mcp). No provider credentials or settings are required. The copy owns its data and execution bill.
 
 `get` reads a key. `search` matches an ASCII case-insensitive substring within one namespace; an empty query lists it. Pass the returned `next` as `after` to continue. It is text search, without embeddings or semantic ranking.
 

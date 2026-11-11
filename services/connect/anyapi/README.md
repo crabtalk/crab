@@ -12,7 +12,7 @@ crab call owner/anyapi linkedin_company '{"input":{"body":{"url":"https://www.li
 
 Returns the provider’s `output`, `costUsd`, item count and available metadata. A result with `output.found: false` is still a successful lookup response.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

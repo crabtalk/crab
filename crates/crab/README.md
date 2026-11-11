@@ -1,6 +1,6 @@
 # crab
 
-The [local host](https://crab.talk/docs/guides/local), and the command-line client for it and CrabTalk Cloud.
+The [local host](https://crabtalk.ai/docs/guides/local), and the command-line client for it and CrabTalk Cloud.
 
 ```sh
 crab dev -d
@@ -22,7 +22,7 @@ crab rm example
 
 Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Missing or empty lists allow none; linked libraries contribute their destinations.
 
-`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` uses the published `image` declared in `crab.toml`, or builds source when no image is declared. `crab deploy --build` explicitly builds local source. An instance uses the service component of the image address, or the Cargo package name without an image. `crab new` writes one, beside a library crate built as a `cdylib`. It includes `echo`, `remember` and `recall`; the latter two share a persistent message across callers and restarts. Tool-specific tests are added by the developer; the [development guide](https://crab.talk/docs/development/complete-service) has an example.
+`crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` uses the published `image` declared in `crab.toml`, or builds source when no image is declared. `crab deploy --build` explicitly builds local source. An instance uses the service component of the image address, or the Cargo package name without an image. `crab new` writes one, beside a library crate built as a `cdylib`. It includes `echo`, `remember` and `recall`; the latter two share a persistent message across callers and restarts. Tool-specific tests are added by the developer; the [development guide](https://crabtalk.ai/docs/development/complete-service) has an example.
 
 ```toml
 # Optional published address; Cargo supplies the source version.
@@ -77,7 +77,7 @@ The build embeds `[crons]` in the image. Every deploy applies those schedules; a
 `crab` talks to the host its context names, the way `docker context` picks a daemon. `default` is the local host, `crab dev`, on `http://127.0.0.1:7777`; `--context` picks another for one command.
 
 ```sh
-crab context add cloud https://api.crab.talk --token "$KEY" --org acme
+crab context add cloud https://api.crabtalk.ai --token "$KEY" --org acme
 crab context use cloud
 crab context ls
 crab context use default
@@ -87,7 +87,7 @@ A service's manifest declares its secrets and their destinations. `crab secret l
 
 Runtime secret resources belong to the account and have stable opaque IDs. A service using them declares `secret_resources = true` and its HTTP permissions. On Cloud, `crab secret resource request SERVICE "Research Bot" --host api.example.com` prints a secure provisioning link and the future secret ID. An owner supplies the value and approves the service grant there; `--id ID` rotates an existing resource through the same flow. At a person's terminal, `crab secret resource create NAME` and `rotate ID` read the value from stdin. `resource ls` shows metadata, `resource grant ID SERVICE --host HOST` grants a service in the same account access, `resource revoke ID SERVICE` removes that grant, and `resource rm ID` deletes the secret and all grants. Cloud writes require a signed-in session; API keys can propose secure requests. Use `{secret:ID}` in outgoing headers or bodies. Grants never expand HTTP permissions, and secret values are never returned. Resource creation, rotation and grants do not redeploy the service.
 
-A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Source deployment sends the built image to the selected host. Published-image deployment copies the selected release into that account. `crab publish` separately targets the account in `image`; the context supplies its server and credentials. A context registry or `--registry` selects an OCI registry instead. A write permission includes read access to the same resource. A key uses explicit resource permissions; direct deployment requires `deployments:write`, configuration changes require `services:write`; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crab.talk/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; other pending requests remain valid. `--yes` skips Cloud approval only with an API key that has `deployments:write`. Personal CLI sessions always require browser approval and wait for it even without a terminal. Device logins use dedicated keys with the permissions approved in the browser. The local host never asks.
+A context with a token and an `--org` or `--user` is Cloud, and its services are that account's. Source deployment sends the built image to the selected host. Published-image deployment copies the selected release into that account. `crab publish` separately targets the account in `image`; the context supplies its server and credentials. A context registry or `--registry` selects an OCI registry instead. A write permission includes read access to the same resource. A key uses explicit resource permissions; direct deployment requires `deployments:write`, configuration changes require `services:write`; `--token-stdin` reads it from stdin. On Cloud, `deploy` and `push` print a link, `https://crabtalk.ai/deploy/WDJB-MJHT`, as their last line and wait: someone signed in who owns the account sees what the deploy changes there and approves or declines it, and the command then reports each service and its page, or fails. The link lasts 15 minutes; other pending requests remain valid. `--yes` skips Cloud approval only with an API key that has `deployments:write`. Personal CLI sessions always require browser approval and wait for it even without a terminal. Device logins use dedicated keys with the permissions approved in the browser. The local host never asks.
 
 `crab usage NAME` reports sampled database allocation in its Database column. WAL, logs and runtime caches are excluded; older hosts without database samples show `—`.
 
@@ -107,7 +107,7 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 GitHub verification on CrabTalk issues one $1 trial grant, valid for 30 days. The deployment can configure the amount and terms. `crab plans` and verification expose its lifetime and recovery terms. Storage is included, the trial never refills each month, and plan changes never create another grant. After it ends, services pause and data is kept for 30 days; upgrade or export before the recovery deadline to avoid deletion. Accounts returning from a paid plan also enter recovery when they have no execution funding.
 
-`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby while its execution entitlement lasts: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. When the check fails, it prints a link instead, `https://crab.talk/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crab.talk/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crab.talk/pay`, and lasts 30 minutes. A refusal from Cloud that names a code, as `Error: 402 [E0001]: …`, ends with `crab explain E0001`, which prints what it means and what to do about it; the same explanations are at `https://crab.talk/docs/errors/introduction`. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
+`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Hobby while its execution entitlement lasts: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. When the check fails, it prints a link instead, `https://crabtalk.ai/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crabtalk.ai/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crabtalk.ai/pay`, and lasts 30 minutes. A refusal from Cloud that names a code, as `Error: 402 [E0001]: …`, ends with `crab explain E0001`, which prints what it means and what to do about it; the same explanations are at `https://crabtalk.ai/docs/errors/introduction`. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login                     # --github for GitHub
@@ -137,7 +137,7 @@ The deploy is two lines:
 
 ```yaml
 steps:
-  - run: crab context add cloud https://api.crab.talk --token "$KEY" --org acme
+  - run: crab context add cloud https://api.crabtalk.ai --token "$KEY" --org acme
     env:
       KEY: ${{ secrets.CRABTALK_KEY }}
   - run: crab deploy --build --context cloud
@@ -153,7 +153,7 @@ When pushing to an OCI registry with `--registry` or a context registry, `GITHUB
 
 Service code calls a running deployment with `berm_lang::call("owner/service", tool, args)` without a `calls` declaration. Cross-account targets must be public and accept service callers; priced calls charge the calling service's account. `crab idl owner/service` writes `idls/service.json`, retaining its owner for generated calls.
 
-Before deployment or template publication, measure the built WebAssembly tool on the local host with the largest supported workloads, add headroom, and check every key against the destination's ceilings. Default ceilings are 100,000 µs CPU (100 ms), 1,000,000 rows read, 1,000,000 written and 128 MiB memory. Rebuild and retest under the chosen budget. Native tests and image builds do not establish that it fits; CLI call meters include nested calls. See [Sizing a budget](https://crab.talk/docs/guides/budgets#size-a-budget-before-deployment).
+Before deployment or template publication, measure the built WebAssembly tool on the local host with the largest supported workloads, add headroom, and check every key against the destination's ceilings. Default ceilings are 100,000 µs CPU (100 ms), 1,000,000 rows read, 1,000,000 written and 128 MiB memory. Rebuild and retest under the chosen budget. Native tests and image builds do not establish that it fits; CLI call meters include nested calls. See [Sizing a budget](https://crabtalk.ai/docs/guides/budgets#size-a-budget-before-deployment).
 
 Local MCP clients can send `x-berm-caller: {"id":"alice"}` on requests to `/mcp` to discover and call public tools as that caller. This identity is unverified; without the header, only anonymous tools are discoverable and callable.
 
@@ -167,13 +167,13 @@ crab bench services/web/markdown read --cases cases.jsonl --runs 10
 
 `bench DIRECTORY TOOL` builds and runs JSON Lines workloads on a temporary local host. Cases supply argument objects and HTTP responses, including headers, body files and optional response delays. Each case starts with a fresh migrated database; repetitions share its state. `--live-http` sends real requests instead of fixtures. The command uploads nothing.
 
-The report separates the tool's own CPU, rows and peak memory from whole-chain cost, prices with the selected Cloud's rates, and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. `--json` gives structured measurements, and `--offline` uses labeled SDK default rates. [Case format and limits](https://crab.talk/docs/guides/bench).
+The report separates the tool's own CPU, rows and peak memory from whole-chain cost, prices with the selected Cloud's rates, and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. `--json` gives structured measurements, and `--offline` uses labeled SDK default rates. [Case format and limits](https://crabtalk.ai/docs/guides/bench).
 
 ## Publication and images
 
 Template versions are immutable: changing an image requires a new package version. Each template retains three release images; its Versions tab selects exact images and lets publishers yank or unyank releases. New copies use the latest non-yanked stable release, or the latest non-yanked prerelease when no stable release is retained. Yanked releases cannot create new copies; existing copies keep working. `crab publish DIR --notes "Fix pagination"` attaches up to 2000 characters of release notes. Pruned images become unavailable for new deployments; version identities remain reserved.
 
-`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crab.talk/docs/guides/deploy#automatic-patch-updates).
+`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crabtalk.ai/docs/guides/deploy#automatic-patch-updates).
 
 Deploy history retains the current image and two previous successful images; older records remain without their uploaded image. Existing template copies retain their own images, independently of the publisher’s releases.
 

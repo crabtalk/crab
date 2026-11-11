@@ -12,7 +12,7 @@ crab call owner/posthog query '{"sql":"select event, count() from events group b
 
 Returns the provider’s query result, including columns, rows and pagination metadata. Use `capture` or `capture_batch` for events and `flags` for flag evaluation.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

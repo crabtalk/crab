@@ -2,7 +2,7 @@
 
 Compile a local OpenAPI 3.0 or 3.1 JSON document into a berm service. The parser and generator run on the build host; generated requests use `berm_lang::http::Client`.
 
-Follow [Build from OpenAPI](https://crab.talk/docs/development/openapi) for a complete service, mocked test and deployment walkthrough.
+Follow [Build from OpenAPI](https://crabtalk.ai/docs/development/openapi) for a complete service, mocked test and deployment walkthrough.
 
 ```rust
 extern crate alloc;

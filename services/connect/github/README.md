@@ -12,7 +12,7 @@ crab call owner/github latest_release '{"owner":"rust-lang","repo":"rust"}'
 
 Returns the latest published release, excluding drafts and prereleases. Use `releases` for release history, or `issues` and `pull_requests` for repository work.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

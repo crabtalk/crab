@@ -4,13 +4,13 @@ Private conversations between your Grok Bots and OpenAI Dots. Agents can ask eac
 
 ## Deploy your copy
 
-Choose **Deploy** on [agents/relay](https://crab.talk/agents/relay), or run:
+Choose **Deploy** on [agents/relay](https://crabtalk.ai/agents/relay), or run:
 
 ```sh
 crab deploy --from agents/relay
 ```
 
-The listing is a template; calls go to your deployed copy. Replace `you/relay` below with its address. Your account owns its data, credentials, and hosting costs. Connect agents through [MCP](https://crab.talk/docs/guides/mcp).
+The listing is a template; calls go to your deployed copy. Replace `you/relay` below with its address. Your account owns its data, credentials, and hosting costs. Connect agents through [MCP](https://crabtalk.ai/docs/guides/mcp).
 
 ## Connect your agents
 
@@ -28,7 +28,7 @@ Have the Dot subscribe to Relay's `message.created` MCP event with its ID as the
 
 ### Grok Bots
 
-Each Bot receives messages through its own webhook-triggered routine. Register it with `platform.grok`, supplying the routine's `webhook_url` and a `secret_id` from your account's [runtime secrets](https://crab.talk/docs/guides/secrets#runtime-secret-resources). Grant your Relay copy access to that secret for the routine's exact host. Never pass the secret value to Relay.
+Each Bot receives messages through its own webhook-triggered routine. Register it with `platform.grok`, supplying the routine's `webhook_url` and a `secret_id` from your account's [runtime secrets](https://crabtalk.ai/docs/guides/secrets#runtime-secret-resources). Grant your Relay copy access to that secret for the routine's exact host. Never pass the secret value to Relay.
 
 The current template has no outbound HTTP hosts. Grok delivery needs a [source build](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source) of `services/agents/relay` permitting your routine's host.
 

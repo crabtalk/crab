@@ -22,14 +22,14 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 ## Sizing tool budgets
 
-1. Define and enforce supported input bounds, including response sizes, batch counts, parser complexity and database size. Deploy locally with a provisional budget within the destination's ceilings; exercise representative and worst-case workloads repeatedly, including error paths. Use `crab bench <directory> <tool> --cases cases.jsonl --runs 10`, with representative and largest supported inputs and arranged HTTP responses; the [benchmark guide](https://crab.talk/docs/guides/bench) defines the JSON Lines format. `delay_ms` on a response accounts for memory held while waiting; `--live-http` executes real requests on every repetition.
+1. Define and enforce supported input bounds, including response sizes, batch counts, parser complexity and database size. Deploy locally with a provisional budget within the destination's ceilings; exercise representative and worst-case workloads repeatedly, including error paths. Use `crab bench <directory> <tool> --cases cases.jsonl --runs 10`, with representative and largest supported inputs and arranged HTTP responses; the [benchmark guide](https://crabtalk.ai/docs/guides/bench) defines the JSON Lines format. `delay_ms` on a response accounts for memory held while waiting; `--live-http` executes real requests on every repetition.
 2. Read the benchmark's own-tool CPU, rows and peak linear memory. CPU is in microseconds and memory in bytes; `crab.toml` memory is in MiB. Start with `ceil(1.5 × maximum)` per key, at least `1`. A budget-stopped run does not measure the work needed to finish. `crab call` and host-test meters include nested calls; `crab bench` separates own usage from chain cost. Exercise called tools separately too.
 3. Check every value against the destination host. Default ceilings are `cpu = 100_000` (100 ms), `read = 1_000_000`, `written = 1_000_000`, `memory = 128`. `cpu = 500_000` is 500 ms and is refused by a default host. Omitted keys use defaults: the ceilings above except `written = 10_000`. Raising the local CPU ceiling does not change Cloud's.
 4. Write the budget, rebuild, redeploy locally and repeat the workload before requesting Cloud approval or publishing. If it cannot fit with headroom, reduce resource use or supported input bounds; use batching or pagination when the operation supports them. Do not just lower the declaration.
 
-`crab budget <service> <tool>` suggests budgets from Cloud's last 30 days. CPU and rows use successful chain totals: maxima below 100 runs, p99 from 100; failed runs are excluded. Memory uses the tool's own recorded peak. The suggestion does not check host ceilings or cover unobserved worst cases. Full workflow and units: [Budgets](https://crab.talk/docs/guides/budgets).
+`crab budget <service> <tool>` suggests budgets from Cloud's last 30 days. CPU and rows use successful chain totals: maxima below 100 runs, p99 from 100; failed runs are excluded. Memory uses the tool's own recorded peak. The suggestion does not check host ceilings or cover unobserved worst cases. Full workflow and units: [Budgets](https://crabtalk.ai/docs/guides/budgets).
 
-Memory is billed at the reserved budget during execution, waiting on fetches or other services included. Cold code loading is excluded. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crab.talk/docs/development/budgets).
+Memory is billed at the reserved budget during execution, waiting on fetches or other services included. Cold code loading is excluded. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crabtalk.ai/docs/development/budgets).
 
 ## Reusing services and libraries
 
@@ -59,7 +59,7 @@ Memory is billed at the reserved budget during execution, waiting on fetches or 
 
 ## Calling another account's service
 
-- On Cloud, a service is addressed as `owner/name`, its page at `https://crab.talk/{owner}/{name}`. `crab inspect owner/name` prints another account's public service: its README and its public tools with their arguments. Read it before the first call.
+- On Cloud, a service is addressed as `owner/name`, its page at `https://crabtalk.ai/{owner}/{name}`. `crab inspect owner/name` prints another account's public service: its README and its public tools with their arguments. Read it before the first call.
 - `crab call owner/name <tool> '<arguments as JSON>'` calls one of its public tools, reading the arguments from stdin when they are left out. It prints the result, and what the call used on stderr; a tool that ran and refused exits 2.
 
 ## Local callers and MCP
@@ -74,7 +74,7 @@ Memory is billed at the reserved budget during execution, waiting on fetches or 
 
 The person you act for is not at your machine: never open a browser or wait on a prompt for something only they can do.
 
-- Sign in with `crab login --device`: it prints a link and a code, then waits until the person approves or declines, up to 30 minutes. Send them the link, or the code to enter at `crab.talk/device`; they review the connection name, account, permissions and daily budget before approving a dedicated key. Manage it under Settings → API keys; it does not grant personal-session access. Plain `crab login` opens a browser on your machine, which they cannot reach.
+- Sign in with `crab login --device`: it prints a link and a code, then waits until the person approves or declines, up to 30 minutes. Send them the link, or the code to enter at `crabtalk.ai/device`; they review the connection name, account, permissions and daily budget before approving a dedicated key. Manage it under Settings → API keys; it does not grant personal-session access. Plain `crab login` opens a browser on your machine, which they cannot reach.
 - A deploy on Hobby is refused until the account is verified: run `crab billing verify`. When it prints a link, send it to the person: its page connects GitHub to their account and verifies it. Verification issues one $1 grant valid for 30 days; unfunded hosting retains data for 30 days. The deployment can configure these terms; `crab billing` shows its available balance, expiry and recovery deadline. Storage is included; monthly resets and plan changes never replenish trial credit. Upgrade or export before recovery ends. Then run `crab request <code> --wait`; if it fails, the page said why, and Go is the way to deploy. To buy a plan or credit, run `crab billing plan <slug>` or `crab billing credit` with `--for` saying what it is for; the person reads it before paying. Send them the link it prints, with what it buys and its price, then run `crab request <code> --wait`. The code lasts 30 minutes; if it expires or they decline, ask before making another.
 - On Cloud, `crab deploy` and `crab push` wait for the person to approve the deploy: send them the link it prints as its last line, with what it deploys. They review it on that page, signed in, and approve or decline; the command then prints each service and its page, or fails. The link lasts 15 minutes, and a newer deploy of the same service replaces it. Personal CLI sessions always need browser approval, even without a terminal. Device logins use the dedicated key approved by the person. `--yes` requires an API key with `deployments:write`; use it only when the person asked you to deploy without their review. When supplying a deploy request's `context` through the API, use one short sentence describing the change, at most 160 characters. Put setup instructions in credential guides.
 - An API key calls another account's priced service only once an owner of its account grants it, and spends at most its daily budget on tool prices, $5 unless they set another. A call refused for either prints a link: send it to the person with what the service is for and its price, then run `crab request <code> --wait` and call again once they approve. To ask before calling, run `crab key ask --service <owner>/<name>` or `crab key ask --budget <usd>`, with `--context` saying what it is for.
@@ -93,24 +93,24 @@ Read these before writing code. Paths are relative to the crab repository.
 | Question | Source |
 | --- | --- |
 | The CLI, contexts, `crab.toml` | `crates/crab/README.md` |
-| A whole working service to start from: its files and the commands that test, build, deploy and call it | https://crab.talk/docs/development/complete-service |
-| `#[tool(...)]` and its `query`, `cron`, `stripe`, `webhook`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crab.talk/docs/development/macros |
+| A whole working service to start from: its files and the commands that test, build, deploy and call it | https://crabtalk.ai/docs/development/complete-service |
+| `#[tool(...)]` and its `query`, `cron`, `stripe`, `webhook`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crabtalk.ai/docs/development/macros |
 | Durable `#[tool(events = "name")]` sources, typed event pages and resume cursors; MCP delivery is not implemented | `berm/lang/README.md#durable-event-sources`, `berm/host/README.md` |
-| Every `berm_lang` function and type, with its signature | https://crab.talk/docs/development/api |
-| Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crab.talk/docs/development, as `/docs/development/http` |
-| `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[http]`, secrets, credentials, libraries | https://crab.talk/docs/development/crab-toml |
-| `crab bench`, JSON Lines workloads, HTTP fixtures and local cost estimates | https://crab.talk/docs/guides/bench |
-| Budget units, measurement, headroom, host ceilings and E0013 | https://crab.talk/docs/guides/budgets |
-| `crab dev`, the local host, local secrets, replaying a failed call | https://crab.talk/docs/guides/local |
-| Deploying to Cloud, images and registries | https://crab.talk/docs/guides/deploy |
-| Secrets on Cloud and asking a person to set them | https://crab.talk/docs/guides/secrets |
-| Declaring and using secrets in code | https://crab.talk/docs/development/secrets |
-| An error that names a code, as `[E0001]` | `crab explain E0001`, https://crab.talk/docs/errors/introduction |
-| Writing a service README for crab.talk | `services/README-guide.md` |
-| Linking service libraries | https://crab.talk/docs/development/reuse |
+| Every `berm_lang` function and type, with its signature | https://crabtalk.ai/docs/development/api |
+| Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crabtalk.ai/docs/development, as `/docs/development/http` |
+| `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[http]`, secrets, credentials, libraries | https://crabtalk.ai/docs/development/crab-toml |
+| `crab bench`, JSON Lines workloads, HTTP fixtures and local cost estimates | https://crabtalk.ai/docs/guides/bench |
+| Budget units, measurement, headroom, host ceilings and E0013 | https://crabtalk.ai/docs/guides/budgets |
+| `crab dev`, the local host, local secrets, replaying a failed call | https://crabtalk.ai/docs/guides/local |
+| Deploying to Cloud, images and registries | https://crabtalk.ai/docs/guides/deploy |
+| Secrets on Cloud and asking a person to set them | https://crabtalk.ai/docs/guides/secrets |
+| Declaring and using secrets in code | https://crabtalk.ai/docs/development/secrets |
+| An error that names a code, as `[E0001]` | `crab explain E0001`, https://crabtalk.ai/docs/errors/introduction |
+| Writing a service README for crabtalk.ai | `services/README-guide.md` |
+| Linking service libraries | https://crabtalk.ai/docs/development/reuse |
 | A service or library's API and setup | `services/{connect,agents,web,ops}/<name>/README.md`, or `services/kits/<name>/README.md` for a library |
-| Classifying tools for discovery and choosing catalog jobs | https://crab.talk/docs/guides/catalog |
-| Building a service from OpenAPI | https://crab.talk/docs/development/openapi; macro reference: `crates/openapi/README.md` |
+| Classifying tools for discovery and choosing catalog jobs | https://crabtalk.ai/docs/guides/catalog |
+| Building a service from OpenAPI | https://crabtalk.ai/docs/development/openapi; macro reference: `crates/openapi/README.md` |
 
 ## A local crab checkout
 

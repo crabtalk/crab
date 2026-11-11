@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/crabtalk/crab/actions/workflows/ci.yml/badge.svg)](https://github.com/crabtalk/crab/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/crab-agent.svg)](https://crates.io/crates/crab-agent)
-[![Docs](https://img.shields.io/badge/docs-crab.talk-blue)](https://crab.talk/docs)
+[![Docs](https://img.shields.io/badge/docs-crabtalk.ai-blue)](https://crabtalk.ai/docs)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/yGZDYnwbx6)
 [![WeChat](https://img.shields.io/badge/WeChat-07C160?logo=wechat&logoColor=white)](https://cdn.crabtalk.ai/crabtalk/wechat.jpg)
 
@@ -13,13 +13,13 @@ Crab is the CLI and local host for CrabTalk. Build services, run them locally, a
 macOS (Apple Silicon) and Linux:
 
 ```sh
-curl -fsSL https://crab.talk/install.sh | sh
+curl -fsSL https://crabtalk.ai/install.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://crab.talk/install.ps1 | iex
+irm https://crabtalk.ai/install.ps1 | iex
 ```
 
 ## Quick start
@@ -51,8 +51,8 @@ template = true
 
 ## Explore
 
-- [Documentation](https://crab.talk/docs) — guides for writing and deploying services.
-- [Benchmarking](https://crab.talk/docs/guides/bench) — measure local WebAssembly workloads and estimate execution cost with `crab bench`.
+- [Documentation](https://crabtalk.ai/docs) — guides for writing and deploying services.
+- [Benchmarking](https://crabtalk.ai/docs/guides/bench) — measure local WebAssembly workloads and estimate execution cost with `crab bench`.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
 - [Services](services/README.md) — Connect integrations and Utilities to call, deploy or reuse.
 - [Libraries](crates/crabkit/README.md) — libraries to include in your services.

@@ -20,7 +20,7 @@ Replace `owner` with the template publisher and `you` with your deploying accoun
 
 `status` returns only monitor names, states, check times and latency, omitting target URLs and errors. It marks observations stale when older than twice their configured interval. Stale or missing results must not be displayed as healthy.
 
-A status page can use a registered [anonymous browser app](https://crab.talk/docs/guides/apps) to query this summary while the deployment stays private. Anonymous app calls cannot reach the authenticated management tools. The template supplies status data, not a hosted status-page website or alert delivery. Agents use its tools through [MCP](https://crab.talk/docs/guides/mcp).
+A status page can use a registered [anonymous browser app](https://crabtalk.ai/docs/guides/apps) to query this summary while the deployment stays private. Anonymous app calls cannot reach the authenticated management tools. The template supplies status data, not a hosted status-page website or alert delivery. Agents use its tools through [MCP](https://crabtalk.ai/docs/guides/mcp).
 
 ## Limits
 

@@ -12,7 +12,7 @@ crab call owner/dataforseo keyword_volume '{"input":{"body":[{"keywords":["rust 
 
 Returns the upstream task envelope, including results, task IDs and costs. Live tools return their immediate results; task-submission tools return IDs for explicit retrieval.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 
