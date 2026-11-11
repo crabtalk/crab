@@ -1,11 +1,10 @@
-//! A scope's memory: its services' images while deployed and its invocations'
-//! linear memory while they run, held to its limit; and a tool's budget of
-//! memory, which each call reserves and is metered for.
+//! Scope memory counts retained code and running invocations' linear memory.
+//! Each call reserves and is metered for its memory budget.
 
 use anyhow::Result;
 use berm_api::{Budget, Output};
 use berm_build::fixture;
-use berm_host::test::TestHost;
+use berm_host::{Denied, test::TestHost};
 use std::collections::HashMap;
 
 /// A page of linear memory.
@@ -46,21 +45,46 @@ async fn a_call_past_the_limit_fails() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_deploy_whose_images_would_pass_the_limit_is_refused() -> Result<()> {
+async fn a_deploy_reclaims_idle_images_to_fit_the_limit() -> Result<()> {
     let host = TestHost::open(0).await?;
     let image = fixture::image("berm-fixture")?;
     let bytes = host.deploy("acct/fixture", &image).await?.bytes;
     host.host
         .limit(HashMap::from([("acct".to_owned(), bytes + PAGE)]));
     host.deploy("acct/fixture", &image).await?;
+    host.deploy("acct/inner", &image).await?;
+    let memory = host.host.memory("acct");
+    assert!(memory.loaded <= bytes);
+    assert_eq!(memory.services["fixture"].loaded, 0);
+    assert_eq!(host.host.list("acct").len(), 2);
+
+    host.host.limit(HashMap::new());
+    for service in ["acct/fixture", "acct/inner"] {
+        let ran = host.call(service, "carry", b"{}").await?;
+        assert!(matches!(ran.result, Output::Done(_)), "{:?}", ran.result);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_deploy_whose_image_exceeds_the_limit_is_refused() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let image = fixture::image("berm-fixture")?;
+    let bytes = host.deploy("acct/fixture", &image).await?.bytes;
+    host.host
+        .limit(HashMap::from([("acct".to_owned(), bytes - 1)]));
     let Err(refused) = host.deploy("acct/inner", &image).await else {
-        panic!("two images do not fit");
+        panic!("an image larger than the limit must be refused");
     };
     assert!(
         format!("{refused:#}").contains("past its limit"),
         "{refused:#}"
     );
-    assert_eq!(host.host.memory("acct").loaded, bytes);
+    let denied = refused.downcast_ref::<Denied>().expect("a refusal");
+    assert_eq!(denied.status, 400);
+    assert_eq!(denied.explain, Some("E0019"));
+    assert!(host.host.get("acct/inner").is_none());
+    assert!(host.host.get("acct/fixture").is_some());
     host.deploy("other/fixture", &image).await?;
     Ok(())
 }
@@ -138,9 +162,7 @@ async fn a_budget_past_the_hosts_most_is_refused() -> Result<()> {
         format!("{refused:#}").contains("\"echo\"'s budget sets memory past"),
         "{refused:#}"
     );
-    let denied = refused
-        .downcast_ref::<berm_host::Denied>()
-        .expect("a refusal");
+    let denied = refused.downcast_ref::<Denied>().expect("a refusal");
     assert_eq!(denied.explain, Some("E0013"));
     Ok(())
 }
