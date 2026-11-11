@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.1.6",
+    "date": "2026-11-11",
+    "summary": "Release idle service code automatically, report database allocation, and preserve template storage defaults.",
+    "new": [
+      "Expose database allocation, capacity and measurement time in live usage, history and SDK snapshots"
+    ],
+    "changed": [
+      "Bound cached executable images to 64 MiB of accounted bytes and expire them after five idle minutes by default; reload cold services on demand",
+      "Restore deployment metadata without retaining executable code and enable the host disk compilation cache by default",
+      "Show database allocation in crab usage, with missing measurements displayed as an em dash"
+    ],
+    "fixed": [
+      "Preserve the declared database size in built images so published copies use their template storage default",
+      "Keep cold services discoverable and scheduled work runnable after restarts, and retain active memory accounting through redeployment and removal",
+      "Reclaim idle cached code before memory refusals and preserve E0019 when cold code exceeds the account allowance",
+      "Share byte and price formatting between the CLI and SDK",
+      "Clarify Relay template deployment, agent access and Grok host permissions"
+    ]
+  },
+  {
     "version": "0.1.5",
     "date": "2026-11-10",
     "summary": "Publish and deploy services by image address, call running services across accounts, and ship smaller release binaries.",

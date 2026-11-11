@@ -41,7 +41,7 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-version = "0.1.5"
+version = "0.1.6"
 repository = "https://github.com/crabtalk/crab"
 license = "Apache-2.0"
 authors = ["clearloop <tianyi.gc@gmail.com>"]
@@ -49,42 +49,42 @@ authors = ["clearloop <tianyi.gc@gmail.com>"]
 [workspace.dependencies]
 semver = "1"
 cargo_toml = "1"
-crab-openapi = { path = "crates/openapi", version = "0.1.5" }
-crabkit = { path = "crates/crabkit", version = "0.1.5" }
-crabtalk-sdk = { path = "crates/sdk", version = "0.1.5" }
+crab-openapi = { path = "crates/openapi", version = "0.1.6" }
+crabkit = { path = "crates/crabkit", version = "0.1.6" }
+crabtalk-sdk = { path = "crates/sdk", version = "0.1.6" }
 
 # berm
-berm = { path = "berm/berm", version = "0.1.5" }
-berm-abi = { path = "berm/abi", version = "0.1.5" }
-berm-api = { path = "berm/api", version = "0.1.5" }
-berm-build = { path = "berm/build", version = "0.1.5" }
-berm-codegen = { path = "berm/codegen", version = "0.1.5" }
-berm-host = { path = "berm/host", version = "0.1.5" }
-berm-lang = { path = "berm/lang", version = "0.1.5" }
-berm-oci = { path = "berm/oci", version = "0.1.5" }
+berm = { path = "berm/berm", version = "0.1.6" }
+berm-abi = { path = "berm/abi", version = "0.1.6" }
+berm-api = { path = "berm/api", version = "0.1.6" }
+berm-build = { path = "berm/build", version = "0.1.6" }
+berm-codegen = { path = "berm/codegen", version = "0.1.6" }
+berm-host = { path = "berm/host", version = "0.1.6" }
+berm-lang = { path = "berm/lang", version = "0.1.6" }
+berm-oci = { path = "berm/oci", version = "0.1.6" }
 
 # html
-html = { package = "crab-html", path = "crates/html", version = "0.1.5" }
+html = { package = "crab-html", path = "crates/html", version = "0.1.6" }
 
 # fixtures
 berm-kit = { path = "fixtures/kit" }
 
 # services
-github = { package = "crab-github", path = "services/connect/github", version = "0.1.5", default-features = false }
-memory = { package = "crab-agent-memory", path = "services/agents/memory", version = "0.1.5", default-features = false }
-osv = { package = "crab-osv", path = "services/connect/osv", version = "0.1.5", default-features = false }
-posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.5", default-features = false }
-resend = { package = "crab-resend", path = "services/connect/resend", version = "0.1.5", default-features = false }
-upstash = { package = "crab-upstash", path = "services/connect/upstash", version = "0.1.5", default-features = false }
-webpage = { package = "crab-webpage", path = "services/web/markdown", version = "0.1.5", default-features = false }
+github = { package = "crab-github", path = "services/connect/github", version = "0.1.6", default-features = false }
+memory = { package = "crab-agent-memory", path = "services/agents/memory", version = "0.1.6", default-features = false }
+osv = { package = "crab-osv", path = "services/connect/osv", version = "0.1.6", default-features = false }
+posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.6", default-features = false }
+resend = { package = "crab-resend", path = "services/connect/resend", version = "0.1.6", default-features = false }
+upstash = { package = "crab-upstash", path = "services/connect/upstash", version = "0.1.6", default-features = false }
+webpage = { package = "crab-webpage", path = "services/web/markdown", version = "0.1.6", default-features = false }
 
 # kits
-auth = { package = "crabkit-auth", path = "services/kits/auth", version = "0.1.5" }
-crawl = { package = "crabkit-crawl", path = "services/kits/crawl", version = "0.1.5" }
-lake = { package = "crabkit-lake", path = "services/kits/lake", version = "0.1.5" }
-neon = { package = "crabkit-neon", path = "services/kits/neon", version = "0.1.5" }
-stripe = { package = "crabkit-stripe", path = "services/kits/stripe", version = "0.1.5" }
-supabase = { package = "crabkit-supabase", path = "services/kits/supabase", version = "0.1.5" }
+auth = { package = "crabkit-auth", path = "services/kits/auth", version = "0.1.6" }
+crawl = { package = "crabkit-crawl", path = "services/kits/crawl", version = "0.1.6" }
+lake = { package = "crabkit-lake", path = "services/kits/lake", version = "0.1.6" }
+neon = { package = "crabkit-neon", path = "services/kits/neon", version = "0.1.6" }
+stripe = { package = "crabkit-stripe", path = "services/kits/stripe", version = "0.1.6" }
+supabase = { package = "crabkit-supabase", path = "services/kits/supabase", version = "0.1.6" }
 
 # crates-io
 anyhow = "1.0"

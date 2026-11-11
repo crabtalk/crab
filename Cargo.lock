@@ -239,7 +239,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "berm"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -266,14 +266,14 @@ dependencies = [
 
 [[package]]
 name = "berm-abi"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "berm-account"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "berm-api"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -310,7 +310,7 @@ dependencies = [
 
 [[package]]
 name = "berm-bare"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "berm-billing"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -336,14 +336,14 @@ dependencies = [
 
 [[package]]
 name = "berm-broken"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-build"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "berm-codegen"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "berm-feed"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "berm-fixture"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm",
@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "berm-host"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "berm-keeper"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -436,14 +436,14 @@ dependencies = [
 
 [[package]]
 name = "berm-kit"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-lang"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-abi",
  "berm-codegen",
@@ -465,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "berm-linked-services"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "crab-agent-memory",
@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "berm-oci"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "berm-openapi"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "crab-openapi",
@@ -512,7 +512,7 @@ dependencies = [
 
 [[package]]
 name = "berm-site"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "berm-tikhub"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -902,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent-memory"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -953,7 +953,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent-relay"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm",
@@ -968,7 +968,7 @@ dependencies = [
 
 [[package]]
 name = "crab-analytics"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm",
@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "crab-anyapi"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "crab-companyenrich"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "crab-contextdev"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1016,7 +1016,7 @@ dependencies = [
 
 [[package]]
 name = "crab-dataforseo"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "crab-firecrawl"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1039,7 +1039,7 @@ dependencies = [
 
 [[package]]
 name = "crab-github"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "url",
@@ -1047,11 +1047,11 @@ dependencies = [
 
 [[package]]
 name = "crab-html"
-version = "0.1.5"
+version = "0.1.6"
 
 [[package]]
 name = "crab-litescrape"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "crab-openapi"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "crab-osv"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "url",
@@ -1089,7 +1089,7 @@ dependencies = [
 
 [[package]]
 name = "crab-pdl"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1099,14 +1099,14 @@ dependencies = [
 
 [[package]]
 name = "crab-posthog"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crab-resend"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "url",
@@ -1114,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "crab-seo"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "crab-webpage",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "crab-tinyfish"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "base64 0.22.1",
  "berm-api",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "crab-upstash"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "url",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "crab-uptime"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -1158,7 +1158,7 @@ dependencies = [
 
 [[package]]
 name = "crab-webhook-inbox"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -1171,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "crab-webpage"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "htmd",
@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "crabkit-auth",
  "crabkit-crawl",
@@ -1196,7 +1196,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-auth"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "crab-github",
@@ -1206,7 +1206,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-crawl"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "crab-html",
@@ -1216,7 +1216,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-lake"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
  "crab-html",
@@ -1225,28 +1225,28 @@ dependencies = [
 
 [[package]]
 name = "crabkit-neon"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-stripe"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-supabase"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabtalk-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "berm-abi",
  "berm-api",
