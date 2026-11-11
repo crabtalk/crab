@@ -41,6 +41,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
     assert!(failure.contains("held"), "{failure}");
 
     let link = Link {
+        key: None,
         caller: None,
         from: "acct/elsewhere".into(),
         user: None,

@@ -71,10 +71,6 @@ pub fn show(
     };
     println!("  berm-lang {}", runtime.lang);
     println!("  host calls {}", runtime.imports.join(", "));
-    for dep in &runtime.deps.calls {
-        let missing = runtime.unresolved.calls.contains(dep);
-        println!("  service {dep}{}", answered(missing));
-    }
     for (name, hosts) in [
         ("fetch", &runtime.deps.http.fetch),
         ("proxy", &runtime.deps.http.proxy),
@@ -82,6 +78,9 @@ pub fn show(
         if !hosts.is_empty() {
             println!("  http {name} -> {}", hosts.join(", "));
         }
+    }
+    if runtime.deps.secret_resources {
+        println!("  runtime secrets -> explicit service grants");
     }
     for name in &runtime.deps.secrets {
         let missing = runtime.unresolved.secrets.contains(name);

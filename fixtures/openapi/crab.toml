@@ -1,4 +1,4 @@
-name = "openapi"
+image = "fixtures/openapi"
 
 [http]
 fetch = ["example.com"]

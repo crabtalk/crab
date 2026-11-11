@@ -81,6 +81,7 @@ async fn client_context_survives_tape_replay() -> Result<()> {
         .call_as(
             None,
             None,
+            None,
             client.clone(),
             "client_context",
             b"{}".to_vec(),
@@ -91,6 +92,7 @@ async fn client_context_survives_tape_replay() -> Result<()> {
         .await?;
     let replayed = service
         .call_as(
+            None,
             None,
             None,
             client,
@@ -123,6 +125,7 @@ async fn outside_calls_use_the_host_supplied_address() -> Result<()> {
         user: None,
         client: Some("2001:db8::42".to_owned()),
         agent: None,
+        key: None,
     };
     let (_, result) = host
         .host

@@ -1,4 +1,4 @@
-name = "companyenrich"
+image = "connect/companyenrich"
 logo = "https://crab.talk/logos/templates/companyenrich-v1.png"
 template = true
 buffer = 8388608

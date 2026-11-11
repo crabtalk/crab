@@ -18,11 +18,7 @@ impl Fixture {
             fs::create_dir(root.path().join(name)).unwrap();
         }
         unix_fs::symlink("/bin/sh", root.path().join("bin/sh")).unwrap();
-        fs::write(
-            root.path().join("project/crab.toml"),
-            "name = \"example\"\n",
-        )
-        .unwrap();
+        fs::write(root.path().join("project/crab.toml"), "").unwrap();
         fs::write(
             root.path().join("project/Cargo.toml"),
             "[package]\nname = \"example\"\nversion = \"0.1.0\"\n",
@@ -94,10 +90,10 @@ if [ "$FAIL_INSTALL" = 1 ]; then exit 1; fi
         }
     }
 
-    fn command(&self) -> Command {
+    fn command(&self, operation: &str) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_crab"));
         command
-            .args(["build"])
+            .arg(operation)
             .arg(self.root.path().join("project"))
             .env("CRAB_TOOLCHAIN_TEST", self.root.path())
             .env("CARGO_HOME", self.root.path().join("cargo-home"))
@@ -112,7 +108,7 @@ if [ "$FAIL_INSTALL" = 1 ]; then exit 1; fi
     }
 
     fn reached_metadata(&self) -> Output {
-        let output = self.command().output().unwrap();
+        let output = self.command("build").output().unwrap();
         assert!(!output.status.success());
         assert!(
             String::from_utf8_lossy(&output.stderr).contains("metadata reached"),
@@ -167,7 +163,11 @@ fn a_ready_toolchain_does_not_install_anything() {
 #[test]
 fn installation_failure_stops_before_cargo_and_explains_the_failure() {
     let fixture = Fixture::new();
-    let output = fixture.command().env("FAIL_INSTALL", "1").output().unwrap();
+    let output = fixture
+        .command("build")
+        .env("FAIL_INSTALL", "1")
+        .output()
+        .unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("could not install the build tools"));
     assert!(!fixture.log().contains("metadata"));
@@ -200,4 +200,44 @@ fn an_existing_compiler_without_rustup_gets_the_target_automatically() {
     fixture.reached_metadata();
     assert!(fixture.log().starts_with("download\ninstall "));
     assert!(fixture.log().ends_with("target\nmetadata\n"));
+}
+
+#[test]
+fn a_published_image_does_not_prepare_build_tools() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.root.path().join("project/crab.toml"),
+        "image = \"connect/tinyfish:1.2.3\"\n",
+    )
+    .unwrap();
+    let output = fixture
+        .command("deploy")
+        .args(["--context", "default"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Cloud context"));
+    assert!(!fixture.root.path().join("log").exists());
+}
+
+#[test]
+fn build_explicitly_selects_local_source() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.root.path().join("project/crab.toml"),
+        "image = \"connect/tinyfish\"\n",
+    )
+    .unwrap();
+    let output = fixture
+        .command("deploy")
+        .args(["--build", "--context", "default"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("metadata reached"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fixture.log().ends_with("metadata\n"));
 }

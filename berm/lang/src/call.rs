@@ -1,7 +1,6 @@
 //! Calling a tool on another service.
 //!
-//! The target is named at the call. What is deployed beside the service is
-//! reachable; a name that is not answers [`CallError::Refused`].
+//! Qualified targets identify running deployments as `owner/service`.
 
 use crate::{abi::wire, host, sys};
 use alloc::string::{String, ToString};
@@ -13,7 +12,7 @@ pub use host::CallError;
 /// blob — the same JSON a model would have sent it.
 ///
 /// ```ignore
-/// let result = berm_lang::call("weather", "forecast", r#"{"city":"Oslo"}"#)?;
+/// let result = berm_lang::call("alice/weather", "forecast", r#"{"city":"Oslo"}"#)?;
 /// ```
 ///
 /// `Err` says which kind of failure it was. [`CallError::Refused`] means
@@ -61,7 +60,7 @@ pub enum Caller {
 /// Set by the host, never by the caller:
 ///
 /// ```ignore
-/// if berm_lang::caller()? != Some(Caller::Service("lake".into())) {
+/// if berm_lang::caller()? != Some(Caller::Service("alice/lake".into())) {
 ///     return Err(berm_lang::deny("only lake calls this"));
 /// }
 /// ```

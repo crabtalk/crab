@@ -8,3 +8,6 @@ license.workspace = true
 repository.workspace = true
 keywords = ["berm", "wasm", "abi"]
 categories = ["wasm", "no-std"]
+
+[dependencies]
+serde = { workspace = true, features = ["alloc"] }

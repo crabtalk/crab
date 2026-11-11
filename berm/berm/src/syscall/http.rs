@@ -9,6 +9,7 @@
 
 use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
 use anyhow::{Result, anyhow, bail};
+use berm_abi::secrets::Id;
 use futures_util::future;
 use std::{future::Future, str, sync::Arc, time::Duration};
 use url::{Host, Url};
@@ -104,7 +105,23 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, send, secret)
+    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, false, send, secret)
+}
+
+pub fn fetch_all_literal_body<S, Sent, R, Found>(send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
+    serve_all(
+        abi::HTTP_FETCH_ALL_LITERAL_BODY,
+        abi::HTTP_FETCH,
+        true,
+        send,
+        secret,
+    )
 }
 
 /// Serve `berm.http.proxy_all`: [`fetch_all`], each request to a host the
@@ -117,13 +134,14 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, send, secret)
+    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, false, send, secret)
 }
 
 /// The batch syscall `name`, each request allowed under `syscall`.
 fn serve_all<S, Sent, R, Found>(
     name: &'static str,
     syscall: &'static str,
+    literal_body: bool,
     send: S,
     secret: R,
 ) -> Syscall
@@ -140,12 +158,11 @@ where
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
                 let requests = abi::wire::fields(&batch)?;
-                let answers = future::join_all(
-                    requests
-                        .iter()
-                        .map(|request| answer(&at, syscall, request, &*send, &*secret)),
-                )
-                .await;
+                let answers =
+                    future::join_all(requests.iter().map(|request| {
+                        answer(&at, syscall, literal_body, request, &*send, &*secret)
+                    }))
+                    .await;
                 let framed: Vec<Vec<u8>> = answers
                     .iter()
                     .map(|answered| match answered {
@@ -179,7 +196,7 @@ where
         call: Arc::new(move |at: Callsite, request: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let response = answer(&at, name, &request, &*send, &*secret).await?;
+                let response = answer(&at, name, false, &request, &*send, &*secret).await?;
                 Ok(write(&response))
             })
         }),
@@ -191,6 +208,7 @@ where
 async fn answer<S, Sent, R, Found>(
     at: &Callsite,
     syscall: &str,
+    literal_body: bool,
     request: &[u8],
     send: &S,
     secret: &R,
@@ -211,10 +229,12 @@ where
         }
     }
     request.headers = headers;
-    match substitute(at, secret, &request.host, &request.body).await? {
-        Substituted::Untouched => {}
-        Substituted::Done(found) => request.body = found,
-        Substituted::Unset(name) => return Err(ungranted(at, &name, &request.host)),
+    if !literal_body {
+        match substitute(at, secret, &request.host, &request.body).await? {
+            Substituted::Untouched => {}
+            Substituted::Done(found) => request.body = found,
+            Substituted::Unset(name) => return Err(ungranted(at, &name, &request.host)),
+        }
     }
     send(at.clone(), request).await
 }
@@ -257,23 +277,32 @@ where
             bail!("{SECRET} is opened and never closed");
         };
         let name = str::from_utf8(&after[..end])?;
-        if !at.deps.secrets.iter().any(|declared| declared == name) {
-            return Err(Refused(format!(
-                "{} does not declare the secret {name:?}",
-                at.service
-            ))
-            .into());
-        }
-        if !at
-            .deps
-            .secret_hosts(name)
-            .iter()
-            .any(|allowed| allowed == host)
-        {
-            return Err(ungranted(at, name, host));
+        let resource = Id::try_from(name).is_ok();
+        if resource {
+            if !at.deps.secret_resources {
+                return Err(
+                    Refused(format!("{} does not declare secret_resources", at.service)).into(),
+                );
+            }
+        } else {
+            if !at.deps.secrets.iter().any(|declared| declared == name) {
+                return Err(Refused(format!(
+                    "{} does not declare the secret {name:?}",
+                    at.service
+                ))
+                .into());
+            }
+            if !at
+                .deps
+                .secret_hosts(name)
+                .iter()
+                .any(|allowed| allowed == host)
+            {
+                return Err(ungranted(at, name, host));
+            }
         }
         let Some(found) = secret(at.clone(), name.to_owned(), host.to_owned()).await? else {
-            if at.deps.optional(name) {
+            if !resource && at.deps.optional(name) {
                 return Ok(Substituted::Unset(name.to_owned()));
             }
             return Err(ungranted(at, name, host));

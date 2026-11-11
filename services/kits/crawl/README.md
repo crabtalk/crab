@@ -8,7 +8,7 @@ An incremental crawler for berm services: the domains a service watches, each si
 
 ```toml
 [dependencies]
-crabkit = { version = "0.1", features = ["crawl"] }
+crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features = ["crawl"] }
 ```
 
 The library is also the crate `crabkit-crawl` on its own.

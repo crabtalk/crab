@@ -1,4 +1,4 @@
-name = "dataforseo"
+image = "connect/dataforseo"
 logo = "https://crab.talk/logos/templates/dataforseo-v1.png"
 template = true
 buffer = 8388608

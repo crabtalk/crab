@@ -1,4 +1,4 @@
-name = "firecrawl"
+image = "connect/firecrawl"
 logo = "https://crab.talk/logos/templates/firecrawl-v1.png"
 template = true
 buffer = 8388608

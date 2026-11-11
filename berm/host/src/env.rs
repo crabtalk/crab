@@ -4,7 +4,7 @@
 use crate::Layers;
 use anyhow::{Result, bail};
 use berm::{
-    Callsite, Enter, Meter, clock,
+    Callsite, Enter, Meter, Refused, clock,
     syscall::http::{Request, Response},
 };
 use berm_api::host::{Link, Reply, Used};
@@ -67,6 +67,17 @@ pub trait Peers: Send + Sync + 'static {
         link: Link,
     ) -> impl Future<Output = Result<Reply>> + Send;
 
+    /// Call a qualified deployment through the account authorization boundary.
+    fn call(
+        &self,
+        service: &str,
+        _tool: &str,
+        _args: Vec<u8>,
+        _link: Link,
+    ) -> impl Future<Output = Result<Reply>> + Send {
+        async move { Err(Refused(format!("this host has no account gateway for {service:?}")).into()) }
+    }
+
     /// Hand `peer` the uses counted here of services it runs.
     fn ship(&self, peer: &str, used: &[Used]) -> impl Future<Output = Result<()>> + Send;
 }
@@ -93,6 +104,16 @@ pub trait Secrets: Send + Sync + 'static {
         secret: &str,
         host: &str,
     ) -> impl Future<Output = Result<Option<String>>> + Send;
+
+    /// Owner of a resource granted to this deployment and destination; no value.
+    fn resource_owner(
+        &self,
+        _service: &str,
+        _id: &str,
+        _host: &str,
+    ) -> impl Future<Output = Result<Option<String>>> + Send {
+        async { Ok(None) }
+    }
 
     /// The names of the secrets provisioned for `service`.
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;

@@ -1,0 +1,15 @@
+{
+  "name": "variants",
+  "tools": [{
+    "name": "platform",
+    "parameters": {"type":"object","properties":{}},
+    "returns": {
+      "title": "Platform",
+      "oneOf": [
+        {"type":"string","enum":["local"]},
+        {"type":"object","properties":{"grok":{"type":"object","title":"Connection","properties":{"url":{"type":"string"},"credential":{"type":"string"}},"required":["url"]}},"required":["grok"],"additionalProperties":false},
+        {"type":"object","properties":{"custom":{"type":"object","properties":{"endpoint":{"type":"string"},"label":{"type":"string"}},"required":["endpoint"]}},"required":["custom"],"additionalProperties":false}
+      ]
+    }
+  }]
+}

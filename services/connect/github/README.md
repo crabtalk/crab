@@ -30,7 +30,7 @@ For private repository access or a higher GitHub rate limit, request the optiona
 crab secret request github --credential github_api
 ```
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -38,4 +38,4 @@ Lists return `items` and `next_page`; pass the next page with the same filters a
 
 Each operation makes one request. Errors include GitHub’s status, message and supplied retry/reset timing. Writes are not automatically retried.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/github/LIBRARY.md) · [Provider documentation](https://docs.github.com/en/rest)
+[Rust library integration](https://github.com/crabtalk/crab/blob/main/services/connect/github/LIBRARY.md) · [Provider documentation](https://docs.github.com/en/rest)

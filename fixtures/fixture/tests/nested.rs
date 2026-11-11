@@ -19,6 +19,7 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         user: None,
         client: None,
         agent: None,
+        key: None,
     };
     for tool in ["nest", "echo"] {
         host.host
@@ -65,7 +66,7 @@ async fn a_run_keeps_the_calls_it_made() -> Result<()> {
         assert_eq!((inner.id, inner.parent), (1, 0), "written: {written}");
         assert_eq!(
             (inner.service.as_str(), inner.tool.as_str()),
-            ("inner", "echo")
+            ("acct/inner", "echo")
         );
         assert_eq!(inner.outcome, Outcome::Done);
     }

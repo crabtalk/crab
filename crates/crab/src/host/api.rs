@@ -4,7 +4,7 @@
 //! a UI, a CLI and `curl`, and a service is a resource. The MCP endpoint that
 //! agents reach sits on the same server at `/mcp`.
 
-use crate::host::{Node, mcp::Mcp};
+use crate::host::{Node, mcp::Mcp, secret_resources};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -60,6 +60,7 @@ impl Node {
             .route_layer(middleware::from_fn(named));
 
         Router::new()
+            .merge(secret_resources::router())
             .route(HEALTH, get(|| async { StatusCode::NO_CONTENT }))
             .route(&format!("/users/{LOCAL}/services"), get(list))
             .route(
@@ -346,6 +347,6 @@ async fn revoke_secret(
     }
 }
 
-fn internal(error: anyhow::Error) -> Denied {
+pub(crate) fn internal(error: anyhow::Error) -> Denied {
     deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}"))
 }

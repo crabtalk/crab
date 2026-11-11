@@ -150,6 +150,17 @@ fn builtins() -> Table {
     );
 
     table.insert(
+        abi::KEY_ID.to_owned(),
+        handler(|guest, _, _| {
+            let reply = match &guest.data().at.key {
+                Some(id) => abi::wire::request(&[id.as_bytes()]),
+                None => Vec::new(),
+            };
+            Ok(stage(guest, Ok(reply)))
+        }),
+    );
+
+    table.insert(
         abi::VOUCH.to_owned(),
         handler(|guest, ptr, len| {
             let subject = engine::read(guest, ptr, len)?;

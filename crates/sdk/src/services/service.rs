@@ -1,6 +1,7 @@
 //! Service wire types.
 
 use crate::{account::request::RequestStatus, error::RequestLink, services::price::Price};
+use berm_abi::secrets::Id;
 use berm_api::{
     Meter, Service,
     host::{self, Call, ServedDay},
@@ -294,11 +295,24 @@ impl Secret {
     /// letters, digits and `_`, not starting with a digit.
     pub fn valid(name: &str) -> bool {
         let mut chars = name.chars();
-        name.len() <= Self::NAME_MAX
+        Id::try_from(name).is_err()
+            && name.len() <= Self::NAME_MAX
             && chars
                 .next()
                 .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+    pub fn check_name(name: &str) -> Result<(), String> {
+        if Id::try_from(name).is_ok() {
+            return Err("Use secret resource operations for a secret resource ID".into());
+        }
+        if !Self::valid(name) {
+            return Err(format!(
+                "a secret's name is up to {} ASCII letters, digits and `_`, not starting with a digit",
+                Self::NAME_MAX
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -320,21 +334,20 @@ impl SetSecret {
         !value.is_empty() && value.len() <= Self::VALUE_MAX && !value.chars().any(char::is_control)
     }
 
-    /// Refused, with why, when it may not be set as secret `name`.
-    pub fn check(&self, name: &str) -> Result<(), String> {
-        if !Secret::valid(name) {
+    pub fn check_value(value: &str) -> Result<(), String> {
+        if !Self::valid(value) {
             return Err(format!(
-                "a secret's name is up to {} ASCII letters, digits and `_`, not starting with a digit",
-                Secret::NAME_MAX
-            ));
-        }
-        if !Self::valid(&self.value) {
-            return Err(format!(
-                "{name}'s value is 1 to {} bytes on one line",
+                "A secret value must contain 1–{} bytes on one line",
                 Self::VALUE_MAX
             ));
         }
         Ok(())
+    }
+
+    /// Refused, with why, when it may not be set as secret `name`.
+    pub fn check(&self, name: &str) -> Result<(), String> {
+        Secret::check_name(name)?;
+        Self::check_value(&self.value).map_err(|why| format!("{name}: {why}"))
     }
 }
 

@@ -1,4 +1,4 @@
-name = "broken"
+image = "fixtures/broken"
 deploy = false
 
 [database]

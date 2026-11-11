@@ -176,8 +176,7 @@ pub(crate) fn window(now: i64) -> Range<i32> {
 
 /// `scope/name`'s usage on `days`, counted from the Unix epoch, as written and
 /// in `unsaved`, one row per item, caller and outcome, of one item and outcome
-/// when `of` names them. A service caller is named by its name, an account by
-/// its id.
+/// when `of` names them. A service caller keeps its deployment address; an account keeps its id.
 pub(crate) async fn read(
     store: &Store,
     scope: &str,
@@ -207,7 +206,7 @@ pub(crate) async fn read(
                     Ok(Usage {
                         kind: row.get(0)?,
                         item: row.get(1)?,
-                        caller: caller(source, row.get(3)?),
+                        caller: row.get(3)?,
                         source,
                         outcome: row.get(4)?,
                         calls: row.get(5)?,
@@ -226,7 +225,7 @@ pub(crate) async fn read(
                 {
                     continue;
                 }
-                let caller = caller(used.source, used.caller);
+                let caller = used.caller;
                 match usage.iter_mut().find(|row| {
                     (&row.kind, &row.item, &row.source, &row.caller, &row.outcome)
                         == (&used.kind, &used.item, &used.source, &caller, &used.outcome)
@@ -300,15 +299,6 @@ pub(crate) async fn sunset(
             Ok(set == 1)
         })
         .await
-}
-
-/// How a caller from `source` is named: a service by its name, the rest as
-/// recorded.
-pub(crate) fn caller(source: Source, caller: String) -> String {
-    match source {
-        Source::Service => host::split(&caller).1.to_owned(),
-        _ => caller,
-    }
 }
 
 /// Seconds since the Unix epoch, as `now` tells it.

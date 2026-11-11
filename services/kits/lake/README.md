@@ -8,7 +8,7 @@ The runtime of a source service: the feeds it follows, the items they show and t
 
 ```toml
 [dependencies]
-crabkit = { version = "0.1", features = ["lake"] }
+crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features = ["lake"] }
 ```
 
 The library is also the crate `crabkit-lake` on its own.

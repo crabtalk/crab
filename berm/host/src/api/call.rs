@@ -33,6 +33,7 @@ const NO_WEBHOOK_TOOL: &str = "E0014";
 
 /// The error code an event for a stopped or held service carries.
 const PAUSED: &str = "E0018";
+const SERVICE_CALLERS: &str = "E0049";
 
 /// The error code an event for an account at its memory limit carries.
 const NO_MEMORY: &str = "E0019";
@@ -69,8 +70,7 @@ impl<E: Env> Host<E> {
     }
 
     /// `service`'s runtime, for its owners, with what it declares that nothing
-    /// answers to: services neither deployed here nor routed to a peer, and
-    /// secrets not granted it. Secrets that cannot be read grant nothing.
+    /// answers to: secrets not granted it. Secrets that cannot be read grant nothing.
     pub async fn runtime(&self, service: &str) -> Result<berm_api::Runtime, Denied> {
         let deployed = self.deployed(service)?;
         let scope = host::split(service).0;
@@ -81,15 +81,7 @@ impl<E: Env> Host<E> {
             .and_then(|row| row.project);
         Ok(berm_api::Runtime {
             unresolved: Deps {
-                calls: deps
-                    .calls
-                    .iter()
-                    .filter(|name| {
-                        let key = host::join(scope, name);
-                        self.get(&key).is_none() && self.routes.peer(&key).is_none()
-                    })
-                    .cloned()
-                    .collect(),
+                secret_resources: false,
                 http: Default::default(),
                 credentials: Default::default(),
                 vars: Default::default(),
@@ -503,7 +495,8 @@ impl<E: Env> Host<E> {
             return refused(format!("{service} has no public tool named {tool:?}"));
         }
         if link.caller.is_some() && !deployed.reached_by_services(tool) {
-            return refused(format!("{service}.{tool} takes no calls from services"));
+            return refused(format!("{service}.{tool} takes no calls from services"))
+                .map_err(|denied| denied.explained(SERVICE_CALLERS));
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let meters = Arc::new(Meters::default());
@@ -512,8 +505,9 @@ impl<E: Env> Host<E> {
                 berm::Link {
                     caller: link
                         .caller
-                        .as_deref()
-                        .map(|caller| berm::Caller::Service(caller.into())),
+                        .as_ref()
+                        .map(|_| berm::Caller::Service(link.from.as_str().into())),
+                    key: link.key.as_deref().map(Into::into),
                     user: link.user.as_ref().map(host::user),
                     client: Client {
                         key: link.client.as_deref().map(Into::into),
@@ -651,6 +645,7 @@ impl<E: Env> Host<E> {
             .invoke(
                 &deployed,
                 started.id,
+                None,
                 None,
                 None,
                 Client::default(),

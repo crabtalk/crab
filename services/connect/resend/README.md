@@ -26,7 +26,7 @@ crab deploy --from owner/resend
 
 Set `RESEND_API_KEY` through the copy’s credential setup and verify your sending domain in Resend. Sending-only keys support `send` and `send_batch`; `retrieve` needs full access. Keep the copy private when its sending account is for your own use.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -34,4 +34,4 @@ Use a unique idempotency key for each send or batch. Reuse the same key only wit
 
 Calls make one attempt. Provider errors retain retry timing when supplied; the service does not retry or schedule delivery.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/resend/LIBRARY.md) · [Provider documentation](https://resend.com/docs/api-reference/emails/send-email)
+[Rust library integration](https://github.com/crabtalk/crab/blob/main/services/connect/resend/LIBRARY.md) · [Provider documentation](https://resend.com/docs/api-reference/emails/send-email)

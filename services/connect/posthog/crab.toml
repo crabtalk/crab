@@ -1,4 +1,4 @@
-name = "posthog"
+image = "connect/posthog"
 logo = "https://crab.talk/logos/templates/posthog-v1.svg"
 template = true
 buffer = 1048576

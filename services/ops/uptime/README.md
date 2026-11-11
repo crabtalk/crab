@@ -30,4 +30,4 @@ History retains the newest 1000 observations per monitor and removes older-than-
 
 Checks run from this service's host, without multiple-region quorum, content assertions or authenticated probes. Cloud blocks private and loopback targets. Keep the deployment private; publishing it would also expose its management tools.
 
-[Source deployment](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/dev/services/ops/uptime/LIBRARY.md)
+[Source deployment](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/main/services/ops/uptime/LIBRARY.md)

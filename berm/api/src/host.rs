@@ -8,6 +8,9 @@ use std::{collections::BTreeMap, fmt, net::IpAddr};
 /// service the call reached, as JSON.
 pub const METER: &str = "berm-meter";
 
+/// Response header set to `1` when a tool refused its caller.
+pub const DENIED: &str = "berm-denied";
+
 /// Header carrying the [`Caller`] a call to the local host is made as, as
 /// JSON. The local host verifies none of it.
 pub const CALLER: &str = "x-berm-caller";
@@ -26,6 +29,9 @@ pub const MAX_DATABASE_SIZE: u64 = 10 << 30;
 pub struct Caller {
     /// The account calling, or for an app's call, the account owning the app.
     pub id: String,
+    /// The authenticated API key ID; never its token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// The app a browser called through.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
@@ -81,8 +87,7 @@ pub struct Deploy {
     /// is in another project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
-    /// Services of the same scope whose calls the breaks check leaves out:
-    /// services deployed with it whose new version no longer calls it.
+    /// Service caller addresses excluded from compatibility checks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exempt: Vec<String>,
     /// The value this copy holds for each var it names, as
@@ -100,8 +105,6 @@ pub const USED_DAYS: i32 = 30;
 pub struct Checked {
     /// The version it would go live on.
     pub version: String,
-    /// The services it calls by name, as its manifest declares them.
-    pub calls: Vec<String>,
     /// The migrations it would apply, a kit's as `{kit}/{name}`; none for a
     /// service with no database yet.
     #[serde(default)]
@@ -177,61 +180,22 @@ impl Broken {
     }
 }
 
-/// How a set of services deployed together switches, from each one's
-/// [`Checked`], by name.
+/// Deployment checks for services switched together, in name order.
 #[derive(Debug, Clone, Default)]
 pub struct Plan {
-    /// The order they switch in: a service after those it calls, and a caller
-    /// that stops calling a service before that service.
     pub order: Vec<String>,
-    /// Each service's exempt callers: the others whose new version does not
-    /// call it.
-    pub exempt: BTreeMap<String, Vec<String>>,
-    /// What each one breaks, its exempt callers left out.
     pub breaks: BTreeMap<String, Vec<Broken>>,
 }
 
 impl Plan {
     pub fn new(checked: &BTreeMap<String, Checked>) -> Self {
-        let mut plan = Plan::default();
-        // `before[b]` holds the services that switch before `b`.
-        let mut before: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-        for (name, check) in checked {
-            let exempt: Vec<String> = checked
+        Self {
+            order: checked.keys().cloned().collect(),
+            breaks: checked
                 .iter()
-                .filter(|(other, checked)| *other != name && !checked.calls.contains(name))
-                .map(|(other, _)| other.clone())
-                .collect();
-            for by in check.breaks.iter().flat_map(|broken| &broken.by) {
-                if by.source == Source::Service && exempt.contains(&by.caller) {
-                    before.entry(name).or_default().push(&by.caller);
-                }
-            }
-            for callee in &check.calls {
-                if let Some((callee, _)) = checked.get_key_value(callee) {
-                    before.entry(name).or_default().push(callee);
-                }
-            }
-            plan.breaks.insert(
-                name.clone(),
-                Broken::exempted(check.breaks.clone(), &exempt),
-            );
-            plan.exempt.insert(name.clone(), exempt);
+                .map(|(name, check)| (name.clone(), check.breaks.clone()))
+                .collect(),
         }
-        // Kahn's sort, by name among the ready; a cycle switches in name order.
-        let mut left: Vec<&str> = checked.keys().map(String::as_str).collect();
-        while !left.is_empty() {
-            let ready = left
-                .iter()
-                .position(|name| {
-                    before
-                        .get(name)
-                        .is_none_or(|first| first.iter().all(|first| !left.contains(first)))
-                })
-                .unwrap_or(0);
-            plan.order.push(left.remove(ready).to_owned());
-        }
-        plan
     }
 }
 
@@ -301,6 +265,8 @@ pub struct Link {
     /// The key of the service the call is counted against.
     pub from: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
     /// The outside client's per-day key, as the chain's first host supplied it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -341,7 +307,7 @@ pub enum Kind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
-    /// A service in the same scope.
+    /// A calling deployment, identified by its address.
     Service,
     Account,
     /// An app a browser called through.
@@ -424,7 +390,7 @@ pub struct Usage {
     pub kind: Kind,
     pub item: String,
     pub source: Source,
-    /// The service's name, or the account or app.
+    /// The service's deployment address, or the account or app.
     pub caller: String,
     pub outcome: Outcome,
     pub calls: i64,
@@ -599,8 +565,7 @@ pub struct Call {
     pub logs: u64,
 }
 
-/// One call a run made to another of its owner's services, or to its own
-/// tools, on the host the run ran on.
+/// One nested invocation on the host the run ran on.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NestedCall {
@@ -609,7 +574,7 @@ pub struct NestedCall {
     pub id: u32,
     /// The number of the call that made it.
     pub parent: u32,
-    /// The service's name, in the run's scope.
+    /// The service's deployment address.
     pub service: String,
     pub tool: String,
     /// When it began, in epoch milliseconds.

@@ -67,6 +67,7 @@ impl Call {
                 .map(|(issuer, subject)| User { issuer, subject }),
             client: None,
             agent: None,
+            key: None,
         }))
     }
 }

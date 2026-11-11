@@ -65,13 +65,16 @@ mod call;
 pub mod dispatch;
 mod emit;
 mod error;
+mod events;
 mod heap;
 #[doc(hidden)]
 pub mod host;
 pub mod http;
 #[doc(hidden)]
 pub mod json;
+pub mod key;
 pub mod schema;
+pub mod secret;
 mod sql;
 mod store;
 pub mod test;

@@ -1,4 +1,4 @@
-name = "osv"
+image = "connect/osv"
 public = true
 logo = "https://crab.talk/logos/templates/osv-v1.png"
 template = true

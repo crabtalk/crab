@@ -20,7 +20,11 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
     let fail =
         |message: &str| syn::Error::new(name.span(), format!("{}: {message}", path.display()));
 
-    let service = idl["name"].as_str().ok_or_else(|| fail("no `name`"))?;
+    let service_name = idl["name"].as_str().ok_or_else(|| fail("no `name`"))?;
+    let service = match idl["owner"].as_str().filter(|owner| !owner.is_empty()) {
+        Some(owner) => format!("{owner}/{service_name}"),
+        None => service_name.to_owned(),
+    };
     let tools = idl["tools"].as_array().ok_or_else(|| fail("no `tools`"))?;
 
     // Every titled object anywhere in the IDL is one struct, by its title.
@@ -35,8 +39,8 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
         let doc = schema["description"]
             .as_str()
             .map(|text| quote!(#[doc = #text]));
-        if let Some(values) = schema["enum"].as_array() {
-            let variants = values.iter().filter_map(Value::as_str).map(|value| {
+        if let Some(values) = schema::values(schema) {
+            let variants = values.into_iter().map(|value| {
                 let variant = format_ident!("{}", camel(value));
                 quote! {
                     #[serde(rename = #value)]
@@ -60,35 +64,29 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
                 }
             };
         }
-        let required = required(schema);
-        let fields =
-            schema["properties"]
-                .as_object()
-                .into_iter()
-                .flatten()
-                .map(|(field, property)| {
-                    let ident = field_ident(field);
-                    let ty = rust_type(property, &quote!());
-                    let doc = property["description"]
-                        .as_str()
-                        .map(|text| quote!(#[doc = #text]));
-                    match required.contains(&field.as_str()) {
-                        true => quote! {
-                            #doc
-                            #[serde(rename = #field)]
-                            pub #ident: #ty,
-                        },
-                        false => quote! {
-                            #doc
-                            #[serde(
-                                rename = #field,
-                                default,
-                                skip_serializing_if = "::core::option::Option::is_none"
-                            )]
-                            pub #ident: ::core::option::Option<#ty>,
-                        },
-                    }
-                });
+        if let Some(alternatives) = schema::variants(schema) {
+            let variants = alternatives.into_iter().map(|(name, payload)| {
+                let variant = format_ident!("{}", camel(name));
+                let Some(payload) = payload else {
+                    return quote!(#[serde(rename = #name)] #variant,);
+                };
+                let fields = if payload["type"] == "object" && payload["title"].is_null() && payload["properties"].is_object() {
+                    let fields = fields(payload, false);
+                    quote!({ #(#fields)* })
+                } else {
+                    let ty = rust_type(payload, &quote!());
+                    quote!((#ty))
+                };
+                quote!(#[serde(rename = #name)] #variant #fields,)
+            });
+            return quote! {
+                #doc
+                #[derive(Debug, Clone, ::berm_lang::serde::Serialize, ::berm_lang::serde::Deserialize)]
+                #[serde(crate = "::berm_lang::serde")]
+                pub enum #ident { #(#variants)* }
+            };
+        }
+        let fields = fields(schema, true);
         quote! {
             #doc
             #[derive(
@@ -242,11 +240,28 @@ fn collect(schema: &Value, structs: &mut BTreeMap<String, Value>) {
     for property in schema["properties"].as_object().into_iter().flatten() {
         collect(property.1, structs);
     }
-    for variant in schema["anyOf"].as_array().into_iter().flatten() {
-        collect(variant, structs);
+    for union in ["anyOf", "oneOf"] {
+        for variant in schema[union].as_array().into_iter().flatten() {
+            collect(variant, structs);
+        }
     }
     collect_inner(&schema["items"], structs);
     collect_inner(&schema["additionalProperties"], structs);
+}
+
+fn fields(schema: &Value, public: bool) -> Vec<TokenStream> {
+    let required = required(schema);
+    let visibility = public.then(|| quote!(pub));
+    schema["properties"].as_object().into_iter().flatten().map(|(field, property)| {
+        let ident = field_ident(field);
+        let ty = rust_type(property, &quote!());
+        let doc = property["description"].as_str().map(|text| quote!(#[doc = #text]));
+        if required.contains(&field.as_str()) {
+            quote!(#doc #[serde(rename = #field)] #visibility #ident: #ty,)
+        } else {
+            quote!(#doc #[serde(rename = #field, default, skip_serializing_if = "::core::option::Option::is_none")] #visibility #ident: ::core::option::Option<#ty>,)
+        }
+    }).collect()
 }
 
 fn collect_inner(schema: &Value, structs: &mut BTreeMap<String, Value>) {

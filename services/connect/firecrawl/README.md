@@ -24,7 +24,7 @@ crab deploy --from owner/firecrawl
 
 Set `FIRECRAWL_API_KEY` through the copy’s credential setup. Scraped pages and search results consume the connected Firecrawl account’s credits.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -36,4 +36,4 @@ Scrape and batch support Markdown, HTML and links. PDF parsing and charged extra
 
 Calls do not automatically poll, paginate or retry. A `success: false` response is returned as an error.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/firecrawl) · [Provider documentation](https://docs.firecrawl.dev/api-reference/v2-introduction)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/firecrawl) · [Provider documentation](https://docs.firecrawl.dev/api-reference/v2-introduction)

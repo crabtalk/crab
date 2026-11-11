@@ -1,4 +1,4 @@
-name = "account"
+image = "fixtures/account"
 deploy = false
 
 [tools.github]

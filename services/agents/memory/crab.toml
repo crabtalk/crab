@@ -1,4 +1,4 @@
-name = "memory"
+image = "agents/memory"
 id = "1fdf32203e0e4003a68c5d766daad03b"
 public = false
 template = true

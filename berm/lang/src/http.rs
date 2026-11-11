@@ -3,7 +3,8 @@
 //! proxy.
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
-//! manifest declares. The host substitutes it, and this service never holds the value.
+//! manifest declares, or `{secret:ID}` for a host-granted resource when the
+//! manifest enables `secret_resources`. The service never holds the value.
 
 use crate::{
     Error, Result,
@@ -53,6 +54,11 @@ impl Response {
     /// The value of the header `name`, ASCII case ignored.
     pub fn header(&self, name: &str) -> Option<&str> {
         header(&self.headers, name)
+    }
+
+    /// Numeric Retry-After delay in seconds; HTTP-date values return `None`.
+    pub fn retry_after(&self) -> Option<u64> {
+        self.header("retry-after")?.trim().parse().ok()
     }
 
     /// Format an upstream refusal, including failures carried in a 2xx body.
@@ -134,6 +140,13 @@ pub struct Request<'a> {
 /// and answer each in its place: a [`Response`], or why nothing was.
 pub fn fetch_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
     send_all(sys::HTTP_FETCH_ALL, requests)
+}
+
+/// Send literal body bytes; secret placeholders are substituted only in headers.
+pub fn fetch_all_literal_body(
+    requests: &[Request<'_>],
+) -> Result<Vec<Result<Response, CallError>>, CallError> {
+    send_all(sys::HTTP_FETCH_ALL_LITERAL_BODY, requests)
 }
 
 /// [`fetch_all`], through the host's proxy, each request to a host the

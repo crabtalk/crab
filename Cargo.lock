@@ -239,7 +239,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "berm"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -263,11 +263,14 @@ dependencies = [
 
 [[package]]
 name = "berm-abi"
-version = "0.1.4"
+version = "0.1.5"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "berm-account"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -281,7 +284,7 @@ dependencies = [
 
 [[package]]
 name = "berm-api"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -290,6 +293,7 @@ dependencies = [
  "hex",
  "object 0.40.0",
  "regex",
+ "semver",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -303,7 +307,7 @@ dependencies = [
 
 [[package]]
 name = "berm-bare"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -315,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "berm-billing"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -329,14 +333,14 @@ dependencies = [
 
 [[package]]
 name = "berm-broken"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-build"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -348,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "berm-codegen"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -360,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "berm-feed"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -374,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "berm-fixture"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm",
@@ -389,11 +393,12 @@ dependencies = [
 
 [[package]]
 name = "berm-host"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "axum",
  "berm",
+ "berm-abi",
  "berm-api",
  "berm-build",
  "berm-host",
@@ -408,11 +413,12 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tower",
  "tracing",
+ "wasmparser 0.255.0",
 ]
 
 [[package]]
 name = "berm-keeper"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -427,14 +433,14 @@ dependencies = [
 
 [[package]]
 name = "berm-kit"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-lang"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-abi",
  "berm-codegen",
@@ -456,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "berm-linked-services"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "crab-agent-memory",
@@ -469,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "berm-oci"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -479,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "berm-openapi"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "crab-openapi",
@@ -503,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "berm-site"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -519,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "berm-tikhub"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -613,6 +619,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7354288c522e7e980fafd2075d63d1285794c3a6a16cdd492f189ea406e5f18b"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "cargo_toml"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f4b26e751e711a5302649417f2da046dce6391b2ea30a4820f37462314f0b9"
+dependencies = [
+ "semver",
+ "serde",
+ "toml 1.1.4+spec-1.1.0",
 ]
 
 [[package]]
@@ -882,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "axum",
@@ -893,6 +910,7 @@ dependencies = [
  "berm-host",
  "berm-oci",
  "berm-rusqlite",
+ "cargo_toml",
  "chrono",
  "clap",
  "crabtalk-sdk",
@@ -902,6 +920,7 @@ dependencies = [
  "ratatui",
  "regex",
  "reqwest",
+ "ring",
  "rmcp",
  "self_update",
  "serde",
@@ -918,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent-memory"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -930,8 +949,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-agent-relay"
+version = "0.1.5"
+dependencies = [
+ "anyhow",
+ "berm",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "crab-analytics"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm",
@@ -946,7 +980,7 @@ dependencies = [
 
 [[package]]
 name = "crab-anyapi"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -956,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "crab-companyenrich"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -968,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "crab-contextdev"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -979,7 +1013,7 @@ dependencies = [
 
 [[package]]
 name = "crab-dataforseo"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -991,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "crab-firecrawl"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1002,7 +1036,7 @@ dependencies = [
 
 [[package]]
 name = "crab-github"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "url",
@@ -1010,11 +1044,11 @@ dependencies = [
 
 [[package]]
 name = "crab-html"
-version = "0.1.4"
+version = "0.1.5"
 
 [[package]]
 name = "crab-litescrape"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1025,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "crab-openapi"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1044,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "crab-osv"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "url",
@@ -1052,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "crab-pdl"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1062,14 +1096,14 @@ dependencies = [
 
 [[package]]
 name = "crab-posthog"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crab-resend"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "url",
@@ -1077,7 +1111,7 @@ dependencies = [
 
 [[package]]
 name = "crab-seo"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "crab-webpage",
@@ -1087,7 +1121,7 @@ dependencies = [
 
 [[package]]
 name = "crab-tinyfish"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "base64 0.22.1",
  "berm-api",
@@ -1099,7 +1133,7 @@ dependencies = [
 
 [[package]]
 name = "crab-upstash"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "url",
@@ -1107,7 +1141,7 @@ dependencies = [
 
 [[package]]
 name = "crab-uptime"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -1121,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "crab-webhook-inbox"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -1134,7 +1168,7 @@ dependencies = [
 
 [[package]]
 name = "crab-webpage"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "htmd",
@@ -1147,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "crabkit-auth",
  "crabkit-crawl",
@@ -1159,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-auth"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "crab-github",
@@ -1169,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-crawl"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "crab-html",
@@ -1179,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-lake"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
  "crab-html",
@@ -1188,29 +1222,30 @@ dependencies = [
 
 [[package]]
 name = "crabkit-neon"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-stripe"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-supabase"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabtalk-sdk"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
+ "berm-abi",
  "berm-api",
  "reqwest",
  "semver",

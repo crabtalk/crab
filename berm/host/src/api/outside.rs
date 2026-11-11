@@ -247,6 +247,7 @@ impl<E: Env> Host<E> {
                     .as_ref()
                     .filter(|caller| !caller.anonymous())
                     .map(|caller| caller.id.as_str()),
+                caller.as_ref().and_then(|caller| caller.key.as_deref()),
                 caller
                     .as_ref()
                     .and_then(|caller| caller.user.as_ref())
@@ -308,6 +309,12 @@ impl<E: Env> Host<E> {
             HeaderValue::from_str(&serde_json::to_string(&invoked.meter).expect("a meter is JSON"))
                 .expect("JSON of numbers is a header value"),
         );
+        if invoked.denied {
+            headers.insert(
+                HeaderName::from_static(wire::DENIED),
+                HeaderValue::from_static("1"),
+            );
+        }
         Ok(Called {
             headers,
             output: invoked.result,

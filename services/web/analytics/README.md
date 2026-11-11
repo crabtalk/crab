@@ -29,7 +29,7 @@ In your deploying account's dashboard, open **Apps** and create an [anonymous br
 
 Copy the app ID from the dashboard's **X-App** column and use it as `APP_ID`. You can also find it with `crab app ls`. This public ID lets the tracker call `record` from the allowed origin; it is separate from the `SITE_ID` created by `add_site`.
 
-Copy [tracker.js](https://github.com/crabtalk/crab/blob/dev/services/web/analytics/tracker.js) into your website's public assets so it is served at `/tracker.js`, then add this script to your pages, replacing `you`, `APP_ID` and `SITE_ID`:
+Copy [tracker.js](https://github.com/crabtalk/crab/blob/main/services/web/analytics/tracker.js) into your website's public assets so it is served at `/tracker.js`, then add this script to your pages, replacing `you`, `APP_ID` and `SITE_ID`:
 
 ```html
 <script defer src="/tracker.js" data-endpoint="https://api.crab.talk/services/you/analytics/tools/record" data-app="APP_ID" data-site="SITE_ID"></script>
@@ -56,4 +56,4 @@ Paths are at most 1024 bytes; referrers at most 4096 bytes; user-agent strings a
 
 Keep the deployment private. The anonymous tool records events; the authenticated report and management tools share the account's data. Use an origin-restricted app and platform request limits to control collection. This template does not include Altlook's dashboard or migrate an existing Altlook database.
 
-[Source deployment](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/dev/services/web/analytics/LIBRARY.md)
+[Source deployment](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source) · [Rust API](https://github.com/crabtalk/crab/blob/main/services/web/analytics/LIBRARY.md)

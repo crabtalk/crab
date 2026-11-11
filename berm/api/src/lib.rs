@@ -15,14 +15,17 @@ pub use manifest::{
     ServiceRecord, ToolRecord, Var,
 };
 
+pub mod address;
 mod compat;
 pub mod digest;
+pub mod events;
 pub mod host;
 mod http;
 mod image;
 pub mod logo;
 mod manifest;
 pub mod project;
+pub mod reference;
 pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;
@@ -275,6 +278,9 @@ pub struct ToolSpec {
     /// `berm.set`, `berm.emit` and `berm.call.after`, so it commits nothing.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub query: bool,
+    /// Named durable event history exposed by this read-only tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deprecated: bool,
     /// Callable by accounts and other services. A tool that is not is only

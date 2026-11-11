@@ -14,7 +14,6 @@ fn scopes_round_trip_and_exclude_legacy_and_deletion_permissions() {
         "auto",
         "services:delete",
         "deployments:request",
-        "secrets:read",
         "secrets:write",
         "schedules:read",
         "schedules:write",
@@ -27,6 +26,7 @@ fn scopes_round_trip_and_exclude_legacy_and_deletion_permissions() {
 fn omitted_permissions_use_defaults_and_explicit_empty_permissions_stay_empty() {
     let default: CreateKeyRequest = serde_json::from_value(json!({"label":"agent"})).unwrap();
     assert_eq!(default.scope, Scope::DEFAULT);
+    assert!(!default.scope.contains(&Scope::SecretsRead));
     let empty: CreateKeyRequest =
         serde_json::from_value(json!({"label":"agent","scope":[]})).unwrap();
     assert!(empty.scope.is_empty());
@@ -59,6 +59,7 @@ fn write_permissions_include_only_their_own_resource_reads() {
         Scope::BillingRead,
         Scope::EarningsRead,
         Scope::KeysRead,
+        Scope::SecretsRead,
     ] {
         for required in Scope::ALL {
             assert_eq!(scope.allows(required), scope == required);

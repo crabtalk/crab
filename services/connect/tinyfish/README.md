@@ -24,16 +24,16 @@ crab deploy --from owner/tinyfish
 
 Set `TINYFISH_API_KEY` through credential setup. Access and usage charges depend on the connected TinyFish account and wallet.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
 `fetch` accepts 1–10 URLs and returns Markdown, HTML or JSON. Inspect both `results` and `errors` for partial failures. Conditional fetches accept one URL and may return null content when unchanged.
 
-`run` returns a run ID. Poll `run_status` explicitly or call `run_cancel`. Enable screenshots or HTML in `capture_config` before calling `step_screenshot` or `step_html`. Screenshots return base64 JPEG; HTML returns text.
+`run` returns a run ID. Poll `run_status` explicitly or call `run_cancel`. Enable screenshots or HTML in `options.capture_config` before calling `step_screenshot` or `step_html`. Screenshots return base64 JPEG; HTML returns text.
 
 Failed or cancelled runs may still incur provider charges for completed steps. Calls make one upstream request, with explicit pagination and polling and no automatic retries.
 
 Dedicated batch, monitor, wallet, profile, vault, synchronous automation, SSE, research-report, dataset and browser-session APIs are not included.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/tinyfish) · [Provider documentation](https://docs.tinyfish.ai/)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/tinyfish) · [Provider documentation](https://docs.tinyfish.ai/)

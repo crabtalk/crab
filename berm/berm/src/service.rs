@@ -286,6 +286,7 @@ impl Service {
         self.call_as(
             caller,
             None,
+            None,
             Client::default(),
             tool,
             args,
@@ -303,6 +304,7 @@ impl Service {
     pub async fn call_as(
         &self,
         caller: Option<Arc<str>>,
+        key: Option<Arc<str>>,
         user: Option<User>,
         client: Client,
         tool: &str,
@@ -317,6 +319,7 @@ impl Service {
                 tool,
                 args.into(),
                 caller.map(Caller::Outside),
+                key,
                 user,
                 client,
                 1,
@@ -353,6 +356,7 @@ impl Service {
     ) -> Result<Outcome> {
         let Link {
             caller,
+            key,
             user,
             client,
             depth,
@@ -366,6 +370,7 @@ impl Service {
                 tool,
                 args.into(),
                 caller,
+                key,
                 user,
                 client,
                 depth,
@@ -401,6 +406,7 @@ impl Service {
         tool: &str,
         args: Vec<u8>,
         caller: Option<Caller>,
+        key: Option<Arc<str>>,
         user: Option<User>,
         client: Client,
         depth: u32,
@@ -428,6 +434,7 @@ impl Service {
             tool: tool.into(),
             deps: self.deps.clone(),
             caller,
+            key,
             user,
             client,
             depth,
@@ -583,6 +590,7 @@ fn ended(finished: Invocation, buffer: usize) -> Result<Ended> {
 #[derive(Clone, Debug)]
 pub struct Link {
     pub caller: Option<Caller>,
+    pub key: Option<Arc<str>>,
     pub user: Option<User>,
     pub client: Client,
     pub depth: u32,

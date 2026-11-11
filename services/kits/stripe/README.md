@@ -10,7 +10,7 @@ Add the library to your service's crate:
 
 ```toml
 [dependencies]
-crabkit = { version = "0.1", features = ["stripe"] }
+crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features = ["stripe"] }
 ```
 
 The library is also the crate `crabkit-stripe` on its own.

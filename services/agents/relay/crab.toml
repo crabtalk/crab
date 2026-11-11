@@ -1,0 +1,100 @@
+image = "agents/relay"
+id = "aade4fa1a9694e6fa7853cf7c319f29c"
+public = false
+template = true
+buffer = 262144
+secret_resources = true
+
+[database]
+migrations = "migrations"
+size = "64MiB"
+
+[tools.register]
+access = "accounts"
+title = "Register agent"
+catalog = "relay.register"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.agents]
+access = "accounts"
+title = "List agents"
+catalog = "relay.agents"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.update_agent]
+access = "accounts"
+title = "Update agent"
+catalog = "relay.update-agent"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.open]
+access = "accounts"
+title = "Open conversation"
+catalog = "relay.open"
+budget = { cpu = 100000, read = 2000, written = 100, memory = 16 }
+
+[tools.pause]
+access = "accounts"
+title = "Pause conversation"
+catalog = "relay.pause"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.send]
+access = "accounts"
+title = "Send message"
+catalog = "relay.send"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.read]
+access = "accounts"
+title = "Read conversation"
+catalog = "relay.read"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.inbox]
+access = "accounts"
+title = "Read agent inbox"
+catalog = "relay.inbox"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.message_events]
+access = "accounts"
+title = "Agent message events"
+catalog = "relay.events"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.agent_keys]
+access = "accounts"
+title = "Agent API key grants"
+catalog = "relay.agent-keys"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.grant_agent]
+access = "accounts"
+title = "Grant agent access"
+catalog = "relay.grant-agent"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.revoke_agent]
+access = "accounts"
+title = "Revoke agent access"
+catalog = "relay.revoke-agent"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[crons]
+deliver = "* * * * *"
+
+[tools.deliver]
+budget = { cpu = 100000, read = 10000, written = 50, memory = 16 }
+
+[tools.delivery]
+access = "accounts"
+title = "Message delivery"
+catalog = "relay.delivery"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.retry_delivery]
+access = "accounts"
+title = "Retry message delivery"
+catalog = "relay.retry-delivery"
+budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }

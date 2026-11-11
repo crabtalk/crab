@@ -24,7 +24,7 @@ crab deploy --from owner/dataforseo
 
 Set `DATAFORSEO_AUTH_TOKEN` through credential setup to the Base64 encoding of `API_LOGIN:API_PASSWORD`, without the `Basic ` prefix. Use the API credentials from your DataForSEO account, not the account password. Requests spend the connected DataForSEO balance.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -34,4 +34,4 @@ Envelope and task failures return errors containing the original response, inclu
 
 Calls do not poll, paginate or retry automatically. Google Events Live Advanced and Pinterest Live are not included.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/dataforseo) · [Provider documentation](https://docs.dataforseo.com/v3/)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/dataforseo) · [Provider documentation](https://docs.dataforseo.com/v3/)

@@ -1,12 +1,16 @@
 //! What a service says it is, read from its image's [`ABI_SECTION`],
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, logo::Logo};
+use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, events::Source, logo::Logo};
 use anyhow::{Context, Result, bail};
-use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
+use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION, secrets::Id};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
-use std::{collections::BTreeMap, fmt, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    str::FromStr,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -173,15 +177,15 @@ pub struct EventSpec {
 /// What a service reaches for once it runs, by kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Deps {
-    /// Services it calls by name.
-    #[serde(default)]
-    pub calls: Vec<String>,
     #[serde(default)]
     pub http: Http,
     /// Secrets it names in `{secret:NAME}`, which the host substitutes and
     /// the guest never holds. Every credential's secrets are among them.
     #[serde(default)]
     pub secrets: Vec<String>,
+    /// Whether host-granted secret resources may be used in HTTP requests.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret_resources: bool,
     /// How a person gets its secrets, grouped by what they set up, by id. A
     /// secret is in one credential at most.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -305,6 +309,17 @@ fn masked() -> bool {
 }
 
 impl Deps {
+    pub fn check_secret_declarations(&self) -> Result<()> {
+        if self
+            .secrets
+            .iter()
+            .any(|name| Id::try_from(name.as_str()).is_ok())
+        {
+            bail!("Secret resource IDs cannot be declared as fixed secret names");
+        }
+        Ok(())
+    }
+
     // Images built before [http] stored destinations under syscall names.
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
@@ -359,9 +374,9 @@ impl Deps {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.calls.is_empty()
-            && self.http.is_empty()
+        self.http.is_empty()
             && self.secrets.is_empty()
+            && !self.secret_resources
             && self.vars.is_empty()
     }
 
@@ -375,7 +390,7 @@ impl Deps {
                 }
             }
         };
-        missing(&mut self.calls, &other.calls);
+        self.secret_resources |= other.secret_resources;
         missing(&mut self.secrets, &other.secrets);
         missing(&mut self.http.fetch, &other.http.fetch);
         missing(&mut self.http.proxy, &other.http.proxy);
@@ -478,13 +493,16 @@ impl Deps {
 
 impl fmt::Display for Deps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut items = self.calls.clone();
+        let mut items = Vec::new();
         for (name, hosts) in [("fetch", &self.http.fetch), ("proxy", &self.http.proxy)] {
             if !hosts.is_empty() {
                 items.push(format!("http {name} ({})", hosts.join(", ")));
             }
         }
         items.extend(self.secrets.iter().map(|name| format!("secret {name}")));
+        if self.secret_resources {
+            items.push("runtime secret resources".into());
+        }
         f.write_str(&items.join(", "))
     }
 }
@@ -523,8 +541,17 @@ impl Manifest {
         if self.tools.is_empty() {
             bail!("service declares no tools");
         }
+        self.deps.check_secret_declarations()?;
         for credential in self.deps.credentials.values() {
             Credential::check_hosts(&credential.hosts).map_err(anyhow::Error::msg)?;
+        }
+        let mut event_names = BTreeSet::new();
+        for tool in self.tools.iter().filter(|tool| tool.events.is_some()) {
+            let source =
+                Source::try_from(tool).with_context(|| format!("event source {}", tool.name))?;
+            if !event_names.insert(source.definition.name) {
+                bail!("event sources must have distinct names");
+            }
         }
         for name in self.crons.keys() {
             if !self

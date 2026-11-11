@@ -24,7 +24,7 @@ crab deploy --from owner/anyapi
 
 Set `ANYAPI_API_KEY` through the copy’s credential setup. Requests spend the connected AnyAPI wallet balance; charges vary by operation and selected source.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -34,4 +34,4 @@ Response filters do not reduce the upstream charge. `max_cost_usd` bounds eligib
 
 The service covers selected Facebook, Google, Instagram, LinkedIn, Maps, Reddit, TikTok, TikTok Shop, X, YouTube and web extraction operations. Discovery and account endpoints are not included.
 
-[Source and Rust API](https://github.com/crabtalk/crab/tree/dev/services/anyapi) · [Provider documentation](https://getanyapi.com/docs/quickstart)
+[Source and Rust API](https://github.com/crabtalk/crab/tree/main/services/connect/anyapi) · [Provider documentation](https://getanyapi.com/docs/quickstart)

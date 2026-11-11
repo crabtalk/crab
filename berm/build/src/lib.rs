@@ -54,7 +54,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
     let metadata = Metadata::read(&toolchain, dir)?;
     let service = metadata.package(dir, package)?;
     let project = Project::read(&service.manifest_path.dir().join(project::FILE))?;
-    project.name()?;
+    project.check_service()?;
     if !service
         .targets
         .iter()

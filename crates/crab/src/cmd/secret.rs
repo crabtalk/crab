@@ -2,7 +2,10 @@
 
 use crate::{cmd::request, fill::Form, runtime, terminal};
 use anyhow::{Context, Result, bail};
-use crabtalk_sdk::client::Client;
+use crabtalk_sdk::{
+    account::secret::{Create, Grant, Setup},
+    client::Client,
+};
 use std::{
     collections::BTreeMap,
     io::{self, IsTerminal, Read},
@@ -11,17 +14,86 @@ use std::{
 /// Set `name`'s secret `secret` to the value on stdin, its trailing newline
 /// dropped, sent only to its manifest destinations.
 pub fn put(client: &Client, name: &str, secret: &str) -> Result<()> {
-    let mut value = String::new();
-    std::io::stdin()
-        .read_to_string(&mut value)
-        .context("reading the secret's value from stdin")?;
-    let value = value.trim_end_matches(['\n', '\r']);
-    if value.is_empty() {
-        bail!("no value on stdin: `printf %s \"$VALUE\" | crab secret put {name} {secret}`");
-    }
-    runtime::wait(client.put_secret(name, secret, value))?;
+    let value = value()?;
+    runtime::wait(client.put_secret(name, secret, &value))?;
     eprintln!("set {name} {secret} for its manifest destinations");
     Ok(())
+}
+
+fn value() -> Result<String> {
+    let mut value = String::new();
+    io::stdin()
+        .read_to_string(&mut value)
+        .context("reading the secret value from stdin")?;
+    let value = value.trim_end_matches(['\n', '\r']);
+    if value.is_empty() {
+        bail!("Supply the secret value on stdin");
+    }
+    Ok(value.to_owned())
+}
+
+pub fn create_resource(client: &Client, name: &str) -> Result<()> {
+    let resource = runtime::wait(client.create_secret_resource(&Create {
+        name: name.into(),
+        value: value()?,
+    }))?;
+    println!("{}", resource.id);
+    Ok(())
+}
+pub fn resources(client: &Client) -> Result<()> {
+    terminal::json(&runtime::wait(client.secret_resources())?)
+}
+pub fn rotate_resource(client: &Client, id: &str) -> Result<()> {
+    runtime::wait(client.rotate_secret_resource(id, &value()?))?;
+    Ok(())
+}
+pub fn delete_resource(client: &Client, id: &str, yes: bool) -> Result<()> {
+    terminal::confirm(
+        yes,
+        &format!("delete secret resource {id} and all its grants"),
+    )?;
+    runtime::wait(client.delete_secret_resource(id))?;
+    Ok(())
+}
+pub fn grant_resource(client: &Client, id: &str, service: &str, hosts: &[String]) -> Result<()> {
+    runtime::wait(client.grant_secret_resource(
+        id,
+        &Grant {
+            service: service.into(),
+            hosts: hosts.to_vec(),
+        },
+    ))?;
+    Ok(())
+}
+pub fn revoke_resource(client: &Client, id: &str, service: &str, yes: bool) -> Result<()> {
+    terminal::confirm(
+        yes,
+        &format!("revoke {service}'s grant to secret resource {id}"),
+    )?;
+    runtime::wait(client.revoke_secret_resource(id, service))?;
+    Ok(())
+}
+pub fn request_resource(
+    client: &Client,
+    service: &str,
+    name: &str,
+    hosts: &[String],
+    id: Option<&str>,
+    context: &str,
+    json: bool,
+) -> Result<()> {
+    request::asked(
+        &runtime::wait(client.ask_secret_resource(
+            service,
+            Setup {
+                name: name.into(),
+                hosts: hosts.to_vec(),
+                id: id.map(str::to_owned),
+            },
+            context,
+        ))?,
+        json,
+    )
 }
 
 /// Print `name`'s secrets, by name, each beside the hosts it is sent to.

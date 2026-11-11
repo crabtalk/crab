@@ -50,6 +50,7 @@ use tokio::sync::MutexGuard;
 
 mod clock;
 mod env;
+pub mod image;
 mod images;
 mod secrets;
 
@@ -61,7 +62,7 @@ pub struct Test;
 pub struct TestHost {
     /// The host itself, for what this does not wrap.
     pub host: Host<Test>,
-    fetch: Http,
+    pub fetch: Http,
     images: Given,
     secrets: Granted,
     clock: Manual,
@@ -212,10 +213,24 @@ impl TestHost {
 
     /// Grant `service` the secret `secret` for `host`.
     pub fn grant(&self, service: &str, secret: &str, host: &str, value: &str) {
-        self.secrets.0.lock().insert(
+        self.secrets.values.lock().insert(
             (service.to_owned(), secret.to_owned(), host.to_owned()),
             value.to_owned(),
         );
+    }
+
+    pub fn grant_resource(&self, service: &str, id: &str, host: &str, owner: &str, value: &str) {
+        self.grant(service, id, host, value);
+        self.secrets
+            .owners
+            .lock()
+            .insert((service.into(), id.into(), host.into()), owner.into());
+    }
+
+    pub fn revoke_resource(&self, service: &str, id: &str, host: &str) {
+        let grant = (service.into(), id.into(), host.into());
+        self.secrets.values.lock().remove(&grant);
+        self.secrets.owners.lock().remove(&grant);
     }
 
     /// Milliseconds since the Unix epoch, as the clock stands.
@@ -233,8 +248,7 @@ impl TestHost {
         self.clock.0.fetch_add(by, Ordering::Relaxed);
     }
 
-    /// Run `image` as `service`, every public tool confirmed and each cron tool
-    /// without an expression.
+    /// Deploy `image` as `service`, confirming every public tool.
     pub async fn deploy(&self, service: &str, image: &[u8]) -> Result<Arc<Service>> {
         self.seeded(service, image, None).await
     }
@@ -582,7 +596,10 @@ pub struct Given(Arc<Mutex<HashMap<String, Vec<u8>>>>);
 
 /// The secrets the test granted, by service, secret and host.
 #[derive(Clone, Default)]
-pub struct Granted(Arc<Mutex<HashMap<Grant, String>>>);
+pub struct Granted {
+    values: Arc<Mutex<HashMap<Grant, String>>>,
+    owners: Arc<Mutex<HashMap<Grant, String>>>,
+}
 
 /// A service, a secret and a host.
 type Grant = (String, String, String);

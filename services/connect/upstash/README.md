@@ -30,7 +30,7 @@ Set the copy’s variables as needed:
 crab var set upstash UPSTASH_REDIS_REST_URL https://your-database.upstash.io
 ```
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/dev/services/README.md#building-from-source).
+Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 
@@ -40,4 +40,4 @@ Pipelines can interleave with other clients. Transactions do not interleave, but
 
 Batches can run any Redis command allowed by the token. Calls are not automatically retried, including increments and batches whose effects may already have occurred.
 
-[Rust library integration](https://github.com/crabtalk/crab/blob/dev/services/connect/upstash/LIBRARY.md) · [Provider documentation](https://upstash.com/docs/redis/features/restapi)
+[Rust library integration](https://github.com/crabtalk/crab/blob/main/services/connect/upstash/LIBRARY.md) · [Provider documentation](https://upstash.com/docs/redis/features/restapi)

@@ -15,7 +15,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use berm_lang::{Caller, Result, Schema, event, tool};
+use berm_lang::{Caller, Result, Schema, event, key, tool};
 
 berm_lang::declare_service!(fixture);
 
@@ -145,6 +145,9 @@ pub fn whoami() -> Result<String> {
     };
     if let Some(user) = berm_lang::user()? {
         said.push_str(&format!(" user {} {}", user.issuer, user.subject));
+    }
+    if let Some(key) = key::id()? {
+        said.push_str(&format!(" key {key}"));
     }
     Ok(said)
 }
@@ -420,4 +423,20 @@ pub struct Attempts {
     pub emit: String,
     pub after: String,
     pub call: String,
+}
+
+/// Calls or schedules a tool at a deployment address.
+#[tool]
+pub fn invoke(service: String, tool: String, args: String, delay: Option<u64>) -> Result<String> {
+    if let Some(delay) = delay {
+        berm_lang::after(delay, &service, &tool, &args)?;
+        return Ok(String::new());
+    }
+    Ok(berm_lang::call(&service, &tool, &args)?)
+}
+
+/// Answers `ok`; only accounts may call it.
+#[tool]
+pub fn fromaccounts() -> Result<String> {
+    Ok("ok".into())
 }

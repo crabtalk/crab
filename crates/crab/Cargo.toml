@@ -24,12 +24,14 @@ berm-host.workspace = true
 berm-oci.workspace = true
 chrono.workspace = true
 clap.workspace = true
+cargo_toml.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
 hex = { workspace = true, features = ["std"] }
 parking_lot.workspace = true
 pulldown-cmark.workspace = true
 ratatui.workspace = true
 regex.workspace = true
+ring.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp.workspace = true
 rusqlite.workspace = true

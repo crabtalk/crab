@@ -1,4 +1,4 @@
-name = "litescrape"
+image = "connect/litescrape"
 logo = "https://crab.talk/logos/templates/litescrape-v1.svg"
 template = true
 buffer = 8388608

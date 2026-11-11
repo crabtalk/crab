@@ -41,6 +41,7 @@ async fn a_context_registry_deploys_to_a_local_node_and_survives_restart() {
         packages: Vec::new(),
         registry: None,
         force: false,
+        build: true,
         from: None,
         version: None,
         auto_upgrade: false,

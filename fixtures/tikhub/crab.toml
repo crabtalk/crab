@@ -1,4 +1,4 @@
-name = "tikhub"
+image = "fixtures/tikhub"
 
 [http]
 fetch = ["api.tikhub.io"]

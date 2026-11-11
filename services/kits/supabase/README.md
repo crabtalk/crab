@@ -8,7 +8,7 @@ Supabase over HTTPS through `berm.http.fetch`: PostgREST tables and Postgres fun
 
 ```toml
 [dependencies]
-crabkit = { version = "0.1", features = ["supabase"] }
+crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features = ["supabase"] }
 ```
 
 The library is also the crate `crabkit-supabase` on its own.
