@@ -266,6 +266,11 @@ pub struct MeteredDay {
 impl std::ops::AddAssign for MeteredDay {
     fn add_assign(&mut self, other: Self) {
         self.used.stored = self.used.stored.max(other.used.stored);
+        if let Some(sample) = other.used.database
+            && self.used.database.is_none_or(|kept| sample.at > kept.at)
+        {
+            self.used.database = Some(sample);
+        }
         self.used += Meter::from(other.used);
         self.overage += other.overage;
     }

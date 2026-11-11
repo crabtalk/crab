@@ -34,10 +34,7 @@ use std::{
     collections::HashMap,
     ops::Deref,
     path::Path,
-    sync::{
-        Arc, Weak,
-        atomic::{AtomicI32, Ordering},
-    },
+    sync::{Arc, Weak},
     time::Duration,
 };
 use tokio::{
@@ -97,8 +94,6 @@ pub struct Inner<E: Env> {
     /// Held by a flush from writing what it took to dropping it from memory.
     #[cfg(feature = "test")]
     pub(crate) landing: sync::Mutex<()>,
-    /// The last day stored bytes were sampled, in days since the Unix epoch.
-    sampled: AtomicI32,
     /// The databases of the services that keep one.
     pub databases: Arc<Databases>,
     /// Where a chain's changes are committed.
@@ -227,7 +222,6 @@ impl<E: Env> Host<E> {
                 flushing: sync::Mutex::default(),
                 #[cfg(feature = "test")]
                 landing: sync::Mutex::default(),
-                sampled: AtomicI32::default(),
                 databases,
                 commits,
                 routes,
@@ -343,18 +337,8 @@ impl<E: Env> Host<E> {
                 tracing::warn!(peer, "handing over service usage failed: {e:#}");
             }
         }
-        let today = self.today();
-        if self.sampled.swap(today, Ordering::Relaxed) != today {
-            for service in self.berm.list() {
-                meter::sample(
-                    &self.store,
-                    &service.name,
-                    &self.databases,
-                    service.bytes,
-                    today,
-                )
-                .await?;
-            }
+        for service in self.berm.list() {
+            self.sample(&service.name).await?;
         }
         Ok(())
     }

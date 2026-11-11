@@ -33,11 +33,21 @@ pub struct TrialOffer {
     pub retention_days: u32,
 }
 
+/// Bytes allocated against the account's storage allowance.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct StorageAllocation {
+    pub databases: u64,
+    pub objects: u64,
+}
+
 /// An account's billing period: what its plan includes, what it used, and
 /// what it was warned of.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Period {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<StorageAllocation>,
     /// The plan's slug: comped, else bought, else Hobby.
     pub plan: String,
     /// Days since the Unix epoch, `until` excluded.
@@ -46,7 +56,7 @@ pub struct Period {
     pub included: Included,
     /// In the units of `included`; `stored` includes database reservations, images and pending uploads.
     pub used: Included,
-    /// Sampled database bytes and confirmed image or seed bytes.
+    /// Legacy storage aggregate; not database allocation.
     pub stored: u64,
     /// What its services used since `since` past the included amounts costs
     /// at the rates: what credit pays, in USD micros.

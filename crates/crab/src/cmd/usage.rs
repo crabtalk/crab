@@ -34,7 +34,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         "SQL CPU µs",
         "MEMORY",
         "PROXIED",
-        "STORED"
+        "DATABASE"
     );
     for day in &meters {
         println!(
@@ -50,7 +50,10 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             day.used.sql_cpu,
             display::bytes(day.used.memory),
             display::bytes(day.used.proxied),
-            display::bytes(day.used.stored),
+            day.used
+                .database
+                .map(|sample| display::bytes(sample.used))
+                .unwrap_or_else(|| "—".into()),
         );
     }
     Ok(())

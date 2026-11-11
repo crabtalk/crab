@@ -64,3 +64,5 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 ## License
 
 Apache-2.0
+
+Service usage includes an optional `database` snapshot with `used`, `limit` and epoch-second `at`. Missing snapshots from older hosts are unknown. Account periods expose `storage.databases` and `storage.objects`, the two components of allocated storage.

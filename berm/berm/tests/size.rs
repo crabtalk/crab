@@ -81,3 +81,41 @@ async fn a_limit_answers_the_size_it_replaces() -> Result<()> {
     assert_eq!(database.limit(4 << 20).await?, 256 << 10);
     Ok(())
 }
+
+#[tokio::test]
+async fn usage_measures_committed_pages_before_checkpoint_and_after_reopen() -> Result<()> {
+    let path = dir("usage")?;
+    let databases = Databases::new(path.clone());
+    let database = databases.get("p")?;
+    database.limit(4 << 20).await?;
+    let before = database.usage(100).await?;
+    database
+        .migrate(vec![own(
+            "0001.sql",
+            "CREATE TABLE t (x); INSERT INTO t VALUES (randomblob(1 << 20));",
+        )])
+        .await?;
+    let after = database.usage(101).await?;
+    assert!(after.used > before.used + (1 << 20));
+    assert!(after.used <= after.limit);
+    assert_eq!((after.limit, after.at), (4 << 20, 101));
+    let conn = rusqlite::Connection::open(databases.path("p"))?;
+    let pages: i64 = conn.pragma_query_value(None, "page_count", |row| row.get(0))?;
+    let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
+    assert_eq!(after.used, (pages * page) as u64);
+    conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO t VALUES (randomblob(1 << 19))")?;
+    assert_eq!(database.usage(101).await?.used, after.used);
+    conn.execute_batch("ROLLBACK")?;
+    assert!(std::fs::metadata(databases.wal("p"))?.len() > 0);
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+    assert_eq!(database.usage(102).await?.used, after.used);
+    database.limit(2 << 20).await?;
+    assert_eq!(database.usage(103).await?.limit, 2 << 20);
+    drop(conn);
+    drop(database);
+    drop(databases);
+    let reopened = Databases::new(path).get("p")?;
+    reopened.limit(2 << 20).await?;
+    assert_eq!(reopened.usage(104).await?.used, after.used);
+    Ok(())
+}

@@ -698,6 +698,30 @@ impl<E: Env> Host<E> {
         Ok(meter::read(&self.store, scope, name, today, unsaved).await?)
     }
 
+    pub(crate) async fn sample(&self, service: &str) -> Result<(), Denied> {
+        let deployed = self.deployed(service)?;
+        let database = self.database_usage(service).await?;
+        Ok(meter::sample(
+            &self.store,
+            service,
+            &self.databases,
+            deployed.bytes,
+            database,
+            self.today(),
+        )
+        .await?)
+    }
+
+    pub(crate) async fn database_usage(
+        &self,
+        service: &str,
+    ) -> Result<Option<wire::DatabaseUsage>, Denied> {
+        let Some(database) = self.kept(service) else {
+            return Ok(None);
+        };
+        Ok(Some(database?.usage(usage::seconds(&self.now)).await?))
+    }
+
     /// What `service` is using now.
     pub async fn live(&self, service: &str) -> Result<wire::Live, Denied> {
         let deployed = self.deployed(service)?;
@@ -713,6 +737,7 @@ impl<E: Env> Host<E> {
         };
         let (running, memory) = deployed.running.now();
         Ok(wire::Live {
+            database: self.database_usage(service).await?,
             running,
             memory,
             stored: meter::stored(&self.store, service, &self.databases, deployed.bytes).await?,

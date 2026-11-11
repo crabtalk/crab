@@ -16,6 +16,8 @@ Nested calls use qualified `owner/service` addresses or bare names within the ca
 
 `Host::event_page` reads a named `#[tool(events = "name")]` source under the supplied caller's authorization and checks its page framing before returning a resume position. A read without a cursor returns the current checkpoint. Tool authorization refusals return `403`; ordinary source failures return `400`. Native discovery metadata comes from `berm_api::events::Source`. MCP subscription management and callback delivery are not implemented.
 
+`Host::live` returns a fresh `database` snapshot: committed SQLite allocation, the writer's enforced capacity, and an epoch-second measurement time. WAL, logs and code caches are excluded. Recorded database snapshots refresh on deployment and each background flush; history reads do not write samples. The legacy `stored` field remains separate.
+
 ## License
 
 AGPL-3.0-only
