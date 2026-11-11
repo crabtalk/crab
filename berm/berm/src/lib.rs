@@ -1,9 +1,9 @@
 //! berm — the runtime of services.
 //!
 //! A service is one hash-pinned WebAssembly image, run under wasmtime. berm
-//! compiles it once, holds it by the name it answers to, and instantiates it
-//! per invocation; nothing survives the call. A service reaches the services
-//! deployed beside it through `berm.call`, resolved by [`Calls::resolve`], and
+//! compiles it at deployment, caches executable code within configured limits,
+//! and reloads it on demand. Every invocation gets a fresh instance and store.
+//! A service reaches the services deployed beside it through `berm.call`, resolved by [`Calls::resolve`], and
 //! otherwise only the [`Syscall`]s the embedder passed in, built with
 //! [`syscall`]'s constructors; any other import traps. What `berm.set` and
 //! `berm.emit` write comes back from [`Service::call`] as [`Changes`] for the
@@ -27,7 +27,9 @@ pub use engine::{Config, Engine, MissingHostCall, PastMost};
 use journal::Journal;
 pub use journal::{Changes, Log, Write};
 use meter::Own;
-pub use meter::{ByTool, Meters, Pool, Running};
+pub use meter::{ByTool, MemoryLimit, Meters, Pool, Running};
+use parking_lot::Mutex;
+use service::Load;
 pub use service::{Ended, Invocation, Link, Outcome, Refused, Service};
 use std::{
     collections::BTreeMap,
@@ -44,6 +46,7 @@ pub use syscall::call::{
 mod bound;
 pub mod chain;
 pub mod clock;
+mod code;
 #[cfg(feature = "sqlite")]
 pub mod database;
 mod engine;
@@ -182,6 +185,7 @@ pub struct Berm {
     services: RwLock<BTreeMap<String, Arc<Service>>>,
     /// How `berm.call` reaches services.
     calls: Calls,
+    activity: Mutex<BTreeMap<String, Weak<Running>>>,
     /// What the embedder gives every service, beside what berm serves itself.
     syscalls: Vec<Syscall>,
     /// This runtime, as the syscalls berm serves hold it. A deployed service
@@ -197,6 +201,7 @@ impl Berm {
             engine: engine.clone(),
             services: RwLock::new(BTreeMap::new()),
             calls,
+            activity: Mutex::default(),
             syscalls,
             me: me.clone(),
         })
@@ -204,13 +209,11 @@ impl Berm {
 
     /// Compile `image` and make its tools reachable as `name`.
     ///
-    /// Refused when the image does not compile, or when its pool's images, the
-    /// one it replaces left out, would hold more than the pool's limit.
+    /// Refused when the image does not compile or exceeds its pool's limit
+    /// after idle code is reclaimed.
     pub fn deploy(&self, name: &str, image: &[u8]) -> Result<Arc<Service>> {
-        let service = self.load(name, image)?;
-        service
-            .pool
-            .fits(self.get(name).map_or(0, |replaced| replaced.bytes))?;
+        let service = self.load(name, image, Load::Deploy)?;
+        service.pool.fits(service.bytes)?;
         self.services
             .write()
             .expect("deployed services")
@@ -225,8 +228,19 @@ impl Berm {
             || self.syscalls.iter().any(|syscall| syscall.name == name)
     }
 
-    /// Compile an image against the syscalls this runtime serves.
-    fn load(&self, name: &str, image: &[u8]) -> Result<Arc<Service>> {
+    /// Restore a previously validated deployment with cold executable code.
+    /// `bytes` is the recorded footprint. Without it, compile once to measure
+    /// the footprint, then discard the executable image.
+    pub fn restore(&self, name: &str, image: &[u8], bytes: Option<u64>) -> Result<Arc<Service>> {
+        let service = self.load(name, image, bytes.map_or(Load::Legacy, Load::Restore))?;
+        self.services
+            .write()
+            .expect("deployed services")
+            .insert(name.to_owned(), service.clone());
+        Ok(service)
+    }
+
+    fn load(&self, name: &str, image: &[u8], load: Load) -> Result<Arc<Service>> {
         let mut syscalls = self.syscalls.clone();
         syscalls.push(syscall::call::syscalls(self.me.clone(), self.calls.clone()));
         // Every call of the ABI links, so an image is refused only for one this
@@ -236,22 +250,37 @@ impl Berm {
                 syscalls.push(syscall::refused(name.to_string()));
             }
         }
+        let running = {
+            let mut activity = self.activity.lock();
+            let entry = activity.entry(name.to_owned()).or_default();
+            let running = entry.upgrade().unwrap_or_default();
+            *entry = Arc::downgrade(&running);
+            running
+        };
         Ok(Arc::new(Service::load(
             &self.engine,
             image,
             name,
             &syscalls,
             &self.calls,
+            load,
+            running,
         )?))
     }
 
-    /// Forget one and drop its image. `false` if nothing answered to that name.
+    /// Forget one deployment. Active calls retain their executable images.
+    /// `false` if nothing answered to that name.
     pub fn remove(&self, name: &str) -> bool {
-        self.services
+        let removed = self
+            .services
             .write()
             .expect("deployed services")
             .remove(name)
-            .is_some()
+            .is_some();
+        self.activity
+            .lock()
+            .retain(|_, running| running.strong_count() != 0);
+        removed
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<Service>> {

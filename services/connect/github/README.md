@@ -16,7 +16,7 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 
 ## Deploy your own
 
-If this page offers **Deploy your own**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
+If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
 crab deploy --from owner/github

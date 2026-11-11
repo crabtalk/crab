@@ -17,20 +17,23 @@ berm-abi.workspace = true
 cpu-time.workspace = true
 futures-util.workspace = true
 hex = { workspace = true, features = ["std"] }
+lru.workspace = true
 parking_lot.workspace = true
 ring.workspace = true
 rusqlite = { workspace = true, optional = true }
 sha2.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json = { workspace = true, features = ["std"] }
+tempfile.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 url = { workspace = true, features = ["std"] }
+wasmparser.workspace = true
 wasmtime.workspace = true
-tokio = { workspace = true, optional = true }
 
 [features]
 # `sqlite`: a service's own SQLite database, for a host serving `berm.sql`.
-sqlite = ["dep:rusqlite", "dep:tokio"]
+sqlite = ["dep:rusqlite"]
 
 [dev-dependencies]
 rusqlite.workspace = true

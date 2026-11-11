@@ -1,7 +1,8 @@
-//! One compiled service, and the state of one invocation of it.
+//! One deployment and the state of one invocation of it.
 
 use crate::{
     Caller, Callsite, Client, Deps, Meter, Meters, Syscall, User, abi, chain,
+    code::Source,
     engine::{self, Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Pool, Running},
@@ -22,24 +23,25 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use wasmtime::{Memory, ModuleExport};
+use wasmparser::{ExternalKind, Parser, Payload};
+use wasmtime::Memory;
 
-/// One compiled service: an image, its tools, and the syscalls it was linked
-/// against. Compilation is paid once; every invocation gets a fresh instance,
-/// and no guest state crosses between calls.
+/// One deployment's metadata, source image and host bindings.
+/// Executable code may be cold; no guest state crosses between calls.
 pub struct Service {
     /// What this service was deployed as, as every syscall reports it.
     pub name: Arc<str>,
     /// sha256 of the image; different bytes deployed under one name differ here.
     pub digest: String,
-    image: Image,
-    /// Bytes its image and its compiled code take.
+    image: Arc<Source>,
+    reserve: Arc<Pool>,
+    /// Image length plus compiled image range recorded at deployment.
     pub bytes: u64,
     /// Read from the image at load, without running anything.
     pub manifest: Manifest,
     /// The manifest's deps, as every invocation's [`Callsite`] carries them.
     deps: Arc<Deps>,
-    /// Each tool beside its export, resolved once, and whether it is a query.
+    /// Tool metadata, independent of executable residency.
     tools: BTreeMap<String, Tool>,
     /// What each invocation runs inside.
     enter: Enter,
@@ -50,7 +52,7 @@ pub struct Service {
     issuer: Arc<str>,
     /// Told of each invocation once it ran.
     invoked: Invoked,
-    /// What its invocations hold while they run.
+    /// Retained code and active invocations across deployment generations.
     pub running: Arc<Running>,
     /// What it draws its memory from, its image counted in it while it is
     /// loaded.
@@ -60,48 +62,62 @@ pub struct Service {
 }
 
 struct Tool {
-    export: ModuleExport,
     query: bool,
     /// What one invocation of it is held to.
     budget: Budget,
 }
 
-impl Drop for Service {
-    fn drop(&mut self) {
-        self.pool.unload(self.bytes);
-    }
+pub(crate) enum Load {
+    Deploy,
+    Restore(u64),
+    Legacy,
 }
 
 impl Service {
-    /// Compile `image` and resolve its exports, giving it `syscalls`. The
-    /// engine's code cache makes a second load of the same bytes cheap across
-    /// processes as well as within one.
     pub(crate) fn load(
         engine: &Engine,
         image: &[u8],
         name: impl Into<Arc<str>>,
         syscalls: &[Syscall],
         calls: &Calls,
+        load: Load,
+        running: Arc<Running>,
     ) -> Result<Self> {
-        let (compiled, bytes) = Image::compile(engine, image, syscall::table(syscalls)?)
-            .context("failed to compile service")?;
+        let table = syscall::table(syscalls)?;
+        let (compiled, bytes) = match load {
+            Load::Restore(bytes) => (None, bytes),
+            load => {
+                let (compiled, bytes) = Image::compile(engine, image, table.clone())
+                    .context("failed to compile service")?;
+                (matches!(load, Load::Deploy).then_some(compiled), bytes)
+            }
+        };
 
         let manifest = Manifest::try_from(image)?;
-        let tools: BTreeMap<String, Tool> = compiled
-            .exports()
-            .filter_map(|(symbol, export)| {
-                let name = symbol.strip_prefix(abi::TOOL_PREFIX)?;
-                let spec = manifest.tools.iter().find(|spec| spec.name == name);
-                let tool = Tool {
-                    export,
-                    query: spec.is_some_and(|spec| spec.query),
-                    budget: spec
-                        .and_then(|spec| spec.budget)
-                        .map_or(compiled.budget, |limits| limits.over(compiled.budget)),
-                };
-                Some((name.to_owned(), tool))
-            })
-            .collect();
+        let mut tools = BTreeMap::new();
+        for payload in Parser::new(0).parse_all(image) {
+            if let Payload::ExportSection(exports) = payload? {
+                for export in exports {
+                    let export = export?;
+                    if export.kind != ExternalKind::Func {
+                        continue;
+                    }
+                    let Some(name) = export.name.strip_prefix(abi::TOOL_PREFIX) else {
+                        continue;
+                    };
+                    let spec = manifest.tools.iter().find(|spec| spec.name == name);
+                    tools.insert(
+                        name.to_owned(),
+                        Tool {
+                            query: spec.is_some_and(|spec| spec.query),
+                            budget: spec
+                                .and_then(|spec| spec.budget)
+                                .map_or(engine.budget, |limits| limits.over(engine.budget)),
+                        },
+                    );
+                }
+            }
+        }
         if tools.is_empty() {
             bail!("service exports no tools");
         }
@@ -110,7 +126,7 @@ impl Service {
         }
 
         for (name, tool) in &tools {
-            if let Some(key) = tool.budget.past(&compiled.most) {
+            if let Some(key) = tool.budget.past(&engine.most) {
                 return Err(engine::PastMost {
                     tool: name.clone(),
                     key,
@@ -150,12 +166,20 @@ impl Service {
 
         let name: Arc<str> = name.into();
         let pool = (calls.pool)(&name);
-        pool.load(bytes);
+        let source = Source::new(
+            engine,
+            image,
+            table,
+            pool.clone(),
+            running.clone(),
+            compiled,
+        )?;
         Ok(Self {
             issuer: (calls.named)(&name).into(),
             name,
             digest: digest::hex(image),
-            image: compiled,
+            image: source,
+            reserve: engine.reserve.clone(),
             bytes,
             deps: Arc::new(manifest.deps.clone()),
             manifest,
@@ -163,7 +187,7 @@ impl Service {
             enter: calls.enter.clone(),
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
-            running: Arc::default(),
+            running,
             pool,
             deadline: engine.deadline,
         })
@@ -224,6 +248,7 @@ impl Service {
             imports: _,
             buffer: _,
             database: _,
+            database_size: _,
             kits: _,
             deps,
             events: _,
@@ -421,7 +446,6 @@ impl Service {
     ) -> Result<Ended> {
         let (at_ms, began) = ((self.now)(), Instant::now());
         let Some(Tool {
-            export,
             query: declared,
             budget,
         }) = self.tools.get(tool)
@@ -460,11 +484,16 @@ impl Service {
             ..Meter::default()
         });
         let scope = (self.enter)(self, &at).await?;
+        let image = if args.len() <= self.manifest.buffer {
+            Some(self.image.executable(deadline).await?)
+        } else {
+            None
+        };
         // A refusal drops the scope, which undoes what it holds.
         let reserved = Held::new(
             self.running.clone(),
             self.pool.clone(),
-            self.image.reserve.clone(),
+            self.reserve.clone(),
             budget.memory,
         )?;
         let own = scope.own();
@@ -494,9 +523,10 @@ impl Service {
                 result: Output::Failed("arguments exceeded the input buffer".to_owned()),
                 denied: false,
             }),
-            false => self
-                .image
-                .call(export, invocation)
+            false => image
+                .as_ref()
+                .expect("input fits the buffer")
+                .call(tool, invocation)
                 .await
                 .with_context(|| format!("service trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),

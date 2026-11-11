@@ -8,13 +8,17 @@ Implement `Env` to supply HTTP transport, image fetching, peer calls, secret res
 
 The `test` feature adds `berm_host::test`: a host whose edges a test holds, running a service's built image under the real engine. Fetches answer what the test arranged, the clock stands where the test set it, and the test fires the wakes the service armed.
 
-`Config` controls instance capacity, the most and the default budget of CPU, rows read, rows written and memory, call depth, the compiled-code cache, and the database directory. See [`crab dev`](../../crates/crab) for a daemon using this host.
+`Config` controls instance capacity, the most and the default budget of CPU, rows read, rows written and memory, call depth, executable residency, the disk compilation cache, and the database directory. See [`crab dev`](../../crates/crab) for a daemon using this host.
+
+`code_cache` defaults to 64 MiB of accounted image bytes and `code_idle` to `"5m"`. Idle code is evicted without stopping or removing its deployment. The next outside, nested, scheduled or peer call reloads it. `cache_dir` defaults to `cache` beside the host state file and retains Wasmtime artifacts across restarts. Boot restores metadata without compiling code; older rows without a footprint compile once, record it and discard the executable. Restoration keeps existing deployments discoverable when their account allowance has been lowered. Metadata reads and storage sampling include cold services without warming them. Cache expiry does not change execution memory-time charges.
 
 `host::Caller.key` carries the authenticated API key ID. The embedder verifies it; the local host trusts supplied caller metadata. `berm_lang::key::id()` reads that ID throughout the chain, including peer links. Scheduled calls carry no key.
 
 Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway.
 
 `Host::event_page` reads a named `#[tool(events = "name")]` source under the supplied caller's authorization and checks its page framing before returning a resume position. A read without a cursor returns the current checkpoint. Tool authorization refusals return `403`; ordinary source failures return `400`. Native discovery metadata comes from `berm_api::events::Source`. MCP subscription management and callback delivery are not implemented.
+
+`Host::live` returns a fresh `database` snapshot: committed SQLite allocation, the writer's enforced capacity, and an epoch-second measurement time. WAL, logs and code caches are excluded. Recorded database snapshots refresh on deployment and each background flush; history reads do not write samples. The legacy `stored` field remains separate.
 
 ## License
 

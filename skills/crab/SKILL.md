@@ -18,7 +18,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - `crab dev -d` starts the local host at `127.0.0.1:7777` in the background, one per machine. `crab --context default deploy [dir]` builds and deploys there the service in `dir` (default `.`), or workspace services beneath it not marked `deploy = false`; `-p` selects names across the workspace instead, starting the host when it is not running; run it again after a change. `crab dev status` says whether the host runs; `crab dev stop` stops it. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
 - A service with standard-library dependencies enables `berm-lang = { workspace = true, features = ["std"] }` and omits `#![no_std]`. Default guest builds remain `no_std`.
 - Size each tool's `crab.toml` budget from its built WebAssembly execution before Cloud deployment or template publication. Native tests and image builds do not establish valid runtime budgets. Follow [Sizing tool budgets](#sizing-tool-budgets).
-- On Cloud each service reserves its `[database] size`, 1GiB when unset, whatever it holds. An account's services reserve at most its plan's storage together, and a deploy past it is refused, so size each service to what it holds (`crab usage <service>` reports `stored`).
+- On Cloud each service reserves its `[database] size`, 1GiB when unset, whatever it holds. Builds carry this default into the image for template copies. Redeployments keep their existing reservation unless explicitly resized. An account's services reserve at most its plan's storage together, and a deploy past it is refused, so size each service to what it holds (`crab usage <service>` reports database allocation; missing snapshots show `—`).
 
 ## Sizing tool budgets
 
@@ -29,7 +29,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 `crab budget <service> <tool>` suggests budgets from Cloud's last 30 days. CPU and rows use successful chain totals: maxima below 100 runs, p99 from 100; failed runs are excluded. Memory uses the tool's own recorded peak. The suggestion does not check host ceilings or cover unobserved worst cases. Full workflow and units: [Budgets](https://crab.talk/docs/guides/budgets).
 
-Memory is billed at the reserved budget for the call's full duration, waiting included. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crab.talk/docs/development/budgets).
+Memory is billed at the reserved budget during execution, waiting on fetches or other services included. Cold code loading is excluded. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crab.talk/docs/development/budgets).
 
 ## Reusing services and libraries
 

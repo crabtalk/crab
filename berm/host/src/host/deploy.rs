@@ -4,7 +4,7 @@ use crate::{
     Denied, deny,
     env::{Env, Images, Secrets},
     host::{self, Host},
-    record::{meter, usage},
+    record::usage,
     state::service,
     wake::cron,
 };
@@ -156,6 +156,8 @@ impl<E: Env> Host<E> {
                     denied.explained(PAST_MOST)
                 } else if e.downcast_ref::<berm::MissingHostCall>().is_some() {
                     denied.explained(MISSING_HOST_CALL)
+                } else if e.is::<berm::MemoryLimit>() {
+                    denied.explained(Denied::MEMORY)
                 } else {
                     denied
                 }
@@ -168,6 +170,7 @@ impl<E: Env> Host<E> {
                 &digest,
                 &manifest.version,
                 size,
+                deployed.bytes,
                 deprecated,
                 cron_tools,
                 manifest.crons.clone(),
@@ -197,18 +200,10 @@ impl<E: Env> Host<E> {
         {
             tracing::error!(service, error = %e, "the refused seed stays");
         }
-        if let Ok(Installed {
-            service: deployed, ..
-        }) = &installed
-        {
+        if installed.is_ok() {
             self.waking.notify_one();
-            // Stored bytes are otherwise sampled once a day, so a service
-            // deployed or seeded after the day's sample would read as before.
-            let today = self.today();
-            if let Err(e) =
-                meter::sample(&self.store, service, &self.databases, deployed.bytes, today).await
-            {
-                tracing::warn!(service, "sampling stored bytes failed: {e:#}");
+            if let Err(e) = self.sample(service).await {
+                tracing::warn!(service, "sampling usage failed: {e:#}");
             }
         }
         installed

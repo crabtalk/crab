@@ -4,7 +4,7 @@ Check your HTTP endpoints on a schedule and retain their observations. Each priv
 
 ## Deploy and watch a URL
 
-If this listing offers **Deploy your own**, deploy a copy without a local build:
+If this listing offers **Deploy**, deploy a copy without a local build:
 
 ```sh
 crab deploy --from owner/uptime

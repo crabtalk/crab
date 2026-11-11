@@ -4,7 +4,7 @@ Count website page views, daily visitors, referring hosts and reported AI crawle
 
 ## Deploy and add a site
 
-If this listing offers **Deploy your own**, create a private copy without a local build:
+If this listing offers **Deploy**, create a private copy without a local build:
 
 ```sh
 crab deploy --from owner/analytics

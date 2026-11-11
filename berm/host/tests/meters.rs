@@ -215,3 +215,46 @@ async fn a_read_during_a_flush_counts_each_call_once() -> Result<()> {
     assert_eq!(counted(&host).await?, before);
     Ok(())
 }
+
+#[tokio::test]
+async fn database_samples_reach_live_recent_and_history_after_restart() -> Result<()> {
+    let mut host = TestHost::open(NOW).await?;
+    host.deploy(FIXTURE, &fixture::image("berm-keeper")?)
+        .await?;
+    let live = host.host.live(FIXTURE).await?;
+    let database = live.database.expect("fixture database");
+    assert!(database.used > 0 && database.used <= database.limit);
+    host.host
+        .call(
+            FIXTURE,
+            Some(&caller()),
+            "put",
+            br#"{"word":"database snapshot"}"#.to_vec(),
+            false,
+        )
+        .await?;
+    host.flush().await?;
+    let recent = host.host.recent().await?;
+    let sample = recent
+        .iter()
+        .find(|(name, used)| name == FIXTURE && used.tool.is_empty())
+        .unwrap()
+        .1
+        .database
+        .unwrap();
+    assert_eq!(sample, host.host.live(FIXTURE).await?.database.unwrap());
+    host.flush().await?;
+    host.reopen().await?;
+    let history = host.host.meters(FIXTURE).await?;
+    assert_eq!(
+        history
+            .iter()
+            .find(|used| used.tool.is_empty())
+            .unwrap()
+            .database
+            .unwrap()
+            .used,
+        sample.used
+    );
+    Ok(())
+}

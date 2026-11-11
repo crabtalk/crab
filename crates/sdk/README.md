@@ -14,7 +14,7 @@ crabtalk-sdk = { version = "0.1", features = ["client"] }
 | `client`  | `crabtalk_sdk::client`, the HTTP client (reqwest) |
 | `utoipa`  | `utoipa::ToSchema` on every wire type             |
 
-With no features, the crate is the request and response types, with `serde` only.
+With no features, the crate provides request and response types and display formatting, without the HTTP client.
 
 ## Usage
 
@@ -56,6 +56,7 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 | `services` | Services: deploys, secrets, visibility, meters, costs |
 | `system`  | `/meta` (version, rates) and feedback               |
 | `error`   | The two error envelopes the API answers with        |
+| `format`  | Byte counts in B, KB, MB, GB and TB (powers of 1024) |
 | `client`  | `Client`, `Owner`, `Error` (feature `client`)        |
 
 `berm_api` is re-exported for the service, call and meter types the service calls return.
@@ -63,3 +64,5 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 ## License
 
 Apache-2.0
+
+Service usage includes an optional `database` snapshot with `used`, `limit` and epoch-second `at`. Missing snapshots from older hosts are unknown. Account periods expose `storage.databases` and `storage.objects`, the two components of allocated storage.

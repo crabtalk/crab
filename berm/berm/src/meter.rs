@@ -1,13 +1,14 @@
 //! What a chain used, by service.
 
-use crate::Refused;
+use crate::{Refused, code::Code};
 use anyhow::{Result, bail};
 use berm_api::{Meter, host::Memory};
 use parking_lot::Mutex;
 use std::{
     collections::BTreeMap,
+    error, fmt,
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicU64, Ordering},
     },
     time::Instant,
@@ -36,9 +37,11 @@ impl Meters {
     }
 }
 
-/// What a service's invocations hold while they run.
+/// A service's retained code and active invocations, across deployment generations.
 #[derive(Debug, Default)]
 pub struct Running {
+    /// Accounted bytes of retained executable images, not process RSS.
+    pub loaded: AtomicU64,
     calls: AtomicU64,
     memory: AtomicU64,
 }
@@ -54,15 +57,35 @@ impl Running {
 }
 
 /// The memory the services drawing from it hold at once: their images and
-/// compiled code while they are deployed, and the linear memory of their
-/// invocations while they run.
+/// compiled code while retained, and the linear memory of their invocations
+/// while they run. Loaded bytes are estimates, not measured process RSS.
 #[derive(Debug, Default)]
 pub struct Pool {
     /// Bytes; `0` is no limit.
     limit: AtomicU64,
     loaded: AtomicU64,
     running: AtomicU64,
+    pub(crate) codes: Mutex<Vec<Weak<Code>>>,
 }
+
+/// Retained executable code exceeds a scope's memory allowance.
+#[derive(Debug)]
+pub struct MemoryLimit {
+    pub held: u64,
+    pub limit: u64,
+}
+
+impl fmt::Display for MemoryLimit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "retained code would hold {} bytes of memory, past its limit of {}",
+            self.held, self.limit
+        )
+    }
+}
+
+impl error::Error for MemoryLimit {}
 
 impl Pool {
     /// Hold it to `bytes` from the next growth on; `0` is no limit.
@@ -88,7 +111,14 @@ impl Pool {
             running,
             ..
         } = self.now();
-        limit != 0 && loaded + running >= limit
+        if limit == 0 || loaded + running < limit {
+            return false;
+        }
+        self.reclaim();
+        let Memory {
+            loaded, running, ..
+        } = self.now();
+        loaded + running >= limit
     }
 
     pub(crate) fn load(&self, bytes: u64) {
@@ -99,22 +129,49 @@ impl Pool {
         self.loaded.fetch_sub(bytes, Ordering::Relaxed);
     }
 
-    /// Refused when its images, `replaced` bytes of them left out, hold more
-    /// than its limit.
-    pub(crate) fn fits(&self, replaced: u64) -> Result<()> {
-        let Memory { limit, loaded, .. } = self.now();
-        let loaded = loaded.saturating_sub(replaced);
+    /// Refused when an image or retained code exceeds the limit after reclamation.
+    pub(crate) fn fits(&self, incoming: u64) -> Result<()> {
+        let Memory {
+            limit, mut loaded, ..
+        } = self.now();
+        if limit != 0 && incoming > limit {
+            return Err(MemoryLimit {
+                held: incoming,
+                limit,
+            }
+            .into());
+        }
         if limit != 0 && loaded > limit {
-            bail!("its images would hold {loaded} bytes of memory, past its limit of {limit}");
+            self.reclaim();
+            loaded = self.now().loaded;
+        }
+        if limit != 0 && loaded > limit {
+            return Err(MemoryLimit {
+                held: loaded,
+                limit,
+            }
+            .into());
         }
         Ok(())
+    }
+
+    fn reclaim(&self) {
+        let codes: Vec<_> = self.codes.lock().iter().filter_map(Weak::upgrade).collect();
+        for code in codes {
+            code.reclaim(self);
+        }
     }
 
     /// Take `bytes` more for an invocation, refused past its limit.
     pub(crate) fn grow(&self, bytes: u64) -> Result<()> {
         let running = self.running.fetch_add(bytes, Ordering::Relaxed) + bytes;
-        let held = running + self.loaded.load(Ordering::Relaxed);
+        let mut held = running + self.loaded.load(Ordering::Relaxed);
         let limit = self.limit.load(Ordering::Relaxed);
+        if limit != 0 && held > limit {
+            self.reclaim();
+            let now = self.now();
+            held = now.loaded + now.running;
+        }
         if limit != 0 && held > limit {
             self.running.fetch_sub(bytes, Ordering::Relaxed);
             bail!("growing would hold {held} bytes of memory, past its limit of {limit}");

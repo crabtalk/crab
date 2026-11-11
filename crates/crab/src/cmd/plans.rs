@@ -2,7 +2,7 @@
 
 use crate::{format, runtime, terminal};
 use anyhow::Result;
-use crabtalk_sdk::{account::org::Kind, client::Client};
+use crabtalk_sdk::{account::org::Kind, client::Client, format as display};
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
     let plans = runtime::wait(client.plans())?;
@@ -39,10 +39,10 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             );
             println!(
                 "  {} storage included; data kept {} days after credit ends",
-                format::bytes(included.stored),
+                display::bytes(included.stored),
                 offer.retention_days
             );
-            println!("  {} of memory held at once", format::bytes(plan.memory));
+            println!("  {} of memory held at once", display::bytes(plan.memory));
             continue;
         }
         if included.runs
@@ -63,11 +63,11 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             format::count(included.read),
             format::count(included.written),
             format::gb_hours(included.held),
-            format::bytes(included.stored)
+            display::bytes(included.stored)
         );
         match plan.memory {
             0 => println!("  no limit on memory held"),
-            memory => println!("  {} of memory held at once", format::bytes(memory)),
+            memory => println!("  {} of memory held at once", display::bytes(memory)),
         }
     }
     Ok(())

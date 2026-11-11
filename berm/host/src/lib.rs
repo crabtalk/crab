@@ -54,6 +54,16 @@ pub struct Denied {
 }
 
 impl Denied {
+    pub(crate) const MEMORY: &str = "E0019";
+
+    pub(crate) fn memory() -> Self {
+        deny(
+            StatusCode::TOO_MANY_REQUESTS,
+            "the account holds as much memory as it may; retry",
+        )
+        .explained(Self::MEMORY)
+    }
+
     /// It, explained by `code`.
     pub fn explained(self, code: &'static str) -> Self {
         Self {
@@ -90,6 +100,9 @@ impl std::error::Error for Denied {}
 
 impl From<anyhow::Error> for Denied {
     fn from(e: anyhow::Error) -> Self {
+        if e.is::<berm::MemoryLimit>() {
+            return deny(StatusCode::TOO_MANY_REQUESTS, e.to_string()).explained(Self::MEMORY);
+        }
         match e.downcast::<Self>() {
             Ok(denied) => denied,
             Err(e) => {

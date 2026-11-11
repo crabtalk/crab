@@ -21,7 +21,7 @@ use berm_api::{
 use std::{
     collections::{BTreeMap, HashMap},
     ops::Range,
-    sync::Arc,
+    sync::{Arc, atomic::Ordering},
     time::{Duration, Instant},
 };
 
@@ -34,9 +34,6 @@ const NO_WEBHOOK_TOOL: &str = "E0014";
 /// The error code an event for a stopped or held service carries.
 const PAUSED: &str = "E0018";
 const SERVICE_CALLERS: &str = "E0049";
-
-/// The error code an event for an account at its memory limit carries.
-const NO_MEMORY: &str = "E0019";
 
 impl<E: Env> Host<E> {
     /// `service`'s IDL.
@@ -631,11 +628,7 @@ impl<E: Env> Host<E> {
             .explained(PAUSED));
         }
         if self.pools.pool(host::split(service).0).full() {
-            return Err(deny(
-                StatusCode::TOO_MANY_REQUESTS,
-                "the account holds as much memory as it may; retry",
-            )
-            .explained(NO_MEMORY));
+            return Err(Denied::memory());
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let started = self.calls.start();
@@ -698,6 +691,30 @@ impl<E: Env> Host<E> {
         Ok(meter::read(&self.store, scope, name, today, unsaved).await?)
     }
 
+    pub(crate) async fn sample(&self, service: &str) -> Result<(), Denied> {
+        let deployed = self.deployed(service)?;
+        let database = self.database_usage(service).await?;
+        Ok(meter::sample(
+            &self.store,
+            service,
+            &self.databases,
+            deployed.bytes,
+            database,
+            self.today(),
+        )
+        .await?)
+    }
+
+    pub(crate) async fn database_usage(
+        &self,
+        service: &str,
+    ) -> Result<Option<wire::DatabaseUsage>, Denied> {
+        let Some(database) = self.kept(service) else {
+            return Ok(None);
+        };
+        Ok(Some(database?.usage(usage::seconds(&self.now)).await?))
+    }
+
     /// What `service` is using now.
     pub async fn live(&self, service: &str) -> Result<wire::Live, Denied> {
         let deployed = self.deployed(service)?;
@@ -713,6 +730,7 @@ impl<E: Env> Host<E> {
         };
         let (running, memory) = deployed.running.now();
         Ok(wire::Live {
+            database: self.database_usage(service).await?,
             running,
             memory,
             stored: meter::stored(&self.store, service, &self.databases, deployed.bytes).await?,
@@ -747,7 +765,7 @@ impl<E: Env> Host<E> {
             .map(|(name, deployed)| {
                 let (_, running) = deployed.running.now();
                 let held = wire::Held {
-                    loaded: deployed.bytes,
+                    loaded: deployed.running.loaded.load(Ordering::Relaxed),
                     running,
                 };
                 (name, held)

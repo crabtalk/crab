@@ -733,10 +733,22 @@ pub struct CallInput {
     pub digest: String,
 }
 
+/// Committed SQLite allocation and the writer's enforced capacity, in bytes.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatabaseUsage {
+    pub used: u64,
+    pub limit: u64,
+    /// Epoch seconds when measured.
+    pub at: i64,
+}
+
 /// What a service is using now.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Live {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database: Option<DatabaseUsage>,
     /// Its invocations running now.
     pub running: u64,
     /// Bytes of linear memory they hold.
@@ -761,7 +773,8 @@ pub struct Live {
 pub struct Memory {
     /// Bytes; `0` is no limit.
     pub limit: u64,
-    /// Bytes of the images and compiled code of its services deployed.
+    /// Accounted image and compiled-code bytes retained by cached or active
+    /// generations, including calls finishing after removal. Not process RSS.
     pub loaded: u64,
     /// Bytes of linear memory its invocations running now hold.
     pub running: u64,
@@ -774,7 +787,8 @@ pub struct Memory {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Held {
-    /// Bytes of its image and compiled code.
+    /// Accounted image and compiled-code bytes retained across its generations.
+    /// Zero when its code is cold; not process RSS.
     pub loaded: u64,
     /// Bytes of linear memory its invocations running now hold.
     pub running: u64,
@@ -794,6 +808,8 @@ pub struct Count {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metered {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database: Option<DatabaseUsage>,
     /// Days since the Unix epoch.
     pub day: i32,
     /// The tool whose invocations these are. Empty for what the service

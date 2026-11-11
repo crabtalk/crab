@@ -12,7 +12,7 @@
 
 use crate::{Callsite, Service, database::lock::Graph, readers::Readers, syscall::sql::Statement};
 use anyhow::{Context, Result, anyhow, bail};
-use berm_api::Sequence;
+use berm_api::{Sequence, host::DatabaseUsage};
 pub use lock::Held;
 pub use query::Answer;
 use rusqlite::{Connection, OptionalExtension};
@@ -22,7 +22,11 @@ use std::{
     future::Future,
     io::ErrorKind,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock, atomic::AtomicU64, mpsc},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread,
     time::Duration,
 };
@@ -232,6 +236,7 @@ fn remove(path: &Path) -> Result<()> {
 
 /// One service's database.
 pub struct Database {
+    limit: Arc<AtomicU64>,
     readers: Arc<Readers>,
     /// The service it is the database of.
     name: Arc<str>,
@@ -277,6 +282,9 @@ impl Database {
             tx.commit()?;
         }
         query::guard(&conn)?;
+        let pages: i64 = conn.pragma_query_value(None, "max_page_count", |row| row.get(0))?;
+        let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
+        let limit = Arc::new(AtomicU64::new(u64::try_from(pages * page)?));
         let (jobs, queue) = mpsc::channel::<Job>();
         let writer = thread::Builder::new()
             .name("berm-sqlite".to_owned())
@@ -286,6 +294,7 @@ impl Database {
                 }
             })?;
         Ok(Self {
+            limit,
             readers: Arc::new(Readers::new(path.to_owned(), query::guard)),
             name,
             jobs,
@@ -318,6 +327,7 @@ impl Database {
     /// this [`Database`]. Answers the bytes it was held to before, which
     /// restore that limit when passed back.
     pub async fn limit(&self, size: u64) -> Result<u64> {
+        let limit = self.limit.clone();
         on(&self.jobs, move |conn| {
             let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
             let held: i64 = conn.pragma_query_value(None, "page_count", |row| row.get(0))?;
@@ -329,10 +339,31 @@ impl Database {
             if held > pages {
                 bail!("the database holds {} bytes, more than {size}", held * page);
             }
-            conn.pragma_update(None, "max_page_count", pages)?;
+            let enforced: i64 =
+                conn.pragma_update_and_check(None, "max_page_count", pages, |row| row.get(0))?;
+            limit.store(u64::try_from(enforced * page)?, Ordering::Release);
             Ok(u64::try_from(before * page)?)
         })
         .await
+    }
+
+    /// Reads the last commit, including pages not yet checkpointed from WAL.
+    pub async fn usage(&self, at: i64) -> Result<DatabaseUsage> {
+        let limit = self.limit.clone();
+        self.readers
+            .with(move |conn| {
+                let used: i64 = conn.query_row(
+                    "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(DatabaseUsage {
+                    used: u64::try_from(used)?,
+                    limit: limit.load(Ordering::Acquire),
+                    at,
+                })
+            })
+            .await
     }
 
     /// Run the service's statement inside the transaction `chain` holds.

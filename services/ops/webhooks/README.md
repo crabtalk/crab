@@ -4,7 +4,7 @@ Keep signed JSON events until your agents read and acknowledge them. Each privat
 
 ## Deploy and connect a sender
 
-If this listing offers **Deploy your own**, create a private copy:
+If this listing offers **Deploy**, create a private copy:
 
 ```sh
 crab deploy --from owner/webhooks

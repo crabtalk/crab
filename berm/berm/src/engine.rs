@@ -8,12 +8,13 @@
 use crate::{
     Budget, Invocation, Meter, Pool, abi,
     bound::{cpu::Clock, watchdog},
+    code::{Code, Resident},
     syscall::{self, Door, Table},
     tape::{self, Answer},
 };
 use anyhow::{Context, Result, bail};
 use std::{
-    path::PathBuf,
+    path::{self, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -37,10 +38,15 @@ const TICK: Duration = Duration::from_millis(100);
 #[derive(Clone, Debug)]
 pub struct Config {
     /// Where compiled code is cached, if anywhere.
+    /// Relative paths resolve against the current working directory.
     ///
     /// Entries are keyed on contents: a stale directory yields misses, and it
     /// is safe to share between processes.
     pub cache_dir: Option<PathBuf>,
+    /// Accounted bytes of cached executable images; `0` disables retention.
+    pub code_cache: u64,
+    /// Time without a call before cached executable code expires.
+    pub code_idle: Duration,
     /// How many guests may be live at once, across every service and nested
     /// calls included. Slots are reserved when the engine is built; a call
     /// past the last one fails.
@@ -69,6 +75,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             cache_dir: None,
+            code_cache: 64 << 20,
+            code_idle: Duration::from_secs(300),
             instances: 1_000,
             memory: 128 << 20,
             reserved: 0,
@@ -103,13 +111,14 @@ impl Config {
 #[derive(Clone)]
 pub struct Engine {
     wasmtime: wasmtime::Engine,
+    pub(crate) code: Arc<Code>,
     /// What its invocations reserve, held to [`Config::reserved`].
     pub reserve: Arc<Pool>,
     /// [`Config::cpu`], [`Config::read`], [`Config::written`] and
     /// [`Config::memory`].
-    most: Budget,
+    pub(crate) most: Budget,
     /// [`Config::budget`].
-    budget: Budget,
+    pub(crate) budget: Budget,
     /// [`Config::deadline`].
     pub(crate) deadline: Duration,
 }
@@ -123,7 +132,7 @@ impl Engine {
         wasmtime.epoch_interruption(true);
         if let Some(dir) = &config.cache_dir {
             let mut cache = wasmtime::CacheConfig::new();
-            cache.with_directory(dir.join("wasm"));
+            cache.with_directory(path::absolute(dir)?.join("wasm"));
             wasmtime.cache(Some(wasmtime::Cache::new(cache)?));
         }
 
@@ -147,6 +156,7 @@ impl Engine {
         }
         Ok(Self {
             wasmtime: engine,
+            code: Code::new(config.code_cache, config.code_idle),
             reserve,
             most,
             budget: config.budget,
@@ -200,25 +210,19 @@ impl std::error::Error for MissingHostCall {}
 /// One compiled service, ready to instantiate.
 pub(crate) struct Image {
     engine: wasmtime::Engine,
-    /// [`Engine::most`].
-    pub(crate) most: Budget,
-    /// [`Config::budget`].
-    pub(crate) budget: Budget,
-    /// [`Engine::reserve`].
-    pub(crate) reserve: Arc<Pool>,
     /// Imports resolved once, at deploy and at load.
     pre: InstancePre<Invocation>,
     exports: Vec<(String, ModuleExport)>,
     /// Its [`MEMORY`] export.
     memory: Option<ModuleExport>,
+    pub(crate) resident: Option<Resident>,
+    pub(crate) bytes: u64,
 }
 
 impl Image {
     /// Compile `image` against `table`, beside the bytes the image and its
     /// compiled code take.
     pub(crate) fn compile(engine: &Engine, image: &[u8], table: Table) -> Result<(Self, u64)> {
-        let (most, budget) = (engine.most, engine.budget);
-        let reserve = engine.reserve.clone();
         let engine = engine.wasmtime.clone();
         let module = Module::new(&engine, image)?;
 
@@ -293,20 +297,11 @@ impl Image {
                 .collect(),
             memory: module.get_export_index(MEMORY),
             pre: linker.instantiate_pre(&module)?,
+            resident: None,
+            bytes,
             engine,
-            most,
-            budget,
-            reserve,
         };
         Ok((image, bytes))
-    }
-
-    /// Every name this image exports. Which of them are tools is the ABI's
-    /// question.
-    pub(crate) fn exports(&self) -> impl Iterator<Item = (&str, ModuleExport)> {
-        self.exports
-            .iter()
-            .map(|(name, export)| (name.as_str(), *export))
     }
 
     /// Instantiate and run one tool, spending at most its invocation's budget
@@ -317,11 +312,13 @@ impl Image {
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
     /// built for this call and dropped with it.
-    pub(crate) async fn call(
-        &self,
-        tool: &ModuleExport,
-        invocation: Invocation,
-    ) -> Result<Invocation> {
+    pub(crate) async fn call(&self, tool: &str, invocation: Invocation) -> Result<Invocation> {
+        let export = self
+            .exports
+            .iter()
+            .find(|(name, _)| name.strip_prefix(abi::TOOL_PREFIX) == Some(tool))
+            .map(|(_, export)| export)
+            .with_context(|| format!("service exports no tool named {tool:?}"))?;
         let deadline = invocation.at.deadline;
         let cpu = invocation.cpu.clone();
         let mut store = Store::new(&self.engine, invocation);
@@ -358,7 +355,7 @@ impl Image {
                             .and_then(|memory| instance.get_module_export(&mut store, &memory))
                             .and_then(Extern::into_memory);
                         match instance
-                            .get_module_export(&mut store, tool)
+                            .get_module_export(&mut store, export)
                             .and_then(Extern::into_func)
                             .ok_or_else(|| wasmtime::Error::msg("tool export is not a function"))
                             .and_then(|func| func.typed::<(), ()>(&store))

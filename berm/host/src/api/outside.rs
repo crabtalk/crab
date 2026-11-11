@@ -209,10 +209,7 @@ impl<E: Env> Host<E> {
             }
         }
         if self.pools.pool(scope).full() {
-            return Err(deny(
-                StatusCode::TOO_MANY_REQUESTS,
-                "the account holds as much memory as it may; retry",
-            ));
+            return Err(Denied::memory());
         }
         if self.reserve.full() {
             return Err(deny(

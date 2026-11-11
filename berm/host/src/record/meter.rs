@@ -1,6 +1,6 @@
 //! What each service's tools used, per day: counted in memory and written in
 //! batches to `service_meters` on the host the service runs on, beside the
-//! bytes the service stored, sampled once a day under the empty tool.
+//! bytes the service stored, sampled under the empty tool.
 
 use crate::{
     host,
@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::Result;
 use berm::{Meter, Now, database::Databases};
-use berm_api::host::{Metered, Served, ServedDay};
+use berm_api::host::{DatabaseUsage, Metered, Served, ServedDay};
 use parking_lot::Mutex;
 use rusqlite::params;
 use std::{
@@ -207,19 +207,23 @@ pub(crate) async fn sample(
     service: &str,
     databases: &Databases,
     code: u64,
+    database: Option<DatabaseUsage>,
     day: i32,
 ) -> Result<()> {
     let stored = stored(store, service, databases, code).await?;
     let (scope, name) = host::split(service);
     let (scope, name) = (scope.to_owned(), name.to_owned());
+    let database = database
+        .map(|sample| serde_json::to_string(&sample))
+        .transpose()?;
     store
         .run(move |conn| {
             conn.execute(
-                "INSERT INTO service_meters (scope, name, tool, day, stored)
-                 SELECT ?1, ?2, '', ?3, ?4
+                "INSERT INTO service_meters (scope, name, tool, day, stored, database_usage)
+                 SELECT ?1, ?2, '', ?3, ?4, ?5
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
-                 ON CONFLICT (scope, name, tool, day) DO UPDATE SET stored = excluded.stored",
-                params![scope, name, day, stored as i64],
+                 ON CONFLICT (scope, name, tool, day) DO UPDATE SET stored = excluded.stored, database_usage = excluded.database_usage",
+                params![scope, name, day, stored as i64, database],
             )?;
             Ok(())
         })
@@ -276,12 +280,24 @@ pub(crate) async fn read(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT day, calls, cpu, memory, read, written, proxied, stored,
-                        logged, failed, sent, runs, held, tool, sql_cpu
+                        logged, failed, sent, runs, held, tool, sql_cpu, database_usage
                    FROM service_meters
                   WHERE scope = ?1 AND name = ?2 AND day > ?3",
             )?;
             let rows = statement.query_map(params![scope, name, since], |row| {
                 Ok(Metered {
+                    database: row
+                        .get::<_, Option<String>>(15)?
+                        .map(|value| {
+                            serde_json::from_str(&value).map_err(|e| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    15,
+                                    rusqlite::types::Type::Text,
+                                    e.into(),
+                                )
+                            })
+                        })
+                        .transpose()?,
                     day: row.get(0)?,
                     tool: row.get(13)?,
                     calls: row.get::<_, i64>(1)? as u64,
@@ -413,7 +429,7 @@ pub(crate) async fn since(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
-                        stored, logged, failed, sent, runs, held, tool, sql_cpu
+                        stored, logged, failed, sent, runs, held, tool, sql_cpu, database_usage
                    FROM service_meters
                   WHERE day >= ?1",
             )?;
@@ -422,6 +438,18 @@ pub(crate) async fn since(
                 Ok((
                     host::join(&scope, &name),
                     Metered {
+                        database: row
+                            .get::<_, Option<String>>(17)?
+                            .map(|value| {
+                                serde_json::from_str(&value).map_err(|e| {
+                                    rusqlite::Error::FromSqlConversionFailure(
+                                        17,
+                                        rusqlite::types::Type::Text,
+                                        e.into(),
+                                    )
+                                })
+                            })
+                            .transpose()?,
                         day: row.get(2)?,
                         tool: row.get(15)?,
                         calls: row.get::<_, i64>(3)? as u64,

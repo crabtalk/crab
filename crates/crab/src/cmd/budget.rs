@@ -5,6 +5,7 @@ use crate::{format, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{
     client::Client,
+    format as display,
     services::service::{Estimate, Measured},
 };
 
@@ -29,7 +30,7 @@ pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool)
             budget.cpu,
             budget.read,
             budget.written,
-            format::bytes(budget.memory)
+            display::bytes(budget.memory)
         );
         if let Ok(metering) = runtime::wait(cloud.rates()) {
             let most = metering.most(&budget, terms.deadline);
@@ -55,7 +56,7 @@ pub fn show(client: &Client, cloud: &Client, name: &str, tool: &str, json: bool)
     if let Some(fits) = used.fits {
         println!(
             "  memory       {} at most",
-            format::bytes(used.meter.memory)
+            display::bytes(used.meter.memory)
         );
         println!("  fits         budget = {fits}");
     }
