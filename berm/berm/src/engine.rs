@@ -14,7 +14,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use std::{
-    path::PathBuf,
+    path::{self, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -38,6 +38,7 @@ const TICK: Duration = Duration::from_millis(100);
 #[derive(Clone, Debug)]
 pub struct Config {
     /// Where compiled code is cached, if anywhere.
+    /// Relative paths resolve against the current working directory.
     ///
     /// Entries are keyed on contents: a stale directory yields misses, and it
     /// is safe to share between processes.
@@ -131,7 +132,7 @@ impl Engine {
         wasmtime.epoch_interruption(true);
         if let Some(dir) = &config.cache_dir {
             let mut cache = wasmtime::CacheConfig::new();
-            cache.with_directory(dir.join("wasm"));
+            cache.with_directory(path::absolute(dir)?.join("wasm"));
             wasmtime.cache(Some(wasmtime::Cache::new(cache)?));
         }
 

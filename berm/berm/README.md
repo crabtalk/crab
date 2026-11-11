@@ -11,7 +11,7 @@ let outcome = berm.call(None, "example", "echo", br#"{"query":"hi"}"#.to_vec()).
 
 `Config::code_cache` bounds cached code by accounted image bytes (default 64 MiB); `code_idle` expires entries after inactivity (default five minutes). Zero capacity disables retention between calls. Active calls pin their executable generation until completion. Scope memory pressure reclaims cached code before refusing work; active references remain counted. These byte counts are estimates, not process RSS.
 
-`cache_dir` enables Wasmtime's disk compilation cache. `Berm::restore` restores a previously validated deployment without applying new-deployment admission. A recorded footprint avoids compilation; a missing footprint is measured once and the executable discarded. The next call obtains executable code under the current scope limit. Reloading does not run deployment migrations or change stored data. Concurrent cold calls share a load, and reload wait is subject to the chain's deadline. Loading runs on Tokio's blocking pool; calls require a Tokio runtime.
+`cache_dir` enables Wasmtime's disk compilation cache. Relative paths resolve against the current working directory; the cache directory is created when missing. `Berm::restore` restores a previously validated deployment without applying new-deployment admission. A recorded footprint avoids compilation; a missing footprint is measured once and the executable discarded. The next call obtains executable code under the current scope limit. Reloading does not run deployment migrations or change stored data. Concurrent cold calls share a load, and reload wait is subject to the chain's deadline. Loading runs on Tokio's blocking pool; calls require a Tokio runtime.
 
 ## What a guest can reach
 
