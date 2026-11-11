@@ -1,4 +1,4 @@
-use crate::{account::Account, agent::Agent};
+use crate::{account::Account, agent::Agent, delivery::Delivery};
 use alloc::vec::Vec;
 use berm_lang::{Result, Schema, key};
 
@@ -86,6 +86,9 @@ impl Conversation {
             &(paused, id),
         )?;
         conversation.paused = paused;
+        if !paused {
+            Delivery::schedule()?;
+        }
         Ok(conversation)
     }
 

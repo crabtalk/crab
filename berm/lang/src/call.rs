@@ -25,6 +25,7 @@ pub fn call(service: &str, tool: &str, args: &str) -> Result<String, CallError> 
 }
 
 /// Have `tool` on `service` run in `delay` milliseconds, and return now.
+/// An empty `service` targets the deployment scheduling the wake.
 ///
 /// ```ignore
 /// berm_lang::after(300, "weather", "poll", "{}")?;

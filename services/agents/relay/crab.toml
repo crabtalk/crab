@@ -81,9 +81,6 @@ title = "Revoke agent access"
 catalog = "relay.revoke-agent"
 budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
 
-[crons]
-deliver = "* * * * *"
-
 [tools.deliver]
 budget = { cpu = 100000, read = 10000, written = 50, memory = 16 }
 

@@ -105,7 +105,7 @@ pub fn retry_delivery(message: u64) -> Result<Delivery> {
 }
 
 /// Attempt up to five due Grok deliveries.
-#[tool(cron)]
+#[tool]
 pub fn deliver() -> Result<u64> {
     Delivery::tick()
 }

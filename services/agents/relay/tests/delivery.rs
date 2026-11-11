@@ -1,6 +1,7 @@
 use crate::common::Relay;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use berm::syscall::http::Response;
+use berm_api::Output;
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -25,11 +26,14 @@ impl Relay {
     }
 
     async fn tick(&self) -> Result<u64> {
-        Ok(self
-            .call_json("relay", "deliver", json!({}))
-            .await?
-            .as_u64()
-            .unwrap())
+        let mut attempted = 0;
+        for (_, ran) in self.fire().await? {
+            let Output::Done(result) = ran.result else {
+                bail!("delivery failed: {:?}", ran.result);
+            };
+            attempted += serde_json::from_str::<u64>(&result)?;
+        }
+        Ok(attempted)
     }
 
     async fn send(&self, from: u64, to: u64, conversation: u64, key: &str) -> Result<Value> {
@@ -67,6 +71,8 @@ async fn setup_requires_the_secret_owner_service_and_exact_destination_grant() -
 #[tokio::test]
 async fn grok_acceptance_and_dot_replies_share_stable_message_context() -> Result<()> {
     let host = Relay::open().await?;
+    assert!(host.wakes().await?.is_empty());
+    assert!(host.host.crons("relay").await?.crons.is_empty());
     host.grant_resource("relay", ID, "bots.example", "alice", "private-key");
     host.arrange("POST", URL, 200, "private-key must not be returned");
     let bot = host.grok("alice", ID, URL).await?;
@@ -75,6 +81,9 @@ async fn grok_acceptance_and_dot_replies_share_stable_message_context() -> Resul
     let message = host.send(dot, bot, conversation, "request").await?;
     assert_eq!(host.send(dot, bot, conversation, "request").await?, message);
     assert!(host.fetched().is_empty());
+    let wakes = host.wakes().await?;
+    assert_eq!(wakes.len(), 1);
+    assert_eq!(wakes[0].1, host.now());
     assert_eq!(
         host.call("delivery", json!({"message":message["id"]}))
             .await?["state"],
@@ -151,16 +160,20 @@ async fn retries_survive_restart_hold_order_pause_and_disable_and_resolve_rotate
         .call("delivery", json!({"message":first["id"]}))
         .await?;
     assert_eq!(pending["next_attempt"], host.now() + 300_000);
+    assert_eq!(host.wakes().await?[0].1, host.now() + 300_000);
+    assert_eq!(host.tick().await?, 0);
     host.reopen().await?;
     host.advance(300_000);
     host.call("pause", json!({"conversation":conversation,"paused":true}))
         .await?;
     assert_eq!(host.tick().await?, 0);
+    assert!(host.wakes().await?.is_empty());
     host.call("pause", json!({"conversation":conversation,"paused":false}))
         .await?;
     host.call("update_agent", json!({"id":bot,"enabled":false}))
         .await?;
     assert_eq!(host.tick().await?, 0);
+    assert!(host.wakes().await?.is_empty());
     host.call("update_agent", json!({"id":bot,"enabled":true}))
         .await?;
     host.grant_resource("relay", ID, "bots.example", "alice", "rotated-key");
@@ -264,7 +277,8 @@ async fn transient_failures_stop_after_six_attempts_and_permanent_failures_do_no
 }
 
 #[tokio::test]
-async fn cron_survives_restart_and_serializes_concurrent_delivery_attempts() -> Result<()> {
+async fn an_immediate_wake_survives_restart_and_serializes_concurrent_delivery_attempts()
+-> Result<()> {
     let mut host = Relay::open().await?;
     host.grant_resource("relay", ID, "bots.example", "alice", "key");
     host.arrange("POST", URL, 200, "");
@@ -280,8 +294,9 @@ async fn cron_survives_restart_and_serializes_concurrent_delivery_attempts() -> 
         .find(|(wake, _)| wake.tool == "deliver")
         .unwrap()
         .1;
-    host.set_now(due);
-    let (scheduled, concurrent) = tokio::join!(host.fire(), host.tick());
+    assert_eq!(due, host.now());
+    let (scheduled, concurrent) =
+        tokio::join!(host.fire(), host.call_json("relay", "deliver", json!({})));
     scheduled?;
     concurrent?;
     assert_eq!(host.fetched().len(), 1);
@@ -290,12 +305,7 @@ async fn cron_survives_restart_and_serializes_concurrent_delivery_attempts() -> 
             .await?["state"],
         "accepted"
     );
-    assert!(
-        host.wakes()
-            .await?
-            .into_iter()
-            .any(|(wake, at)| wake.tool == "deliver" && at > due)
-    );
+    assert!(host.wakes().await?.is_empty());
     Ok(())
 }
 
@@ -335,5 +345,86 @@ async fn platform_changes_cancel_queued_posts_and_stop_the_old_event_source() ->
         message
     );
     assert!(host.fetched().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn new_messages_preserve_the_earliest_retry_and_wait_for_their_recipient() -> Result<()> {
+    let host = Relay::open().await?;
+    host.grant_resource("relay", ID, "bots.example", "alice", "key");
+    host.fetch.respond(
+        "POST",
+        URL,
+        Response {
+            status: 429,
+            headers: vec![("Retry-After".into(), "300".into())],
+            body: Vec::new(),
+        },
+        Duration::ZERO,
+    );
+    let other_url = "https://bots.example/other";
+    host.arrange("POST", other_url, 503, "");
+    let first_bot = host.grok("alice", ID, URL).await?;
+    let other_bot = host.grok("alice", ID, other_url).await?;
+    let dot = host.register("alice", "Assistant").await?;
+    let conversation = host.conversation(&[first_bot, other_bot, dot]).await?;
+    let first = host.send(dot, first_bot, conversation, "first").await?;
+    assert_eq!(host.tick().await?, 1);
+    let first_due = host.wakes().await?[0].1;
+
+    host.advance(1000);
+    host.send(dot, first_bot, conversation, "second").await?;
+    assert_eq!(host.wakes().await?[0].1, first_due);
+    assert_eq!(host.tick().await?, 0);
+
+    host.send(dot, other_bot, conversation, "other").await?;
+    assert_eq!(host.wakes().await?[0].1, host.now());
+    assert_eq!(host.tick().await?, 1);
+    let other_due = host.wakes().await?[0].1;
+    assert!(other_due < first_due);
+    host.advance(1000);
+    host.send(dot, first_bot, conversation, "third").await?;
+    assert_eq!(host.wakes().await?[0].1, other_due);
+
+    host.arrange("POST", other_url, 200, "");
+    host.set_now(other_due);
+    assert_eq!(host.tick().await?, 1);
+    assert_eq!(host.wakes().await?[0].1, first_due);
+    host.arrange("POST", URL, 200, "");
+    host.set_now(first_due);
+    for _ in 0..3 {
+        assert_eq!(host.tick().await?, 1);
+    }
+    let fetched = host.fetched();
+    assert_eq!(fetched.len(), 6);
+    let retried: Value = serde_json::from_slice(&fetched[3].body)?;
+    assert_eq!(retried["message"], first);
+    assert!(host.wakes().await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_queue_larger_than_one_batch_rearms_until_empty() -> Result<()> {
+    let host = Relay::open().await?;
+    host.grant_resource("relay", ID, "bots.example", "alice", "key");
+    host.arrange("POST", URL, 200, "");
+    let dot = host.register("alice", "Assistant").await?;
+    let mut members = vec![dot];
+    for _ in 0..6 {
+        members.push(host.grok("alice", ID, URL).await?);
+    }
+    let conversation = host.conversation(&members).await?;
+    for bot in &members[1..] {
+        host.send(dot, *bot, conversation, &format!("message-{bot}"))
+            .await?;
+    }
+    assert_eq!(host.wakes().await?.len(), 1);
+    assert_eq!(host.tick().await?, 5);
+    assert_eq!(host.wakes().await?[0].1, host.now());
+    assert_eq!(host.tick().await?, 1);
+    assert_eq!(host.fetched().len(), 6);
+    assert!(host.wakes().await?.is_empty());
+    host.advance(86_400_000);
+    assert!(host.fire().await?.is_empty());
     Ok(())
 }

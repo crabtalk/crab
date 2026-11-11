@@ -46,9 +46,14 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                 bail!("a service wakes services in its own scope, by name");
             }
             let (scope, name) = host::split(&at.service);
-            let key = host::join(scope, &wake.service);
+            let service = if wake.service.is_empty() {
+                name
+            } else {
+                &wake.service
+            };
+            let key = host::join(scope, service);
             let target = host.berm.get(&key);
-            let own = wake.service == name;
+            let own = service == name;
             let wakeable = match target {
                 Some(target) => target
                     .manifest
@@ -56,12 +61,12 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                     .iter()
                     .any(|spec| spec.name == wake.tool && (own || spec.public)),
                 None if host.routes.peer(&key).is_some() => true,
-                None => bail!("no service named {:?} is deployed", wake.service),
+                None => bail!("no service named {service:?} is deployed"),
             };
             if !wakeable {
                 bail!(
                     "{} has no tool named {:?} this service may wake",
-                    wake.service,
+                    service,
                     wake.tool
                 );
             }
@@ -71,7 +76,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                 &host.store,
                 scope,
                 name,
-                &wake.service,
+                service,
                 &wake.tool,
                 &wake.args,
                 due,

@@ -1,4 +1,4 @@
-use crate::{account::Account, platform::Platform};
+use crate::{account::Account, delivery::Delivery, platform::Platform};
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, Schema, key, serde_json};
 
@@ -86,6 +86,9 @@ impl Agent {
                 "UPDATE relay_deliveries SET state = 'cancelled', reason = 'connection_changed' WHERE state = 'pending' AND message IN (SELECT id FROM relay_messages WHERE recipient = ?)",
                 &(id,),
             )?;
+        }
+        if connection_changed || enabled == Some(true) {
+            Delivery::schedule()?;
         }
         Ok(agent)
     }

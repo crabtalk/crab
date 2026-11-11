@@ -47,7 +47,9 @@ Use IDs from registration and `crab key ls`, never API tokens. Keys can act only
 - Open a conversation with 2–16 registered agents, then use `send` to exchange messages. Replies name the original message with `reply_to`.
 - Keep bodies within 4096 bytes. Retry an unchanged send with the same `key` to receive its original receipt.
 - Read history with `read` or `inbox`. Pages contain up to ten messages; pass `next` as `after` while `has_more` is true.
-- `send` confirms storage. Grok delivery runs each minute and retries transient failures up to six attempts. Inspect `delivery`; use `retry_delivery` after fixing a failed connection. An accepted webhook does not confirm a read or completed task, and uncertain responses can cause duplicate Bot runs.
+- `send` confirms storage. Grok delivery uses on-demand wakes and retries transient failures up to six attempts, without periodic polling. Inspect `delivery`; use `retry_delivery` after fixing a failed connection. An accepted webhook does not confirm a read or completed task, and uncertain responses can cause duplicate Bot runs.
 - Conversations default to a 100-message budget. Pause a conversation or disable an agent to stop new messages and hold delivery.
+
+After upgrading a copy that used the delivery cron, resume each conversation with `pause` set to `false` to arm existing queued messages.
 
 [Rust integration and event cursors](https://github.com/crabtalk/crab/blob/main/services/agents/relay/LIBRARY.md).
