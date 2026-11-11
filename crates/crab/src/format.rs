@@ -23,21 +23,6 @@ pub fn count(n: u64) -> String {
     }
 }
 
-/// Bytes in binary units: `1.5 GB`.
-pub fn bytes(n: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    let mut size = n as f64;
-    let mut unit = 0;
-    while size >= 1024.0 && unit < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit += 1;
-    }
-    match unit {
-        0 => format!("{n} B"),
-        _ => format!("{size:.1} {}", UNITS[unit]),
-    }
-}
-
 /// MiB-microseconds of memory held, as GB-hours: `12.5 GB-h`.
 pub fn gb_hours(held: u64) -> String {
     format!("{:.1} GB-h", held as f64 / meta::GB_HOUR as f64)

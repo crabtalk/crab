@@ -1,5 +1,5 @@
 //! Deployable service images and their use as linked dependencies.
-use berm_api::Manifest;
+use berm_api::{Manifest, host};
 use berm_build::fixture;
 
 fn manifest(package: &str) -> Manifest {
@@ -37,6 +37,8 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let memory = manifest("crab-agent-memory");
     assert_eq!(memory.tools.len(), 4);
     assert!(memory.keeps_database());
+    assert_eq!(memory.database_size, 64 << 20);
+    assert_eq!(manifest("crab-agent-relay").database_size, 64 << 20);
     let linked = manifest("berm-linked-services");
     assert_eq!(
         linked
@@ -72,6 +74,7 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     assert!(linked.deps.credentials.contains_key("github"));
     assert!(linked.deps.credentials.contains_key("github_api"));
     assert!(linked.keeps_database());
+    assert_eq!(linked.database_size, host::DATABASE_SIZE);
     let required = linked.deps.unset(&[]);
     assert!(required.iter().any(|name| name == "GITHUB_CLIENT_ID"));
     assert!(required.iter().any(|name| name == "GITHUB_CLIENT_SECRET"));

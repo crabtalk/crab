@@ -5,6 +5,7 @@ use anyhow::Result;
 use berm_api::{Access, Runtime, Service, ToolSpec};
 use crabtalk_sdk::{
     client::{Client, Error},
+    format as display,
     services::service::{Estimate, Measured, Terms},
     system::meta::Metering,
 };
@@ -192,7 +193,7 @@ fn tools<'a>(
                 budget.cpu,
                 budget.read,
                 budget.written,
-                format::bytes(budget.memory)
+                display::bytes(budget.memory)
             );
             if let Some(metering) = metering {
                 let most = metering.most(&budget, terms.deadline);

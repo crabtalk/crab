@@ -224,6 +224,7 @@ impl Service {
             imports: _,
             buffer: _,
             database: _,
+            database_size: _,
             kits: _,
             deps,
             events: _,

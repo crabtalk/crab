@@ -84,6 +84,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         buffer: project.buffer(),
         deps: project.deps(),
         database: migrations(service.manifest_path.dir(), &project)?,
+        database_size: project.database.size(),
         tools: project.records(),
         crons: project.crons.clone().unwrap_or_default(),
     };

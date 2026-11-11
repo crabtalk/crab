@@ -4,7 +4,7 @@
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use berm_api::{
     Access, Credential, CredentialSecret, Deps, Image, Kit, Limits, Manifest, ServiceRecord,
-    ToolRecord,
+    ToolRecord, host,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -45,6 +45,7 @@ fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
             ..Deps::default()
         },
         database: None,
+        database_size: host::DATABASE_SIZE,
         tools,
         crons: BTreeMap::new(),
     })
@@ -370,4 +371,29 @@ fn old_image_metadata_keeps_http_destinations_without_inventing_imports() {
     assert_eq!(restored.deps.http.fetch, ["old.example"]);
     let encoded = serde_json::to_value(restored).unwrap();
     assert!(encoded["deps"].get("syscalls").is_none());
+}
+
+#[test]
+fn image_database_defaults_survive_manifest_storage_and_legacy_images() {
+    let mut record: Value = serde_json::from_slice(&service()).unwrap();
+    record["database_size"] = serde_json::json!(64 << 20);
+    let bytes = serde_json::to_vec(&record).unwrap();
+    let manifest = Manifest::try_from(&*image(&tool("a", "demo"), Some(&bytes), &[])).unwrap();
+    assert_eq!(manifest.database_size, 64 << 20);
+    let stored: Manifest = serde_json::to_string(&manifest).unwrap().parse().unwrap();
+    assert_eq!(stored.database_size, manifest.database_size);
+    record.as_object_mut().unwrap().remove("database_size");
+    let bytes = serde_json::to_vec(&record).unwrap();
+    let legacy = Manifest::try_from(&*image(&tool("a", "demo"), Some(&bytes), &[])).unwrap();
+    assert_eq!(legacy.database_size, host::DATABASE_SIZE);
+}
+
+#[test]
+fn invalid_image_database_defaults_are_refused() {
+    let mut record: Value = serde_json::from_slice(&service()).unwrap();
+    for size in [host::MIN_DATABASE_SIZE - 1, host::MAX_DATABASE_SIZE + 1] {
+        record["database_size"] = serde_json::json!(size);
+        let bytes = serde_json::to_vec(&record).unwrap();
+        assert!(Manifest::try_from(&*image(&tool("a", "demo"), Some(&bytes), &[])).is_err());
+    }
 }

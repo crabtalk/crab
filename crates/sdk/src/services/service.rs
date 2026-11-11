@@ -37,8 +37,9 @@ pub struct DeployRequest {
     /// Bytes the service's database may hold, from
     /// [`MIN_DATABASE_SIZE`](berm_api::host::MIN_DATABASE_SIZE) to
     /// [`MAX_DATABASE_SIZE`](berm_api::host::MAX_DATABASE_SIZE). Absent, a
-    /// service keeps what it holds, and one deployed for the first time holds
-    /// [`DATABASE_SIZE`](berm_api::host::DATABASE_SIZE).
+    /// service keeps its reservation; a new deployment uses the image
+    /// default, or [`DATABASE_SIZE`](berm_api::host::DATABASE_SIZE) for an
+    /// image built without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
     /// The SHA-256, in hex, of a seed uploaded through

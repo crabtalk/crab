@@ -17,6 +17,7 @@ use berm_host::{
 use clap::Args;
 use crabtalk_sdk::{
     client::Client,
+    format as display,
     system::meta::{self, Metering, Rates},
 };
 use parking_lot::Mutex;
@@ -529,7 +530,7 @@ pub fn run(cloud: &Client, bench: &Bench, json: bool) -> Result<ExitCode> {
         );
         println!(
             "Initial memory reservation: {}. Rerun after changing budgets.",
-            format::bytes(report.declared.memory)
+            display::bytes(report.declared.memory)
         );
         println!("{:<20} {:>14} {:>14}", "RESOURCE", "MEDIAN", "MAXIMUM");
         for (label, value) in [

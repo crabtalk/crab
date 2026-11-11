@@ -7,6 +7,7 @@ use berm_api::host::Memory;
 use crabtalk_sdk::{
     account::billing::{Period, Unit},
     client::Client,
+    format as display,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -32,12 +33,12 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         "WRITTEN",
         "SQL CPU µs",
         "MEMORY",
-        "PROXIED BYTES",
-        "STORED BYTES"
+        "PROXIED",
+        "STORED"
     );
     for day in &meters {
         println!(
-            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>8}Ki  {:>13}  {:>12}",
+            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>13}  {:>12}",
             format::day(day.used.day.into()),
             day.used.runs,
             day.used.calls,
@@ -47,9 +48,9 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             day.used.read,
             day.used.written,
             day.used.sql_cpu,
-            day.used.memory / 1024,
-            day.used.proxied,
-            day.used.stored,
+            display::bytes(day.used.memory),
+            display::bytes(day.used.proxied),
+            display::bytes(day.used.stored),
         );
     }
     Ok(())
@@ -161,7 +162,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
             "storage",
             period.used.stored,
             period.included.stored,
-            format::bytes,
+            display::bytes,
             Unit::Stored,
         ),
     ];
@@ -214,15 +215,15 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         0 => "no limit".to_owned(),
         limit => format!(
             "of {}  {}",
-            format::bytes(limit),
+            display::bytes(limit),
             format::percent(held as f64 / limit as f64)
         ),
     };
     println!(
         "memory {} held {limit}: {} loaded, {} running",
-        format::bytes(held),
-        format::bytes(memory.loaded),
-        format::bytes(memory.running)
+        display::bytes(held),
+        display::bytes(memory.loaded),
+        display::bytes(memory.running)
     );
     Ok(())
 }

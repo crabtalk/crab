@@ -1,7 +1,9 @@
 //! What a service says it is, read from its image's [`ABI_SECTION`],
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
-use crate::{Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, events::Source, logo::Logo};
+use crate::{
+    Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, events::Source, host, logo::Logo,
+};
 use anyhow::{Context, Result, bail};
 use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION, secrets::Id};
 use regex::Regex;
@@ -61,6 +63,9 @@ pub struct Manifest {
     /// The SQLite database it keeps, when it keeps one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
+    /// Default reservation for a new deployment, in bytes.
+    #[serde(default = "host::database_size")]
+    pub database_size: u64,
     /// The kits it links, by name.
     #[serde(default)]
     pub kits: Vec<Kit>,
@@ -92,6 +97,9 @@ pub struct ServiceRecord {
     pub deps: Deps,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
+    /// Default reservation for a new deployment, in bytes.
+    #[serde(default = "host::database_size")]
+    pub database_size: u64,
     /// What `[tools]` in its `crab.toml` says of each tool, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tools: BTreeMap<String, ToolRecord>,
@@ -541,6 +549,9 @@ impl Manifest {
         if self.tools.is_empty() {
             bail!("service declares no tools");
         }
+        if !(host::MIN_DATABASE_SIZE..=host::MAX_DATABASE_SIZE).contains(&self.database_size) {
+            bail!("default database size is outside the host limits");
+        }
         self.deps.check_secret_declarations()?;
         for credential in self.deps.credentials.values() {
             Credential::check_hosts(&credential.hosts).map_err(anyhow::Error::msg)?;
@@ -686,6 +697,7 @@ impl TryFrom<&[u8]> for Manifest {
             buffer,
             mut deps,
             database,
+            database_size,
             tools: _,
             crons,
         } = service;
@@ -710,6 +722,7 @@ impl TryFrom<&[u8]> for Manifest {
             deps,
             events,
             database,
+            database_size,
             kits,
         };
         manifest.tools.sort_by(|a, b| a.name.cmp(&b.name));

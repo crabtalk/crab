@@ -4,7 +4,7 @@ Share persistent notes and context across your agents. Each private copy has one
 
 ## Deploy and call
 
-If this listing offers **Deploy your own**, create a private copy without a local build:
+If this listing offers **Deploy**, create a private copy without a local build:
 
 ```sh
 crab deploy --from owner/memory

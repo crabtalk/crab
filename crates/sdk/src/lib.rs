@@ -14,6 +14,7 @@ pub mod catalog;
 #[cfg(feature = "client")]
 pub mod client;
 pub mod error;
+pub mod format;
 pub mod mcp;
 pub mod services;
 pub mod system;
