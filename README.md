@@ -53,6 +53,7 @@ template = true
 
 - [Documentation](https://crabtalk.ai/docs) — guides for writing and deploying services.
 - [Benchmarking](https://crabtalk.ai/docs/guides/bench) — measure local WebAssembly workloads and estimate execution cost with `crab bench`.
+- [ChatGPT plugin](plugins/README.md) — uploadable bundle for finding and calling deployed services.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
 - [Services](services/README.md) — Connect integrations and Utilities to call, deploy or reuse.
 - [Libraries](crates/crabkit/README.md) — libraries to include in your services.

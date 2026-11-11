@@ -94,6 +94,7 @@ Read these before writing code. Paths are relative to the crab repository.
 | Question | Source |
 | --- | --- |
 | The CLI, contexts, `crab.toml` | `crates/crab/README.md` |
+| The ChatGPT plugin bundle and installation | `plugins/README.md` |
 | A whole working service to start from: its files and the commands that test, build, deploy and call it | https://crabtalk.ai/docs/development/complete-service |
 | `#[tool(...)]` and its `query`, `cron`, `stripe`, `webhook`; `#[derive(Schema)]`, `#[event]`, `emit!`, `#[error_code]`, `declare_service!`: what each accepts and generates | https://crabtalk.ai/docs/development/macros |
 | Durable `#[tool(events = "name")]` sources, typed event pages and resume cursors; MCP delivery is not implemented | `berm/lang/README.md#durable-event-sources`, `berm/host/README.md` |

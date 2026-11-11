@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "crabtalk",
+  "version": "0.1.0",
+  "description": "Find and call tools on services deployed to CrabTalk.",
+  "author": {
+    "name": "CrabTalk",
+    "url": "https://crabtalk.ai"
+  },
+  "homepage": "https://crabtalk.ai",
+  "keywords": ["crabtalk", "services", "tools", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CrabTalk",
+        "shortDescription": "Find and call service tools",
+        "longDescription": "Find deployed CrabTalk services for your task, read their tool descriptions and input schemas, and call them using your connected CrabTalk account. Available services depend on your account and their access settings. Some tools charge a per-call price to your CrabTalk account.",
+        "developerName": "CrabTalk",
+        "category": "Developer Tools",
+        "capabilities": [],
+        "websiteURL": "https://crabtalk.ai",
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/logo.png",
+        "defaultPrompt": [
+          "Find CrabTalk services that can help with my task.",
+          "Show me the tools available on a CrabTalk service."
+        ]
+      }
+    }
+  }
+}

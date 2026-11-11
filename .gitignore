@@ -1,5 +1,4 @@
 target/
 .DS_Store
 .wrangler
-
-
+/plugins/*.zip
