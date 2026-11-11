@@ -10,7 +10,7 @@ async fn secret_resources_use_service_and_host_grants_without_declaring_each_id(
     let image = fixture::image("berm-fixture")?;
     host.deploy("relay", &image).await?;
     host.deploy("other", &image).await?;
-    let id = "secret_11111111111111111111111111111111";
+    let id = "secret_1111111111111111111111111111111111111111111111111111111111111111";
     let url = "http://127.0.0.1/routine";
     let input = json!({"url":url,"header":format!("Authorization: Bearer {{secret:{id}}}")});
     host.arrange("GET", url, 200, "ok");

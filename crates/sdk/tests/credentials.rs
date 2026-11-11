@@ -1,6 +1,10 @@
+use berm_abi::secrets::Id;
 use berm_api::Deps;
 use crabtalk_sdk::{
-    account::{request::SecretValues, secret::Grant},
+    account::{
+        request::SecretValues,
+        secret::{Grant, Resource},
+    },
     services::service::{DeployRequest, SetSecret},
 };
 use serde_json::json;
@@ -61,5 +65,18 @@ fn resource_ids_cannot_be_provisioned_as_default_credentials() {
         input
             .check("secret_11111111111111111111111111111111")
             .is_err()
+    );
+}
+
+#[test]
+fn issued_resource_ids_are_accepted_by_the_runtime_and_reserved_from_credentials() {
+    let resource = Resource::new("Grok webhook".into(), [1; 16], 0);
+    assert!(Id::try_from(resource.id.as_str()).is_ok());
+    assert!(
+        SetSecret {
+            value: "key".into()
+        }
+        .check(&resource.id)
+        .is_err()
     );
 }
