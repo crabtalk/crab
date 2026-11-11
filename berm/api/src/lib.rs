@@ -336,6 +336,15 @@ impl ToolSpec {
         }
     }
 
+    /// Access for an outside caller; excludes service-to-service calls.
+    pub fn callable_by(&self, caller: Option<&host::Caller>) -> bool {
+        match self.access() {
+            Some(Access::Anonymous) => true,
+            Some(Access::Public | Access::Accounts) => !caller.is_none_or(host::Caller::anonymous),
+            _ => false,
+        }
+    }
+
     /// Set who may call it to `access`; `None` makes it internal.
     pub fn set_access(&mut self, access: Option<Access>) {
         self.public = access.is_some();

@@ -55,6 +55,7 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 | `account` | Auth, users, orgs and teams, API keys, apps, billing |
 | `services` | Services: deploys, secrets, visibility, meters, costs |
 | `system`  | `/meta` (version, rates) and feedback               |
+| `mcp` | Shared tool names, input schemas, discovery and inspection types |
 | `error`   | The two error envelopes the API answers with        |
 | `format`  | Byte counts in B, KB, MB, GB and TB (powers of 1024) |
 | `client`  | `Client`, `Owner`, `Error` (feature `client`)        |
