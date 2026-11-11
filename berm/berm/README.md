@@ -1,6 +1,6 @@
 # berm
 
-The runtime of services. A service is one hash-pinned WebAssembly module; berm compiles it once, holds it by the name it answers to, and instantiates it per invocation under wasmtime — nothing survives the call.
+The runtime of services. A service is one hash-pinned WebAssembly module, validated and compiled at deployment. Executable code is cached separately from deployment metadata and reloaded on demand. Each invocation gets a fresh Wasmtime instance and store; no guest state crosses between calls.
 
 ```rust
 let calls = Calls::by_name(Calls::DEFAULT_DEPTH);
@@ -8,6 +8,10 @@ let berm = Berm::new(&engine, calls, vec![]);
 berm.deploy("example", &wasm)?;
 let outcome = berm.call(None, "example", "echo", br#"{"query":"hi"}"#.to_vec()).await?;
 ```
+
+`Config::code_cache` bounds cached code by accounted image bytes (default 64 MiB); `code_idle` expires entries after inactivity (default five minutes). Zero capacity disables retention between calls. Active calls pin their executable generation until completion. Scope memory pressure reclaims cached code before refusing work; active references remain counted. These byte counts are estimates, not process RSS.
+
+`cache_dir` enables Wasmtime's disk compilation cache. `Berm::restore` restores a previously validated deployment without applying new-deployment admission. A recorded footprint avoids compilation; a missing footprint is measured once and the executable discarded. The next call obtains executable code under the current scope limit. Reloading does not run deployment migrations or change stored data. Concurrent cold calls share a load, and reload wait is subject to the chain's deadline. Loading runs on Tokio's blocking pool; calls require a Tokio runtime.
 
 ## What a guest can reach
 

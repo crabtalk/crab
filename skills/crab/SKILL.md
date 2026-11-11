@@ -29,7 +29,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 
 `crab budget <service> <tool>` suggests budgets from Cloud's last 30 days. CPU and rows use successful chain totals: maxima below 100 runs, p99 from 100; failed runs are excluded. Memory uses the tool's own recorded peak. The suggestion does not check host ceilings or cover unobserved worst cases. Full workflow and units: [Budgets](https://crab.talk/docs/guides/budgets).
 
-Memory is billed at the reserved budget for the call's full duration, waiting included. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crab.talk/docs/development/budgets).
+Memory is billed at the reserved budget during execution, waiting on fetches or other services included. Cold code loading is excluded. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crab.talk/docs/development/budgets).
 
 ## Reusing services and libraries
 

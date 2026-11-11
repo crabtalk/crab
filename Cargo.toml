@@ -105,6 +105,7 @@ oas3 = { version = "0.22", default-features = false }
 openapiv3 = "2.2"
 object = { version = "0.40", features = ["wasm"] }
 parking_lot = "0.12"
+lru = "0.18"
 proc-macro2 = "1"
 quote = "1"
 reqwest = { version = "0.13", default-features = false }

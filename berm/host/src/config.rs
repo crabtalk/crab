@@ -43,9 +43,15 @@ pub struct Config {
     /// limit.
     #[serde(default)]
     pub held: Option<u64>,
-    /// Where compiled code is cached between processes.
+    /// Disk compilation cache; omitted uses `cache` beside the host state file.
     #[serde(default)]
     pub cache_dir: Option<PathBuf>,
+    /// Accounted bytes of cached executable images; `0` disables retention.
+    #[serde(default = "code_cache")]
+    pub code_cache: u64,
+    /// Idle time before executable code expires.
+    #[serde(default = "code_idle", with = "humantime_serde")]
+    pub code_idle: Duration,
     /// Where the databases of the services that keep one live.
     #[serde(default = "databases")]
     pub databases: PathBuf,
@@ -65,6 +71,8 @@ impl Default for Config {
             depth: depth(),
             held: None,
             cache_dir: None,
+            code_cache: code_cache(),
+            code_idle: code_idle(),
             databases: databases(),
         }
     }
@@ -104,4 +112,11 @@ fn depth() -> u32 {
 
 fn databases() -> PathBuf {
     PathBuf::from("databases")
+}
+
+fn code_cache() -> u64 {
+    berm::Config::default().code_cache
+}
+fn code_idle() -> Duration {
+    berm::Config::default().code_idle
 }

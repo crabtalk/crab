@@ -8,7 +8,9 @@ Implement `Env` to supply HTTP transport, image fetching, peer calls, secret res
 
 The `test` feature adds `berm_host::test`: a host whose edges a test holds, running a service's built image under the real engine. Fetches answer what the test arranged, the clock stands where the test set it, and the test fires the wakes the service armed.
 
-`Config` controls instance capacity, the most and the default budget of CPU, rows read, rows written and memory, call depth, the compiled-code cache, and the database directory. See [`crab dev`](../../crates/crab) for a daemon using this host.
+`Config` controls instance capacity, the most and the default budget of CPU, rows read, rows written and memory, call depth, executable residency, the disk compilation cache, and the database directory. See [`crab dev`](../../crates/crab) for a daemon using this host.
+
+`code_cache` defaults to 64 MiB of accounted image bytes and `code_idle` to `"5m"`. Idle code is evicted without stopping or removing its deployment. The next outside, nested, scheduled or peer call reloads it. `cache_dir` defaults to `cache` beside the host state file and retains Wasmtime artifacts across restarts. Boot restores metadata without compiling code; older rows without a footprint compile once, record it and discard the executable. Restoration keeps existing deployments discoverable when their account allowance has been lowered. Metadata reads and storage sampling include cold services without warming them. Cache expiry does not change execution memory-time charges.
 
 `host::Caller.key` carries the authenticated API key ID. The embedder verifies it; the local host trusts supplied caller metadata. `berm_lang::key::id()` reads that ID throughout the chain, including peer links. Scheduled calls carry no key.
 

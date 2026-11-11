@@ -160,7 +160,14 @@ impl<E: Env> Host<E> {
         let holds = Holds::open(store.clone()).await?;
         let stops = Stops::open(store.clone()).await?;
         let engine = Engine::new(&berm::Config {
-            cache_dir: config.cache_dir.clone(),
+            cache_dir: Some(
+                config
+                    .cache_dir
+                    .clone()
+                    .unwrap_or_else(|| state.parent().unwrap_or(Path::new(".")).join("cache")),
+            ),
+            code_cache: config.code_cache,
+            code_idle: config.code_idle,
             instances: config.instances,
             memory: config.memory,
             reserved: config.reserved,
@@ -238,8 +245,8 @@ impl<E: Env> Host<E> {
         })))
     }
 
-    /// Load every service this host runs off the request path, fire due wakes,
-    /// and write counted uses.
+    /// Restore deployment metadata, fire due wakes and write counted uses.
+    /// Rows without a recorded code footprint compile once during restoration.
     pub fn boot(&self) {
         let flushing = self.clone();
         tokio::spawn(async move {
@@ -267,6 +274,21 @@ impl<E: Env> Host<E> {
         };
         for row in rows {
             let key = join(&row.scope, &row.name);
+            let lock = self
+                .deploying
+                .lock()
+                .entry(key.clone())
+                .or_default()
+                .clone();
+            let _deploying = lock.lock().await;
+            let row = match service::row(&self.store, &row.scope, &row.name).await {
+                Ok(Some(row)) => row,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::error!(service = key, %error, "reading deployment failed");
+                    continue;
+                }
+            };
             let size = row.size;
             match self.load(row).await {
                 Ok(service) => {
@@ -282,8 +304,7 @@ impl<E: Env> Host<E> {
         }
     }
 
-    /// The service a `services` row names, pulled and compiled unless it
-    /// already runs that digest.
+    /// Restore one deployment, compiling only legacy rows without a footprint.
     async fn load(&self, row: service::Row) -> Result<Arc<Service>> {
         let key = join(&row.scope, &row.name);
         if let Some(service) = self.berm.get(&key)
@@ -292,7 +313,14 @@ impl<E: Env> Host<E> {
             return Ok(service);
         }
         let image = self.images.pull(&row.reference, &row.digest).await?;
-        self.compile(key, image).await
+        let berm = self.berm.clone();
+        let restored = task::spawn_blocking(move || berm.restore(&key, &image, row.code_bytes))
+            .await
+            .context("restoring a deployment panicked")??;
+        if row.code_bytes.is_none() {
+            service::footprint(&self.store, &row.scope, &row.name, restored.bytes).await?;
+        }
+        Ok(restored)
     }
 
     /// Write what was counted: uses of services this host runs here, and the

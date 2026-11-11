@@ -773,7 +773,8 @@ pub struct Live {
 pub struct Memory {
     /// Bytes; `0` is no limit.
     pub limit: u64,
-    /// Bytes of the images and compiled code of its services deployed.
+    /// Accounted image and compiled-code bytes retained by cached or active
+    /// generations, including calls finishing after removal. Not process RSS.
     pub loaded: u64,
     /// Bytes of linear memory its invocations running now hold.
     pub running: u64,
@@ -786,7 +787,8 @@ pub struct Memory {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Held {
-    /// Bytes of its image and compiled code.
+    /// Accounted image and compiled-code bytes retained across its generations.
+    /// Zero when its code is cold; not process RSS.
     pub loaded: u64,
     /// Bytes of linear memory its invocations running now hold.
     pub running: u64,

@@ -156,6 +156,8 @@ impl<E: Env> Host<E> {
                     denied.explained(PAST_MOST)
                 } else if e.downcast_ref::<berm::MissingHostCall>().is_some() {
                     denied.explained(MISSING_HOST_CALL)
+                } else if e.is::<berm::MemoryLimit>() {
+                    denied.explained(Denied::MEMORY)
                 } else {
                     denied
                 }
@@ -168,6 +170,7 @@ impl<E: Env> Host<E> {
                 &digest,
                 &manifest.version,
                 size,
+                deployed.bytes,
                 deprecated,
                 cron_tools,
                 manifest.crons.clone(),

@@ -249,15 +249,18 @@ dependencies = [
  "cpu-time",
  "futures-util",
  "hex",
+ "lru",
  "parking_lot",
  "ring",
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "url",
+ "wasmparser 0.255.0",
  "wasmtime",
 ]
 
