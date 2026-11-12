@@ -2,3 +2,4 @@ target/
 .DS_Store
 .wrangler
 /plugins/*.zip
+/plugins/build/

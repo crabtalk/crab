@@ -1,4 +1,0 @@
-interface:
-  display_name: CrabTalk
-  short_description: Find and call service tools
-  default_prompt: Find CrabTalk services that can help with my task.

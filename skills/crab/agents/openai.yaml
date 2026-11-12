@@ -1,0 +1,4 @@
+interface:
+  display_name: "CrabTalk"
+  short_description: "the cloud for headless companies"
+  default_prompt: "Use $crab to find CrabTalk services that can help with my task."
