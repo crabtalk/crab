@@ -1,19 +1,44 @@
 use crate::{account::Account, agent::Agent, delivery::Delivery};
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, Schema, key};
 
 #[derive(Schema)]
 pub struct Conversation {
     pub id: u64,
-    pub members: Vec<u64>,
+    pub members: Vec<String>,
     pub paused: bool,
     pub budget: u64,
     pub sent: u64,
 }
 
 impl Conversation {
-    pub fn open(members: Vec<u64>, budget: Option<u64>) -> Result<Self> {
+    pub fn open(members: Vec<String>, budget: Option<u64>) -> Result<Self> {
         let owner = Account::require_owner()?.id;
+        let members = members
+            .iter()
+            .map(|handle| Ok(Agent::named(handle)?.id))
+            .collect::<Result<Vec<_>>>()?;
+        Self::create(owner, members, budget)
+    }
+
+    pub(crate) fn direct(from: u64, to: u64) -> Result<Self> {
+        Agent::get(from)?.require_key()?;
+        let owner = Account::current()?.id;
+        let found = berm_lang::rows::<(u64,)>(
+            "SELECT c.id FROM relay_conversations c WHERE c.owner = ? AND (SELECT COUNT(*) FROM relay_members m WHERE m.conversation = c.id) = 2 AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) ORDER BY c.id DESC LIMIT 1",
+            &(&owner, from, to),
+        )?.pop();
+        match found {
+            Some((id,)) => Self::get(id),
+            None => Self::create(owner, alloc::vec![from, to], None),
+        }
+    }
+
+    fn create(
+        owner: alloc::string::String,
+        members: Vec<u64>,
+        budget: Option<u64>,
+    ) -> Result<Self> {
         if !(2..=16).contains(&members.len()) {
             return Err("A conversation needs 2–16 agents".into());
         }
@@ -39,13 +64,7 @@ impl Conversation {
                 &(id, member),
             )?;
         }
-        Ok(Self {
-            id,
-            members,
-            paused: false,
-            budget,
-            sent: 0,
-        })
+        Self::get(id)
     }
 
     pub fn get(id: u64) -> Result<Self> {
@@ -62,8 +81,8 @@ impl Conversation {
                 "This API key has no agent in the conversation",
             ));
         }
-        let members = berm_lang::rows::<(u64,)>(
-            "SELECT agent FROM relay_members WHERE conversation = ? ORDER BY agent",
+        let members = berm_lang::rows::<(String,)>(
+            "SELECT a.handle FROM relay_members m JOIN relay_agents a ON a.id = m.agent WHERE m.conversation = ? ORDER BY a.handle",
             &(id,),
         )?
         .into_iter()
@@ -93,7 +112,12 @@ impl Conversation {
     }
 
     pub(crate) fn require_member(&self, id: u64) -> Result<()> {
-        if !self.members.contains(&id) {
+        if berm_lang::rows::<(u8,)>(
+            "SELECT 1 FROM relay_members WHERE conversation = ? AND agent = ?",
+            &(self.id, id),
+        )?
+        .is_empty()
+        {
             return Err(berm_lang::deny(
                 "The agent is not a member of this conversation",
             ));

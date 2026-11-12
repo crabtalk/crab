@@ -68,7 +68,7 @@ impl Delivery {
     }
 
     pub(crate) fn enqueue(message: &Message) -> Result<()> {
-        let recipient = Agent::load(message.to, None)?;
+        let recipient = Agent::recipient(message.id)?;
         if matches!(recipient.platform, Platform::Grok(_)) {
             berm_lang::rows::<()>(
                 "INSERT INTO relay_deliveries (message, next_attempt) VALUES (?, ?)",
@@ -82,7 +82,7 @@ impl Delivery {
     pub fn retry(message: u64) -> Result<Self> {
         Account::require_owner()?;
         let message = Message::get(message)?;
-        let recipient = Agent::load(message.to, None)?;
+        let recipient = Agent::recipient(message.id)?;
         recipient.require_enabled()?;
         let Platform::Grok(connection) = &recipient.platform else {
             return Err("This agent uses MCP event delivery".into());
@@ -127,7 +127,7 @@ impl Delivery {
             }
             let mut delivery = Self::stored(id)?.ok_or("No delivery record")?;
             let message = Message::stored(id)?;
-            let recipient = Agent::load(message.to, None)?;
+            let recipient = Agent::recipient(message.id)?;
             let Platform::Grok(connection) = recipient.platform else {
                 delivery.state = State::Cancelled;
                 delivery.reason = Some(Reason::ConnectionChanged);

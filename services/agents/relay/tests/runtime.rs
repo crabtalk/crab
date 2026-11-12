@@ -22,31 +22,37 @@ async fn several_bots_and_a_dot_keep_their_identities_and_history_after_restart(
         "alice",
         "sales-key",
     );
-    let research = host.call("register", json!({"name":"Research","platform":{"grok":{"webhook_url":"https://bots.example/research","secret_id":"secret_11111111111111111111111111111111"}}})).await?;
-    let sales = host.call("register", json!({"name":"Sales","platform":{"grok":{"webhook_url":"https://bots.example/sales","secret_id":"secret_22222222222222222222222222222222"}}})).await?;
+    let research = host.call("register", json!({"handle":"research","name":"Research","platform":{"grok":{"webhook_url":"https://bots.example/research","secret_id":"secret_11111111111111111111111111111111"}}})).await?;
+    let sales = host.call("register", json!({"handle":"sales","name":"Sales","platform":{"grok":{"webhook_url":"https://bots.example/sales","secret_id":"secret_22222222222222222222222222222222"}}})).await?;
     let dot = host.register("alice", "Assistant").await?;
-    let from = research["id"].as_u64().unwrap();
-    assert_ne!(research["id"], sales["id"]);
-    let conversation = host.conversation(&[from, dot]).await?;
+    let from = research["handle"].as_str().unwrap();
+    assert_ne!(research["handle"], sales["handle"]);
+    let conversation = host.conversation(&[from, &dot]).await?;
     let first = host.call("send", json!({"conversation":conversation,"from":from,"to":dot,"body":"Investigate this report","key":"request"})).await?;
     let reply = host.call("send", json!({"conversation":conversation,"from":dot,"to":from,"body":"Which customer?","key":"clarify","reply_to":first["id"]})).await?;
     let changed = host
-        .call("update_agent", json!({"id":from,"name":"Researcher"}))
+        .call("update_agent", json!({"handle":from,"name":"Researcher"}))
         .await?;
-    assert_eq!(changed["id"], from);
+    assert_eq!(changed["handle"], from);
     assert_eq!(changed["platform"], research["platform"]);
     host.reopen().await?;
     let inbox = host.call("inbox", json!({"agent":from})).await?;
     assert_eq!(inbox["items"], json!([reply]));
     assert!(
-        host.call("inbox", json!({"agent":sales["id"]})).await?["items"]
+        host.call("inbox", json!({"agent":sales["handle"]})).await?["items"]
             .as_array()
             .unwrap()
             .is_empty()
     );
     let agents = host.call("agents", json!({})).await?;
     assert_eq!(agents.as_array().unwrap().len(), 3);
-    assert_eq!(agents[0]["name"], "Researcher");
+    assert!(
+        agents
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|agent| agent["handle"] == "research" && agent["name"] == "Researcher")
+    );
     Ok(())
 }
 
@@ -66,12 +72,12 @@ async fn account_permissions_apply_to_registration_membership_and_message_histor
             "bob",
             None,
             "update_agent",
-            json!({"id":alice,"name":"Taken"})
+            json!({"handle":alice,"name":"Taken"})
         )
         .await
         .is_err()
     );
-    let conversation = host.conversation(&[alice, other]).await?;
+    let conversation = host.conversation(&[&alice, &other]).await?;
     let input = json!({"conversation":conversation,"from":alice,"to":other,"body":"Private","key":"private"});
     host.call("send", input.clone()).await?;
     assert!(host.call_as("bob", None, "send", input).await.is_err());
@@ -135,7 +141,7 @@ async fn retries_do_not_consume_budget_and_failures_leave_no_message() -> Result
         .call("pause", json!({"conversation":conversation,"paused":true}))
         .await?;
     assert_eq!(paused["sent"], 1);
-    host.call("update_agent", json!({"id":a,"enabled":false}))
+    host.call("update_agent", json!({"handle":a,"enabled":false}))
         .await?;
     assert_eq!(host.call("send", input).await?, first);
     let history = host
@@ -150,8 +156,8 @@ async fn paused_disabled_and_cross_conversation_replies_are_refused() -> Result<
     let host = Relay::open().await?;
     let a = host.register("alice", "A").await?;
     let b = host.register("alice", "B").await?;
-    let first = host.conversation(&[a, b]).await?;
-    let second = host.conversation(&[a, b]).await?;
+    let first = host.conversation(&[&a, &b]).await?;
+    let second = host.conversation(&[&a, &b]).await?;
     let original = host
         .call(
             "send",
@@ -166,10 +172,10 @@ async fn paused_disabled_and_cross_conversation_replies_are_refused() -> Result<
     assert!(host.call("send", input.clone()).await.is_err());
     host.call("pause", json!({"conversation":second,"paused":false}))
         .await?;
-    host.call("update_agent", json!({"id":a,"enabled":false}))
+    host.call("update_agent", json!({"handle":a,"enabled":false}))
         .await?;
     assert!(host.call("send", input.clone()).await.is_err());
-    host.call("update_agent", json!({"id":a,"enabled":true}))
+    host.call("update_agent", json!({"handle":a,"enabled":true}))
         .await?;
     host.call("send", input).await?;
     Ok(())
@@ -180,7 +186,7 @@ async fn escaped_messages_fit_pages_and_cursors_survive_a_restart() -> Result<()
     let mut host = Relay::open().await?;
     let a = host.register("alice", "A").await?;
     let b = host.register("alice", "B").await?;
-    let conversation = host.conversation(&[a, b]).await?;
+    let conversation = host.conversation(&[&a, &b]).await?;
     for key in 0..11 {
         host.call("send", json!({"conversation":conversation,"from":a,"to":b,"body":"\u{0001}".repeat(4096),"key":key.to_string()})).await?;
     }
@@ -208,7 +214,7 @@ async fn committed_events_are_targeted_deduplicated_and_resumable() -> Result<()
     let a = host.register("alice", "Sender").await?;
     let b = host.register("alice", "Recipient").await?;
     let c = host.register("alice", "Other").await?;
-    let conversation = host.conversation(&[a, b, c]).await?;
+    let conversation = host.conversation(&[&a, &b, &c]).await?;
     let caller = Caller {
         id: "alice".into(),
         app: None,
@@ -328,7 +334,7 @@ async fn committed_events_are_targeted_deduplicated_and_resumable() -> Result<()
             .await
             .is_err()
     );
-    host.call("update_agent", json!({"id":b,"enabled":false}))
+    host.call("update_agent", json!({"handle":b,"enabled":false}))
         .await?;
     assert!(
         host.host
@@ -365,7 +371,7 @@ async fn event_pages_can_resume_after_individual_acknowledgments() -> Result<()>
     let mut host = Relay::open().await?;
     let a = host.register("alice", "Sender").await?;
     let b = host.register("alice", "Recipient").await?;
-    let conversation = host.conversation(&[a, b]).await?;
+    let conversation = host.conversation(&[&a, &b]).await?;
     for key in 0..11 {
         host.call("send", json!({"conversation":conversation,"from":a,"to":b,"body":"\u{0001}".repeat(4096),"key":key.to_string()})).await?;
     }
@@ -392,9 +398,9 @@ async fn paused_conversations_hold_the_event_position_until_resumed() -> Result<
     let host = Relay::open().await?;
     let from = host.register("alice", "Sender").await?;
     let to = host.register("alice", "Recipient").await?;
-    let ongoing = host.conversation(&[from, to]).await?;
+    let ongoing = host.conversation(&[&from, &to]).await?;
     let first = host.call("send", json!({"conversation":ongoing,"from":from,"to":to,"body":"Before pause","key":"before"})).await?;
-    let conversation = host.conversation(&[from, to]).await?;
+    let conversation = host.conversation(&[&from, &to]).await?;
     let message = host
         .call(
             "send",
@@ -431,8 +437,8 @@ async fn api_keys_act_only_as_granted_agents_and_revocation_survives_restart() -
     let a = host.register("alice", "Research").await?;
     let b = host.register("alice", "Assistant").await?;
     let c = host.register("alice", "Sales").await?;
-    let conversation = host.conversation(&[a, b]).await?;
-    let private = host.conversation(&[b, c]).await?;
+    let conversation = host.conversation(&[&a, &b]).await?;
+    let private = host.conversation(&[&b, &c]).await?;
     let input =
         json!({"conversation":conversation,"from":a,"to":b,"body":"Investigate","key":"first"});
     assert!(
@@ -458,7 +464,7 @@ async fn api_keys_act_only_as_granted_agents_and_revocation_survives_restart() -
     );
     assert_eq!(
         host.call_as("alice", Some("research-key"), "agents", json!({}))
-            .await?[0]["id"],
+            .await?[0]["handle"],
         a
     );
     assert!(
@@ -500,11 +506,7 @@ async fn api_keys_act_only_as_granted_agents_and_revocation_survives_restart() -
             .is_err()
     );
     for (tool, args) in [
-        (
-            "register",
-            json!({"name":"Escalate","platform":{"open_ai_dot":{}}}),
-        ),
-        ("update_agent", json!({"id":a,"enabled":false})),
+        ("update_agent", json!({"handle":a,"enabled":false})),
         ("grant_agent", json!({"agent":b,"key_id":"research-key"})),
         ("revoke_agent", json!({"agent":b,"key_id":"assistant-key"})),
         ("agent_keys", json!({"agent":b})),

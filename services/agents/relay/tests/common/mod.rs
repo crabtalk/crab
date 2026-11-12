@@ -69,20 +69,20 @@ impl Relay {
         }
     }
 
-    pub async fn register(&self, owner: &str, name: &str) -> Result<u64> {
+    pub async fn register(&self, owner: &str, name: &str) -> Result<String> {
         Ok(self
             .call_as(
                 owner,
                 None,
                 "register",
-                json!({"name":name,"platform":{"open_ai_dot":{}}}),
+                json!({"handle":name.to_ascii_lowercase().replace(' ', "-"),"name":name,"platform":{"open_ai_dot":{}}}),
             )
-            .await?["id"]
-            .as_u64()
-            .unwrap())
+            .await?["handle"]
+            .as_str()
+            .unwrap().to_owned())
     }
 
-    pub async fn conversation(&self, members: &[u64]) -> Result<u64> {
+    pub async fn conversation(&self, members: &[&str]) -> Result<u64> {
         Ok(self.call("open", json!({"members":members})).await?["id"]
             .as_u64()
             .unwrap())

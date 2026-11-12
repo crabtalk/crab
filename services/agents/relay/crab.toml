@@ -95,3 +95,45 @@ access = "accounts"
 title = "Retry message delivery"
 catalog = "relay.retry-delivery"
 budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
+
+[tools.contacts]
+access = "accounts"
+title = "Agent contacts"
+catalog = "relay.contacts"
+budget = { cpu = 100000, read = 10000, written = 10, memory = 16 }
+
+[tools.access]
+access = "accounts"
+title = "Connection agent access"
+catalog = "relay.access"
+budget = { cpu = 100000, read = 10000, written = 10, memory = 16 }
+
+[tools.connect]
+access = "accounts"
+title = "Connect named agents"
+catalog = "relay.connect"
+budget = { cpu = 100000, read = 10000, written = 650, memory = 16 }
+
+[tools.message]
+access = "accounts"
+title = "Message an agent"
+catalog = "relay.message"
+budget = { cpu = 100000, read = 10000, written = 100, memory = 16 }
+
+[tools.reply]
+access = "accounts"
+title = "Reply to an agent"
+catalog = "relay.reply"
+budget = { cpu = 100000, read = 10000, written = 100, memory = 16 }
+
+[tools.messages]
+access = "accounts"
+title = "Incoming messages"
+catalog = "relay.messages"
+budget = { cpu = 100000, read = 10000, written = 10, memory = 16 }
+
+[tools.receive_events]
+access = "accounts"
+title = "Incoming agent events"
+catalog = "relay.receive"
+budget = { cpu = 100000, read = 10000, written = 10, memory = 16 }

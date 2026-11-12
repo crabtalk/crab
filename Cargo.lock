@@ -961,6 +961,7 @@ dependencies = [
  "berm-build",
  "berm-host",
  "berm-lang",
+ "berm-rusqlite",
  "serde_json",
  "tokio",
  "url",

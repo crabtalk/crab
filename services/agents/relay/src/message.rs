@@ -14,8 +14,8 @@ const MAX_BODY: usize = 4096;
 pub struct Message {
     pub id: u64,
     pub conversation: u64,
-    pub from: u64,
-    pub to: u64,
+    pub from: String,
+    pub to: String,
     pub body: String,
     pub reply_to: Option<u64>,
     pub created_at: u64,
@@ -29,8 +29,68 @@ pub struct Messages {
 }
 
 impl Message {
-    pub fn events(agent: u64, cursor: Option<String>) -> Result<Page<Self>> {
-        let recipient = Agent::get(agent)?;
+    pub fn address(from: Option<String>, to: String, body: String, key: String) -> Result<Self> {
+        let from = Agent::connected(from.as_deref())?;
+        let to = Agent::named(&to)?;
+        if from.id == to.id {
+            return Err("Address another agent".into());
+        }
+        Self::validate(&body, &key)?;
+        let conversation = if let Some((id,)) = berm_lang::rows::<(u64,)>(
+            "SELECT id FROM relay_messages WHERE sender = ? AND request_key = ?",
+            &(from.id, &key),
+        )?
+        .pop()
+        {
+            Self::get(id)?.conversation
+        } else {
+            Conversation::direct(from.id, to.id)?.id
+        };
+        Self::send(conversation, from.handle, to.handle, body, key, None)
+    }
+
+    pub fn reply(message: u64, body: String, key: String) -> Result<Self> {
+        let parent = Self::get(message)?;
+        Self::send(
+            parent.conversation,
+            parent.to,
+            parent.from,
+            body,
+            key,
+            Some(message),
+        )
+    }
+
+    fn validate(body: &str, key: &str) -> Result<()> {
+        if key.is_empty() || key.len() > 128 {
+            return Err("Use an idempotency key of 1–128 bytes".into());
+        }
+        if body.trim().is_empty() || body.len() > MAX_BODY {
+            return Err("Keep messages to 1–4096 bytes; link larger artifacts".into());
+        }
+        Ok(())
+    }
+
+    pub fn received(agent: Option<String>, cursor: Option<String>) -> Result<Page<Self>> {
+        let (id, cursor) = match cursor {
+            Some(cursor) => {
+                let (handle, position) = cursor.split_once(':').ok_or("Invalid message cursor")?;
+                (Agent::named(handle)?.id, Some(String::from(position)))
+            }
+            None => (Agent::connected(agent.as_deref())?.id, None),
+        };
+        let handle = Agent::get(id)?.handle;
+        let mut page = Self::events(&handle, cursor)?;
+        page.cursor = alloc::format!("{handle}:{}", page.cursor);
+        for event in &mut page.events {
+            event.cursor = alloc::format!("{handle}:{}", event.cursor);
+        }
+        Ok(page)
+    }
+
+    pub fn events(handle: &str, cursor: Option<String>) -> Result<Page<Self>> {
+        let recipient = Agent::named(handle)?;
+        let agent = recipient.id;
         recipient.require_key()?;
         recipient.require_enabled()?;
         if !matches!(recipient.platform, Platform::OpenAiDot(_)) {
@@ -83,21 +143,19 @@ impl Message {
 
     pub fn send(
         conversation: u64,
-        from: u64,
-        to: u64,
+        from: String,
+        to: String,
         body: String,
         key: String,
         reply_to: Option<u64>,
     ) -> Result<Self> {
         let context = Conversation::get(conversation)?;
-        // Authorize before resolving a sender's idempotency key.
-        Agent::get(from)?.require_key()?;
-        if key.is_empty() || key.len() > 128 {
-            return Err("Use an idempotency key of 1–128 bytes".into());
-        }
-        if body.trim().is_empty() || body.len() > MAX_BODY {
-            return Err("Keep messages to 1–4096 bytes; link larger artifacts".into());
-        }
+        let sender = Agent::named(&from)?;
+        let recipient = Agent::named(&to)?;
+        sender.require_key()?;
+        let from = sender.id;
+        let to = recipient.id;
+        Self::validate(&body, &key)?;
         if let Some((id,)) = berm_lang::rows::<(u64,)>(
             "SELECT id FROM relay_messages WHERE sender = ? AND request_key = ?",
             &(from, &key),
@@ -106,7 +164,7 @@ impl Message {
         {
             let message = Self::get(id)?;
             if message.conversation != conversation
-                || message.to != to
+                || message.to != recipient.handle
                 || message.body != body
                 || message.reply_to != reply_to
             {
@@ -145,8 +203,8 @@ impl Message {
         let message = Self {
             id,
             conversation,
-            from,
-            to,
+            from: sender.handle,
+            to: recipient.handle,
             body,
             reply_to,
             created_at,
@@ -162,8 +220,8 @@ impl Message {
     }
 
     pub(crate) fn stored(id: u64) -> Result<Self> {
-        let (conversation, from, to, body, reply_to, created_at) = berm_lang::rows::<(u64, u64, u64, String, Option<u64>, u64)>(
-            "SELECT conversation, sender, recipient, body, reply_to, created_at FROM relay_messages WHERE id = ?",
+        let (conversation, from, to, body, reply_to, created_at) = berm_lang::rows::<(u64, String, String, String, Option<u64>, u64)>(
+            "SELECT m.conversation, s.handle, r.handle, m.body, m.reply_to, m.created_at FROM relay_messages m JOIN relay_agents s ON s.id = m.sender JOIN relay_agents r ON r.id = m.recipient WHERE m.id = ?",
             &(id,),
         )?.pop().ok_or("No such message")?;
         Ok(Self {
@@ -182,8 +240,10 @@ impl Message {
         Self::page(Some(conversation), None, after, limit)
     }
 
-    pub fn inbox(agent: u64, after: u64, limit: Option<u64>) -> Result<Messages> {
-        Agent::get(agent)?.require_key()?;
+    pub fn inbox(handle: &str, after: u64, limit: Option<u64>) -> Result<Messages> {
+        let agent = Agent::named(handle)?;
+        agent.require_key()?;
+        let agent = agent.id;
         Self::page(None, Some(agent), after, limit)
     }
 
@@ -196,14 +256,14 @@ impl Message {
         let limit = limit.unwrap_or(10).clamp(1, 10);
         let mut found = match (conversation, recipient) {
             (Some(conversation), _) => {
-                berm_lang::rows::<(u64, u64, u64, u64, String, Option<u64>, u64)>(
-                    "SELECT id, conversation, sender, recipient, body, reply_to, created_at FROM relay_messages WHERE conversation = ? AND id > ? ORDER BY id LIMIT ?",
+                berm_lang::rows::<(u64, u64, String, String, String, Option<u64>, u64)>(
+                    "SELECT m.id, m.conversation, s.handle, r.handle, m.body, m.reply_to, m.created_at FROM relay_messages m JOIN relay_agents s ON s.id = m.sender JOIN relay_agents r ON r.id = m.recipient WHERE m.conversation = ? AND m.id > ? ORDER BY m.id LIMIT ?",
                     &(conversation, after, limit + 1),
                 )?
             }
             (_, Some(recipient)) => {
-                berm_lang::rows::<(u64, u64, u64, u64, String, Option<u64>, u64)>(
-                    "SELECT id, conversation, sender, recipient, body, reply_to, created_at FROM relay_messages WHERE recipient = ? AND id > ? ORDER BY id LIMIT ?",
+                berm_lang::rows::<(u64, u64, String, String, String, Option<u64>, u64)>(
+                    "SELECT m.id, m.conversation, s.handle, r.handle, m.body, m.reply_to, m.created_at FROM relay_messages m JOIN relay_agents s ON s.id = m.sender JOIN relay_agents r ON r.id = m.recipient WHERE m.recipient = ? AND m.id > ? ORDER BY m.id LIMIT ?",
                     &(recipient, after, limit + 1),
                 )?
             }
