@@ -1,8 +1,4 @@
-use crab_agent::{
-    cmd::deploy::{self, Deploy},
-    context::Context,
-    host::Node,
-};
+use crab_agent::{cmd::deploy::Deploy, context::Context, host::Node};
 use crabtalk_sdk::client::Client;
 use std::{path::Path, time::Duration};
 
@@ -45,15 +41,12 @@ async fn a_context_registry_deploys_to_a_local_node_and_survives_restart() {
         from: None,
         version: None,
         auto_upgrade: false,
-        notes: None,
         copy: Vec::new(),
     };
-    tokio::task::spawn_blocking(move || {
-        deploy::run(&client, &build, false, true, Some(&registry), false)
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    tokio::task::spawn_blocking(move || build.run(&client, true, Some(&registry)))
+        .await
+        .unwrap()
+        .unwrap();
     let deployed = node.get("osv").unwrap();
     let digest = deployed.digest.clone();
     let listing = Client::new(&url).listing("osv").await.unwrap();

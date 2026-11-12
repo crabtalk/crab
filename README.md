@@ -47,7 +47,7 @@ image = "connect/tinyfish"
 template = true
 ```
 
-`crab publish` builds and publishes to that address, using the Cargo version and checking publication permissions. `crab deploy` consumes that release under your selected account without building. `crab deploy --build` deploys local source. An image is optional for building; a standalone file selects a release with `image = "connect/tinyfish:1.2.3"`.
+`crab push` builds and publishes to that address, using the Cargo version and checking publication permissions. `crab deploy` consumes that release under your selected account without building. `crab deploy --build` deploys local source. An image is optional for building; a standalone file selects a release with `image = "connect/tinyfish:1.2.3"`.
 
 ## Explore
 

@@ -24,6 +24,7 @@ pub mod ls;
 pub mod new;
 pub mod org;
 pub mod plans;
+pub mod push;
 pub mod rates;
 pub mod replay;
 pub mod request;
