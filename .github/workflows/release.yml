@@ -1,6 +1,6 @@
 name: Release
 
-# `install.sh` and `install.ps1` on crab.talk and `crab upgrade` download
+# `install.sh` and `install.ps1` on crab.talk and `crab update` download
 # `releases/latest/download/crab-<target>.{tar.xz,zip}`. Renaming an asset
 # breaks them.
 on:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `crab upgrade` compares the tag against the version `crab` was built
+      # `crab update` compares the tag against the version `crab` was built
       # as.
       - name: check the tag names the crate version
         run: |

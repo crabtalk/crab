@@ -240,7 +240,7 @@ enum Command {
     #[command(subcommand)]
     Context(ContextCommand),
     /// Replace this `crab` with the latest release, when it is newer.
-    Upgrade,
+    Update,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -916,7 +916,7 @@ fn run() -> Result<ExitCode> {
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
         Command::Explain { code } => cmd::explain::run(&client()?, code, json)?,
-        Command::Upgrade => cmd::upgrade::run(yes)?,
+        Command::Update => cmd::update::run(yes)?,
         // The one command whose exit code carries the call's result.
         Command::Call(call) => return cmd::call::run(&client()?, &cloud()?, call),
         Command::Replay {
