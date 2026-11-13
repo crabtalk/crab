@@ -63,24 +63,6 @@ title = "Agent message events"
 catalog = "relay.events"
 budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
 
-[tools.agent_keys]
-access = "accounts"
-title = "Agent API key grants"
-catalog = "relay.agent-keys"
-budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
-
-[tools.grant_agent]
-access = "accounts"
-title = "Grant agent access"
-catalog = "relay.grant-agent"
-budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
-
-[tools.revoke_agent]
-access = "accounts"
-title = "Revoke agent access"
-catalog = "relay.revoke-agent"
-budget = { cpu = 100000, read = 2000, written = 10, memory = 16 }
-
 [tools.deliver]
 budget = { cpu = 100000, read = 10000, written = 50, memory = 16 }
 
@@ -101,18 +83,6 @@ access = "accounts"
 title = "Agent contacts"
 catalog = "relay.contacts"
 budget = { cpu = 100000, read = 10000, written = 10, memory = 16 }
-
-[tools.access]
-access = "accounts"
-title = "Connection agent access"
-catalog = "relay.access"
-budget = { cpu = 100000, read = 10000, written = 10, memory = 16 }
-
-[tools.connect]
-access = "accounts"
-title = "Connect named agents"
-catalog = "relay.connect"
-budget = { cpu = 100000, read = 10000, written = 650, memory = 16 }
 
 [tools.message]
 access = "accounts"

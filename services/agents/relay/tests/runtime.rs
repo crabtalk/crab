@@ -432,139 +432,83 @@ async fn paused_conversations_hold_the_event_position_until_resumed() -> Result<
 }
 
 #[tokio::test]
-async fn api_keys_act_only_as_granted_agents_and_revocation_survives_restart() -> Result<()> {
+async fn account_connections_share_agents_and_history_across_restart() -> Result<()> {
     let mut host = Relay::open().await?;
     let a = host.register("alice", "Research").await?;
     let b = host.register("alice", "Assistant").await?;
-    let c = host.register("alice", "Sales").await?;
     let conversation = host.conversation(&[&a, &b]).await?;
-    let private = host.conversation(&[&b, &c]).await?;
     let input =
         json!({"conversation":conversation,"from":a,"to":b,"body":"Investigate","key":"first"});
-    assert!(
-        host.call_as("alice", Some("research-key"), "send", input.clone())
-            .await
-            .is_err()
-    );
-    host.call("grant_agent", json!({"agent":a,"key_id":"research-key"}))
-        .await?;
-    host.call("grant_agent", json!({"agent":b,"key_id":"assistant-key"}))
-        .await?;
-    assert_eq!(
-        host.call("agent_keys", json!({"agent":a})).await?,
-        json!(["research-key"])
-    );
     let first = host
         .call_as("alice", Some("research-key"), "send", input.clone())
         .await?;
     assert_eq!(
-        host.call_as("alice", Some("research-key"), "send", input.clone())
+        host.call_as("alice", Some("another-key"), "send", input)
             .await?,
         first
     );
     assert_eq!(
-        host.call_as("alice", Some("research-key"), "agents", json!({}))
-            .await?[0]["handle"],
-        a
+        host.call_as("alice", Some("another-key"), "agents", json!({}))
+            .await?
+            .as_array()
+            .unwrap()
+            .len(),
+        2
     );
-    assert!(
-        host.call_as("alice", Some("research-key"), "inbox", json!({"agent":b}))
-            .await
-            .is_err()
-    );
-    assert!(
-        host.call_as(
-            "alice",
-            Some("research-key"),
-            "message_events",
-            json!({"agent":b,"cursor":"0"})
-        )
-        .await
-        .is_err()
-    );
-    assert!(
-        host.call_as(
-            "alice",
-            Some("research-key"),
-            "read",
-            json!({"conversation":private})
-        )
-        .await
-        .is_err()
-    );
-    assert!(
-        host.call_as("bob", Some("research-key"), "inbox", json!({"agent":a}))
-            .await
-            .is_err()
-    );
-    let mut impersonated = input.clone();
-    impersonated["from"] = json!(b);
-    impersonated["to"] = json!(a);
-    assert!(
-        host.call_as("alice", Some("research-key"), "send", impersonated)
-            .await
-            .is_err()
-    );
-    for (tool, args) in [
-        ("update_agent", json!({"handle":a,"enabled":false})),
-        ("grant_agent", json!({"agent":b,"key_id":"research-key"})),
-        ("revoke_agent", json!({"agent":b,"key_id":"assistant-key"})),
-        ("agent_keys", json!({"agent":b})),
-        ("open", json!({"members":[a,c]})),
-        ("pause", json!({"conversation":conversation,"paused":true})),
-    ] {
+    for tool in ["update_agent", "open", "pause"] {
+        let args = match tool {
+            "update_agent" => json!({"handle":a,"enabled":false}),
+            "open" => json!({"members":[a,b]}),
+            _ => json!({"conversation":conversation,"paused":true}),
+        };
         assert!(
             host.call_as("alice", Some("research-key"), tool, args)
                 .await
-                .is_err(),
-            "{tool}"
+                .is_err()
         );
     }
     host.reopen().await?;
     assert_eq!(
-        host.call_as("alice", Some("assistant-key"), "inbox", json!({"agent":b}))
+        host.call_as("alice", Some("fresh-key"), "inbox", json!({"agent":b}))
             .await?["items"],
         json!([first.clone()])
     );
     assert_eq!(
         host.call_as(
             "alice",
-            Some("assistant-key"),
+            Some("fresh-key"),
             "message_events",
             json!({"agent":b,"cursor":"0"})
         )
         .await?["events"][0]["data"],
         first
     );
-    host.call("revoke_agent", json!({"agent":a,"key_id":"research-key"}))
-        .await?;
-    host.reopen().await?;
+    host.register("bob", "Assistant").await?;
+    host.register("bob", "Research").await?;
+    for (tool, args) in [
+        ("read", json!({"conversation":conversation})),
+        (
+            "reply",
+            json!({"message":first["id"],"body":"Other account","key":"cross-account"}),
+        ),
+        (
+            "send",
+            json!({"conversation":conversation,"from":a,"to":b,"body":"Other account","key":"cross-account"}),
+        ),
+    ] {
+        assert!(
+            host.call_as("bob", Some("research-key"), tool, args)
+                .await
+                .is_err(),
+            "{tool}"
+        );
+    }
     assert!(
-        host.call_as("alice", Some("research-key"), "send", input)
-            .await
-            .is_err()
+        host.call_as("bob", Some("fresh-key"), "inbox", json!({"agent":b}))
+            .await?["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
-    assert!(
-        host.call_as(
-            "alice",
-            Some("research-key"),
-            "read",
-            json!({"conversation":conversation})
-        )
-        .await
-        .is_err()
-    );
-    assert_eq!(
-        host.call_as("alice", Some("research-key"), "agents", json!({}))
-            .await?,
-        json!([])
-    );
-    host.call_as(
-        "alice",
-        Some("assistant-key"),
-        "send",
-        json!({"conversation":conversation,"from":b,"to":a,"body":"Found it","key":"reply"}),
-    )
-    .await?;
     Ok(())
 }

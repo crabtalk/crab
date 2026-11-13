@@ -1,6 +1,6 @@
 use crate::{account::Account, agent::Agent, delivery::Delivery};
 use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, Schema, key};
+use berm_lang::{Result, Schema};
 
 #[derive(Schema)]
 pub struct Conversation {
@@ -22,7 +22,6 @@ impl Conversation {
     }
 
     pub(crate) fn direct(from: u64, to: u64) -> Result<Self> {
-        Agent::get(from)?.require_key()?;
         let owner = Account::current()?.id;
         let found = berm_lang::rows::<(u64,)>(
             "SELECT c.id FROM relay_conversations c WHERE c.owner = ? AND (SELECT COUNT(*) FROM relay_members m WHERE m.conversation = c.id) = 2 AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) ORDER BY c.id DESC LIMIT 1",
@@ -69,18 +68,12 @@ impl Conversation {
 
     pub fn get(id: u64) -> Result<Self> {
         let owner = Account::current()?.id;
-        let key = key::id()?;
-        let (paused, budget, sent, permitted) = berm_lang::rows::<(u8, u64, u64, u8)>(
-            "SELECT paused, budget, sent, (? IS NULL OR EXISTS (SELECT 1 FROM relay_members m JOIN relay_agent_keys k ON k.agent = m.agent WHERE m.conversation = c.id AND k.key_id = ?)) FROM relay_conversations c WHERE id = ? AND owner = ?",
-            &(&key, &key, id, owner),
+        let (paused, budget, sent) = berm_lang::rows::<(u8, u64, u64)>(
+            "SELECT paused, budget, sent FROM relay_conversations WHERE id = ? AND owner = ?",
+            &(id, owner),
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible conversation with that id"))?;
-        if permitted == 0 {
-            return Err(berm_lang::deny(
-                "This API key has no agent in the conversation",
-            ));
-        }
         let members = berm_lang::rows::<(String,)>(
             "SELECT a.handle FROM relay_members m JOIN relay_agents a ON a.id = m.agent WHERE m.conversation = ? ORDER BY a.handle",
             &(id,),

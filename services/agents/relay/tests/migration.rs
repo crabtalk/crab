@@ -35,5 +35,14 @@ fn existing_profiles_get_unique_handles_without_losing_history_or_delivery_setup
     assert_eq!(recipient, "grok-bot");
     assert!(credential.contains("secret_existing"));
     assert_eq!(key, "grok-key");
+    db.execute_batch(include_str!("../migrations/0005_account_access.sql"))?;
+    let (recipient, credential, body): (String, String, String) = db.query_row(
+        "SELECT a.handle, a.platform, m.body FROM relay_deliveries d JOIN relay_messages m ON m.id = d.message JOIN relay_agents a ON a.id = m.recipient", [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    assert_eq!(recipient, "grok-bot");
+    assert!(credential.contains("secret_existing"));
+    assert_eq!(body, "Hello");
+    assert!(db.prepare("SELECT * FROM relay_agent_keys").is_err());
     Ok(())
 }

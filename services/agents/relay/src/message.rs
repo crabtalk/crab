@@ -91,7 +91,6 @@ impl Message {
     pub fn events(handle: &str, cursor: Option<String>) -> Result<Page<Self>> {
         let recipient = Agent::named(handle)?;
         let agent = recipient.id;
-        recipient.require_key()?;
         recipient.require_enabled()?;
         if !matches!(recipient.platform, Platform::OpenAiDot(_)) {
             return Err(berm_lang::deny("Use a Dot agent for MCP event delivery"));
@@ -152,7 +151,6 @@ impl Message {
         let context = Conversation::get(conversation)?;
         let sender = Agent::named(&from)?;
         let recipient = Agent::named(&to)?;
-        sender.require_key()?;
         let from = sender.id;
         let to = recipient.id;
         Self::validate(&body, &key)?;
@@ -242,7 +240,6 @@ impl Message {
 
     pub fn inbox(handle: &str, after: u64, limit: Option<u64>) -> Result<Messages> {
         let agent = Agent::named(handle)?;
-        agent.require_key()?;
         let agent = agent.id;
         Self::page(None, Some(agent), after, limit)
     }

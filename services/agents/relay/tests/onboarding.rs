@@ -5,7 +5,7 @@ use serde_json::json;
 mod common;
 
 #[tokio::test]
-async fn approved_named_agents_exchange_messages_without_manual_conversations() -> Result<()> {
+async fn named_agents_exchange_messages_without_manual_conversations() -> Result<()> {
     let host = Relay::open().await?;
     let other = host
         .call_as(
@@ -33,9 +33,15 @@ async fn approved_named_agents_exchange_messages_without_manual_conversations() 
         .await?;
     assert_eq!(contacts["items"].as_array().unwrap().len(), 2);
     let initial = host
-        .call_as("alice", Some("chatgpt"), "receive_events", json!({}))
+        .call_as(
+            "alice",
+            Some("chatgpt"),
+            "receive_events",
+            json!({"agent":"assistant"}),
+        )
         .await?;
-    let request = json!({"to":"@RESEARCH-BOT","body":"Suggest three names","key":"demo"});
+    let request =
+        json!({"from":"assistant","to":"@RESEARCH-BOT","body":"Suggest three names","key":"demo"});
     let message = host
         .call_as("alice", Some("chatgpt"), "message", request.clone())
         .await?;
@@ -57,11 +63,6 @@ async fn approved_named_agents_exchange_messages_without_manual_conversations() 
     assert_eq!(reply["conversation"], message["conversation"]);
     assert_eq!(reply["to"], assistant);
     assert_eq!(reply["reply_to"], message["id"]);
-    host.call(
-        "connect",
-        json!({"key_id":"chatgpt","agents":["assistant","research-bot"]}),
-    )
-    .await?;
     host.call(
         "update_agent",
         json!({"handle":assistant,"name":"Renamed assistant"}),
@@ -89,59 +90,36 @@ async fn approved_named_agents_exchange_messages_without_manual_conversations() 
 }
 
 #[tokio::test]
-async fn connection_access_requires_owner_approval_and_revocation_stops_events() -> Result<()> {
+async fn fresh_connections_receive_existing_account_agents_without_approval() -> Result<()> {
     let host = Relay::open().await?;
     host.register("alice", "Assistant").await?;
-    host.register("bob", "Assistant").await?;
-    let input = json!({"key_id":"chatgpt","agents":["assistant"]});
-    assert!(
-        host.call_as("alice", Some("chatgpt"), "connect", input.clone())
-            .await
-            .is_err()
-    );
-    assert!(
-        host.call_as(
-            "alice",
-            Some("chatgpt"),
-            "receive_events",
-            json!({"agent":"assistant"})
-        )
-        .await
-        .is_err()
-    );
-    host.call("connect", input).await?;
-    host.call_as("alice", Some("chatgpt"), "receive_events", json!({}))
+    host.register("bob", "Other").await?;
+    let first = host
+        .call_as("alice", Some("first"), "receive_events", json!({}))
         .await?;
+    let fresh = host
+        .call_as("alice", Some("fresh"), "receive_events", json!({}))
+        .await?;
+    assert_eq!(first, fresh);
     assert!(
         host.call_as(
             "bob",
-            Some("chatgpt"),
+            Some("first"),
             "receive_events",
             json!({"agent":"assistant"})
         )
         .await
         .is_err()
     );
+    host.call(
+        "update_agent",
+        json!({"handle":"assistant","enabled":false}),
+    )
+    .await?;
     assert!(
-        host.call("connect", json!({"key_id":"chatgpt","agents":["Missing"]}))
+        host.call_as("alice", Some("fresh"), "receive_events", json!({}))
             .await
             .is_err()
-    );
-    assert_eq!(
-        host.call("access", json!({"key_id":"chatgpt"})).await?["items"][0]["granted"],
-        true
-    );
-    host.call("connect", json!({"key_id":"chatgpt","agents":[]}))
-        .await?;
-    assert!(
-        host.call_as(
-            "alice",
-            Some("chatgpt"),
-            "receive_events",
-            json!({"agent":"assistant"})
-        )
-        .await
-        .is_err()
     );
     Ok(())
 }
@@ -152,21 +130,6 @@ async fn shared_connections_select_named_senders_and_preserve_pause_and_budget()
     let first = host.register("alice", "First").await?;
     let second = host.register("alice", "Second").await?;
     host.register("alice", "Recipient").await?;
-    assert!(
-        host.call_as(
-            "alice",
-            Some("other-key"),
-            "register",
-            json!({"handle":"first"})
-        )
-        .await
-        .is_err()
-    );
-    host.call(
-        "connect",
-        json!({"key_id":"shared","agents":["first","second"]}),
-    )
-    .await?;
     assert!(
         host.call_as(
             "alice",
@@ -226,8 +189,7 @@ async fn shared_connections_select_named_senders_and_preserve_pause_and_budget()
 }
 
 #[tokio::test]
-async fn paged_contacts_and_maximum_connection_and_message_inputs_fit_their_budgets() -> Result<()>
-{
+async fn paged_contacts_and_maximum_message_inputs_fit_their_budgets() -> Result<()> {
     let host = Relay::open().await?;
     let mut names = Vec::new();
     for index in 0..200 {
@@ -258,12 +220,7 @@ async fn paged_contacts_and_maximum_connection_and_message_inputs_fit_their_budg
         agent: None,
     };
     for (tool, args) in [
-        (
-            "connect",
-            json!({"key_id":"connection","agents":&names[..100]}),
-        ),
         ("contacts", json!({})),
-        ("access", json!({"key_id":"connection"})),
         (
             "message",
             json!({"from":names[0],"to":names[129],"body":body}),
@@ -277,9 +234,6 @@ async fn paged_contacts_and_maximum_connection_and_message_inputs_fit_their_budg
     ] {
         for run in 0..10 {
             let mut args = args.clone();
-            if tool == "connect" {
-                args["agents"] = json!(&names[if run % 2 == 0 { 0..100 } else { 100..200 }]);
-            }
             if tool == "message" || tool == "reply" {
                 args["key"] = json!(format!("{tool}-{run}"));
             }
@@ -305,7 +259,7 @@ async fn paged_contacts_and_maximum_connection_and_message_inputs_fit_their_budg
 }
 
 #[tokio::test]
-async fn self_registered_handles_are_stable_and_cannot_be_taken_over() -> Result<()> {
+async fn registered_handles_are_stable_and_scoped_to_the_account() -> Result<()> {
     let host = Relay::open().await?;
     let profile = host
         .call_as(
@@ -327,12 +281,22 @@ async fn self_registered_handles_are_stable_and_cannot_be_taken_over() -> Result
         .await?,
         profile
     );
-    assert!(
+    assert_eq!(
         host.call_as(
             "alice",
             Some("other"),
             "register",
             json!({"handle":"MY-ASSISTANT"})
+        )
+        .await?,
+        profile
+    );
+    assert!(
+        host.call_as(
+            "alice",
+            Some("other"),
+            "register",
+            json!({"handle":"my-assistant","name":"Different profile"})
         )
         .await
         .is_err()
@@ -367,31 +331,6 @@ async fn self_registered_handles_are_stable_and_cannot_be_taken_over() -> Result
         host.call_as("alice", Some("chatgpt"), "agents", json!({}))
             .await?[0]["handle"],
         "my-assistant"
-    );
-    host.call(
-        "revoke_agent",
-        json!({"agent":"my-assistant","key_id":"chatgpt"}),
-    )
-    .await?;
-    assert!(
-        host.call_as(
-            "alice",
-            Some("chatgpt"),
-            "register",
-            json!({"handle":"my-assistant"})
-        )
-        .await
-        .is_err()
-    );
-    assert!(
-        host.call_as(
-            "alice",
-            Some("chatgpt"),
-            "messages",
-            json!({"agent":"my-assistant"})
-        )
-        .await
-        .is_err()
     );
     let idl = host.host.idl("relay")?;
     for tool in &idl.tools {

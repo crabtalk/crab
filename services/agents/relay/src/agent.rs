@@ -4,7 +4,7 @@ use crate::{
     platform::{DotConnection, Platform},
 };
 use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, Schema, key, serde_json};
+use berm_lang::{Result, Schema, serde_json};
 
 pub struct Agent {
     pub(crate) id: u64,
@@ -29,7 +29,6 @@ impl Agent {
         .pop()
         {
             let agent = Self::get(id)?;
-            agent.require_key()?;
             agent.require_enabled()?;
             if name.as_ref().is_some_and(|name| name != &agent.name)
                 || platform
@@ -58,9 +57,6 @@ impl Agent {
             platform,
             enabled: true,
         };
-        if let Some(key) = key::id()? {
-            agent.allow(&key)?;
-        }
         Ok(agent)
     }
 
@@ -80,10 +76,9 @@ impl Agent {
 
     pub fn list(after: Option<&str>, limit: Option<u64>) -> Result<Vec<Self>> {
         let owner = Account::current()?.id;
-        let key = key::id()?;
         berm_lang::rows::<(u64, String, String, String, u8)>(
-            "SELECT id, handle, name, platform, enabled FROM relay_agents WHERE owner = ? AND handle > ? AND (? IS NULL OR EXISTS (SELECT 1 FROM relay_agent_keys WHERE agent = relay_agents.id AND key_id = ?)) ORDER BY handle LIMIT ?",
-            &(owner, after.unwrap_or(""), &key, &key, limit.unwrap_or(20).clamp(1, 20)),
+            "SELECT id, handle, name, platform, enabled FROM relay_agents WHERE owner = ? AND handle > ? ORDER BY handle LIMIT ?",
+            &(owner, after.unwrap_or(""), limit.unwrap_or(20).clamp(1, 20)),
         )?.into_iter().map(Self::try_from).collect()
     }
 
@@ -130,57 +125,6 @@ impl Agent {
         Ok(agent)
     }
 
-    pub fn keys(handle: &str) -> Result<Vec<String>> {
-        Account::require_owner()?;
-        let id = Self::named(handle)?.id;
-        Ok(berm_lang::rows::<(String,)>(
-            "SELECT key_id FROM relay_agent_keys WHERE agent = ? ORDER BY key_id",
-            &(id,),
-        )?
-        .into_iter()
-        .map(|(key,)| key)
-        .collect())
-    }
-
-    pub fn grant_key(handle: &str, key: String) -> Result<()> {
-        Account::require_owner()?;
-        Self::validate_key(&key)?;
-        Self::named(handle)?.allow(&key)
-    }
-
-    fn allow(&self, key: &str) -> Result<()> {
-        berm_lang::rows::<()>(
-            "INSERT INTO relay_agent_keys (agent, key_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-            &(self.id, key),
-        )?;
-        Ok(())
-    }
-
-    pub fn revoke_key(handle: &str, key: String) -> Result<()> {
-        Account::require_owner()?;
-        let id = Self::named(handle)?.id;
-        berm_lang::rows::<()>(
-            "DELETE FROM relay_agent_keys WHERE agent = ? AND key_id = ?",
-            &(id, key),
-        )?;
-        Ok(())
-    }
-
-    pub(crate) fn require_key(&self) -> Result<()> {
-        if let Some(key) = key::id()?
-            && berm_lang::rows::<(u8,)>(
-                "SELECT 1 FROM relay_agent_keys WHERE agent = ? AND key_id = ?",
-                &(self.id, key),
-            )?
-            .is_empty()
-        {
-            return Err(berm_lang::deny(
-                "This connection cannot use this agent. Approve agent access in Settings → Connections",
-            ));
-        }
-        Ok(())
-    }
-
     pub(crate) fn require_enabled(&self) -> Result<()> {
         if !self.enabled {
             return Err(berm_lang::deny("This Relay agent is disabled"));
@@ -216,16 +160,13 @@ impl Agent {
         } else {
             let mut agents = Self::list(None, Some(2))?;
             if agents.is_empty() {
-                return Err(berm_lang::deny(
-                    "Register your own handle with register, or ask the account owner for access to an existing handle in Settings → Connections",
-                ));
+                return Err(berm_lang::deny("Register a handle with register"));
             }
             if agents.len() != 1 {
-                return Err("Select your registered handle".into());
+                return Err("Select an agent by handle".into());
             }
             agents.remove(0)
         };
-        agent.require_key()?;
         Ok(agent)
     }
 
@@ -245,58 +186,6 @@ impl Agent {
         Ok(Contacts { items, next })
     }
 
-    pub fn access(
-        key_id: Option<&str>,
-        after: Option<&str>,
-        limit: Option<u64>,
-    ) -> Result<AccessPage> {
-        let owner = Account::require_owner()?.id;
-        let limit = limit.unwrap_or(100).clamp(1, 100) as usize;
-        let mut items = berm_lang::rows::<(u64, String, String, String, u8, u8)>(
-            "SELECT a.id, a.handle, a.name, a.platform, a.enabled, EXISTS (SELECT 1 FROM relay_agent_keys k WHERE k.agent = a.id AND k.key_id = ?) FROM relay_agents a WHERE a.owner = ? AND a.handle > ? ORDER BY a.handle LIMIT ?",
-            &(key_id, owner, after.unwrap_or(""), limit + 1),
-        )?.into_iter().map(|(id, handle, name, platform, enabled, granted)| Ok(AgentAccess {
-            agent: Contact::from(Self::try_from((id, handle, name, platform, enabled))?),
-            granted: granted != 0,
-        })).collect::<Result<Vec<_>>>()?;
-        let next = if items.len() > limit {
-            items.truncate(limit);
-            items.last().map(|entry| entry.agent.handle.clone())
-        } else {
-            None
-        };
-        Ok(AccessPage { items, next })
-    }
-
-    pub fn connect(key_id: String, agents: Vec<String>) -> Result<Vec<Contact>> {
-        Account::require_owner()?;
-        Self::validate_key(&key_id)?;
-        if agents.len() > 100 {
-            return Err("Choose up to 100 agents for an authenticated connection".into());
-        }
-        let mut selected = Vec::new();
-        for handle in agents {
-            let agent = Self::named(&handle)?;
-            agent.require_enabled()?;
-            if selected.contains(&agent.id) {
-                return Err("Choose each agent once".into());
-            }
-            selected.push(agent.id);
-        }
-        let owner = Account::current()?.id;
-        berm_lang::rows::<()>(
-            "DELETE FROM relay_agent_keys WHERE key_id = ? AND agent IN (SELECT id FROM relay_agents WHERE owner = ?) AND agent NOT IN (SELECT value FROM json_each(?))",
-            &(&key_id, owner, serde_json::to_string(&selected)?),
-        )?;
-        let mut connected = Vec::new();
-        for id in selected {
-            let agent = Self::get(id)?;
-            agent.allow(&key_id)?;
-            connected.push(Contact::from(agent));
-        }
-        Ok(connected)
-    }
-
     fn handle(input: &str) -> Result<String> {
         let handle = input
             .strip_prefix('@')
@@ -312,13 +201,6 @@ impl Agent {
             return Err("Use a handle of 1–64 letters, digits, underscores or hyphens, including at least one letter".into());
         }
         Ok(handle)
-    }
-
-    fn validate_key(key: &str) -> Result<()> {
-        if key.is_empty() || key.len() > 128 || key.chars().any(char::is_control) {
-            return Err("Use an API key ID of 1–128 bytes".into());
-        }
-        Ok(())
     }
 
     fn validate_name(name: &str) -> Result<()> {
@@ -368,19 +250,7 @@ impl From<Agent> for Contact {
 }
 
 #[derive(Schema)]
-pub struct AgentAccess {
-    pub agent: Contact,
-    pub granted: bool,
-}
-
-#[derive(Schema)]
 pub struct Contacts {
     pub items: Vec<Contact>,
-    pub next: Option<String>,
-}
-
-#[derive(Schema)]
-pub struct AccessPage {
-    pub items: Vec<AgentAccess>,
     pub next: Option<String>,
 }

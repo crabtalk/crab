@@ -1,5 +1,5 @@
 use crate::{
-    agent::{AccessPage, Agent, Contact, Contacts},
+    agent::{Agent, Contact, Contacts},
     conversation::Conversation,
     delivery::Delivery,
     message::{Message, Messages},
@@ -8,7 +8,7 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, abi::events::Page, tool};
 
-/// Register your own unique handle; this connection receives access automatically. Retry the same profile safely.
+/// Register a handle in this account's Relay copy. Retry the same profile safely.
 #[tool]
 pub fn register(
     handle: String,
@@ -18,7 +18,7 @@ pub fn register(
     Ok(Contact::from(Agent::register(handle, name, platform)?))
 }
 
-/// List this connection's registered handles, at most twenty.
+/// List this account's registered handles, at most twenty.
 #[tool(query)]
 pub fn agents(after: Option<String>, limit: Option<u64>) -> Result<Vec<Contact>> {
     Ok(Agent::list(after.as_deref(), limit)?
@@ -38,24 +38,6 @@ pub fn update_agent(
     Ok(Contact::from(Agent::update(
         &handle, name, platform, enabled,
     )?))
-}
-
-/// List the API key IDs permitted to act as an agent; owner sessions only.
-#[tool(query)]
-pub fn agent_keys(agent: String) -> Result<Vec<String>> {
-    Agent::keys(&agent)
-}
-
-/// Allow an API key ID to act as this agent; owner sessions only.
-#[tool]
-pub fn grant_agent(agent: String, key_id: String) -> Result<()> {
-    Agent::grant_key(&agent, key_id)
-}
-
-/// Remove an API key's agent grant; owner sessions only.
-#[tool]
-pub fn revoke_agent(agent: String, key_id: String) -> Result<()> {
-    Agent::revoke_key(&agent, key_id)
 }
 
 /// Open a conversation between 2–16 of this account's agents.
@@ -125,23 +107,7 @@ pub fn contacts(after: Option<String>, limit: Option<u64>) -> Result<Contacts> {
     Agent::contacts(after.as_deref(), limit)
 }
 
-/// Review agent handle access for a connection; account-owner approval only.
-#[tool(query)]
-pub fn access(
-    key_id: Option<String>,
-    after: Option<String>,
-    limit: Option<u64>,
-) -> Result<AccessPage> {
-    Agent::access(key_id.as_deref(), after.as_deref(), limit)
-}
-
-/// Approve a connection's existing handles; account owners only.
-#[tool]
-pub fn connect(key_id: String, agents: Vec<String>) -> Result<Vec<Contact>> {
-    Agent::connect(key_id, agents)
-}
-
-/// Message an agent by handle. The conversation is opened automatically; omit from when one identity is connected.
+/// Message an agent by handle. The conversation is opened automatically; omit from when the account has one agent.
 #[tool]
 pub fn message(to: String, body: String, key: String, from: Option<String>) -> Result<Message> {
     Message::address(from, to, body, key)
@@ -153,7 +119,7 @@ pub fn reply(message: u64, body: String, key: String) -> Result<Message> {
     Message::reply(message, body, key)
 }
 
-/// Read incoming messages; omit agent when one identity is connected.
+/// Read incoming messages; omit agent when the account has one agent.
 #[tool(query)]
 pub fn messages(agent: Option<String>, after: Option<u64>, limit: Option<u64>) -> Result<Messages> {
     Message::inbox(
@@ -163,7 +129,7 @@ pub fn messages(agent: Option<String>, after: Option<u64>, limit: Option<u64>) -
     )
 }
 
-/// Receive incoming messages for a connected assistant; omit agent when one identity is connected.
+/// Receive incoming messages for an assistant; omit agent when the account has one agent.
 #[tool(events = "message.received")]
 pub fn receive_events(agent: Option<String>, cursor: Option<String>) -> Result<Page<Message>> {
     Message::received(agent, cursor)

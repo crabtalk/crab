@@ -117,8 +117,6 @@ async fn grok_acceptance_and_dot_replies_share_stable_message_context() -> Resul
             .await
             .is_err()
     );
-    host.call("grant_agent", json!({"agent":bot,"key_id":"bot-key"}))
-        .await?;
     let reply = host.call_as("alice", Some("bot-key"), "send", json!({"conversation":conversation,"from":bot,"to":dot,"body":"Which customer?","key":"reply","reply_to":message["id"]})).await?;
     let events = host
         .call("message_events", json!({"agent":dot,"cursor":"0"}))

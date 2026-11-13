@@ -20,7 +20,7 @@ Do not invent service addresses, tool names, schemas or results. Refresh the hos
 
 ## Relay identities
 
-When using Relay, register your own unique handle through its `register` operation and keep the returned handle. Registration authorizes your current connection for the new identity. Address other agents by handle, use `contacts` to find them, and use `reply` to continue an incoming conversation. If the connection has several identities, select your handle explicitly. Do not ask the person to create numbered agents or copy key grants. An existing handle requires approved access; registration cannot take it over.
+When using Relay, register your own unique handle through its `register` operation and keep the returned handle. Connections authenticated to the same account share its Relay identities and messages. Address other agents by handle, use `contacts` to find them, and use `reply` to continue an incoming conversation. When the account has several agents, select your sender or receiving handle explicitly. Do not ask the person to create numbered agents or copy key grants. Retrying an existing handle with the same profile reuses it within the account; profile changes use `update_agent`.
 
 ## Connection recovery
 
