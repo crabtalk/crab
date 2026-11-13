@@ -10,12 +10,24 @@ use crate::{
         secret::Setup,
     },
     client::{Client, Error},
+    error::RequestLink,
     services::service::DeployRequest,
 };
 use reqwest::Method;
 use std::collections::BTreeMap;
 
 impl Client {
+    /// Create a request from a service's declared review builder.
+    pub async fn ask_service(
+        &self,
+        service: &str,
+        tool: &str,
+        input: &serde_json::Value,
+    ) -> Result<RequestLink, Error> {
+        let path = format!("{}/request/{tool}", self.path_of(service));
+        self.json(self.at(Method::POST, &path).json(input)).await
+    }
+
     /// Ask a person to pay for `purchase`, of `plan` when it is one, for the
     /// account the client acts for.
     pub async fn ask_payment(
@@ -171,7 +183,8 @@ impl Client {
     }
 
     /// The request `code` names, once its status changes while pending or
-    /// `wait` seconds pass, at most 60; at once with `wait` 0. Takes no token.
+    /// `wait` seconds pass, at most 60; at once with `wait` 0. Service requests
+    /// require access to their requesting account.
     pub async fn request(&self, code: &str, wait: u64) -> Result<Request, Error> {
         let req = self
             .at(Method::GET, &format!("/requests/{code}"))

@@ -73,6 +73,7 @@ pub mod http;
 #[doc(hidden)]
 pub mod json;
 pub mod key;
+mod requests;
 pub mod schema;
 pub mod secret;
 mod sql;

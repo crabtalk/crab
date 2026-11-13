@@ -33,6 +33,8 @@ pub enum RequestKind {
     /// Let an API key call other accounts' priced services, or spend more in a
     /// day.
     Grant,
+    /// Review and execute one service-defined action.
+    Service,
 }
 
 berm_api::text_enum!(RequestKind);
@@ -59,6 +61,10 @@ pub enum RequestStatus {
     Pending,
     /// Approved and deploying.
     Deploying,
+    /// Approved service action awaiting an execution outcome.
+    Running,
+    /// A service action failed; retry retains its request ID and input.
+    Failed,
     /// Paid, the secrets set, the sign-in approved, the deploy approved and
     /// run, whether or not it went live, or the person verified.
     Completed,
@@ -216,6 +222,8 @@ pub struct Request {
     /// The issued key, absent until the client exchanges its code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<ServiceAction>,
 }
 
 /// What a grant request asks for one API key, beside what the key holds now.
@@ -392,4 +400,22 @@ pub mod device {
     pub const ACCESS_DENIED: &str = "access_denied";
     /// Past its expiry, or its token already answered.
     pub const EXPIRED_TOKEN: &str = "expired_token";
+}
+
+/// A host-bound service review and its execution receipt.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceAction {
+    pub service: String,
+    pub title: String,
+    pub body: String,
+    pub tool: String,
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    pub input: serde_json::Value,
+    pub digest: String,
+    pub price_micros: Option<i64>,
+    pub requested_by: String,
+    pub approved_by: Option<String>,
+    #[cfg_attr(feature = "utoipa", schema(value_type = Object))]
+    pub result: Option<serde_json::Value>,
 }

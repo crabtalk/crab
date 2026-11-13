@@ -101,6 +101,12 @@ fn describe(request: &Request) -> String {
             request.service.as_deref().unwrap_or_default()
         );
     }
+    if let Some(action) = &request.action {
+        return format!(
+            "approve {} from {}, signed in",
+            action.title, action.service
+        );
+    }
     let plan = request.plan.as_deref().unwrap_or_default();
     let monthly = request
         .price_micros
@@ -142,7 +148,7 @@ pub fn settled(client: &Client, code: &str, timeout: u64) -> Result<Request> {
         }
         if !matches!(
             request.status,
-            RequestStatus::Pending | RequestStatus::Deploying
+            RequestStatus::Pending | RequestStatus::Deploying | RequestStatus::Running
         ) || left == 0
         {
             return Ok(request);
@@ -167,11 +173,16 @@ pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) ->
     }
     match request.status {
         RequestStatus::Completed => Ok(()),
-        RequestStatus::Pending | RequestStatus::Deploying if wait => {
+        RequestStatus::Pending | RequestStatus::Deploying | RequestStatus::Running if wait => {
             bail!("still pending after {timeout}s")
         }
-        RequestStatus::Pending | RequestStatus::Deploying => Ok(()),
+        RequestStatus::Pending | RequestStatus::Deploying | RequestStatus::Running => Ok(()),
         RequestStatus::Declined => bail!("the person declined it"),
+        RequestStatus::Failed => bail!(
+            "{}; reopen {} to resume the same request",
+            request.failure.as_deref().unwrap_or("the action failed"),
+            request.url
+        ),
         RequestStatus::Expired => bail!("it expired; ask again for a new code"),
     }
 }

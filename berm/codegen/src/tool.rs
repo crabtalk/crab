@@ -24,11 +24,17 @@ pub(crate) struct Options {
     /// `webhook`.
     webhook: bool,
     events: Option<String>,
+    request: bool,
 }
 
 impl Options {
     /// Read one option of `#[tool(...)]`.
     pub(crate) fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+        if meta.path.is_ident("request") {
+            self.request = true;
+            self.query = true;
+            return Ok(());
+        }
         if meta.path.is_ident("events") {
             if self.events.is_some() {
                 return Err(meta.error("duplicate `events` option"));
@@ -44,7 +50,7 @@ impl Options {
             path if path.is_ident("webhook") => &mut self.webhook,
             _ => {
                 return Err(meta.error(
-                    "unknown option (expected `query`, `cron`, `stripe`, `webhook` or `events`)",
+                    "unknown option (expected `query`, `cron`, `stripe`, `webhook`, `events` or `request`)",
                 ));
             }
         };
@@ -130,6 +136,7 @@ impl Tool {
             options.stripe,
             options.webhook,
             options.events.is_some(),
+            options.request,
         ]
         .into_iter()
         .filter(|set| *set)
@@ -138,7 +145,7 @@ impl Tool {
         {
             return Err(syn::Error::new_spanned(
                 ident,
-                "a tool is at most one of `cron`, `stripe`, `webhook` and `events`",
+                "a tool is at most one of `cron`, `stripe`, `webhook`, `events` and `request`",
             ));
         }
         if options.cron && !params.is_empty() {
@@ -210,6 +217,7 @@ impl Tool {
         }
         for (set, key) in [
             (options.query, "query"),
+            (options.request, "request"),
             (self.deprecated, "deprecated"),
             (options.cron, "cron"),
             (options.stripe, "stripe"),

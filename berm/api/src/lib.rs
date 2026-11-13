@@ -281,6 +281,9 @@ pub struct ToolSpec {
     /// Named durable event history exposed by this read-only tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<String>,
+    /// Produces a service-defined review for the host request flow.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub request: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deprecated: bool,
     /// Callable by accounts and other services. A tool that is not is only

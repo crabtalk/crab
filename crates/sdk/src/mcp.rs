@@ -13,6 +13,8 @@ pub const CALL: &str = "call";
 pub const TEMPLATE: &str = "crab://{+service}";
 
 const SCHEME: &str = "crab://";
+pub const REQUEST_SCHEME: &str = "crab-request://";
+pub const REQUEST_TEMPLATE: &str = "crab-request://{code}";
 
 pub const INSTRUCTIONS: &str = "Find services with `search`, use `inspect` for a service's \
     README, tool schemas and prices, then run a tool with `call`.";
@@ -89,6 +91,16 @@ fn object(value: Value) -> Map<String, Value> {
 pub fn service(uri: &str) -> Option<&str> {
     uri.strip_prefix(SCHEME)
         .filter(|service| !service.is_empty())
+}
+
+/// The service-request code a resource URI names.
+pub fn request(uri: &str) -> Option<&str> {
+    uri.strip_prefix(REQUEST_SCHEME).filter(|code| {
+        !code.is_empty()
+            && code
+                .bytes()
+                .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

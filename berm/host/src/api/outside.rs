@@ -7,7 +7,7 @@ use crate::{
     host::{self, Host, Inner},
     record::{calls, usage},
 };
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use berm::{
     Client, Meter,
     tape::{Recorder, Taping},
@@ -180,11 +180,27 @@ impl<E: Env> Host<E> {
             args,
             caller,
             client,
+            headers: conditions,
             ..
         } = call;
         let deployed = self
             .get(&service)
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such service"))?;
+        if let Some(expected) = conditions.get(header::IF_MATCH) {
+            let expected = expected
+                .to_str()
+                .map_err(|_| deny(StatusCode::BAD_REQUEST, "Invalid If-Match header"))?;
+            let digest = format!("\"{}\"", deployed.digest);
+            if !expected
+                .split(',')
+                .any(|tag| matches!(tag.trim(), "*") || tag.trim() == digest)
+            {
+                return Err(deny(
+                    StatusCode::PRECONDITION_FAILED,
+                    "The service image changed",
+                ));
+            }
+        }
         let deprecated = deployed
             .manifest
             .tools

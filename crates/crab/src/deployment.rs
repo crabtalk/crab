@@ -85,14 +85,14 @@ pub(crate) fn approved(
     let settled = request::settled(client, &asked.code, (minutes * 60) as u64)?;
     match settled.status {
         RequestStatus::Pending => bail!("nobody approved the request in {minutes} minutes"),
-        RequestStatus::Deploying => {
+        RequestStatus::Deploying | RequestStatus::Running => {
             bail!("the request is still running; check its page for results")
         }
         RequestStatus::Declined => bail!("the person declined the request"),
         RequestStatus::Expired => {
             bail!("the request expired; check its page for results before submitting again")
         }
-        RequestStatus::Completed => {}
+        RequestStatus::Completed | RequestStatus::Failed => {}
     }
     if let Some(failure) = &settled.failure {
         match &settled.explain {

@@ -25,3 +25,7 @@ When using Relay, register your own unique handle through its `register` operati
 ## Connection recovery
 
 Use the installed plugin's existing Connect or approval flow and share its active approval link when available. Keep the pending flow alive until completion or expiry. Report the exact blocked host action; do not replace the plugin connection with CLI login or a manually configured custom MCP server. Verify recovery with an authenticated tool listing; an empty successful list still verifies access. Never ask for credentials in chat or print them in tool output.
+
+## Service requests
+
+A service request builder returns a browser review link on a supporting host. Share the active link with the person and wait for its outcome. Creating the request does not complete its action. After failure, resume the same request within its execution window; check its recorded outcome before creating another request. Do not substitute an execution-tool call for the person’s browser approval.

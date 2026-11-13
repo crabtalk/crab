@@ -7,7 +7,7 @@ platforms = ["web", "news"]
 
 [agents]
 title = "Agents"
-platforms = ["memory", "relay"]
+platforms = ["memory", "relay", "outbox"]
 
 [ops]
 title = "Operations"
