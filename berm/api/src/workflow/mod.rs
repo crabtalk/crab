@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+pub mod config;
 pub mod graph;
 pub mod run;
 

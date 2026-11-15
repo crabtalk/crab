@@ -118,8 +118,8 @@ impl Service {
                 }
             }
         }
-        if tools.is_empty() {
-            bail!("service exports no tools");
+        if tools.is_empty() && manifest.workflows.is_empty() {
+            bail!("service exports no tools or workflows");
         }
         if manifest.tools.iter().filter(|tool| tool.stripe).count() > 1 {
             bail!("service declares more than one stripe tool");
@@ -129,6 +129,19 @@ impl Service {
             if let Some(key) = tool.budget.past(&engine.most) {
                 return Err(engine::PastMost {
                     tool: name.clone(),
+                    key,
+                }
+                .into());
+            }
+        }
+        for workflow in &manifest.workflows {
+            if let Some(key) = workflow
+                .config
+                .control_budget(engine.budget)
+                .past(&engine.most)
+            {
+                return Err(engine::PastMost {
+                    tool: format!("workflow {}", workflow.entry.name),
                     key,
                 }
                 .into());
@@ -260,6 +273,7 @@ impl Service {
             readme,
             logo,
             tools,
+            workflows,
         } = &self.manifest;
         berm_api::Service {
             name: name.to_owned(),
@@ -271,6 +285,7 @@ impl Service {
             logo: logo.clone(),
             digest: self.digest.clone(),
             tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
+            workflows: workflows.iter().filter_map(|spec| spec.public()).collect(),
             vars: deps.vars.clone(),
         }
     }
@@ -286,6 +301,7 @@ impl Service {
                 .filter(|tool| !tool.public)
                 .cloned()
                 .collect(),
+            workflows: self.manifest.workflows.clone(),
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
             lang: self.manifest.lang.clone(),

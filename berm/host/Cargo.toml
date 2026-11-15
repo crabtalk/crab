@@ -33,5 +33,6 @@ wasmparser = { workspace = true, optional = true }
 test = ["dep:berm-build", "dep:wasmparser"]
 
 [dev-dependencies]
+wat.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 toml.workspace = true

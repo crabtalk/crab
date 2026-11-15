@@ -2,7 +2,7 @@
 
 use crate::{
     Access, Credential, DEFAULT_BUFFER, Deps, Http, Limits, ToolRecord, ToolSpec, Var, host,
-    logo::Logo, reference::Reference,
+    logo::Logo, reference::Reference, workflow::config::Config,
 };
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
@@ -50,6 +50,8 @@ pub struct Project {
     /// What it says of each tool, by name.
     #[serde(default)]
     pub tools: BTreeMap<String, Tool>,
+    #[serde(default)]
+    pub workflows: BTreeMap<String, Config>,
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
@@ -200,6 +202,11 @@ impl Project {
                 bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
+        for (name, config) in &project.workflows {
+            config
+                .check()
+                .with_context(|| format!("workflows.{name}"))?;
+        }
         project.deps().check_secret_declarations()?;
         Ok(project)
     }
@@ -276,6 +283,7 @@ impl Project {
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("tools", !self.tools.is_empty()),
+            ("workflows", !self.workflows.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("vars", !self.vars.is_empty()),
             ("database.size", self.database.size.is_some()),

@@ -88,6 +88,7 @@ stripe = { package = "crabkit-stripe", path = "services/kits/stripe", version = 
 supabase = { package = "crabkit-supabase", path = "services/kits/supabase", version = "0.1.6" }
 
 # crates-io
+jsonschema = { version = "0.61", default-features = false }
 anyhow = "1.0"
 axum = "0.8"
 base64 = { version = "0.22", default-features = false, features = ["alloc"] }
@@ -153,6 +154,7 @@ toml = "1"
 toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }
 trybuild = "1"
+wat = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = "5"

@@ -78,7 +78,7 @@ impl EchoFlow {
 
 This uses the `EchoCall` and `Echo` from the tool above. A step returns a call descriptor, `Option<Call>`, or `Vec<Call>` with `#[step(each, max = N)]` (1–100). A branch returns a `Branch` enum. Any method may return the existing `Result<T>`. Dependencies are immutable references; each results use slices and optional dependencies use `Option<&T>`. Distinct branch payload types select cases. Required dependencies propagate guards; joins across exclusive paths and the final output use optional references. Failed or pending producers never become optional absence.
 
-The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per method, and a versioned static record in `.berm.abi`. `EchoFlow::WORKFLOW` exposes that record as JSON bytes. Unused nodes, unknown/forward dependencies, impossible required joins and guarded outputs are compile errors. No method body analysis is performed. Configuration loading and host execution are not implemented yet.
+The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per method, and a versioned static record in `.berm.abi`. `EchoFlow::WORKFLOW` exposes that record as JSON bytes. Unused nodes, unknown/forward dependencies, impossible required joins and guarded outputs are compile errors. No method body analysis is performed. Configure each workflow under `[workflows.<name>]` in `crab.toml`, with required `max_cost` and positive `checkpoint_bytes`. Access and title are optional; checkpoint retention defaults to seven days. Build/deploy validates graph records and schedules without running controls. Host workflow execution and schedule delivery are not implemented yet.
 
 ## Durable event sources
 

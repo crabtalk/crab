@@ -112,3 +112,10 @@ access = "public"
 
 [tools.fromaccounts]
 access = "accounts"
+
+[workflows.workflow_example]
+access = "public"
+title = "Count work"
+price = 1000
+max_cost = 10000
+checkpoint_bytes = 1048576

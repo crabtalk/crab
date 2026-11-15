@@ -2,7 +2,14 @@
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
 use crate::{
-    Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec, events::Source, host, logo::Logo,
+    Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec,
+    events::Source,
+    host,
+    logo::Logo,
+    workflow::{
+        config::{Config, Invalid, Spec},
+        graph::Entry,
+    },
 };
 use anyhow::{Context, Result, bail};
 use berm_abi::{self as abi, ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION, secrets::Id};
@@ -46,6 +53,8 @@ pub struct Manifest {
     pub logo: Option<Logo>,
     /// By name.
     pub tools: Vec<ToolSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workflows: Vec<Spec>,
     #[serde(default)]
     pub crons: BTreeMap<String, String>,
     /// The most bytes a call's arguments, and a tool's result, may hold. The
@@ -107,6 +116,8 @@ pub struct ServiceRecord {
     /// What `[tools]` in its `crab.toml` says of each tool, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tools: BTreeMap<String, ToolRecord>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workflows: BTreeMap<String, Config>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub crons: BTreeMap<String, String>,
 }
@@ -545,16 +556,56 @@ impl Manifest {
         kits.chain(own).collect()
     }
 
-    /// Refuse a manifest of another ABI, with no tools, naming a kit twice,
+    /// Refuse a manifest of another ABI, with neither tools nor workflows, naming a kit twice,
     /// with a kit keeping tables or naming former keys and declaring no id, or
     /// with an id or former key empty or named twice.
     fn checked(self) -> Result<Self> {
         versioned(self.abi_version)?;
-        if self.tools.is_empty() {
-            bail!("service declares no tools");
+        if self.tools.is_empty() && self.workflows.is_empty() {
+            bail!("service declares no tools or workflows");
         }
         if !(host::MIN_DATABASE_SIZE..=host::MAX_DATABASE_SIZE).contains(&self.database_size) {
             bail!("default database size is outside the host limits");
+        }
+        let mut names = BTreeSet::new();
+        for spec in &self.workflows {
+            if !names.insert(&spec.entry.name) {
+                return Err(
+                    Invalid(anyhow::anyhow!("duplicate workflow {}", spec.entry.name)).into(),
+                );
+            }
+            spec.check().map_err(Invalid::from)?;
+            for node in &spec.entry.graph.nodes {
+                if let crate::workflow::graph::Kind::Step { call, .. } = &node.kind
+                    && let crate::workflow::graph::Target::Local { tool } = &call.target
+                {
+                    let target = self
+                        .tools
+                        .iter()
+                        .find(|candidate| candidate.name == *tool)
+                        .ok_or_else(|| {
+                            Invalid(anyhow::anyhow!(
+                                "{} targets missing local tool {tool}",
+                                node.id
+                            ))
+                        })?;
+                    let mut reasons = Vec::new();
+                    crate::compat::accepts("input", &call.input, &target.parameters, &mut reasons);
+                    if let Some(output) = &target.returns {
+                        crate::compat::writes("output", &call.output, output, &mut reasons);
+                    } else if call.output != serde_json::json!({"type":"null"}) {
+                        reasons.push("local tool has no declared output".into());
+                    }
+                    if !reasons.is_empty() {
+                        return Err(Invalid(anyhow::anyhow!(
+                            "{} has an incompatible local call: {}",
+                            node.id,
+                            reasons.join("; ")
+                        ))
+                        .into());
+                    }
+                }
+            }
         }
         self.deps.check_secret_declarations()?;
         for credential in self.deps.credentials.values() {
@@ -616,7 +667,7 @@ impl Manifest {
 ///
 /// Each tool takes its access, title and catalog from the service record.
 /// Refused when the image has no [`SERVICE_SECTION`], which a bare
-/// `cargo build` leaves out; when it has no tools; when a tool record was
+/// `cargo build` leaves out; when it declares neither tools nor workflows; when a tool record was
 /// compiled in a crate other than the service's; when the service record
 /// names a tool the image lacks, or gives a cron, stripe or webhook tool
 /// access; and
@@ -631,8 +682,21 @@ impl TryFrom<&[u8]> for Manifest {
             str::from_utf8(abi).with_context(|| format!("service's {ABI_SECTION} is not UTF-8"))?;
         let mut tools = Vec::new();
         let mut events = Vec::new();
-        for record in serde_json::Deserializer::from_str(abi).into_iter::<AbiRecord>() {
-            match record.with_context(|| format!("service's {ABI_SECTION} is not valid JSON"))? {
+        let mut workflows = Vec::new();
+        for record in serde_json::Deserializer::from_str(abi).into_iter::<serde_json::Value>() {
+            let record =
+                record.with_context(|| format!("service's {ABI_SECTION} is not valid JSON"))?;
+            if record.get("workflow").is_some() {
+                let record: WorkflowRecord = serde_json::from_value(record).map_err(|error| {
+                    Invalid(anyhow::anyhow!("invalid workflow record: {error}"))
+                })?;
+                versioned(record.abi_version).map_err(Invalid::from)?;
+                workflows.push((record.workflow, record.krate));
+                continue;
+            }
+            match serde_json::from_value::<AbiRecord>(record)
+                .with_context(|| format!("service's {ABI_SECTION} is not valid"))?
+            {
                 AbiRecord::Event { event } => events.push(event),
                 AbiRecord::Tool {
                     tool,
@@ -652,8 +716,22 @@ impl TryFrom<&[u8]> for Manifest {
         let service = image.section(SERVICE_SECTION)?.with_context(|| {
             format!("service has no {SERVICE_SECTION} section, which `crab build` appends")
         })?;
-        let mut service: ServiceRecord = serde_json::from_slice(service)
+        let mut declarations: serde_json::Value = serde_json::from_slice(service)
             .with_context(|| format!("service's {SERVICE_SECTION} is not valid"))?;
+        let workflows = (
+            workflows,
+            declarations
+                .as_object_mut()
+                .and_then(|record| record.remove("workflows")),
+        );
+        let mut service: ServiceRecord = serde_json::from_value(declarations)
+            .with_context(|| format!("service's {SERVICE_SECTION} is not valid"))?;
+        let (workflows, configured) = workflows;
+        if let Some(configured) = configured {
+            service.workflows = serde_json::from_value(configured).map_err(|error| {
+                Invalid(anyhow::anyhow!("invalid workflow configuration: {error}"))
+            })?;
+        }
         let kits: Vec<Kit> = match image.section(KITS_SECTION)? {
             Some(kits) => serde_json::from_slice(kits)
                 .with_context(|| format!("service's {KITS_SECTION} is not valid"))?,
@@ -689,6 +767,37 @@ impl TryFrom<&[u8]> for Manifest {
             bail!("[tools] names {name:?}, which the service has no tool of");
         }
 
+        let mut configured = std::mem::take(&mut service.workflows);
+        let workflows = workflows
+            .into_iter()
+            .map(|(entry, krate)| {
+                if krate != service.name {
+                    return Err(Invalid(anyhow::anyhow!(
+                        "workflow {} was compiled in {krate}, not {}",
+                        entry.name,
+                        service.name
+                    ))
+                    .into());
+                }
+                let config = configured.remove(&entry.name).ok_or_else(|| {
+                    Invalid(anyhow::anyhow!(
+                        "workflow {} needs a [workflows.{}] table",
+                        entry.name,
+                        entry.name
+                    ))
+                })?;
+                Ok(Spec { entry, config })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if let Some(name) = configured.keys().next() {
+            return Err(
+                Invalid(anyhow::anyhow!("[workflows] names missing workflow {name}")).into(),
+            );
+        }
+        image
+            .check_workflow_exports(&workflows)
+            .map_err(Invalid::from)?;
+
         let ServiceRecord {
             public,
             name,
@@ -704,6 +813,7 @@ impl TryFrom<&[u8]> for Manifest {
             database,
             database_size,
             tools: _,
+            workflows: _,
             crons,
         } = service;
         for kit in &kits {
@@ -723,6 +833,7 @@ impl TryFrom<&[u8]> for Manifest {
             readme,
             logo,
             tools,
+            workflows,
             crons,
             buffer,
             deps,
@@ -731,6 +842,9 @@ impl TryFrom<&[u8]> for Manifest {
             database_size,
             kits,
         };
+        manifest
+            .workflows
+            .sort_by(|a, b| a.entry.name.cmp(&b.entry.name));
         manifest.tools.sort_by(|a, b| a.name.cmp(&b.name));
         manifest.events.sort_by(|a, b| a.name.cmp(&b.name));
         manifest.checked()
@@ -782,4 +896,12 @@ enum AbiRecord {
     Service {
         abi_version: u32,
     },
+}
+
+#[derive(Deserialize)]
+struct WorkflowRecord {
+    workflow: Entry,
+    abi_version: u32,
+    #[serde(rename = "crate")]
+    krate: String,
 }

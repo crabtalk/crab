@@ -48,6 +48,7 @@ fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
         database: None,
         database_size: host::DATABASE_SIZE,
         tools,
+        workflows: BTreeMap::new(),
         crons: BTreeMap::new(),
     })
     .unwrap()

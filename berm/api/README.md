@@ -28,7 +28,9 @@ result does: the call was fine and the tool said no.
 
 `workflow::run` defines accepted bindings, attempts, prepared payloads, ordered item dispatches and complete checkpoints. Only skipped values supply optional absence; pending, failed and unknown outcomes remain distinct. An unknown call retains its prepared input and operation key. External targets declare their idempotency window in milliseconds; no window forbids redispatch after an unknown outcome. Error records retain response status, headers and the full body, including explanation and recovery fields. Timestamps and durations use epoch milliseconds and milliseconds respectively.
 
-`workflow::Policy` configures the seven-day retention default and each-item ceiling (100 by default). Checkpoint capacity and control resource limits are explicit accepted fields. Workflow compilation emits these records; configuration loading, execution, persistence and endpoints are not implemented. `Graph::check` verifies declaration order, bounds, case references, guard consistency and output reachability using the same validator as the compiler.
+`workflow::Policy` configures the seven-day retention default and each-item ceiling (100 by default). Checkpoint capacity and control resource limits are explicit accepted fields. Workflow compilation emits these records; execution, persistence and endpoints are not implemented. `Graph::check` verifies declaration order, bounds, case references, guard consistency and output reachability using the same validator as the compiler.
+
+`workflow::config::Config` reads the matching `[workflows.<name>]` table: access, title, task price, required `max_cost` and `checkpoint_bytes`, control budget, retention and optional UTC schedule/input. The image retains this configuration. Manifest loading checks local call schemas, graph validity, control export signatures and schedule inputs without executing controls. Services may export tools, workflows, or both. `Service.workflows` exposes public entries and task prices; `Runtime.workflows` includes the full owner configuration. Invalid workflow declarations carry the typed `workflow::config::Invalid` error.
 
 ## License
 

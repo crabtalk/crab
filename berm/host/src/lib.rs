@@ -9,7 +9,7 @@ use axum::{
     http::{HeaderValue, StatusCode, header},
     response::IntoResponse,
 };
-use berm_api::Failed;
+use berm_api::{Failed, workflow::config::Invalid};
 use std::fmt;
 
 pub use api::{
@@ -54,6 +54,14 @@ pub struct Denied {
 }
 
 impl Denied {
+    pub fn manifest(error: anyhow::Error) -> Self {
+        let explain = Invalid::explanation(&error);
+        Self {
+            explain,
+            ..deny(StatusCode::BAD_REQUEST, format!("{error:#}"))
+        }
+    }
+
     pub(crate) const MEMORY: &str = "E0019";
 
     pub(crate) fn memory() -> Self {

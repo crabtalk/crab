@@ -1,8 +1,10 @@
 //! A service's wasm module, and the custom sections its manifest is read from.
 
-use anyhow::{Context, Result, bail};
+use crate::workflow::config::Spec;
+use anyhow::{Context, Result, bail, ensure};
 use object::{Object, ObjectSection};
-use wasmparser::{Parser, Payload};
+use std::collections::BTreeMap;
+use wasmparser::{ExternalKind, Parser, Payload, TypeRef};
 
 /// A wasm module's bytes.
 pub struct Image<'a>(pub &'a [u8]);
@@ -38,6 +40,74 @@ impl<'a> Image<'a> {
         }
         names.sort();
         Ok(names)
+    }
+
+    pub fn check_workflow_exports(&self, workflows: &[Spec]) -> Result<()> {
+        if workflows.is_empty() {
+            return Ok(());
+        }
+        let mut types = Vec::new();
+        let mut functions = Vec::new();
+        let mut exports = BTreeMap::new();
+        for payload in Parser::new(0).parse_all(self.0) {
+            match payload? {
+                Payload::TypeSection(section) => {
+                    for ty in section.into_iter_err_on_gc_types() {
+                        let ty = ty?;
+                        types.push(ty.params().is_empty() && ty.results().is_empty());
+                    }
+                }
+                Payload::ImportSection(section) => {
+                    for import in section.into_imports() {
+                        if let TypeRef::Func(index) = import?.ty {
+                            functions.push(index);
+                        }
+                    }
+                }
+                Payload::FunctionSection(section) => {
+                    for ty in section {
+                        functions.push(ty?);
+                    }
+                }
+                Payload::ExportSection(section) => {
+                    for export in section {
+                        let export = export?;
+                        exports.insert(export.name, (export.kind, export.index));
+                    }
+                }
+                _ => {}
+            }
+        }
+        for spec in workflows {
+            for node in &spec.entry.graph.nodes {
+                let expected = format!(
+                    "{}{}_{}",
+                    berm_abi::WORKFLOW_PREFIX,
+                    spec.entry.name,
+                    node.id
+                );
+                ensure!(
+                    node.export == expected,
+                    "workflow {} node {} names an invalid control export",
+                    spec.entry.name,
+                    node.id
+                );
+                let (kind, index) = exports
+                    .get(node.export.as_str())
+                    .with_context(|| format!("missing workflow control export {}", node.export))?;
+                ensure!(
+                    *kind == ExternalKind::Func
+                        && functions
+                            .get(*index as usize)
+                            .and_then(|index| types.get(*index as usize))
+                            .copied()
+                            == Some(true),
+                    "workflow control {} must be a function with no parameters or results",
+                    node.export
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Its bytes with `payload` appended as the custom section `name`.

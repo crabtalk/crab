@@ -26,6 +26,7 @@ pub mod logo;
 mod manifest;
 pub mod project;
 pub mod reference;
+pub mod schedule;
 pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;
@@ -74,6 +75,8 @@ pub struct Service {
     pub digest: String,
     /// Its public tools.
     pub tools: Vec<ToolSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workflows: Vec<workflow::config::Public>,
     /// The settings each deployed copy holds its own value of, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, Var>,
@@ -84,6 +87,8 @@ pub struct Service {
 pub struct Runtime {
     /// Its tools that are not public.
     pub tools: Vec<ToolSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workflows: Vec<workflow::config::Spec>,
     #[serde(deserialize_with = "Deps::deserialize")]
     pub deps: Deps,
     pub events: Vec<EventSpec>,
@@ -238,7 +243,9 @@ impl Limits {
             cpu: self.cpu.unwrap_or(budget.cpu),
             read: self.read.unwrap_or(budget.read),
             written: self.written.unwrap_or(budget.written),
-            memory: self.memory.map_or(budget.memory, |mib| mib << 20),
+            memory: self
+                .memory
+                .map_or(budget.memory, |mib| mib.saturating_mul(1 << 20)),
         }
     }
 
@@ -361,6 +368,7 @@ impl ToolSpec {
     }
 }
 
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 /// Who may call a tool, as `access` in `crab.toml`'s `[tools]` sets it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -374,6 +382,15 @@ pub enum Access {
     Accounts,
     /// Services reaching it through `berm.call` alone.
     Services,
+}
+
+impl Access {
+    pub fn covers(self, previous: Self) -> bool {
+        self == previous
+            || self == Self::Anonymous
+            || (self == Self::Public
+                && matches!(previous, Self::Public | Self::Accounts | Self::Services))
+    }
 }
 
 /// `public`, `anonymous`, `accounts` or `services`, as `crab.toml` spells it.

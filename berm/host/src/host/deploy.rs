@@ -6,7 +6,6 @@ use crate::{
     host::{self, Host},
     record::usage,
     state::service,
-    wake::cron,
 };
 use axum::http::StatusCode;
 use berm::{Service, database::Database};
@@ -16,6 +15,7 @@ use berm_api::{
         Breaking, Broken, Checked, Deploy, Kind, LastUse, MAX_DATABASE_SIZE, MIN_DATABASE_SIZE,
         Outcome,
     },
+    schedule as cron,
 };
 use std::{path::Path, sync::Arc};
 
@@ -316,8 +316,7 @@ impl<E: Env> Host<E> {
             .pull(reference, digest)
             .await
             .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-        let manifest = Manifest::try_from(image.as_slice())
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+        let manifest = Manifest::try_from(image.as_slice()).map_err(Denied::manifest)?;
         self.served(&manifest)?;
         Ok((image, manifest))
     }
@@ -461,6 +460,7 @@ impl<E: Env> Host<E> {
         for broken in current.manifest.breaks(manifest) {
             let of = match &broken.surface {
                 Surface::Tool(tool) => (Kind::Tool, tool.as_str(), Outcome::Done),
+                Surface::Workflow(workflow) => (Kind::Workflow, workflow.as_str(), Outcome::Done),
                 Surface::Event(event) => (Kind::Event, event.as_str(), Outcome::Done),
             };
             let callers = usage::read(

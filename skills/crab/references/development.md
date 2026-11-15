@@ -30,6 +30,10 @@ A tool reads its own pending storage writes during the call. Changes commit only
 
 Memory is billed at the reserved budget during execution, waiting on fetches or other services included. Cold code loading is excluded. A tool can lower its budget once with `berm_lang::limit`; its memory argument is in bytes, and `0` leaves a dimension unchanged. See [Budgets in code](https://crabtalk.ai/docs/development/budgets).
 
+## Workflow declarations
+
+A `#[workflow]` impl compiles typed step, branch and output signatures into a graph. The matching `[workflows.<name>]` table requires `max_cost` and positive `checkpoint_bytes`; it can set access, title, price, control budget, retention and a UTC schedule/input. `crab build` and deployment validate this metadata without executing builders. Workflow runs and workflow schedule delivery are not implemented yet. See [crab.toml](https://crabtalk.ai/docs/development/crab-toml#workflows).
+
 ## Reusing services and libraries
 
 - Keep `berm-lang`, `crabkit` and linked provider packages on the same Crab revision. `crab new` writes `berm-lang` at the tag of the CLI's release, and `crabkit` goes beside it with a feature per library:

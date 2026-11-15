@@ -20,7 +20,6 @@ use berm_api::{
 };
 use std::{sync::Weak, time::Duration};
 
-pub(crate) mod cron;
 pub(crate) mod table;
 
 /// Milliseconds a claimed wake is held before the timer may take it again.

@@ -300,6 +300,7 @@ pub struct Reply {
 pub enum Kind {
     Event,
     Tool,
+    Workflow,
 }
 
 /// Who used it.

@@ -29,3 +29,5 @@ An invocation scope can refuse admission with `berm_host::Denied`; outside calls
 A service declaring `secret_resources = true` can use `{secret:ID}` for a runtime secret resource. `Secrets::grant` must authorize the complete deployment, resource ID and destination host. Missing grants refuse the request before dispatch; HTTP permissions remain independently enforced. Individual resource IDs are not added to `Deps.secrets`.
 
 `Secrets::resource_owner` supplies account ownership metadata for runtime-resource binding checks; its default returns no grant. `berm.secret.resource` requires the resource capability and HTTP permission. `berm.http.fetch_all.literal_body` keeps body bytes literal while applying the usual header secret grants.
+
+Workflow declarations load from the service image, including services with no tools. The owner runtime includes control budgets, spend caps and checkpoint policy; public IDL includes only discoverable entries, graphs and task prices. Invalid graph/configuration records are refused before execution with `E0058`. Workflow execution and workflow schedule delivery are not implemented yet.

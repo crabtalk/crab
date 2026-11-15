@@ -50,6 +50,8 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 
 Workflow commercial contracts live in `services::workflow`. `Terms` keeps the fixed customer task price, conservative direct-call quote, and cumulative owner cap separate, with accepted execution bindings, rate revision and independently billed providers. `Spend` retains incurred and reserved amounts; `Settlement` carries reservation or transaction identities. Execution contracts are in `berm_api::workflow`. These types do not expose workflow endpoints or perform admission or settlement.
 
+Deployment responses and template manifests retain workflow declarations from the image. Public `berm_api::Service.workflows` contains entry/graph, access, title and task price; owner `berm_api::Runtime.workflows` includes the full configuration. Older service responses may omit these fields. Workflow run endpoints are not implemented yet.
+
 ## Modules
 
 | Module    | Holds                                               |

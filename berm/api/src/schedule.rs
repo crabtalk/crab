@@ -8,7 +8,7 @@ use croner::{
 };
 
 /// `expression` parsed, or why it is not one.
-pub(crate) fn parse(expression: &str) -> Result<Cron> {
+pub fn parse(expression: &str) -> Result<Cron> {
     CronParser::builder()
         .seconds(Seconds::Disallowed)
         .year(Year::Disallowed)
@@ -20,7 +20,7 @@ pub(crate) fn parse(expression: &str) -> Result<Cron> {
 }
 
 /// When `expression` next fires after `now`, both in epoch milliseconds.
-pub(crate) fn next(expression: &str, now: i64) -> Result<i64> {
+pub fn next(expression: &str, now: i64) -> Result<i64> {
     let after = DateTime::<Utc>::from_timestamp_millis(now)
         .ok_or_else(|| anyhow!("{now} is not a time"))?;
     let next = parse(expression)?
