@@ -6,7 +6,7 @@ use crate::{
     services::service::{
         Billing, Costed, DeployRequest, DeployResult, DeploySetRequest, Deployment,
         DeploymentStatus, MeteredDay, Secret, SetSecret, Template, TemplateRelease, Terms,
-        ToolCosted, UpgradePolicy, Upload, UploadRequest, Visibility,
+        ToolCosted, UpgradePolicy, Upload, UploadRequest,
     },
 };
 use berm_api::{
@@ -226,20 +226,6 @@ impl Client {
         let path = format!("{}/tools/{tool}", self.path_of(name));
         let body = ToolUpdate { sunset };
         self.ok(self.at(Method::PATCH, &path).json(&body)).await?;
-        Ok(())
-    }
-
-    /// Who `name` answers. Cloud only.
-    pub async fn visibility(&self, name: &str) -> Result<Visibility, Error> {
-        let path = format!("{}/visibility", self.service(name)?);
-        self.json(self.at(Method::GET, &path)).await
-    }
-
-    /// Make `name` answer only its account and members, or anyone. Cloud only.
-    pub async fn set_visibility(&self, name: &str, private: bool) -> Result<(), Error> {
-        let path = format!("{}/visibility", self.service(name)?);
-        let req = self.at(Method::PUT, &path).json(&Visibility { private });
-        self.ok(req).await?;
         Ok(())
     }
 

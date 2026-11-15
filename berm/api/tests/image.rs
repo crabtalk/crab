@@ -31,6 +31,7 @@ fn service() -> Vec<u8> {
 /// The service record, with `tools` as `[tools]` of its `crab.toml` says.
 fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
     serde_json::to_vec(&ServiceRecord {
+        public: false,
         lang: String::new(),
         name: "demo".to_owned(),
         version: "0.1.0".to_owned(),
@@ -396,4 +397,28 @@ fn invalid_image_database_defaults_are_refused() {
         let bytes = serde_json::to_vec(&record).unwrap();
         assert!(Manifest::try_from(&*image(&tool("a", "demo"), Some(&bytes), &[])).is_err());
     }
+}
+
+#[test]
+fn visibility_is_read_from_the_service_image_and_defaults_private() {
+    let mut record: Value = serde_json::from_slice(&service()).unwrap();
+    for public in [true, false] {
+        record["public"] = Value::Bool(public);
+        let bytes = image(
+            &tool("echo", "demo"),
+            Some(&serde_json::to_vec(&record).unwrap()),
+            &[],
+        );
+        let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
+        assert_eq!(manifest.public, public);
+        let json = serde_json::to_string(&manifest).unwrap();
+        assert_eq!(json.parse::<Manifest>().unwrap().public, public);
+    }
+    record.as_object_mut().unwrap().remove("public");
+    let bytes = image(
+        &tool("echo", "demo"),
+        Some(&serde_json::to_vec(&record).unwrap()),
+        &[],
+    );
+    assert!(!Manifest::try_from(bytes.as_slice()).unwrap().public);
 }

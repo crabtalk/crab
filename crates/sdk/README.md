@@ -53,7 +53,7 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 | Module    | Holds                                               |
 | --------- | --------------------------------------------------- |
 | `account` | Auth, users, orgs and teams, API keys, apps, billing |
-| `services` | Services: deploys, secrets, visibility, meters, costs |
+| `services` | Services: deploys, secrets, meters, costs |
 | `system`  | `/meta` (version, rates) and feedback               |
 | `mcp` | Shared tool names, input schemas, discovery and inspection types |
 | `error`   | The two error envelopes the API answers with        |

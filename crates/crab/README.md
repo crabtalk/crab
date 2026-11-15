@@ -129,7 +129,7 @@ crab org create acme
 crab --org acme billing
 ```
 
-A service's calls, cost, crons, wakes, visibility and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
+A service's calls, cost, crons, wakes and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
 
 ## From a workflow
 
@@ -175,11 +175,11 @@ The report separates the tool's own CPU, rows and peak memory from whole-chain c
 
 Template versions are immutable: changing an image requires a new package version. Each template retains three release images; its Versions tab selects exact images and lets publishers yank or unyank releases. New copies use the latest non-yanked stable release, or the latest non-yanked prerelease when no stable release is retained. Yanked releases cannot create new copies; existing copies keep working. `crab push DIR --notes "Fix pagination"` attaches up to 2000 characters of release notes. Pruned images become unavailable for new deployments; version identities remain reserved.
 
-`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crabtalk.ai/docs/guides/deploy#automatic-patch-updates).
+`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Visibility, permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crabtalk.ai/docs/guides/deploy#automatic-patch-updates).
 
 Deploy history retains the current image and two previous successful images; older records remain without their uploaded image. Existing template copies retain their own images, independently of the publisher’s releases.
 
-`public` exposes a source deployment; `template` controls whether `crab push` publishes or withdraws the image. Both default to `false`. `crab push` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab push services/connect` selects only that catalog; running `crab push` inside it selects the same services. No catalog-level `crab.toml` is needed.
+`public` is embedded in the image and determines visibility for every deployment and template copy; `template` controls whether `crab push` publishes or withdraws the image. Both default to `false`. `crab push` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab push services/connect` selects only that catalog; running `crab push` inside it selects the same services. No catalog-level `crab.toml` is needed.
 
 Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. OCI paths use `<registry>/<owner>/<service>:<Cargo version>` when `image` is declared, or the Cargo package name without it. Deployments pin the OCI artifact digest.
 
@@ -187,7 +187,7 @@ Images upload to the selected host by default. `crab context add local http://lo
 
 `crab deploy` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `image = "connect/tinyfish:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
 
-Published-image deployment creates a private, unpublished instance under the selected account, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed, prices and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
+Published-image deployment creates an unpublished instance under the selected account with visibility from its image, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed, prices and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
 
 `crab deploy --from owner/name` remains available without a manifest. Copies have their own credentials and state.
 

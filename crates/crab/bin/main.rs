@@ -1,6 +1,6 @@
 use anyhow::Result;
 use berm_host::Denied;
-use clap::{Args as Arguments, Parser, Subcommand, ValueEnum};
+use clap::{Args as Arguments, Parser, Subcommand};
 use crab_agent::{cmd, context::Contexts};
 use crabtalk_sdk::{
     account::{billing::PortalFlow, key::Scope, request::Purchase},
@@ -190,12 +190,6 @@ enum Command {
     /// A service's last 100 deploys on Cloud, newest first, refused and
     /// failed ones included.
     Deploys { name: String },
-    /// Who a service answers on Cloud, or with an argument, set it.
-    Visibility {
-        name: String,
-        #[arg(value_enum)]
-        set: Option<Shown>,
-    },
     /// Stop serving a deprecated tool from a UTC day, or with no day, keep
     /// serving it.
     Sunset {
@@ -241,12 +235,6 @@ enum Command {
     Context(ContextCommand),
     /// Replace this `crab` with the latest release, when it is newer.
     Update,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum Shown {
-    Public,
-    Private,
 }
 
 #[derive(Subcommand)]
@@ -734,12 +722,6 @@ fn run() -> Result<ExitCode> {
         }
         Command::Wakes { name } => cmd::wakes::run(&client()?, name, json)?,
         Command::Deploys { name } => cmd::deploys::run(&client()?, name, json)?,
-        Command::Visibility { name, set } => cmd::visibility::run(
-            &client()?,
-            name,
-            set.map(|shown| matches!(shown, Shown::Private)),
-            json,
-        )?,
         Command::Sunset { name, tool, on } => {
             cmd::sunset::run(&client()?, name, tool, on.as_deref())?
         }

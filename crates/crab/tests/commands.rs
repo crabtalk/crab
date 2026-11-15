@@ -53,3 +53,17 @@ fn command_options_keep_publication_and_instances_separate() {
             .contains("--stopped")
     );
 }
+
+#[test]
+fn visibility_has_no_runtime_command() {
+    let output = Command::new(env!("CARGO_BIN_EXE_crab"))
+        .args(["visibility", "--help"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("unrecognized subcommand 'visibility'")
+    );
+}

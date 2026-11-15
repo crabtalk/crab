@@ -17,6 +17,8 @@ use std::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub abi_version: u32,
+    #[serde(default)]
+    pub public: bool,
     /// The package it was built from.
     #[serde(default)]
     pub name: String,
@@ -75,6 +77,8 @@ pub struct Manifest {
 /// from its package and its `crab.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceRecord {
+    #[serde(default)]
+    pub public: bool,
     /// The package it was built from. Each tool record names it.
     pub name: String,
     #[serde(default)]
@@ -686,6 +690,7 @@ impl TryFrom<&[u8]> for Manifest {
         }
 
         let ServiceRecord {
+            public,
             name,
             version,
             lang,
@@ -707,6 +712,7 @@ impl TryFrom<&[u8]> for Manifest {
         }
         let mut manifest = Manifest {
             abi_version: ABI_VERSION,
+            public,
             name,
             version,
             lang,

@@ -18,8 +18,6 @@ use std::collections::BTreeMap;
 pub struct DeployRequest {
     pub reference: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub public: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<TemplateSource>,
@@ -384,15 +382,6 @@ pub enum Status {
     Stopped,
     /// Serving, and its runs have failed since the last one that was done.
     Failing,
-}
-
-/// Who a service answers.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Visibility {
-    /// Only the owning account and its members see and call it; anyone else
-    /// is answered `404`.
-    pub private: bool,
 }
 
 /// One day of a service's meters, with what it cost.

@@ -32,7 +32,8 @@ impl std::fmt::Display for Break {
 
 impl Manifest {
     pub fn upgrade_requires_review(&self, next: &Self) -> bool {
-        self.deps != next.deps
+        self.public != next.public
+            || self.deps != next.deps
             || self.crons != next.crons
             || !self.breaks(next).is_empty()
             || next.tools.iter().any(|tool| {

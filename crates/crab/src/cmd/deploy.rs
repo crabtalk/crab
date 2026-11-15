@@ -35,7 +35,7 @@ pub struct Deploy {
     /// Build local source instead of deploying its published image.
     #[arg(long, conflicts_with_all = ["from", "version", "auto_upgrade"])]
     pub build: bool,
-    /// Deploy a published template, `owner/name`, as a new private service on Cloud.
+    /// Deploy a published template, `owner/name`, as a new service on Cloud.
     #[arg(long, value_name = "OWNER/NAME", conflicts_with_all = ["packages", "registry"])]
     pub from: Option<String>,
     /// Select an exact retained template version.
@@ -124,7 +124,6 @@ impl Deploy {
                 };
                 DeployRequest {
                     reference,
-                    public: Some(service.project.public),
                     size: Some(service.project.database.size()),
                     seed,
                     force: self.force,
@@ -189,7 +188,6 @@ impl Deploy {
         Ok((
             image.name,
             DeployRequest {
-                public: Some(false),
                 template: Some(false),
                 source: Some(TemplateSource {
                     owner: template.owner,

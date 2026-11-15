@@ -242,6 +242,7 @@ impl Service {
     pub fn idl(&self, name: &str) -> berm_api::Service {
         let Manifest {
             abi_version: _,
+            public: _,
             crons: _,
             name: _,
             lang: _,
