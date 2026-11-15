@@ -19,6 +19,7 @@ use crate::{
         store::Store,
     },
     wake,
+    workflow::{Eligibility, Ledger},
 };
 use anyhow::{Context, Result};
 use berm::{
@@ -69,6 +70,7 @@ pub struct Inner<E: Env> {
     /// Where the host keeps its state. A daemon may keep tables of its own
     /// here, named apart from the host's.
     pub store: Store,
+    pub workflows: Ledger,
     pub(crate) berm: Arc<Berm>,
     /// Chains in flight. Each holds up to `depth + 1` guests, and a guest past
     /// `Config::instances` fails to instantiate.
@@ -157,6 +159,8 @@ impl<E: Env> Host<E> {
         } = edges;
         let now: Now = Arc::new(move || clock.now());
         let store = Store::open(state)?;
+        let workflows = Ledger::open(&state.with_extension("workflows.sqlite3"))?;
+        workflows.recover(now()).await?;
         let routes = Routes::open(store.clone()).await?;
         let holds = Holds::open(store.clone()).await?;
         let stops = Stops::open(store.clone()).await?;
@@ -217,6 +221,7 @@ impl<E: Env> Host<E> {
             let berm = Berm::new(&engine, calls, syscalls);
             Inner {
                 store,
+                workflows,
                 berm,
                 gate: Semaphore::new(chains as usize),
                 chains: chains as usize,
@@ -408,6 +413,7 @@ impl<E: Env> Host<E> {
             .clone();
         let _deploying = lock.lock().await;
         let (scope, name) = split(service);
+        self.workflows.invalidate(service).await?;
         self.berm.remove(service);
         self.databases.remove(service)?;
         let removed = service::remove(&self.store, scope, name).await?;
@@ -420,6 +426,21 @@ impl<E: Env> Host<E> {
     /// comes due stays. `false` when it is not deployed.
     pub async fn stop(&self, service: &str) -> Result<bool> {
         self.switch(service, false).await
+    }
+
+    pub async fn workflow_eligibility(&self, id: &str, now: u64) -> Result<Eligibility> {
+        let run = self
+            .workflows
+            .get(id)
+            .await?
+            .context("workflow run was not found")?;
+        if self.get(&run.service).is_none() {
+            return Ok(Eligibility::Removed);
+        }
+        if self.stopped(&run.service) {
+            return Ok(Eligibility::Stopped);
+        }
+        self.workflows.checkpoint_eligibility(id, now).await
     }
 
     /// Whether `service` is stopped.

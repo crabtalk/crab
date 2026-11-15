@@ -35,6 +35,7 @@ mod state;
 #[cfg(feature = "test")]
 pub mod test;
 mod wake;
+pub mod workflow;
 
 /// A refusal the caller can read, as `{"error": message}`.
 pub fn deny(status: StatusCode, message: impl Into<String>) -> Denied {

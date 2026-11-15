@@ -84,18 +84,26 @@ impl Store {
     /// Open the state file at `path`, creating it and its directory, and run
     /// what migrations it has not.
     pub fn open(path: &Path) -> Result<Self> {
+        Self::opening(path, MIGRATIONS, false)
+    }
+
+    pub(crate) fn durable(path: &Path, migrations: &[&str]) -> Result<Self> {
+        Self::opening(path, migrations, true)
+    }
+
+    fn opening(path: &Path, migrations: &[&str], durable: bool) -> Result<Self> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
         let mut conn =
             Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "synchronous", if durable { "FULL" } else { "NORMAL" })?;
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.set_prepared_statement_cache_capacity(PREPARED);
         let ran: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-        for (at, migration) in MIGRATIONS.iter().enumerate().skip(ran as usize) {
+        for (at, migration) in migrations.iter().enumerate().skip(ran as usize) {
             let tx = conn.transaction()?;
             tx.execute_batch(migration)
                 .with_context(|| format!("migration {}", at + 1))?;

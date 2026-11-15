@@ -22,6 +22,10 @@ pub fn with_wasm(wasm: &[u8], config: Value) -> Vec<u8> {
         },
         "abi_version":berm_abi::ABI_VERSION, "crate":"workflow-only"
     });
+    with_record(wasm, record, config)
+}
+
+pub fn with_record(wasm: &[u8], record: Value, config: Value) -> Vec<u8> {
     let image = Image(wasm)
         .with_section(berm_abi::ABI_SECTION, &serde_json::to_vec(&record).unwrap())
         .unwrap();

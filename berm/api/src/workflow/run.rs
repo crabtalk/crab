@@ -87,7 +87,7 @@ pub struct Attempt {
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Checkpoint {
     pub state: State,
     pub prepared: Option<Prepared>,
@@ -127,7 +127,7 @@ pub struct PreparedCall {
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Item {
     pub index: u32,
     pub state: State,
@@ -135,7 +135,7 @@ pub struct Item {
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dispatch {
     pub id: String,
     pub attempt: String,
@@ -152,4 +152,88 @@ pub struct Failure {
     pub status: u16,
     pub headers: BTreeMap<String, String>,
     pub body: Value,
+}
+
+impl Checkpoint {
+    pub fn advance(&mut self, next: Self) -> Result<(), String> {
+        if matches!(self.state, State::Succeeded { .. } | State::Skipped) && *self != next {
+            return Err("completed checkpoints cannot change".into());
+        }
+        if self.prepared.is_some() && self.prepared != next.prepared {
+            return Err("prepared payloads and operation keys cannot change".into());
+        }
+        if next.items.len() < self.items.len() {
+            return Err("checkpoint items cannot be truncated".into());
+        }
+        for (index, item) in next.items.iter().enumerate() {
+            if item.index as usize != index {
+                return Err("checkpoint items must retain their original order".into());
+            }
+            if let Some(previous) = self.items.get(index) {
+                if matches!(previous.state, State::Succeeded { .. }) && previous != item {
+                    return Err("successful items cannot change".into());
+                }
+                if item.dispatches.len() < previous.dispatches.len() {
+                    return Err("dispatch history cannot be truncated".into());
+                }
+                for (old, new) in previous.dispatches.iter().zip(&item.dispatches) {
+                    if old.id != new.id
+                        || old.attempt != new.attempt
+                        || old.started_at != new.started_at
+                    {
+                        return Err("dispatch identity cannot change".into());
+                    }
+                    if !matches!(old.state, State::Running) && old != new {
+                        return Err("completed dispatches cannot change".into());
+                    }
+                }
+            }
+        }
+        if let Some(Prepared::Calls { calls }) = &next.prepared
+            && next.items.len() > calls.len()
+        {
+            return Err("checkpoint items exceed the prepared call list".into());
+        }
+        *self = next;
+        Ok(())
+    }
+}
+
+impl Run {
+    pub fn interrupt(&mut self, error: Failure, now: u64) {
+        let cancelled = self.status == Status::Cancelling;
+        self.status = if cancelled {
+            Status::Cancelled
+        } else {
+            Status::Indeterminate
+        };
+        self.error = Some(error.clone());
+        if let Some(attempt) = self.attempts.last_mut() {
+            attempt.status = self.status;
+            attempt.finished_at = Some(now);
+            attempt.error = Some(error.clone());
+        }
+        for checkpoint in self.checkpoints.values_mut() {
+            if checkpoint.state == State::Running {
+                checkpoint.state = State::Unknown {
+                    error: error.clone(),
+                };
+            }
+            for item in &mut checkpoint.items {
+                if item.state == State::Running {
+                    item.state = State::Unknown {
+                        error: error.clone(),
+                    };
+                }
+                for dispatch in &mut item.dispatches {
+                    if dispatch.state == State::Running {
+                        dispatch.state = State::Unknown {
+                            error: error.clone(),
+                        };
+                        dispatch.finished_at = Some(now);
+                    }
+                }
+            }
+        }
+    }
 }
