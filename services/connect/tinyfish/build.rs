@@ -6,17 +6,17 @@ const SPECS: [(&str, &str, &str); 3] = [
     (
         "SEARCH_SPEC",
         "https://agent.tinyfish.ai/v1/openapi/search",
-        "51f25b44b71b3183ad1a7b20635eed54d661af4f9de5e8592a87349a7ea84414",
+        "03d3bdb3cc85209374ca3f2e6a9a36fc01ba594c7136f79afcad72dfffc80a01",
     ),
     (
         "FETCH_SPEC",
         "https://agent.tinyfish.ai/v1/openapi/fetch",
-        "e04a4d20c58e9817d787c86876ede61be2bb3d1a196e472de800c4d9f2c42707",
+        "bc3001a9f0adbf302eb53949785da7fac98f4b1aaf2b0e7c4e8e02fbf0243603",
     ),
     (
         "MAIN_SPEC",
         "https://agent.tinyfish.ai/v1/openapi/main",
-        "518f393238a6aab7e1b626e3bedb16c9866992c63eaa7c792812c227f7e9f10b",
+        "62654eb2463213d46dc390855bc0d3fe5ab04c50f6b8bf488a37a610b422824d",
     ),
 ];
 

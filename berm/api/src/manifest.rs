@@ -636,7 +636,7 @@ impl TryFrom<&[u8]> for Manifest {
                     krate,
                 } => {
                     versioned(abi_version)?;
-                    tools.push((tool, krate));
+                    tools.push((*tool, krate));
                 }
                 AbiRecord::Service { abi_version } => {
                     versioned(abi_version)?;
@@ -766,7 +766,7 @@ enum AbiRecord {
     },
     /// One per `#[tool]`, naming the package it was compiled in.
     Tool {
-        tool: ToolSpec,
+        tool: Box<ToolSpec>,
         abi_version: u32,
         #[serde(rename = "crate")]
         krate: String,
