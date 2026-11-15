@@ -21,6 +21,7 @@
 pub use anyhow;
 use anyhow::Result;
 pub use berm_abi as abi;
+use berm_api::digest;
 pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine, MissingHostCall, PastMost};
@@ -219,6 +220,19 @@ impl Berm {
             .write()
             .expect("deployed services")
             .insert(name.to_owned(), service.clone());
+        Ok(service)
+    }
+
+    /// Load a retained image without changing the deployed service.
+    pub fn retained(&self, name: &str, image: &[u8]) -> Result<Arc<Service>> {
+        if let Some(service) = self
+            .get(name)
+            .filter(|service| service.digest == digest::hex(image))
+        {
+            return Ok(service);
+        }
+        let service = self.load(name, image, Load::Deploy)?;
+        service.pool.fits(service.bytes)?;
         Ok(service)
     }
 

@@ -9,7 +9,10 @@ use axum::{
     http::{HeaderValue, StatusCode, header},
     response::IntoResponse,
 };
-use berm_api::{Failed, workflow::config::Invalid};
+use berm_api::{
+    Failed,
+    workflow::{config::Invalid, run::Failure},
+};
 use std::fmt;
 
 pub use api::{
@@ -62,6 +65,10 @@ impl Denied {
             ..deny(StatusCode::BAD_REQUEST, format!("{error:#}"))
         }
     }
+
+    pub(crate) const SERVICE_CALLERS: &'static str = "E0049";
+
+    pub(crate) const PAUSED: &'static str = "E0018";
 
     pub(crate) const MEMORY: &str = "E0019";
 
@@ -118,6 +125,20 @@ impl From<anyhow::Error> for Denied {
                 tracing::error!("host failed: {e:#}");
                 deny(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
             }
+        }
+    }
+}
+
+impl From<&Denied> for Failure {
+    fn from(denied: &Denied) -> Self {
+        let mut body = serde_json::json!({"error":denied.message});
+        if let Some(explain) = denied.explain {
+            body["explain"] = explain.into();
+        }
+        Self {
+            status: denied.status.as_u16(),
+            headers: Default::default(),
+            body,
         }
     }
 }

@@ -17,6 +17,7 @@ use berm::{
 use berm_api::{
     Deps, Listing, Logged, Meter, Output, Setting, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
+    workflow::run::Binding,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -30,10 +31,6 @@ const MAX_PAGE: i64 = 1000;
 
 /// The error code a webhook for a tool that takes none carries.
 const NO_WEBHOOK_TOOL: &str = "E0014";
-
-/// The error code an event for a stopped or held service carries.
-const PAUSED: &str = "E0018";
-const SERVICE_CALLERS: &str = "E0049";
 
 impl<E: Env> Host<E> {
     /// `service`'s IDL.
@@ -471,6 +468,17 @@ impl<E: Env> Host<E> {
                 format!("no service named {service:?} is deployed"),
             )
         })?;
+        if let Some(binding) = &link.accepted {
+            let current = deployed.binding(binding.target.clone()).map_err(|error| {
+                deny(StatusCode::CONFLICT, format!("{error:#}")).explained(Binding::CHANGED)
+            })?;
+            if current != *binding || binding.service != service || binding.target.tool() != tool {
+                return Err(
+                    deny(StatusCode::CONFLICT, "workflow dependency binding changed")
+                        .explained(Binding::CHANGED),
+                );
+            }
+        }
         let refused = |message: String| {
             self.usage.record(
                 service,
@@ -493,7 +501,7 @@ impl<E: Env> Host<E> {
         }
         if link.caller.is_some() && !deployed.reached_by_services(tool) {
             return refused(format!("{service}.{tool} takes no calls from services"))
-                .map_err(|denied| denied.explained(SERVICE_CALLERS));
+                .map_err(|denied| denied.explained(Denied::SERVICE_CALLERS));
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let meters = Arc::new(Meters::default());
@@ -533,9 +541,7 @@ impl<E: Env> Host<E> {
                 Err(error) => return Err(error.into()),
             },
         };
-        if matches!(outcome.result, Output::Done(_)) {
-            self.commits.commit(outcome.changes, None).await?;
-        }
+        let outcome = self.commit_outcome(outcome).await?;
         let ended = Outcome::of(&outcome.result, outcome.denied);
         self.usage.record(
             service,
@@ -625,7 +631,7 @@ impl<E: Env> Host<E> {
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("{service} is {paused}"),
             )
-            .explained(PAUSED));
+            .explained(Denied::PAUSED));
         }
         if self.pools.pool(host::split(service).0).full() {
             return Err(Denied::memory());

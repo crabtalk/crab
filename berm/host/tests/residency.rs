@@ -266,7 +266,7 @@ async fn redeployment_keeps_an_active_generation_counted_until_it_finishes() -> 
     .await?;
     let image = fixture::image("berm-fixture")?;
     host.deploy(SERVICE, &image).await?;
-    host.fetch.respond(
+    let release = host.fetch.respond_blocked(
         "GET",
         "http://127.0.0.1/slow",
         Response {
@@ -274,7 +274,6 @@ async fn redeployment_keeps_an_active_generation_counted_until_it_finishes() -> 
             headers: vec![],
             body: b"done".to_vec(),
         },
-        Duration::from_millis(300),
     );
     let calling = host.host.clone();
     let task = tokio::spawn(async move {
@@ -300,6 +299,7 @@ async fn redeployment_keeps_an_active_generation_counted_until_it_finishes() -> 
     assert_eq!(host.host.memory("acct").loaded, loaded);
     assert_eq!(host.host.memory("acct").services["fixture"].loaded, loaded);
     assert!(host.host.memory("acct").services["fixture"].running > 0);
+    release.notify_one();
     assert!(matches!(task.await??.result, Output::Done(_)));
     assert_eq!(host.host.memory("acct").loaded, 0);
     assert!(matches!(

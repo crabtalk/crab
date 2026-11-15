@@ -11,6 +11,7 @@ use std::{
     task::{self, Poll},
     time::Duration,
 };
+use tokio::sync::Notify;
 use tower::Service;
 
 #[derive(Clone, Default)]
@@ -18,16 +19,39 @@ pub struct Http(Arc<Mutex<Fetches>>);
 
 #[derive(Default)]
 struct Fetches {
-    answers: HashMap<(String, String), (Response, Duration)>,
+    answers: HashMap<(String, String), Answer>,
     sent: Vec<Request>,
+}
+
+struct Answer {
+    response: Response,
+    delay: Duration,
+    ready: Option<Arc<Notify>>,
 }
 
 impl Http {
     pub fn respond(&self, method: &str, url: &str, response: Response, delay: Duration) {
-        self.0
-            .lock()
-            .answers
-            .insert((method.to_owned(), url.to_owned()), (response, delay));
+        self.0.lock().answers.insert(
+            (method.to_owned(), url.to_owned()),
+            Answer {
+                response,
+                delay,
+                ready: None,
+            },
+        );
+    }
+
+    pub fn respond_blocked(&self, method: &str, url: &str, response: Response) -> Arc<Notify> {
+        let ready = Arc::new(Notify::new());
+        self.0.lock().answers.insert(
+            (method.to_owned(), url.to_owned()),
+            Answer {
+                response,
+                delay: Duration::ZERO,
+                ready: Some(ready.clone()),
+            },
+        );
+        ready
     }
 
     pub fn fetched(&self) -> Vec<Request> {
@@ -64,7 +88,11 @@ impl Service<Request> for Http {
             .answers
             .get(&(request.method.clone(), request.url.clone()))
         {
-            Some((response, delay)) => Ok((
+            Some(Answer {
+                response,
+                delay,
+                ready,
+            }) => Ok((
                 Response {
                     status: response.status,
                     headers: response.headers.clone(),
@@ -74,6 +102,7 @@ impl Service<Request> for Http {
                         .to_vec(),
                 },
                 *delay,
+                ready.clone(),
             )),
             None => Err(anyhow!(
                 "no response arranged for {} {}",
@@ -84,8 +113,11 @@ impl Service<Request> for Http {
         let timeout = request.timeout;
         fetches.sent.push(request);
         Box::pin(async move {
-            let (response, delay) = answer?;
+            let (response, delay, ready) = answer?;
             let waiting = async move {
+                if let Some(ready) = ready {
+                    ready.notified().await;
+                }
                 if !delay.is_zero() {
                     tokio::time::sleep(delay).await;
                 }

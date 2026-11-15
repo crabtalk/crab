@@ -14,7 +14,10 @@ use crate::{
     tape::{Deck, Taping},
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Budget, Callers, Manifest, Output, Runtime, digest, host};
+use berm_api::{
+    Budget, Callers, Manifest, Output, Runtime, digest, host,
+    workflow::{graph::Target, run::Binding},
+};
 use std::{
     collections::BTreeMap,
     error, fmt,
@@ -44,7 +47,7 @@ pub struct Service {
     deps: Arc<Deps>,
     /// Tool metadata, independent of executable residency.
     tools: BTreeMap<String, Tool>,
-    controls: BTreeMap<String, Budget>,
+    pub controls: BTreeMap<String, Budget>,
     /// What each invocation runs inside.
     enter: Enter,
     /// What `berm.now` answers.
@@ -233,6 +236,36 @@ impl Service {
     /// The tools this service exports, as its export table reports them.
     pub fn tools(&self) -> impl Iterator<Item = &str> {
         self.tools.keys().map(String::as_str)
+    }
+
+    pub fn binding(&self, target: Target) -> Result<Binding> {
+        let tool = self
+            .manifest
+            .tools
+            .iter()
+            .find(|tool| tool.name == target.tool())
+            .context("workflow target has no declared tool")?;
+        if matches!(target, Target::Service { .. }) {
+            anyhow::ensure!(
+                tool.public && self.reached_by_services(&tool.name),
+                "workflow target does not take service calls"
+            );
+        }
+        Ok(Binding {
+            service: self.name.to_string(),
+            image: digest::prefixed(&self.digest),
+            input: tool.parameters.clone(),
+            output: tool
+                .returns
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({"type":"null"})),
+            budget: self
+                .budget(&tool.name)
+                .context("workflow target has no budget")?,
+            query: tool.query,
+            authorization: digest::of(&serde_json::to_vec(&(tool.public, tool.callers))?),
+            target,
+        })
     }
 
     /// Whether `tool` is one any caller may reach.

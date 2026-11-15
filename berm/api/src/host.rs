@@ -258,6 +258,8 @@ pub struct Route {
 /// the chain it runs as.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted: Option<crate::workflow::run::Binding>,
     /// What the called service is told called it: a service's name, or
     /// nothing for a wake.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -118,6 +118,7 @@ pub(crate) fn calls<E: Env>(
                 let from = at.service.to_string();
                 let (service, tool) = (deployed.to_owned(), tool.to_owned());
                 let link = Link {
+                    accepted: None,
                     caller: link.caller.map(|caller| match caller {
                         Caller::Outside(name) | Caller::Service(name) => name.to_string(),
                     }),

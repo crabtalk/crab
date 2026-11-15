@@ -119,3 +119,18 @@ title = "Count work"
 price = 1000
 max_cost = 10000
 checkpoint_bytes = 1048576
+
+[workflows.workflow_flow]
+access = "public"
+max_cost = 10000
+checkpoint_bytes = 1048576
+
+[workflows.workflow_external]
+access = "public"
+max_cost = 10000
+checkpoint_bytes = 1048576
+
+[workflows.workflow_flaky]
+access = "public"
+max_cost = 10000
+checkpoint_bytes = 1048576

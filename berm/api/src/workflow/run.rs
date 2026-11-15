@@ -8,7 +8,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Run {
@@ -57,6 +57,8 @@ pub struct Binding {
     pub input: Value,
     pub output: Value,
     pub budget: Budget,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub query: bool,
     /// Revision of the authorization accepted before effects.
     pub authorization: String,
 }
@@ -236,4 +238,15 @@ impl Run {
             }
         }
     }
+}
+
+impl fmt::Display for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.body.fmt(f)
+    }
+}
+impl std::error::Error for Failure {}
+
+impl Binding {
+    pub const CHANGED: &'static str = "E0060";
 }

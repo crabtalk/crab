@@ -589,21 +589,13 @@ impl Manifest {
                                 node.id
                             ))
                         })?;
-                    let mut reasons = Vec::new();
-                    crate::compat::accepts("input", &call.input, &target.parameters, &mut reasons);
-                    if let Some(output) = &target.returns {
-                        crate::compat::writes("output", &call.output, output, &mut reasons);
-                    } else if call.output != serde_json::json!({"type":"null"}) {
-                        reasons.push("local tool has no declared output".into());
-                    }
-                    if !reasons.is_empty() {
-                        return Err(Invalid(anyhow::anyhow!(
-                            "{} has an incompatible local call: {}",
-                            node.id,
-                            reasons.join("; ")
-                        ))
-                        .into());
-                    }
+                    call.check_schemas(&target.parameters, target.returns.as_ref())
+                        .map_err(|error| {
+                            Invalid(
+                                error
+                                    .context(format!("{} has an incompatible local call", node.id)),
+                            )
+                        })?;
                 }
             }
         }

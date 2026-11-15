@@ -70,6 +70,7 @@ async fn authenticated_key_ids_survive_nested_calls_and_are_absent_for_sessions(
         )?)?)
     );
     let link = Link {
+        accepted: None,
         caller: Some("alice/a".into()),
         from: "alice/a".into(),
         key: caller.key.clone(),

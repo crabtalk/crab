@@ -1,4 +1,7 @@
-use crate::{digest, workflow::Version};
+use crate::{
+    compat, digest,
+    workflow::{Version, run::Binding},
+};
 use anyhow::{Result, bail, ensure};
 use berm_abi::workflow as validation;
 use serde::{Deserialize, Serialize};
@@ -237,6 +240,40 @@ impl Graph {
                 node.id
             );
         }
+        Ok(())
+    }
+}
+
+impl Target {
+    pub fn tool(&self) -> &str {
+        match self {
+            Self::Local { tool } | Self::Service { tool, .. } => tool,
+        }
+    }
+}
+
+impl Call {
+    pub fn check_binding(&self, binding: &Binding) -> Result<()> {
+        ensure!(
+            self.target == binding.target,
+            "workflow binding targets another tool"
+        );
+        self.check_schemas(&binding.input, Some(&binding.output))
+    }
+
+    pub fn check_schemas(&self, input: &Value, output: Option<&Value>) -> Result<()> {
+        let mut breaks = Vec::new();
+        compat::accepts("input", &self.input, input, &mut breaks);
+        if let Some(output) = output {
+            compat::writes("output", &self.output, output, &mut breaks);
+        } else if self.output != serde_json::json!({"type":"null"}) {
+            breaks.push("tool has no declared output".into());
+        }
+        ensure!(
+            breaks.is_empty(),
+            "incompatible workflow dependency: {}",
+            breaks.join("; ")
+        );
         Ok(())
     }
 }

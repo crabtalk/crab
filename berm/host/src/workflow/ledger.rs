@@ -4,7 +4,7 @@ use berm_api::{
     Manifest, Meter, digest,
     workflow::{
         graph::{Entry, Kind, Target},
-        run::{Attempt, Checkpoint, Failure, Run, State, Status},
+        run::{Attempt, Checkpoint, Dispatch, Failure, Prepared, Run, State, Status},
     },
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
@@ -321,10 +321,9 @@ impl Ledger {
         claim: &Claim,
         node: &str,
         checkpoint: Checkpoint,
-        now: u64,
     ) -> Result<()> {
         let node = node.to_owned();
-        self.write(claim.clone(), now, move |record| {
+        self.write(claim.clone(), move |record| {
             let current = record
                 .run
                 .checkpoints
@@ -338,11 +337,72 @@ impl Ledger {
         .await
     }
 
+    pub async fn begin_dispatch(
+        &self,
+        claim: &Claim,
+        node: &str,
+        index: usize,
+        now: u64,
+    ) -> Result<Dispatch> {
+        let (claim, node) = (claim.clone(), node.to_owned());
+        self.transaction(move |tx| {
+            let mut record = Self::fenced(tx, &claim)?;
+            ensure!(
+                record.lease.is_some_and(|lease| lease > now),
+                "workflow dispatch deadline expired"
+            );
+            ensure!(
+                !record.invalidated && record.run.status == Status::Running,
+                "workflow cannot dispatch in its current state"
+            );
+            let checkpoint = record
+                .run
+                .checkpoints
+                .get_mut(&node)
+                .context("unknown workflow node")?;
+            let Some(Prepared::Calls { calls }) = &checkpoint.prepared else {
+                anyhow::bail!("workflow calls are not prepared")
+            };
+            ensure!(
+                index < calls.len(),
+                "workflow item is outside its prepared list"
+            );
+            let item = checkpoint
+                .items
+                .get_mut(index)
+                .context("workflow item is missing")?;
+            ensure!(
+                !matches!(
+                    item.state,
+                    State::Running | State::Succeeded { .. } | State::Skipped
+                ),
+                "workflow item cannot dispatch in its current state"
+            );
+            let dispatch = Dispatch {
+                id: Uuid::new_v4().to_string(),
+                attempt: claim.attempt.clone(),
+                started_at: now,
+                finished_at: None,
+                state: State::Running,
+                meter: Meter::default(),
+            };
+            item.state = State::Running;
+            item.dispatches.push(dispatch.clone());
+            checkpoint.state = State::Running;
+            tx.execute(
+                "UPDATE runs SET body=?2 WHERE id=?1",
+                params![claim.run, Self::encode(&record.run)?],
+            )?;
+            Ok(dispatch)
+        })
+        .await
+    }
+
     pub async fn finish(
         &self,
         claim: &Claim,
         status: Status,
-        result: Option<serde_json::Value>,
+        output: Option<Checkpoint>,
         error: Option<Failure>,
         meter: Meter,
         now: u64,
@@ -356,14 +416,24 @@ impl Ledger {
         );
         let claim = claim.clone();
         self.transaction(move |tx| {
-            let mut record = Self::fenced(tx, &claim, now)?;
-            if status == Status::Succeeded {
-                let output = record.entry.graph.nodes.iter().find(|node| matches!(node.kind, Kind::Output)).context("workflow has no output")?;
-                let checkpoint = &record.run.checkpoints[&output.id];
-                ensure!(matches!(&checkpoint.state, State::Succeeded { value } if result.as_ref() == Some(value)), "success requires the complete output checkpoint");
-                ensure!(record.run.checkpoints.values().all(|checkpoint| matches!(checkpoint.state, State::Succeeded { .. } | State::Skipped)), "success requires all nodes to finish");
-                berm_api::schema::validate(&record.entry.graph.output, result.as_ref().context("workflow result is missing")?)?;
-            }
+            let mut record = Self::fenced(tx, &claim)?;
+            let result = match output {
+                Some(checkpoint) => {
+                    ensure!(status == Status::Succeeded, "only success may record workflow output");
+                    let output = record.entry.graph.nodes.iter().find(|node| matches!(node.kind, Kind::Output)).context("workflow has no output")?;
+                    let State::Succeeded {value} = &checkpoint.state else { anyhow::bail!("workflow output did not succeed") };
+                    ensure!(matches!(&checkpoint.prepared,Some(Prepared::Output {value:prepared}) if prepared == value), "workflow result differs from its output checkpoint");
+                    berm_api::schema::validate(&record.entry.graph.output,value)?;
+                    let result = value.clone();
+                    record.run.checkpoints.get_mut(&output.id).context("output checkpoint is missing")?.advance(checkpoint).map_err(Refused::Invalid)?;
+                    ensure!(record.run.checkpoints.values().all(|checkpoint| matches!(checkpoint.state, State::Succeeded { .. } | State::Skipped)), "success requires all nodes to finish");
+                    Some(result)
+                },
+                None => {
+                    ensure!(status != Status::Succeeded,"success requires a complete output checkpoint");
+                    None
+                },
+            };
             record.run.status = status;
             record.run.result = result;
             record.run.error = error.clone();
@@ -381,11 +451,10 @@ impl Ledger {
     async fn write(
         &self,
         claim: Claim,
-        now: u64,
         work: impl FnOnce(&mut Record) -> Result<()> + Send + 'static,
     ) -> Result<()> {
         self.transaction(move |tx| {
-            let mut record = Self::fenced(tx, &claim, now)?;
+            let mut record = Self::fenced(tx, &claim)?;
             work(&mut record)?;
             tx.execute(
                 "UPDATE runs SET body=?2 WHERE id=?1",
@@ -469,11 +538,9 @@ impl Ledger {
         }
     }
 
-    fn fenced(conn: &Connection, claim: &Claim, now: u64) -> Result<Record> {
+    fn fenced(conn: &Connection, claim: &Claim) -> Result<Record> {
         let record = Self::load(conn, &claim.run)?.ok_or(Refused::Missing)?;
-        if record.claim.as_deref() != Some(&claim.token)
-            || record.lease.is_none_or(|lease| lease <= now)
-        {
+        if record.claim.as_deref() != Some(&claim.token) {
             return Err(Refused::Busy.into());
         }
         ensure!(
