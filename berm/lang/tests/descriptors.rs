@@ -94,7 +94,7 @@ fn unselected_payloads_are_absent_and_selected_payloads_keep_their_schema() {
         reason: "unchanged".into(),
     });
     assert!(Projection::<Changed>::project(value).is_none());
-    assert_eq!(<Route as Projection<Same>>::CASE, "same");
+    assert_eq!(<Route as Projection<Same>>::CASE, Some("same"));
     const PIECES: &[Piece] = &[Piece::Shape(
         <Route as BranchContract>::CASES[1].payload.unwrap(),
     )];

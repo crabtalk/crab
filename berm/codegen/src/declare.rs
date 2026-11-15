@@ -460,7 +460,7 @@ fn branch(ident: &Ident, schema: &Value) -> TokenStream {
         cases.push(quote!(::berm_lang::schema::Variant { name: #name, description: "", payload: Some(&<#ty as ::berm_lang::Schema>::SHAPE) }));
         projections.push(quote! {
             impl ::berm_lang::workflow::Projection<#ty> for #ident {
-                const CASE: &'static str = #name;
+                const CASE: ::core::option::Option<&'static str> = ::core::option::Option::Some(#name);
                 fn project(self) -> ::core::option::Option<#ty> {
                     match self { #pattern => ::core::option::Option::Some(#constructor), _ => ::core::option::Option::None }
                 }

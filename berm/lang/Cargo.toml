@@ -29,4 +29,5 @@ serde_json = { workspace = true, features = ["alloc"] }
 dlmalloc.workspace = true
 
 [dev-dependencies]
+berm-api.workspace = true
 trybuild.workspace = true

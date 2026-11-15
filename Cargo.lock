@@ -269,6 +269,7 @@ name = "berm-abi"
 version = "0.1.6"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -447,6 +448,7 @@ name = "berm-lang"
 version = "0.1.6"
 dependencies = [
  "berm-abi",
+ "berm-api",
  "berm-codegen",
  "dlmalloc",
  "serde",

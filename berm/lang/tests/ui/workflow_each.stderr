@@ -1,0 +1,13 @@
+error: each requires max = N, where N is a positive integer no larger than 100
+ --> tests/ui/workflow_each.rs:8:5
+  |
+8 |     #[step(each)]
+  |     ^^^^^^^^^^^^^
+
+warning: unused imports: `EchoCall` and `Input`
+ --> tests/ui/workflow_each.rs:4:15
+  |
+4 | use support::{EchoCall, Input};
+  |               ^^^^^^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

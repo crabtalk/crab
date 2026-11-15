@@ -31,7 +31,14 @@ pub trait Branch: Schema + Serialize + DeserializeOwned {
 }
 
 /// A selected payload is moved into the control adapter, which borrows it for the builder.
-pub trait Projection<T: Schema>: Branch {
-    const CASE: &'static str;
+pub trait Projection<T: Schema>: Schema + Serialize + DeserializeOwned {
+    const CASE: Option<&'static str>;
     fn project(self) -> Option<T>;
+}
+
+impl<T: Schema + Serialize + DeserializeOwned> Projection<T> for T {
+    const CASE: Option<&'static str> = None;
+    fn project(self) -> Option<T> {
+        Some(self)
+    }
 }

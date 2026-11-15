@@ -1,6 +1,6 @@
 # berm-codegen
 
-The proc macros of a service: `#[tool]`, `#[derive(Schema)]`, `#[derive(Branch)]`, `#[event]`, `#[error_code]`, `declare_service!`, `syscalls!` and `hosts!`. Re-exported by [`berm-lang`](https://crates.io/crates/berm-lang) — depend on that, not on this.
+The proc macros of a service: `#[tool]`, `#[workflow]`, `#[derive(Schema)]`, `#[derive(Branch)]`, `#[event]`, `#[error_code]`, `declare_service!`, `syscalls!` and `hosts!`. Re-exported by [`berm-lang`](https://crates.io/crates/berm-lang) — depend on that, not on this.
 
 ```rust
 use berm_lang::{Result, tool};
@@ -20,6 +20,8 @@ A function marked `#[tool]` is a tool; its doc comment is the description the mo
 Each `#[tool]` expands to the function, its export `berm_tool_<name>`, and its record in the `.berm.abi` section, naming the crate it is compiled in. The service's own declarations are in its `crab.toml`, which `crab build` appends to the image as the `.berm.service` section, each tool's access, title and catalog job among them.
 
 `#[tool]` also emits a `<ToolName>Call` input descriptor with a local `workflow::Call` target. `declare_service!` adds external descriptors while retaining its calling functions and response types. `#[derive(Branch)]` emits case metadata and consuming `workflow::Projection<T>` implementations for distinct tuple payloads. See [Call descriptors and branches](../lang/README.md#call-descriptors-and-branches).
+
+`#[workflow]` compiles a unit-struct impl into typed control adapters and a static graph record. Dependency names and type projections determine wiring and guards; method bodies are not inspected. Graph validation is shared with `berm_api::workflow::graph::Graph::check`. See [Workflow graphs](../lang/README.md#workflow-graphs). Runtime control restrictions and execution are not implemented yet.
 
 ## License
 

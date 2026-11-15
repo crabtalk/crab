@@ -51,7 +51,34 @@ Off the guest's target this is an ordinary library, which is why the `cfg_attr` 
 
 `#[tool] fn compare(…)` also emits `CompareCall` beside the function, with the same visibility and public argument fields. It implements `workflow::Call`: `TARGET` is local, `Output` is the tool result type, and `CASES` describes union results. Type aliases preserve this contract. `declare_service!(mail)` adds `mail::SendCall` for its `send` tool; existing `mail::calls::send` and `mail::types` remain available. Imported descriptors retain the IDL's parameter and result schemas. An optional `idempotency_ms` on an imported tool declares its external redispatch window.
 
-`#[derive(Schema, Branch)]` accepts enums whose variants each wrap one distinct payload type. `workflow::Branch` supplies case metadata and the selected name. `workflow::Projection<Payload>::project(value)` consumes the enum and returns its payload only for that case. Imported union clients implement the same traits with distinct `<Enum><Variant>Payload` types in their `types` module; tuple payloads use a transparent wrapper. Workflow compilation and execution are not implemented yet.
+`#[derive(Schema, Branch)]` accepts enums whose variants each wrap one distinct payload type. `workflow::Branch` supplies case metadata and the selected name. `workflow::Projection<Payload>::project(value)` consumes the enum and returns its payload only for that case. Imported union clients implement the same traits with distinct `<Enum><Variant>Payload` types in their `types` module; tuple payloads use a transparent wrapper. Workflow execution is not implemented yet.
+
+## Workflow graphs
+
+Use a unit struct and an inherent impl marked with `#[workflow]`. Every method has one `#[step]`, `#[branch]` or `#[output]`; there is exactly one output. Parameters name earlier producers, with `input` reserved for the common input type.
+
+```rust
+use berm_lang::workflow;
+
+struct EchoFlow;
+
+#[workflow]
+impl EchoFlow {
+    #[step]
+    fn first(input: &String) -> EchoCall {
+        EchoCall { query: input.clone(), page: None }
+    }
+
+    #[output]
+    fn done(first: &Echo) -> String {
+        first.query.clone()
+    }
+}
+```
+
+This uses the `EchoCall` and `Echo` from the tool above. A step returns a call descriptor, `Option<Call>`, or `Vec<Call>` with `#[step(each, max = N)]` (1–100). A branch returns a `Branch` enum. Any method may return the existing `Result<T>`. Dependencies are immutable references; each results use slices and optional dependencies use `Option<&T>`. Distinct branch payload types select cases. Required dependencies propagate guards; joins across exclusive paths and the final output use optional references. Failed or pending producers never become optional absence.
+
+The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per method, and a versioned static record in `.berm.abi`. `EchoFlow::WORKFLOW` exposes that record as JSON bytes. Unused nodes, unknown/forward dependencies, impossible required joins and guarded outputs are compile errors. No method body analysis is performed. Configuration loading and host execution are not implemented yet.
 
 ## Durable event sources
 

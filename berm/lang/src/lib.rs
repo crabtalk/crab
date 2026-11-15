@@ -45,7 +45,9 @@ extern crate alloc;
 extern crate self as berm_lang;
 
 pub use berm_abi as abi;
-pub use berm_codegen::{Branch, Schema, declare_service, error_code, event, syscalls, tool};
+pub use berm_codegen::{
+    Branch, Schema, declare_service, error_code, event, syscalls, tool, workflow,
+};
 pub use call::{
     CallError, Caller, User, after, call, caller, client, client_ip, deny, limit, user, vouch,
 };

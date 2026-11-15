@@ -4,13 +4,15 @@
 //! anywhere in the service's crate.
 
 use proc_macro::TokenStream;
-use syn::{DeriveInput, Expr, ExprLit, ItemFn, Lit, parse_macro_input};
+use syn::{DeriveInput, Expr, ExprLit, ItemFn, ItemImpl, Lit, parse_macro_input};
 
 mod branch;
 mod declare;
+mod record;
 mod schema;
 mod syscalls;
 mod tool;
+mod workflow;
 
 /// A doc comment, joined into one line.
 fn docs(attrs: &[syn::Attribute]) -> String {
@@ -168,6 +170,15 @@ pub fn error_code(args: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Branch)]
 pub fn derive_branch(input: TokenStream) -> TokenStream {
     branch::derive(&parse_macro_input!(input as DeriveInput))
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Compile a service-owned workflow graph from method signatures.
+#[proc_macro_attribute]
+pub fn workflow(args: TokenStream, item: TokenStream) -> TokenStream {
+    let _ = parse_macro_input!(args as syn::parse::Nothing);
+    workflow::expand(parse_macro_input!(item as ItemImpl))
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

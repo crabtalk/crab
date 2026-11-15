@@ -20,6 +20,7 @@ pub mod events;
 pub mod requests;
 pub mod secrets;
 pub mod wire;
+pub mod workflow;
 
 /// The version of the framing a service is built against and a host speaks:
 /// `(ptr, len)` and staged replies. A host refuses a service built against
@@ -35,6 +36,9 @@ pub const MODULE: &str = "berm";
 /// `{"tool": …, "abi_version": …, "crate": …}` per `#[tool]` and one
 /// `{"event": …}` per `#[event]`.
 pub const ABI_SECTION: &str = ".berm.abi";
+
+/// Prefix of per-node workflow control exports.
+pub const WORKFLOW_PREFIX: &str = "berm_workflow_";
 
 /// The section the build appends for the service: one service record.
 pub const SERVICE_SECTION: &str = ".berm.service";

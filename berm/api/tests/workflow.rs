@@ -1,6 +1,6 @@
 use berm_api::workflow::{
     Policy, Version,
-    graph::{Entry, Mode},
+    graph::{Entry, Kind, Mode, Producer},
     run::{Prepared, Run, State},
 };
 use serde_json::{Value, json};
@@ -89,4 +89,26 @@ fn policy_defaults_and_symbolic_call_bounds_are_explicit() {
             .max_each,
         3
     );
+}
+
+#[test]
+fn graph_validation_rejects_unbounded_fanout_and_forward_references() {
+    let mut entry: Entry =
+        serde_json::from_str(include_str!("fixtures/workflow-entry-v1.json")).unwrap();
+    entry.graph.check(100).unwrap();
+    if let Kind::Step { mode, .. } = &mut entry.graph.nodes[0].kind {
+        *mode = Mode::Each { max: 101 };
+    }
+    assert!(
+        entry
+            .graph
+            .check(100)
+            .unwrap_err()
+            .to_string()
+            .contains("platform cap")
+    );
+    entry.graph.nodes[1].dependencies[0].source = Producer::Node {
+        id: "report".into(),
+    };
+    assert!(entry.graph.check(100).is_err());
 }

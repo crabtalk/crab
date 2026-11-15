@@ -5,7 +5,9 @@
 //! rendered from shapes by [`render`] into the image's `.berm.abi` section,
 //! which a host reads without running anything.
 
+use crate::workflow::Target;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use berm_abi::workflow::Selection;
 
 /// A type with a JSON Schema.
 /// `#[derive(Schema)]` implements it, and the serde impls that read and write
@@ -72,6 +74,14 @@ pub struct Field {
 pub enum Piece {
     Text(&'static str),
     Shape(&'static Shape),
+    Target(&'static Target),
+    Cases(&'static [Variant]),
+    MaybeString(Option<&'static str>),
+    Guards {
+        ids: &'static [&'static str],
+        selections: &'static [Option<Selection<'static>>],
+        node: usize,
+    },
 }
 
 /// The bytes [`render`] writes for `pieces`.
@@ -117,6 +127,50 @@ impl Sink<'_> {
         self.at += bytes.len();
     }
 
+    const fn byte(&mut self, byte: u8) {
+        if !self.counting {
+            self.buffer[self.at] = byte;
+        }
+        self.at += 1;
+    }
+
+    const fn string(&mut self, text: &str) {
+        self.put("\"");
+        let mut at = 0;
+        let bytes = text.as_bytes();
+        while at < bytes.len() {
+            match bytes[at] {
+                b'"' => self.put("\\\""),
+                b'\\' => self.put("\\\\"),
+                byte if byte < 32 => {
+                    self.put("\\u00");
+                    self.byte(b"0123456789abcdef"[(byte / 16) as usize]);
+                    self.byte(b"0123456789abcdef"[(byte % 16) as usize]);
+                }
+                byte => self.byte(byte),
+            }
+            at += 1;
+        }
+        self.put("\"");
+    }
+
+    const fn number(&mut self, mut value: u64) {
+        let mut digits = [0; 20];
+        let mut at = digits.len();
+        loop {
+            at -= 1;
+            digits[at] = b'0' + (value % 10) as u8;
+            value /= 10;
+            if value == 0 {
+                break;
+            }
+        }
+        while at < digits.len() {
+            self.byte(digits[at]);
+            at += 1;
+        }
+    }
+
     const fn quoted(&mut self, text: &str) {
         self.put("\"");
         self.put(text);
@@ -130,6 +184,83 @@ const fn pieces_into(sink: &mut Sink, pieces: &[Piece]) {
         match &pieces[at] {
             Piece::Text(text) => sink.put(text),
             Piece::Shape(shape) => shape_into(sink, shape, ""),
+            Piece::Target(target) => {
+                match target {
+                    Target::Local { tool } => {
+                        sink.put(r#"{"kind":"local","tool":"#);
+                        sink.string(tool);
+                    }
+                    Target::Service {
+                        service,
+                        tool,
+                        idempotency_ms,
+                    } => {
+                        sink.put(r#"{"kind":"service","service":"#);
+                        sink.string(service);
+                        sink.put(r#","tool":"#);
+                        sink.string(tool);
+                        sink.put(r#","idempotency_ms":"#);
+                        match idempotency_ms {
+                            Some(ms) => sink.number(*ms),
+                            None => sink.put("null"),
+                        }
+                    }
+                }
+                sink.put("}");
+            }
+            Piece::Cases(cases) => {
+                sink.put("[");
+                let mut case = 0;
+                while case < cases.len() {
+                    if case > 0 {
+                        sink.put(",");
+                    }
+                    sink.put(r#"{"name":"#);
+                    sink.string(cases[case].name);
+                    sink.put(r#","schema":"#);
+                    match cases[case].payload {
+                        Some(shape) => shape_into(sink, shape, ""),
+                        None => sink.put(r#"{"type":"null"}"#),
+                    }
+                    sink.put("}");
+                    case += 1;
+                }
+                sink.put("]");
+            }
+            Piece::MaybeString(value) => match value {
+                Some(value) => sink.string(value),
+                None => sink.put("null"),
+            },
+            Piece::Guards {
+                ids,
+                selections,
+                node,
+            } => {
+                sink.put("[");
+                let mut branch = 0;
+                let mut first = true;
+                while branch < ids.len() {
+                    if let Some(selection) = selections[*node * ids.len() + branch] {
+                        if !first {
+                            sink.put(",");
+                        }
+                        first = false;
+                        sink.put(r#"{"producer":"#);
+                        sink.string(ids[branch]);
+                        sink.put(r#","selection":{"kind":"#);
+                        match selection {
+                            Selection::Present => sink.put(r#""present""#),
+                            Selection::Case(name) => {
+                                sink.put(r#""case","name":"#);
+                                sink.string(name);
+                            }
+                        }
+                        sink.put("}}");
+                    }
+                    branch += 1;
+                }
+                sink.put("]");
+            }
         }
         at += 1;
     }

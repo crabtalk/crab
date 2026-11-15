@@ -28,7 +28,7 @@ result does: the call was fine and the tool said no.
 
 `workflow::run` defines accepted bindings, attempts, prepared payloads, ordered item dispatches and complete checkpoints. Only skipped values supply optional absence; pending, failed and unknown outcomes remain distinct. An unknown call retains its prepared input and operation key. External targets declare their idempotency window in milliseconds; no window forbids redispatch after an unknown outcome. Error records retain response status, headers and the full body, including explanation and recovery fields. Timestamps and durations use epoch milliseconds and milliseconds respectively.
 
-`workflow::Policy` configures the seven-day retention default and each-item ceiling (100 by default). Checkpoint capacity and control resource limits are explicit accepted fields. These are shared contracts; workflow compilation, execution, persistence and endpoints are not implemented.
+`workflow::Policy` configures the seven-day retention default and each-item ceiling (100 by default). Checkpoint capacity and control resource limits are explicit accepted fields. Workflow compilation emits these records; configuration loading, execution, persistence and endpoints are not implemented. `Graph::check` verifies declaration order, bounds, case references, guard consistency and output reachability using the same validator as the compiler.
 
 ## License
 

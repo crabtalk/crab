@@ -48,7 +48,7 @@ pub fn derive(input: &DeriveInput) -> syn::Result<TokenStream> {
         arms.push(quote!(Self::#variant(_) => #name));
         projections.push(quote! {
             impl ::berm_lang::workflow::Projection<#ty> for #ident {
-                const CASE: &'static str = #name;
+                const CASE: ::core::option::Option<&'static str> = ::core::option::Option::Some(#name);
                 fn project(self) -> ::core::option::Option<#ty> {
                     match self {
                         Self::#variant(payload) => ::core::option::Option::Some(payload),
