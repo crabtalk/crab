@@ -33,6 +33,8 @@ A guest cannot decline how far a chain of services may nest, the depth `Calls` i
 cargo run --example measure    # prices a host call, an invocation, an allocation
 ```
 
+Workflow control exports run through `Service::control` with their configured CPU/memory budget and the service buffer limit. Each invocation gets fresh guest state. Only argument/result ABI plumbing is permitted; application syscalls, including helper-mediated calls and clocks, trap before dispatch. Controls do not open application transaction scopes. Their meters are returned through the request's `Meters`. Full workflow graph execution is not implemented yet.
+
 ## License
 
 AGPL-3.0-only

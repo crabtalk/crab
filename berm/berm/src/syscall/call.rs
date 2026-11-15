@@ -6,7 +6,7 @@
 
 use crate::{
     Berm, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Refused, Service, Syscall, abi,
-    clock, wire,
+    clock, service::Entry, wire,
 };
 use anyhow::{Result, bail};
 use berm_api::{Output, host::Outcome};
@@ -246,7 +246,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     .collect();
                 let invoked = target
                     .invoke(
-                        tool,
+                        Entry::Tool(tool),
                         args.as_bytes().to_vec(),
                         caller,
                         at.key.clone(),

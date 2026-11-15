@@ -45,6 +45,7 @@ use tower::Layer;
 
 pub use deploy::Installed;
 
+mod control;
 mod deploy;
 mod fetch;
 mod nest;

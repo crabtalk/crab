@@ -3,6 +3,10 @@ use serde_json::{Value, json};
 
 pub fn image(config: Value) -> Vec<u8> {
     let wasm = wat::parse_str(include_str!("../fixtures/workflow-only.wat")).unwrap();
+    with_wasm(&wasm, config)
+}
+
+pub fn with_wasm(wasm: &[u8], config: Value) -> Vec<u8> {
     let record = json!({
         "workflow": {
             "version": 1, "name": "identity",
@@ -18,7 +22,7 @@ pub fn image(config: Value) -> Vec<u8> {
         },
         "abi_version":berm_abi::ABI_VERSION, "crate":"workflow-only"
     });
-    let image = Image(&wasm)
+    let image = Image(wasm)
         .with_section(berm_abi::ABI_SECTION, &serde_json::to_vec(&record).unwrap())
         .unwrap();
     let service = json!({

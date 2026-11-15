@@ -9,6 +9,7 @@ use crate::{
     Budget, Invocation, Meter, Pool, abi,
     bound::{cpu::Clock, watchdog},
     code::{Code, Resident},
+    control,
     syscall::{self, Door, Table},
     tape::{self, Answer},
 };
@@ -242,6 +243,28 @@ impl Image {
                 move |mut caller: Caller<'_, Invocation>, (ptr, len): (u32, u32)| {
                     let (door, syscall) = (door.clone(), syscall.clone());
                     Box::new(async move {
+                        if caller.data().control
+                            && !matches!(
+                                syscall.as_ref(),
+                                abi::ARG_LEN
+                                    | abi::ARG_READ
+                                    | abi::DONE
+                                    | abi::FAIL
+                                    | abi::RESULT_READ
+                            )
+                        {
+                            return Err(anyhow::Error::from(control::Effect {
+                                syscall: syscall.to_string(),
+                            }))
+                            .to_wasmtime_result();
+                        }
+                        if caller.data().control
+                            && matches!(syscall.as_ref(), abi::DONE | abi::FAIL)
+                            && len as usize > caller.data().buffer
+                        {
+                            return Err(anyhow::anyhow!("result exceeded the output buffer"))
+                                .to_wasmtime_result();
+                        }
                         let (ptr, len) = (ptr as u64, len as u64);
                         let answer = match door {
                             Door::Builtin(call) => call(&mut caller, ptr, len),
@@ -312,13 +335,13 @@ impl Image {
     /// The invocation goes in carrying the arguments and comes back carrying
     /// whatever the tool answered with. Nothing else survives: the instance is
     /// built for this call and dropped with it.
-    pub(crate) async fn call(&self, tool: &str, invocation: Invocation) -> Result<Invocation> {
+    pub(crate) async fn call(&self, export: &str, invocation: Invocation) -> Result<Invocation> {
         let export = self
             .exports
             .iter()
-            .find(|(name, _)| name.strip_prefix(abi::TOOL_PREFIX) == Some(tool))
+            .find(|(name, _)| name == export)
             .map(|(_, export)| export)
-            .with_context(|| format!("service exports no tool named {tool:?}"))?;
+            .with_context(|| format!("service exports no entry named {export:?}"))?;
         let deadline = invocation.at.deadline;
         let cpu = invocation.cpu.clone();
         let mut store = Store::new(&self.engine, invocation);
@@ -379,11 +402,14 @@ impl Image {
             held: store.data().held.held(),
             ..Meter::default()
         });
-        if over.load(Ordering::Relaxed) {
+        if over.load(Ordering::Relaxed) || clock.spent() / 1_000 > cpu.load(Ordering::Relaxed) {
             bail!(
                 "ran past its budget of {}µs of CPU",
                 cpu.load(Ordering::Relaxed)
             );
+        }
+        if Instant::now() >= deadline {
+            bail!("invocation exceeded its deadline");
         }
         instance?;
         called?;

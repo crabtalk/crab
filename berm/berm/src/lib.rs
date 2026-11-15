@@ -7,7 +7,7 @@
 //! otherwise only the [`Syscall`]s the embedder passed in, built with
 //! [`syscall`]'s constructors; any other import traps. What `berm.set` and
 //! `berm.emit` write comes back from [`Service::call`] as [`Changes`] for the
-//! host to commit as one, and every invocation runs inside a [`Scope`] the host
+//! host to commit as one, and application tool invocations run inside a [`Scope`] the host
 //! opens through [`Calls::enter`].
 //!
 //! ```ignore
@@ -47,6 +47,7 @@ mod bound;
 pub mod chain;
 pub mod clock;
 mod code;
+pub mod control;
 #[cfg(feature = "sqlite")]
 pub mod database;
 mod engine;
