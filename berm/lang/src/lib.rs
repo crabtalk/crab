@@ -45,7 +45,7 @@ extern crate alloc;
 extern crate self as berm_lang;
 
 pub use berm_abi as abi;
-pub use berm_codegen::{Schema, declare_service, error_code, event, syscalls, tool};
+pub use berm_codegen::{Branch, Schema, declare_service, error_code, event, syscalls, tool};
 pub use call::{
     CallError, Caller, User, after, call, caller, client, client_ip, deny, limit, user, vouch,
 };
@@ -82,6 +82,7 @@ mod sql;
 mod store;
 pub mod test;
 mod var;
+pub mod workflow;
 
 // `wasm.rs` makes real host calls; `stub.rs` is the host a test stands in for.
 #[cfg_attr(target_arch = "wasm32", path = "sys/wasm.rs")]

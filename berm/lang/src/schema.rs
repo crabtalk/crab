@@ -274,6 +274,10 @@ macro_rules! leaf {
     };
 }
 
+impl Schema for () {
+    const SHAPE: Shape = Shape::Json(r#"{"type":"null"}"#);
+}
+
 leaf!(String: String);
 leaf!(Boolean: bool);
 leaf!(Number: f32, f64);

@@ -2,6 +2,7 @@
 //! `.berm.abi` section, and the export the host calls.
 
 use berm_abi::{ABI_SECTION, ABI_VERSION, TOOL_PREFIX};
+use heck::ToUpperCamelCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -84,16 +85,40 @@ pub(crate) fn expand(options: Options, mut function: ItemFn) -> syn::Result<Toke
     let tool = Tool::read(options, &mut function)?;
     let record = tool.record()?;
     let export = tool.export();
+    let descriptor = tool.descriptor(&function.vis);
     Ok(quote! {
         #function
 
         #record
 
         #export
+        #descriptor
     })
 }
 
 impl Tool {
+    fn descriptor(&self, visibility: &syn::Visibility) -> TokenStream {
+        let name = format_ident!("{}Call", self.name.to_upper_camel_case());
+        let tool = &self.name;
+        let fields = self.params.iter().map(|param| {
+            let ident = &param.ident;
+            let ty = &param.ty;
+            quote!(pub #ident: #ty,)
+        });
+        let output = self
+            .reply
+            .as_ref()
+            .map_or_else(|| quote!(()), |ty| quote!(#ty));
+        quote! {
+            #[derive(::berm_lang::Schema)]
+            #visibility struct #name { #(#fields)* }
+            impl ::berm_lang::workflow::Call for #name {
+                const TARGET: ::berm_lang::workflow::Target = ::berm_lang::workflow::Target::Local { tool: #tool };
+                type Output = #output;
+            }
+        }
+    }
+
     /// Read `function` as a tool, stripping the doc comments off its
     /// parameters, which the compiler does not take.
     fn read(options: Options, function: &mut ItemFn) -> syn::Result<Self> {

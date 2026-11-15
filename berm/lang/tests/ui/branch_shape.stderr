@@ -1,0 +1,5 @@
+error: a Branch case wraps exactly one distinct payload type
+ --> tests/ui/branch_shape.rs:4:5
+  |
+4 |     Ready,
+  |     ^^^^^

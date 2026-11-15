@@ -1,0 +1,16 @@
+error[E0277]: the trait bound `Route: Projection<Second>` is not satisfied
+  --> tests/ui/projection_type.rs:18:43
+   |
+18 |     let _ = Projection::<Second>::project(route);
+   |             ----------------------------- ^^^^^ unsatisfied trait bound
+   |             |
+   |             required by a bound introduced by this call
+   |
+help: the trait `Projection<Second>` is not implemented for `Route`
+      but trait `Projection<First>` is implemented for it
+  --> tests/ui/projection_type.rs:10:18
+   |
+10 | #[derive(Schema, Branch)]
+   |                  ^^^^^^
+   = help: for that trait implementation, expected `First`, found `Second`
+   = note: this error originates in the derive macro `Branch` (in Nightly builds, run with -Z macro-backtrace for more info)

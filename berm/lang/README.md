@@ -47,6 +47,12 @@ A `public` tool can be called by any account the host authenticates and any serv
 
 Off the guest's target this is an ordinary library, which is why the `cfg_attr` above is worth copying: tools then run under `cargo nextest run` with no wasm toolchain and no daemon. See `berm_lang::test`.
 
+## Call descriptors and branches
+
+`#[tool] fn compare(…)` also emits `CompareCall` beside the function, with the same visibility and public argument fields. It implements `workflow::Call`: `TARGET` is local, `Output` is the tool result type, and `CASES` describes union results. Type aliases preserve this contract. `declare_service!(mail)` adds `mail::SendCall` for its `send` tool; existing `mail::calls::send` and `mail::types` remain available. Imported descriptors retain the IDL's parameter and result schemas. An optional `idempotency_ms` on an imported tool declares its external redispatch window.
+
+`#[derive(Schema, Branch)]` accepts enums whose variants each wrap one distinct payload type. `workflow::Branch` supplies case metadata and the selected name. `workflow::Projection<Payload>::project(value)` consumes the enum and returns its payload only for that case. Imported union clients implement the same traits with distinct `<Enum><Variant>Payload` types in their `types` module; tuple payloads use a transparent wrapper. Workflow compilation and execution are not implemented yet.
+
 ## Durable event sources
 
 `berm_lang::key::id()` returns the API key ID authenticated by the host, or `None` when no key was supplied. It persists across nested calls and never contains a token. `caller()` still identifies the immediate caller; `user()` identifies the verified end user.

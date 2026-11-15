@@ -34,8 +34,27 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
         collect(&tool["returns"], &mut structs);
     }
 
+    let mut descriptor_outputs = BTreeMap::new();
+    for tool in tools {
+        let mut output = tool["returns"].clone();
+        if schema::variants(&output).is_some() && output["title"].is_null() {
+            let name = tool["name"].as_str().unwrap_or_default();
+            let title = format!("{}Output", camel(name));
+            if structs.contains_key(&title) {
+                return Err(fail(&format!(
+                    "generated workflow response {title} conflicts with an IDL type"
+                )));
+            }
+            output["title"] = Value::from(title);
+            collect(&output, &mut structs);
+        }
+        descriptor_outputs.insert(tool["name"].as_str().unwrap_or_default(), output);
+    }
+
     let types = structs.iter().map(|(title, schema)| {
         let ident = format_ident!("{title}");
+        let schema_impl = schema_impl(&ident, schema);
+        let branch_impl = branch(&ident, schema);
         let doc = schema["description"]
             .as_str()
             .map(|text| quote!(#[doc = #text]));
@@ -48,6 +67,8 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
                 }
             });
             return quote! {
+                #schema_impl
+                #branch_impl
                 #doc
                 #[derive(
                     Debug,
@@ -71,7 +92,7 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
                     return quote!(#[serde(rename = #name)] #variant,);
                 };
                 let fields = if payload["type"] == "object" && payload["title"].is_null() && payload["properties"].is_object() {
-                    let fields = fields(payload, false);
+                    let fields = fields(payload, false, &quote!());
                     quote!({ #(#fields)* })
                 } else {
                     let ty = rust_type(payload, &quote!());
@@ -80,14 +101,17 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
                 quote!(#[serde(rename = #name)] #variant #fields,)
             });
             return quote! {
+                #schema_impl
+                #branch_impl
                 #doc
                 #[derive(Debug, Clone, ::berm_lang::serde::Serialize, ::berm_lang::serde::Deserialize)]
                 #[serde(crate = "::berm_lang::serde")]
                 pub enum #ident { #(#variants)* }
             };
         }
-        let fields = fields(schema, true);
+        let fields = fields(schema, true, &quote!());
         quote! {
+            #schema_impl
             #doc
             #[derive(
                 Debug,
@@ -98,6 +122,40 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
             #[serde(crate = "::berm_lang::serde")]
             pub struct #ident {
                 #(#fields)*
+            }
+        }
+    });
+
+    let descriptors = tools.iter().map(|tool| {
+        let tool_name = tool["name"].as_str().unwrap_or_default();
+        let ident = format_ident!("{}Call", camel(tool_name));
+        let parameters = &tool["parameters"];
+        let fields = fields(parameters, true, &quote!(types::));
+        let schema_impl = schema_impl(&ident, parameters);
+        let output_schema = &descriptor_outputs[tool_name];
+        let output = if output_schema.is_object() {
+            rust_type(output_schema, &quote!(types::))
+        } else {
+            quote!(())
+        };
+        let cases = if schema::variants(output_schema).is_some() && output_schema["title"].is_string() {
+            quote!(const CASES: &'static [::berm_lang::schema::Variant] = <#output as ::berm_lang::workflow::Branch>::CASES;)
+        } else { quote!() };
+        let window = match tool["idempotency_ms"].as_u64() {
+            Some(ms) => quote!(Some(#ms)),
+            None => quote!(None),
+        };
+        quote! {
+            #[derive(::berm_lang::serde::Serialize, ::berm_lang::serde::Deserialize)]
+            #[serde(crate = "::berm_lang::serde")]
+            pub struct #ident { #(#fields)* }
+            #schema_impl
+            impl ::berm_lang::workflow::Call for #ident {
+                const TARGET: ::berm_lang::workflow::Target = ::berm_lang::workflow::Target::Service {
+                    service: #service, tool: #tool_name, idempotency_ms: #window,
+                };
+                type Output = #output;
+                #cases
             }
         }
     });
@@ -198,6 +256,8 @@ pub fn expand(name: &Ident) -> syn::Result<TokenStream> {
                 #(#types)*
             }
 
+            #(#descriptors)*
+
             /// Its tools, each a `berm_lang::call` with typed arguments and
             /// result.
             pub mod calls {
@@ -249,12 +309,12 @@ fn collect(schema: &Value, structs: &mut BTreeMap<String, Value>) {
     collect_inner(&schema["additionalProperties"], structs);
 }
 
-fn fields(schema: &Value, public: bool) -> Vec<TokenStream> {
+fn fields(schema: &Value, public: bool, path: &TokenStream) -> Vec<TokenStream> {
     let required = required(schema);
     let visibility = public.then(|| quote!(pub));
     schema["properties"].as_object().into_iter().flatten().map(|(field, property)| {
         let ident = field_ident(field);
-        let ty = rust_type(property, &quote!());
+        let ty = rust_type(property, path);
         let doc = property["description"].as_str().map(|text| quote!(#[doc = #text]));
         if required.contains(&field.as_str()) {
             quote!(#doc #[serde(rename = #field)] #visibility #ident: #ty,)
@@ -324,4 +384,95 @@ fn camel(value: &str) -> String {
 fn field_ident(name: &str) -> Ident {
     syn::parse_str::<Ident>(name)
         .unwrap_or_else(|_| Ident::new_raw(name, proc_macro2::Span::call_site()))
+}
+
+fn schema_impl(ident: &Ident, schema: &Value) -> TokenStream {
+    let schema = schema.to_string();
+    quote! {
+        impl ::berm_lang::Schema for #ident {
+            const SHAPE: ::berm_lang::schema::Shape = ::berm_lang::schema::Shape::Json(#schema);
+        }
+    }
+}
+
+fn branch(ident: &Ident, schema: &Value) -> TokenStream {
+    let Some(variants) = schema::variants(schema) else {
+        return quote!();
+    };
+    let mut payloads = Vec::new();
+    let mut cases = Vec::new();
+    let mut arms = Vec::new();
+    let mut projections = Vec::new();
+    for (name, payload) in variants {
+        let variant = format_ident!("{}", camel(name));
+        let ty = format_ident!("{ident}{variant}Payload");
+        let (item, pattern, constructor, case_pattern) = match payload {
+            None => (
+                quote!(#[derive(::berm_lang::Schema)] pub struct #ty {}),
+                quote!(Self::#variant),
+                quote!(#ty {}),
+                quote!(Self::#variant),
+            ),
+            Some(payload)
+                if payload["type"] == "object"
+                    && payload["title"].is_null()
+                    && payload["properties"].is_object() =>
+            {
+                let fields = fields(payload, true, &quote!());
+                let idents: Vec<_> = payload["properties"]
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .map(|(name, _)| field_ident(name))
+                    .collect();
+                let shape = schema_impl(&ty, payload);
+                let item = quote! {
+                    #[derive(::berm_lang::serde::Serialize, ::berm_lang::serde::Deserialize)]
+                    #[serde(crate = "::berm_lang::serde")]
+                    pub struct #ty { #(#fields)* }
+                    #shape
+                };
+                (
+                    item,
+                    quote!(Self::#variant { #(#idents),* }),
+                    quote!(#ty { #(#idents),* }),
+                    quote!(Self::#variant { .. }),
+                )
+            }
+            Some(payload) => {
+                let inner = rust_type(payload, &quote!());
+                let shape = schema_impl(&ty, payload);
+                (
+                    quote! {
+                        #[derive(::berm_lang::serde::Serialize, ::berm_lang::serde::Deserialize)]
+                        #[serde(crate = "::berm_lang::serde", transparent)]
+                        pub struct #ty(pub #inner);
+                        #shape
+                    },
+                    quote!(Self::#variant(payload)),
+                    quote!(#ty(payload)),
+                    quote!(Self::#variant(_)),
+                )
+            }
+        };
+        payloads.push(item);
+        arms.push(quote!(#case_pattern => #name));
+        cases.push(quote!(::berm_lang::schema::Variant { name: #name, description: "", payload: Some(&<#ty as ::berm_lang::Schema>::SHAPE) }));
+        projections.push(quote! {
+            impl ::berm_lang::workflow::Projection<#ty> for #ident {
+                const CASE: &'static str = #name;
+                fn project(self) -> ::core::option::Option<#ty> {
+                    match self { #pattern => ::core::option::Option::Some(#constructor), _ => ::core::option::Option::None }
+                }
+            }
+        });
+    }
+    quote! {
+        #(#payloads)*
+        impl ::berm_lang::workflow::Branch for #ident {
+            const CASES: &'static [::berm_lang::schema::Variant] = &[#(#cases),*];
+            fn case(&self) -> &'static str { match self { #(#arms),* } }
+        }
+        #(#projections)*
+    }
 }

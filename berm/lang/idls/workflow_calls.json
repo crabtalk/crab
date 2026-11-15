@@ -1,0 +1,74 @@
+{
+  "name": "mail",
+  "owner": "owner",
+  "tools": [
+    {
+      "name": "send",
+      "idempotency_ms": 86400000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "returns": {
+        "type": "object",
+        "title": "Receipt",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "choose",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "returns": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "object",
+                "title": "Receipt",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            },
+            "required": [
+              "ready"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

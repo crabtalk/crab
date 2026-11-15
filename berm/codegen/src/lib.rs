@@ -6,6 +6,7 @@
 use proc_macro::TokenStream;
 use syn::{DeriveInput, Expr, ExprLit, ItemFn, Lit, parse_macro_input};
 
+mod branch;
 mod declare;
 mod schema;
 mod syscalls;
@@ -159,6 +160,14 @@ pub fn event(args: TokenStream, item: TokenStream) -> TokenStream {
 pub fn error_code(args: TokenStream, item: TokenStream) -> TokenStream {
     let _ = parse_macro_input!(args as syn::parse::Nothing);
     schema::error_code(parse_macro_input!(item as syn::ItemEnum))
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Case metadata and typed payload projections for a Schema enum.
+#[proc_macro_derive(Branch)]
+pub fn derive_branch(input: TokenStream) -> TokenStream {
+    branch::derive(&parse_macro_input!(input as DeriveInput))
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

@@ -359,6 +359,7 @@ version = "0.1.6"
 dependencies = [
  "berm-abi",
  "berm-api",
+ "heck",
  "proc-macro2",
  "quote",
  "serde_json",
@@ -450,6 +451,7 @@ dependencies = [
  "dlmalloc",
  "serde",
  "serde_json",
+ "trybuild",
 ]
 
 [[package]]

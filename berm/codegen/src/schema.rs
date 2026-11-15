@@ -261,7 +261,7 @@ pub fn optional(ty: &Type) -> bool {
 }
 
 /// A variant's name as serde's `snake_case` writes it.
-fn snake(name: &str) -> String {
+pub(crate) fn snake(name: &str) -> String {
     let mut snake = String::new();
     for (at, character) in name.char_indices() {
         if at > 0 && character.is_uppercase() {
