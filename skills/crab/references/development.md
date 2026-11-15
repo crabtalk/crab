@@ -15,6 +15,10 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - Size each tool's `crab.toml` budget from its built WebAssembly execution before Cloud deployment or template publication. Native tests and image builds do not establish valid runtime budgets. Follow [Sizing tool budgets](#sizing-tool-budgets).
 - On Cloud each service reserves its `[database] size`, 1GiB when unset, whatever it holds. Builds carry this default into the image for template copies. Redeployments keep their existing reservation unless explicitly resized. An account's services reserve at most its plan's storage together, and a deploy past it is refused, so size each service to what it holds (`crab usage <service>` reports database allocation; missing snapshots show `—`).
 
+## Storage transactions
+
+A tool reads its own pending storage writes during the call. Changes commit only on `Ok`; `Err`, a trap or an exceeded deadline discards them. Independent calls cannot read pending changes. HTTP actions and changes already committed by another service are outside the transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).
+
 ## Sizing tool budgets
 
 1. Define and enforce supported input bounds, including response sizes, batch counts, parser complexity and database size. Deploy locally with a provisional budget within the destination's ceilings; exercise representative and worst-case workloads repeatedly, including error paths. Use `crab bench <directory> <tool> --cases cases.jsonl --runs 10`, with representative and largest supported inputs and arranged HTTP responses; the [benchmark guide](https://crabtalk.ai/docs/guides/bench) defines the JSON Lines format. `delay_ms` on a response accounts for memory held while waiting; `--live-http` executes real requests on every repetition.

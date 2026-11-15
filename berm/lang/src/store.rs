@@ -9,7 +9,8 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 
 /// Read `key`, or `None` if this service has never written it.
-/// All callers of the service read the same keyspace.
+/// All callers of the service read the same keyspace. Reads include writes
+/// made earlier in the same tool call, before they are committed.
 ///
 /// ```ignore
 /// let seen = berm_lang::get("last-run")?.unwrap_or_default();
@@ -25,7 +26,9 @@ pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
     Ok(fields.first().map(|value| value.to_vec()))
 }
 
-/// Write `key`, replacing whatever was there.
+/// Stage a replacement value for `key`.
+/// The change commits only when the tool call succeeds with `Ok`. A call that
+/// returns `Err`, traps or exceeds its deadline discards its pending changes.
 pub fn set(key: &str, value: &[u8]) -> Result<(), CallError> {
     host::call(sys::SET, &wire::request(&[key.as_bytes(), value]))?;
     Ok(())

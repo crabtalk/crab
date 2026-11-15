@@ -7,11 +7,13 @@
 //! its reply, each typed by [`Schema`]. A service is a `cdylib` built for
 //! `wasm32-unknown-unknown` by `crab build`, which appends what its `crab.toml`
 //! and its kits declare; a host refuses an image cargo alone links. berm serves
-//! [`call`], [`emit`] ([`emit!`] for an `#[event]` struct), [`now`] and
+//! [`call`], [`emit()`] ([`emit!`] for an `#[event]` struct), [`now`] and
 //! [`random`] itself; [`after`], [`get`], [`set`], [`http::fetch`] and
 //! [`http::proxy`] trap as unknown host calls under a host that does not
-//! register them. What [`set`] writes is kept only if the call the host started
-//! returns a result; what [`emit`] emits is kept whatever it returns.
+//! register them. Storage reads see earlier writes in the same tool call.
+//! Storage changes commit only when the tool returns `Ok`; `Err`, a trap or
+//! an exceeded deadline discards pending changes. What [`emit()`] emits is kept
+//! whatever the call returns.
 //!
 //! ```ignore
 //! #![cfg_attr(target_arch = "wasm32", no_std)]

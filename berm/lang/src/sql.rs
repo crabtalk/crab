@@ -1,9 +1,5 @@
-//! This service's own SQLite database, which its `crab.toml` declares with
+//! This service's SQLite storage, declared in `crab.toml` with
 //! `[database] migrations = "migrations"`.
-//!
-//! One statement per call. The host runs every statement of an invocation in
-//! one transaction, committed when the invocation returns ok; transaction
-//! statements are refused. Under a `query`, a statement that writes is refused.
 
 use crate::{
     abi::wire,
@@ -15,6 +11,10 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Run `statement` with `params`, a JSON array bound to its `?` placeholders,
 /// and answer `{"columns": [..], "rows": [[..]], "read": n, "written": n}`.
+/// Statements in a writing tool call share a transaction with its key/value
+/// writes. Reads see earlier writes in that call. Changes commit only on `Ok`;
+/// `Err`, a trap or an exceeded deadline discards pending changes. Transaction
+/// control statements are refused; a `query` tool cannot write.
 ///
 /// ```ignore
 /// let found = berm_lang::sql("SELECT title FROM items WHERE id = ?", "[42]")?;

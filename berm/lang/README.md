@@ -79,6 +79,10 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. The owner grants a resource ID to the deployed service for exact hosts. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
 
+## Storage transactions
+
+Reads within a tool call see its earlier writes, including pending changes from `set` and `set_json`. Storage changes commit only when the tool succeeds with `Ok`; `Err`, a trap or an exceeded deadline discards its pending changes. Independent calls cannot read uncommitted changes. SQL statements and key/value writes share a transaction when SQL storage is declared. HTTP actions and changes already committed by other services are outside that transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).
+
 ## Reaching a runtime
 
 Past its arguments, a service reaches who called, its own state, a database, its vars, logs, HTTP, other services, wakes and the clock, each through a syscall its host serves. [The Guest API](https://crabtalk.ai/docs/development/api) covers each.
