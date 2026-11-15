@@ -48,6 +48,8 @@ A `429` that names its `Retry-After` is sent again after that wait, up to three 
 
 Billing balances keep purchased funds in `Credit::micros` and trial funds in `Credit::trial`, with grant amount, reserved funds and expiry. `Credit::recovery_until` records the account's hosting recovery deadline, including accounts that never received trial credit. `PublicPlan::trial` and `Verification::trial` expose the verification offer. `CreditHistory` reports purchased and trial activity separately.
 
+Workflow commercial contracts live in `services::workflow`. `Terms` keeps the fixed customer task price, conservative direct-call quote, and cumulative owner cap separate, with accepted execution bindings, rate revision and independently billed providers. `Spend` retains incurred and reserved amounts; `Settlement` carries reservation or transaction identities. Execution contracts are in `berm_api::workflow`. These types do not expose workflow endpoints or perform admission or settlement.
+
 ## Modules
 
 | Module    | Holds                                               |

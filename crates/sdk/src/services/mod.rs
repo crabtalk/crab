@@ -2,3 +2,4 @@
 
 pub mod price;
 pub mod service;
+pub mod workflow;

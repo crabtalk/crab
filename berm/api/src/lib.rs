@@ -30,6 +30,7 @@ pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;
 pub mod text;
+pub mod workflow;
 
 /// The most bytes a call's arguments, and a tool's result, may hold, when a
 /// service's `crab.toml` sets no `buffer`.

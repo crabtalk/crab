@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "id": "run-1",
+  "service": "owner/research",
+  "workflow": "research",
+  "source": {
+    "image": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "graph": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "input": {
+    "question": "Which sources changed?"
+  },
+  "trigger": {
+    "kind": "manual",
+    "caller": {
+      "id": "caller",
+      "key": "key-1",
+      "user": {
+        "issuer": "https://example.com",
+        "subject": "person"
+      }
+    }
+  },
+  "created_at": 1000,
+  "expires_at": 604801000,
+  "status": "indeterminate",
+  "accepted": {
+    "bindings": {
+      "search": {
+        "target": {
+          "kind": "service",
+          "service": "owner/search",
+          "tool": "search",
+          "idempotency_ms": null
+        },
+        "service": "owner/search",
+        "image": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "input": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "question"
+          ]
+        },
+        "output": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budget": {
+          "cpu": 100000,
+          "read": 0,
+          "written": 0,
+          "memory": 33554432
+        },
+        "authorization": "grant-7"
+      }
+    },
+    "control_budget": {
+      "cpu": 100000,
+      "read": 0,
+      "written": 0,
+      "memory": 33554432
+    },
+    "control_buffer": 16384,
+    "checkpoint_bytes": 4194304,
+    "deadline_ms": 30000
+  },
+  "attempts": [
+    {
+      "id": "attempt-1",
+      "started_at": 1000,
+      "deadline_at": 31000,
+      "finished_at": 2000,
+      "status": "indeterminate",
+      "meter": {
+        "runs": 0,
+        "calls": 1,
+        "cpu": 20,
+        "memory": 1024,
+        "held": 100,
+        "read": 0,
+        "written": 0,
+        "sql_cpu": 0,
+        "proxied": 0,
+        "logged": 0,
+        "failed": 0,
+        "sent": 0
+      },
+      "error": {
+        "status": 403,
+        "headers": {
+          "retry-after": "60"
+        },
+        "body": {
+          "error": "Permission required",
+          "explain": "E0013",
+          "request": {
+            "code": "ABCD-EFGH",
+            "url": "https://example.com/approve"
+          },
+          "recovery": {
+            "retain": true
+          }
+        }
+      }
+    }
+  ],
+  "checkpoints": {
+    "search": {
+      "state": {
+        "state": "unknown",
+        "error": {
+          "status": 403,
+          "headers": {
+            "retry-after": "60"
+          },
+          "body": {
+            "error": "Permission required",
+            "explain": "E0013",
+            "request": {
+              "code": "ABCD-EFGH",
+              "url": "https://example.com/approve"
+            },
+            "recovery": {
+              "retain": true
+            }
+          }
+        }
+      },
+      "prepared": {
+        "kind": "calls",
+        "calls": [
+          {
+            "input": {
+              "question": "Which sources changed?"
+            },
+            "operation_key": "run-1/search/0"
+          }
+        ]
+      },
+      "items": [
+        {
+          "index": 0,
+          "state": {
+            "state": "unknown",
+            "error": {
+              "status": 403,
+              "headers": {
+                "retry-after": "60"
+              },
+              "body": {
+                "error": "Permission required",
+                "explain": "E0013",
+                "request": {
+                  "code": "ABCD-EFGH",
+                  "url": "https://example.com/approve"
+                },
+                "recovery": {
+                  "retain": true
+                }
+              }
+            }
+          },
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "attempt": "attempt-1",
+              "started_at": 1100,
+              "finished_at": null,
+              "state": {
+                "state": "unknown",
+                "error": {
+                  "status": 403,
+                  "headers": {
+                    "retry-after": "60"
+                  },
+                  "body": {
+                    "error": "Permission required",
+                    "explain": "E0013",
+                    "request": {
+                      "code": "ABCD-EFGH",
+                      "url": "https://example.com/approve"
+                    },
+                    "recovery": {
+                      "retain": true
+                    }
+                  }
+                }
+              },
+              "meter": {
+                "runs": 0,
+                "calls": 1,
+                "cpu": 20,
+                "memory": 1024,
+                "held": 100,
+                "read": 0,
+                "written": 0,
+                "sql_cpu": 0,
+                "proxied": 0,
+                "logged": 0,
+                "failed": 0,
+                "sent": 0
+              }
+            }
+          ]
+        }
+      ],
+      "meter": {
+        "runs": 0,
+        "calls": 1,
+        "cpu": 20,
+        "memory": 1024,
+        "held": 100,
+        "read": 0,
+        "written": 0,
+        "sql_cpu": 0,
+        "proxied": 0,
+        "logged": 0,
+        "failed": 0,
+        "sent": 0
+      }
+    }
+  },
+  "result": null,
+  "error": {
+    "status": 403,
+    "headers": {
+      "retry-after": "60"
+    },
+    "body": {
+      "error": "Permission required",
+      "explain": "E0013",
+      "request": {
+        "code": "ABCD-EFGH",
+        "url": "https://example.com/approve"
+      },
+      "recovery": {
+        "retain": true
+      }
+    }
+  }
+}
