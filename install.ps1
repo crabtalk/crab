@@ -1,7 +1,7 @@
 # Installs `crab` from the latest release of github.com/crabtalk/crab, on
 # Windows.
 #
-#   irm https://crab.talk/install.ps1 | iex
+#   irm https://crabtalk.ai/install.ps1 | iex
 #
 # CRAB_INSTALL_DIR sets where `crab.exe` goes; it defaults to ~\.local\bin,
 # which is added to the user's PATH when it is not on it.

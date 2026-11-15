@@ -113,6 +113,10 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// `cron`, `stripe` and `webhook`, and none of them takes `access`. `#[deprecated]` marks a
 /// tool so in the manifest. An image holding a tool of a package other than
 /// the service's is refused.
+///
+/// `request` marks a read-only review builder for a host's service-request flow.
+/// Its implementation returns `berm_lang::abi::requests::Review<T>`; a supporting
+/// host returns a review link to the outside caller.
 #[proc_macro_attribute]
 pub fn tool(args: TokenStream, item: TokenStream) -> TokenStream {
     let mut options = tool::Options::default();

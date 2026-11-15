@@ -1,5 +1,5 @@
 image = "connect/github"
-logo = "https://crab.talk/logos/templates/github-v1.svg"
+logo = "https://crabtalk.ai/logos/templates/github-v1.svg"
 template = true
 buffer = 1048576
 

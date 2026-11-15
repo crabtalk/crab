@@ -1,6 +1,6 @@
 # crabtalk-sdk
 
-Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crab.talk`. The same client also talks to the local host, `crab dev`.
+Rust types and HTTP client for the CrabTalk Cloud API at `https://api.crabtalk.ai`. The same client also talks to the local host, `crab dev`.
 
 ## Install
 
@@ -23,7 +23,7 @@ use crabtalk_sdk::client::{Client, Error, Owner};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let client = Client::new("https://api.crab.talk")
+    let client = Client::new("https://api.crabtalk.ai")
         .token(std::env::var("CRABTALK_TOKEN").expect("CRABTALK_TOKEN"))
         .owner(Owner::User("alice".into()));
 
@@ -55,6 +55,7 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 | `account` | Auth, users, orgs and teams, API keys, apps, billing |
 | `services` | Services: deploys, secrets, visibility, meters, costs |
 | `system`  | `/meta` (version, rates) and feedback               |
+| `mcp` | Shared tool names, input schemas, discovery and inspection types |
 | `error`   | The two error envelopes the API answers with        |
 | `format`  | Byte counts in B, KB, MB, GB and TB (powers of 1024) |
 | `client`  | `Client`, `Owner`, `Error` (feature `client`)        |

@@ -21,7 +21,7 @@ crab call you/analytics sites '{}'
 
 ## Connect your website
 
-In your deploying account's dashboard, open **Apps** and create an [anonymous browser app](https://crab.talk/docs/guides/apps) with:
+In your deploying account's dashboard, open **Apps** and create an [anonymous browser app](https://crabtalk.ai/docs/guides/apps) with:
 
 - **Origins:** your website's origin, such as `https://example.com`.
 - **Services:** `you/analytics`, matching your deployment.
@@ -32,7 +32,7 @@ Copy the app ID from the dashboard's **X-App** column and use it as `APP_ID`. Yo
 Copy [tracker.js](https://github.com/crabtalk/crab/blob/main/services/web/analytics/tracker.js) into your website's public assets so it is served at `/tracker.js`, then add this script to your pages, replacing `you`, `APP_ID` and `SITE_ID`:
 
 ```html
-<script defer src="/tracker.js" data-endpoint="https://api.crab.talk/services/you/analytics/tools/record" data-app="APP_ID" data-site="SITE_ID"></script>
+<script defer src="/tracker.js" data-endpoint="https://api.crabtalk.ai/services/you/analytics/tools/record" data-app="APP_ID" data-site="SITE_ID"></script>
 ```
 
 The tracker records page loads and SPA path changes, sends page paths without queries or fragments and only the referring origin, skips common automation and localhost, and stores no browser identifier. Set `data-allow-localhost` to count local development. `localStorage.crab_analytics_ignore = "true"` opts that browser out.
@@ -44,7 +44,7 @@ crab call you/analytics days '{"site":"SITE_ID"}'
 crab call you/analytics pages '{"site":"SITE_ID","limit":20}'
 ```
 
-`days` returns daily views, daily visitors, AI-referred views and crawler requests. `pages` and `sources` rank page paths and referring hosts; visitors summed across days are visitor-days, not unique people across the range. Visitor counts require the host's daily client key, so server calls without it record views without visitors. The same copy is callable from your agents through [MCP](https://crab.talk/docs/guides/mcp).
+`days` returns daily views, daily visitors, AI-referred views and crawler requests. `pages` and `sources` rank page paths and referring hosts; visitors summed across days are visitor-days, not unique people across the range. Visitor counts require the host's daily client key, so server calls without it record views without visitors. The same copy is callable from your agents through [MCP](https://crabtalk.ai/docs/guides/mcp).
 
 `events` returns raw events with a cursor: pass `next` as `after`. `crawlers` groups crawler reports. To report crawler requests from your website's server, call `record` with the same `site`, a `page` path and the request's `agent` user-agent string. Only recognized AI crawler labels are kept. Labels come from user-agent text, not verified bot identity. Browser collection alone cannot see crawler requests.
 

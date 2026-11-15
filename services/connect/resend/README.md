@@ -14,7 +14,7 @@ crab call owner/resend send '{"email":{"from":"Reports <reports@your-verified-do
 
 Returns an email ID. Acceptance does not confirm delivery; call `retrieve` with that ID to read the latest delivery event. Use `send_batch` for a batch.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

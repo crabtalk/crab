@@ -4,7 +4,7 @@ use axum::{
     http::{Method, StatusCode, Uri},
 };
 use clap::Parser;
-use crab_agent::cmd::deploy::{self, Deploy};
+use crab_agent::cmd::{deploy::Deploy, push::Push};
 use crabtalk_sdk::client::{Client, Owner};
 use serde_json::{Value, json};
 use std::{
@@ -19,9 +19,15 @@ const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const MANIFEST: &str = "image = \"alice/weather:1.2.3\"\n";
 
 #[derive(Parser)]
-struct Command {
+struct DeployCommand {
     #[command(flatten)]
     deploy: Deploy,
+}
+
+#[derive(Parser)]
+struct PushCommand {
+    #[command(flatten)]
+    push: Push,
 }
 
 struct Registry {
@@ -46,6 +52,8 @@ impl Registry {
                     }
                     if path.ends_with("/image") { json!({"upload":null}) }
                     else { return (StatusCode::NOT_FOUND, Json(json!({"error":"unexpected request"}))); }
+                } else if path == "/services/bob/osv/image" {
+                    json!({"upload":null})
                 } else if path == "/services/connect" {
                     json!({"osv":{"digest":body["services"]["osv"]["reference"], "published":true}})
                 } else if path.starts_with("/services/alice/") && path.ends_with("/template") {
@@ -85,32 +93,17 @@ impl Registry {
         }
     }
 
-    async fn deploy(
-        &self,
-        dir: &Path,
-        args: &[&str],
-        stopped: bool,
-        yes: bool,
-    ) -> anyhow::Result<()> {
-        let deploy = Command::parse_from(
+    async fn deploy(&self, dir: &Path, args: &[&str], yes: bool) -> anyhow::Result<()> {
+        let deploy = DeployCommand::parse_from(
             ["deploy".as_ref(), dir.as_os_str()]
                 .into_iter()
                 .chain(args.iter().map(AsRef::as_ref)),
         )
         .deploy;
         let client = self.client.clone();
-        tokio::task::spawn_blocking(move || {
-            deploy::run(
-                &client,
-                &deploy,
-                stopped,
-                yes,
-                Some("unused-registry"),
-                false,
-            )
-        })
-        .await
-        .unwrap()
+        tokio::task::spawn_blocking(move || deploy.run(&client, yes, Some("unused-registry")))
+            .await
+            .unwrap()
     }
 
     fn sent(&self, method: Method, path: &str) -> Value {
@@ -136,7 +129,7 @@ async fn a_manifest_alone_deploys_an_exact_private_template_without_cargo() {
     let registry = Registry::new(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = true\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n[tools.unbuilt]\naccess = \"public\"\nprice = 100\n")).unwrap();
-    registry.deploy(dir.path(), &[], true, true).await.unwrap();
+    registry.deploy(dir.path(), &[], true).await.unwrap();
     let request = registry.sent(Method::PUT, "/services/bob/weather");
     assert_eq!(request["reference"], DIGEST);
     assert_eq!(
@@ -147,7 +140,7 @@ async fn a_manifest_alone_deploys_an_exact_private_template_without_cargo() {
     assert_eq!(request["template"], false);
     assert_eq!(request["auto_upgrade"], false);
     assert_eq!(request["create"], true);
-    assert_eq!(request["stopped"], true);
+    assert!(request.get("stopped").is_none());
     for field in ["prices", "seed", "size"] {
         assert!(request.get(field).is_none(), "{request}");
     }
@@ -163,10 +156,7 @@ async fn registry_refusals_keep_their_status_and_explanation_without_building() 
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("crab.toml"), MANIFEST).unwrap();
 
-    let error = registry
-        .deploy(dir.path(), &[], false, true)
-        .await
-        .unwrap_err();
+    let error = registry.deploy(dir.path(), &[], true).await.unwrap_err();
     let message = error.to_string();
     assert!(
         message.contains("410") && message.contains("E0040"),
@@ -184,7 +174,6 @@ async fn template_manifests_use_the_cloud_approval_flow() {
         .deploy(
             dir.path(),
             &["--copy", "weather:callback=https://example.com"],
-            false,
             false,
         )
         .await
@@ -221,7 +210,6 @@ async fn explicit_from_keeps_its_version_and_upgrade_controls() {
                 "1.2.3",
                 "--auto-upgrade",
             ],
-            false,
             true,
         )
         .await
@@ -229,6 +217,8 @@ async fn explicit_from_keeps_its_version_and_upgrade_controls() {
     let request = registry.sent(Method::PUT, "/services/bob/weather");
     assert_eq!(request["reference"], DIGEST);
     assert_eq!(request["auto_upgrade"], true);
+    assert!(request.get("stopped").is_none());
+    assert!(request.get("publish_only").is_none());
 }
 
 #[tokio::test]
@@ -255,7 +245,7 @@ async fn workspace_template_members_deploy_together_under_their_local_names() {
         )
         .unwrap();
     }
-    registry.deploy(dir.path(), &[], false, true).await.unwrap();
+    registry.deploy(dir.path(), &[], true).await.unwrap();
     let request = registry.sent(Method::POST, "/users/bob/services/deploys");
     let services: BTreeMap<String, Value> =
         serde_json::from_value(request["services"].clone()).unwrap();
@@ -275,7 +265,9 @@ async fn workspace_template_members_deploy_together_under_their_local_names() {
 
 #[test]
 fn build_conflicts_with_an_explicit_template_source() {
-    assert!(Command::try_parse_from(["deploy", "--build", "--from", "alice/weather"]).is_err());
+    assert!(
+        DeployCommand::try_parse_from(["deploy", "--build", "--from", "alice/weather"]).is_err()
+    );
 }
 
 #[tokio::test]
@@ -296,7 +288,7 @@ async fn a_repo_uses_its_inherited_cargo_version_without_building() {
     )
     .unwrap();
     fs::write(dir.join("crab.toml"), "image = \"alice/weather\"\n").unwrap();
-    registry.deploy(&dir, &[], false, true).await.unwrap();
+    registry.deploy(&dir, &[], true).await.unwrap();
     registry.sent(
         Method::GET,
         "/services/alice/weather/template?version=1.2.3",
@@ -309,10 +301,7 @@ async fn a_standalone_image_requires_a_version() {
     let registry = Registry::new(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("crab.toml"), "image = \"alice/weather\"\n").unwrap();
-    let error = registry
-        .deploy(dir.path(), &[], false, true)
-        .await
-        .unwrap_err();
+    let error = registry.deploy(dir.path(), &[], true).await.unwrap_err();
     assert!(error.to_string().contains("exact :version"), "{error:#}");
     assert!(registry.requests.lock().unwrap().is_empty());
 }
@@ -322,19 +311,28 @@ async fn publication_targets_the_image_account_and_preserves_permission_refusals
     for status in [StatusCode::OK, StatusCode::FORBIDDEN] {
         let registry = Registry::new(status).await;
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv");
-        let deploy = Command::parse_from(["publish".as_ref(), dir.as_os_str()]).deploy;
+        let push = PushCommand::parse_from([
+            "push".as_ref(),
+            dir.as_os_str(),
+            "--notes".as_ref(),
+            "Fix pagination".as_ref(),
+        ])
+        .push;
         let client = registry.client.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            deploy::run(&client, &deploy, false, true, None, true)
-        })
-        .await
-        .unwrap();
+        let result = tokio::task::spawn_blocking(move || push.run(&client, true, None))
+            .await
+            .unwrap();
         registry.sent(Method::POST, "/services/connect/osv/image");
         if status == StatusCode::OK {
             result.unwrap();
             let publication = registry.sent(Method::POST, "/services/connect");
             assert_eq!(publication["services"]["osv"]["publish_only"], true);
-            assert_eq!(publication["services"]["osv"]["template"], true);
+            let release = &publication["services"]["osv"];
+            assert_eq!(release["template"], true);
+            assert_eq!(release["release_notes"], "Fix pagination");
+            for field in ["stopped", "public", "seed", "size", "prices", "create"] {
+                assert!(release.get(field).is_none(), "{release}");
+            }
         } else {
             let message = result.unwrap_err().to_string();
             assert!(
@@ -348,7 +346,71 @@ async fn publication_targets_the_image_account_and_preserves_permission_refusals
                 .lock()
                 .unwrap()
                 .iter()
-                .all(|(_, path, _)| !path.contains("/bob/"))
+                .all(|(method, path, _)| *method != Method::PUT
+                    && !path.contains("/bob/")
+                    && !path.ends_with("/runtime"))
         );
     }
+}
+
+#[tokio::test]
+async fn publication_uses_approval_without_creating_an_instance() {
+    let registry = Registry::new(StatusCode::OK).await;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv");
+    let push = PushCommand::parse_from(["push".as_ref(), dir.as_os_str()]).push;
+    let client = registry.client.clone();
+    let error = tokio::task::spawn_blocking(move || push.run(&client, false, None))
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(error.to_string().contains("declined"), "{error:#}");
+    let request = registry.sent(Method::POST, "/requests");
+    assert_eq!(request["account"], "connect");
+    assert_eq!(request["services"]["osv"]["publish_only"], true);
+    assert!(
+        registry
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(method, path, _)| { *method != Method::PUT && path != "/services/connect" })
+    );
+}
+
+#[test]
+fn publication_requires_cloud_before_building_source() {
+    let push = PushCommand::parse_from(["push", "/no-such-service"]).push;
+    let error = push
+        .run(&Client::new("http://127.0.0.1:0"), true, None)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "template publication requires a Cloud context"
+    );
+}
+
+#[tokio::test]
+async fn source_deployment_starts_without_publishing_its_template() {
+    let registry = Registry::new(StatusCode::OK).await;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv");
+    let deploy =
+        DeployCommand::parse_from(["deploy".as_ref(), dir.as_os_str(), "--build".as_ref()]).deploy;
+    let client = registry.client.clone();
+    tokio::task::spawn_blocking(move || deploy.run(&client, true, None))
+        .await
+        .unwrap()
+        .unwrap();
+    let request = registry.sent(Method::PUT, "/services/bob/osv");
+    assert!(request.get("stopped").is_none());
+    assert_eq!(request["public"], true);
+    assert!(request.get("template").is_none());
+    assert!(request.get("publish_only").is_none());
+    assert!(
+        registry
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(_, path, _)| { !path.starts_with("/services/connect") })
+    );
 }

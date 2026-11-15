@@ -1,5 +1,5 @@
 image = "connect/anyapi"
-logo = "https://crab.talk/logos/templates/anyapi-v1.svg"
+logo = "https://crabtalk.ai/logos/templates/anyapi-v1.svg"
 template = true
 buffer = 8388608
 

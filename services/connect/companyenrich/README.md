@@ -12,7 +12,7 @@ crab call owner/companyenrich enrich_company '{"input":{"query":{"domain":"examp
 
 Returns the provider’s company record with the requested workforce expansion. Use company/person search for discovery, and the matching status tool after submitting a background job.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

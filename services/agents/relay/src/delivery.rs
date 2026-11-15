@@ -1,5 +1,5 @@
 use crate::{account::Account, agent::Agent, message::Message, platform::Platform};
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 use berm_lang::{CallError, Result, Schema, http, serde::Serialize, serde_json};
 
 const BATCH: u64 = 5;
@@ -11,6 +11,7 @@ const AUTHORIZATION: &str = "Authorization";
 const CONTENT_TYPE: &str = "Content-Type";
 const JSON: &str = "application/json";
 const EVENT: &str = "message.created";
+const DELIVER: &str = "deliver";
 
 type Row = (u64, State, u32, u64, Option<u16>, Option<Reason>);
 
@@ -67,12 +68,13 @@ impl Delivery {
     }
 
     pub(crate) fn enqueue(message: &Message) -> Result<()> {
-        let recipient = Agent::load(message.to, None)?;
+        let recipient = Agent::recipient(message.id)?;
         if matches!(recipient.platform, Platform::Grok(_)) {
             berm_lang::rows::<()>(
                 "INSERT INTO relay_deliveries (message, next_attempt) VALUES (?, ?)",
                 &(message.id, berm_lang::now()),
             )?;
+            Self::schedule()?;
         }
         Ok(())
     }
@@ -80,7 +82,7 @@ impl Delivery {
     pub fn retry(message: u64) -> Result<Self> {
         Account::require_owner()?;
         let message = Message::get(message)?;
-        let recipient = Agent::load(message.to, None)?;
+        let recipient = Agent::recipient(message.id)?;
         recipient.require_enabled()?;
         let Platform::Grok(connection) = &recipient.platform else {
             return Err("This agent uses MCP event delivery".into());
@@ -94,7 +96,22 @@ impl Delivery {
             "UPDATE relay_deliveries SET state = 'pending', attempts = 0, next_attempt = ?, status = NULL, reason = NULL WHERE message = ?",
             &(berm_lang::now(), message.id),
         )?;
+        Self::schedule()?;
         Self::stored(message.id)?.ok_or_else(|| "No delivery record".into())
+    }
+
+    fn queued(limit: u64) -> Result<Vec<(u64, u64)>> {
+        Ok(berm_lang::rows::<(u64, u64)>(
+            "SELECT d.message, d.next_attempt FROM relay_deliveries d JOIN relay_messages m ON m.id = d.message JOIN relay_agents a ON a.id = m.recipient JOIN relay_conversations c ON c.id = m.conversation WHERE d.state = 'pending' AND a.enabled = 1 AND c.paused = 0 AND NOT EXISTS (SELECT 1 FROM relay_deliveries earlier JOIN relay_messages prior ON prior.id = earlier.message WHERE earlier.state = 'pending' AND prior.recipient = m.recipient AND prior.id < m.id) ORDER BY d.next_attempt, d.message LIMIT ?",
+            &(limit,),
+        )?)
+    }
+
+    pub(crate) fn schedule() -> Result<()> {
+        if let Some((_, due)) = Self::queued(1)?.first() {
+            berm_lang::after(due.saturating_sub(berm_lang::now()), "", DELIVER, "{}")?;
+        }
+        Ok(())
     }
 
     pub fn tick() -> Result<u64> {
@@ -103,15 +120,14 @@ impl Delivery {
                 "Delivery runs only as a scheduled invocation",
             ));
         }
-        let due = berm_lang::rows::<(u64,)>(
-            "SELECT d.message FROM relay_deliveries d JOIN relay_messages m ON m.id = d.message JOIN relay_agents a ON a.id = m.recipient JOIN relay_conversations c ON c.id = m.conversation WHERE d.state = 'pending' AND d.next_attempt <= ? AND a.enabled = 1 AND c.paused = 0 AND NOT EXISTS (SELECT 1 FROM relay_deliveries earlier JOIN relay_messages prior ON prior.id = earlier.message WHERE earlier.state = 'pending' AND prior.recipient = m.recipient AND prior.id < m.id) ORDER BY d.next_attempt, d.message LIMIT ?",
-            &(berm_lang::now(), BATCH),
-        )?;
         let mut attempted = 0;
-        for (id,) in due {
+        for (id, due) in Self::queued(BATCH)? {
+            if due > berm_lang::now() {
+                break;
+            }
             let mut delivery = Self::stored(id)?.ok_or("No delivery record")?;
             let message = Message::stored(id)?;
-            let recipient = Agent::load(message.to, None)?;
+            let recipient = Agent::recipient(message.id)?;
             let Platform::Grok(connection) = recipient.platform else {
                 delivery.state = State::Cancelled;
                 delivery.reason = Some(Reason::ConnectionChanged);
@@ -167,6 +183,7 @@ impl Delivery {
             delivery.save()?;
             attempted += 1;
         }
+        Self::schedule()?;
         Ok(attempted)
     }
 

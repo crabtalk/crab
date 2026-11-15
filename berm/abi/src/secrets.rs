@@ -9,7 +9,7 @@ impl<'a> TryFrom<&'a str> for Id<'a> {
         let suffix = value
             .strip_prefix(PREFIX)
             .ok_or("Invalid secret resource ID")?;
-        if suffix.len() != 32
+        if !matches!(suffix.len(), 32 | 64)
             || !suffix
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))

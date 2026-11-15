@@ -1,10 +1,8 @@
-//! One MCP endpoint over every deployed service: `search`, `call`, and each
-//! service's README and IDL as a resource, as [`crabtalk_sdk::mcp`] lays them out. A
-//! request may carry the local host's unverified caller header.
+//! Requests may carry the local host's unverified caller header.
 
 use crate::host::Node;
 use axum::http::request::Parts;
-use berm_api::{Access, Output, host::Caller};
+use berm_api::{Output, Service, host::Caller};
 use crabtalk_sdk::mcp::{self, Found};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -30,8 +28,16 @@ impl Mcp {
         Self { node }
     }
 
+    fn definition(&self, name: &str, caller: Option<&Caller>) -> Option<Service> {
+        if name.contains('/') || self.node.host.stopped(name) {
+            return None;
+        }
+        let mut service = self.node.host.idl(name).ok()?;
+        service.tools.retain(|tool| tool.callable_by(caller));
+        (!service.tools.is_empty()).then_some(service)
+    }
+
     fn search(&self, query: &str, caller: Option<&Caller>) -> Vec<Found> {
-        let anonymous = caller.is_none_or(Caller::anonymous);
         let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let count = |text: &str| {
             let text = text.to_lowercase();
@@ -50,11 +56,7 @@ impl Mcp {
                 let tools: Vec<mcp::Tool> = manifest
                     .tools
                     .iter()
-                    .filter(|tool| match tool.access() {
-                        Some(Access::Anonymous) => true,
-                        Some(Access::Public | Access::Accounts) => !anonymous,
-                        _ => false,
-                    })
+                    .filter(|tool| tool.callable_by(caller))
                     .map(|tool| mcp::Tool {
                         name: tool.name.clone(),
                         title: tool.title.clone(),
@@ -118,12 +120,18 @@ impl ServerHandler for Mcp {
             Arc::new(mcp::search_schema()),
         )
         .annotate(ToolAnnotations::new().read_only(true));
+        let inspect = Tool::new(
+            mcp::INSPECT,
+            mcp::INSPECT_DESCRIPTION,
+            Arc::new(mcp::inspect_schema()),
+        )
+        .annotate(ToolAnnotations::new().read_only(true));
         let call = Tool::new(
             mcp::CALL,
             mcp::CALL_DESCRIPTION,
             Arc::new(mcp::call_schema()),
         );
-        Ok(ListToolsResult::with_all_items(vec![search, call]))
+        Ok(ListToolsResult::with_all_items(vec![search, inspect, call]))
     }
 
     async fn call_tool(
@@ -134,8 +142,7 @@ impl ServerHandler for Mcp {
         let caller = context
             .extensions
             .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<Caller>())
-            .cloned();
+            .and_then(|parts| parts.extensions.get::<Caller>());
         let arguments = request.arguments.unwrap_or_default();
         let field = |key: &str| {
             arguments
@@ -145,9 +152,27 @@ impl ServerHandler for Mcp {
         };
         match request.name.as_ref() {
             mcp::SEARCH => {
-                let found = serde_json::to_string(&self.search(field("query")?, caller.as_ref()))
+                let found = serde_json::to_string(&self.search(field("query")?, caller))
                     .map_err(|error| McpError::internal_error(error.to_string(), None))?;
                 return Ok(CallToolResult::success(vec![ContentBlock::text(found)]));
+            }
+            mcp::INSPECT => {
+                let name = field("service")?;
+                let Some(definition) = self.definition(name, caller) else {
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                        "no accessible running service named {name:?}"
+                    ))]));
+                };
+                let inspection = mcp::Inspection {
+                    service: name.to_owned(),
+                    definition,
+                    prices: Default::default(),
+                };
+                let inspection = serde_json::to_string(&inspection)
+                    .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+                return Ok(CallToolResult::success(vec![ContentBlock::text(
+                    inspection,
+                )]));
             }
             mcp::CALL => {}
             name => {
@@ -176,7 +201,7 @@ impl ServerHandler for Mcp {
         match self
             .node
             .host
-            .call(service, caller.as_ref(), tool, args, false)
+            .call(service, caller, tool, args, false)
             .await
         {
             Ok((_, Output::Done(result))) => {
@@ -205,11 +230,17 @@ impl ServerHandler for Mcp {
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        let not_found = || McpError::resource_not_found(request.uri.clone(), None);
-        let name = mcp::service(&request.uri).ok_or_else(not_found)?;
-        let service = self.node.host.idl(name).map_err(|_| not_found())?;
+        let caller = context
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<Caller>());
+        let name = mcp::service(&request.uri)
+            .ok_or_else(|| McpError::resource_not_found(request.uri.clone(), None))?;
+        let service = self
+            .definition(name, caller)
+            .ok_or_else(|| McpError::resource_not_found(request.uri.clone(), None))?;
         let idl = serde_json::to_string(&service)
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
         Ok(ReadResourceResult::new(vec![

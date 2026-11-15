@@ -1,23 +1,29 @@
-//! The MCP surface Cloud and the local host both serve: fixed `search` and
-//! `call` tools, and each service's README and IDL as the resource
-//! `crab://{service}`.
+//! Shared MCP contracts for service discovery, inspection and calls.
 
+use berm_api::Service;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 
 pub const SEARCH: &str = "search";
+pub const INSPECT: &str = "inspect";
 pub const CALL: &str = "call";
 
 /// The resource template naming a service's README and IDL.
 pub const TEMPLATE: &str = "crab://{+service}";
 
 const SCHEME: &str = "crab://";
+pub const REQUEST_SCHEME: &str = "crab-request://";
+pub const REQUEST_TEMPLATE: &str = "crab-request://{code}";
 
-pub const INSTRUCTIONS: &str = "Find services with `search`, read one's resource \
-    `crab://{service}` for its README and its tools' schemas, then run a tool with `call`.";
+pub const INSTRUCTIONS: &str = "Find services with `search`, use `inspect` for a service's \
+    README, tool schemas and prices, then run a tool with `call`.";
 
 pub const SEARCH_DESCRIPTION: &str = "Find services whose name, description or tools match a \
     query, best first, each with the tools it can be called on and their prices in USD micros.";
+
+pub const INSPECT_DESCRIPTION: &str = "Read a service's README and tool definitions, including \
+    input schemas and prices in USD micros. Use the service address returned by `search`.";
 
 pub const CALL_DESCRIPTION: &str = "Call a service's tool. A tool with a price charges it to \
     the calling account's credit; a call that fails is returned.";
@@ -36,6 +42,19 @@ pub fn search_schema() -> Map<String, Value> {
             },
         },
         "required": ["query"],
+    }))
+}
+
+pub fn inspect_schema() -> Map<String, Value> {
+    object(json!({
+        "type": "object",
+        "properties": {
+            "service": {
+                "type": "string",
+                "description": "The service, as `search` names it.",
+            },
+        },
+        "required": ["service"],
     }))
 }
 
@@ -72,6 +91,24 @@ fn object(value: Value) -> Map<String, Value> {
 pub fn service(uri: &str) -> Option<&str> {
     uri.strip_prefix(SCHEME)
         .filter(|service| !service.is_empty())
+}
+
+/// The service-request code a resource URI names.
+pub fn request(uri: &str) -> Option<&str> {
+    uri.strip_prefix(REQUEST_SCHEME).filter(|code| {
+        !code.is_empty()
+            && code
+                .bytes()
+                .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Inspection {
+    pub service: String,
+    pub definition: Service,
+    /// USD micros per call, keyed by tool name; omitted entries are free.
+    pub prices: BTreeMap<String, i64>,
 }
 
 /// A service `search` found.

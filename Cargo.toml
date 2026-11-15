@@ -49,6 +49,7 @@ authors = ["clearloop <tianyi.gc@gmail.com>"]
 [workspace.dependencies]
 semver = "1"
 cargo_toml = "1"
+crab-resend = { path = "services/connect/resend", version = "0.1.6", default-features = false }
 crab-openapi = { path = "crates/openapi", version = "0.1.6" }
 crabkit = { path = "crates/crabkit", version = "0.1.6" }
 crabtalk-sdk = { path = "crates/sdk", version = "0.1.6" }

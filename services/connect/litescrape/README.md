@@ -12,7 +12,7 @@ crab call owner/litescrape google_maps '{"input":{"query":{"q":"coffee","hl":"en
 
 Returns upstream local results and available pagination metadata. Use `search_news` for Google News, or the fetch and screenshot tools for page content.
 
-On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crab.talk/docs/guides/mcp). Calls use this deployment’s provider credentials.
+On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
 ## Deploy your own
 

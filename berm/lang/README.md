@@ -1,6 +1,6 @@
 # berm-lang
 
-Build a service for [berm](https://crab.talk/docs).
+Build a service for [berm](https://crabtalk.ai/docs).
 
 A service is one WebAssembly module, confined to its own memory, reaching the world only through the host calls it was given. This crate owns the ABI, so you never see a call number or a pointer pair.
 
@@ -63,7 +63,7 @@ Services using standard-library dependencies enable `berm-lang = { workspace = t
 
 ## Building
 
-A service is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `crab.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Service](https://crab.talk/docs/development/complete-service#the-files) has the layout.
+A service is a library crate with `[lib] crate-type = ["cdylib", "rlib"]` and a `crab.toml` beside its `Cargo.toml`; it has no bin target and no `fn main`. [Writing a Service](https://crabtalk.ai/docs/development/complete-service#the-files) has the layout.
 
 ```sh
 crab build
@@ -81,7 +81,7 @@ Declare `secret_resources = true` and the destination under `[http]` to use sepa
 
 ## Reaching a runtime
 
-Past its arguments, a service reaches who called, its own state, a database, its vars, logs, HTTP, other services, wakes and the clock, each through a syscall its host serves. [The Guest API](https://crab.talk/docs/development/api) covers each.
+Past its arguments, a service reaches who called, its own state, a database, its vars, logs, HTTP, other services, wakes and the clock, each through a syscall its host serves. [The Guest API](https://crabtalk.ai/docs/development/api) covers each.
 
 ## License
 

@@ -103,10 +103,8 @@ enum Command {
     /// link, even without a terminal. Only an API key with deployments:write
     /// can skip approval with --yes.
     Deploy(cmd::deploy::Deploy),
-    /// Publish or withdraw a template according to crab.toml, without running it.
-    Publish(cmd::deploy::Deploy),
-    /// `crab deploy`, installing each stopped, to serve once started.
-    Push(cmd::deploy::Deploy),
+    /// Build and publish or withdraw templates without changing running instances.
+    Push(cmd::push::Push),
     /// Serve stopped services again: those named, or those `crab deploy`
     /// would deploy here.
     Start { names: Vec<String> },
@@ -242,7 +240,7 @@ enum Command {
     #[command(subcommand)]
     Context(ContextCommand),
     /// Replace this `crab` with the latest release, when it is newer.
-    Upgrade,
+    Update,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -681,38 +679,21 @@ fn run() -> Result<ExitCode> {
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Build { dir } => cmd::build::run(dir)?,
         Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
-        Command::Deploy(deploy) => cmd::deploy::run(
+        Command::Deploy(deploy) => deploy.run(
             &client()?,
-            deploy,
-            false,
             yes,
             Contexts::load()?
                 .get(args.context.as_deref())?
                 .registry
                 .as_deref(),
-            false,
         )?,
-        Command::Push(deploy) => cmd::deploy::run(
+        Command::Push(push) => push.run(
             &client()?,
-            deploy,
-            true,
             yes,
             Contexts::load()?
                 .get(args.context.as_deref())?
                 .registry
                 .as_deref(),
-            false,
-        )?,
-        Command::Publish(deploy) => cmd::deploy::run(
-            &client()?,
-            deploy,
-            false,
-            yes,
-            Contexts::load()?
-                .get(args.context.as_deref())?
-                .registry
-                .as_deref(),
-            true,
         )?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
@@ -935,7 +916,7 @@ fn run() -> Result<ExitCode> {
         Command::Plans => cmd::plans::run(&client()?, json)?,
         Command::Rates => cmd::rates::run(&client()?, json)?,
         Command::Explain { code } => cmd::explain::run(&client()?, code, json)?,
-        Command::Upgrade => cmd::upgrade::run(yes)?,
+        Command::Update => cmd::update::run(yes)?,
         // The one command whose exit code carries the call's result.
         Command::Call(call) => return cmd::call::run(&client()?, &cloud()?, call),
         Command::Replay {

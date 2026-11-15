@@ -363,7 +363,7 @@ impl Client {
 
     /// The path of `name`: `owner/name` names another account's service, and
     /// a bare name the context's own.
-    fn path_of(&self, name: &str) -> String {
+    pub(super) fn path_of(&self, name: &str) -> String {
         match name.contains('/') {
             true => format!("/services/{name}"),
             false => format!("/services/{}/{name}", self.addressed().name()),

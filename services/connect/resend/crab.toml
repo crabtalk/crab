@@ -1,5 +1,5 @@
 image = "connect/resend"
-logo = "https://crab.talk/logos/templates/resend-v1.png"
+logo = "https://crabtalk.ai/logos/templates/resend-v1.png"
 template = true
 buffer = 1048576
 

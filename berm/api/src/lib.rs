@@ -281,6 +281,9 @@ pub struct ToolSpec {
     /// Named durable event history exposed by this read-only tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<String>,
+    /// Produces a service-defined review for the host request flow.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub request: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deprecated: bool,
     /// Callable by accounts and other services. A tool that is not is only
@@ -333,6 +336,15 @@ impl ToolSpec {
             (true, false, None) => Some(Access::Public),
             (true, false, Some(Callers::Accounts)) => Some(Access::Accounts),
             (true, false, Some(Callers::Services)) => Some(Access::Services),
+        }
+    }
+
+    /// Access for an outside caller; excludes service-to-service calls.
+    pub fn callable_by(&self, caller: Option<&host::Caller>) -> bool {
+        match self.access() {
+            Some(Access::Anonymous) => true,
+            Some(Access::Public | Access::Accounts) => !caller.is_none_or(host::Caller::anonymous),
+            _ => false,
         }
     }
 

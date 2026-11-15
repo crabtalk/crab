@@ -7,6 +7,7 @@ use axum::{
 use berm_api::host::{self, Deploy};
 use berm_build::fixture;
 use crab_agent::host::Node;
+use crabtalk_sdk::mcp::Inspection;
 use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::time;
@@ -85,7 +86,7 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         serde_json::from_value(json!({"reference": digest, "digest": digest, "force": true}))?;
     node.deploy("fixture", deploy).await?;
     let mut client = Client {
-        router: node.router(),
+        router: node.clone().router(),
         session: None,
     };
     let (status, headers, initialized) = client
@@ -111,6 +112,21 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         .await?;
     assert_eq!(status, StatusCode::ACCEPTED);
 
+    let (_, _, listed) = client
+        .post(
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            None,
+        )
+        .await?;
+    let advertised = listed["result"]["tools"].as_array().unwrap();
+    assert_eq!(advertised.len(), 3);
+    let inspect = advertised
+        .iter()
+        .find(|tool| tool["name"] == "inspect")
+        .unwrap();
+    assert_eq!(inspect["annotations"]["readOnlyHint"], true);
+    assert_eq!(inspect["inputSchema"]["required"], json!(["service"]));
+
     let anonymous = client
         .call("search", json!({"query": "fixture"}), None)
         .await?;
@@ -125,6 +141,86 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
     assert!(!tools.iter().any(|tool| tool["name"] == "fromservices"));
 
     assert!(!tools.iter().any(|tool| tool["name"] == "tick"));
+
+    let inspected = client
+        .call(
+            "inspect",
+            json!({"service": found[0]["service"]}),
+            Some(alice),
+        )
+        .await?;
+    let inspection: Inspection =
+        serde_json::from_str(inspected["content"][0]["text"].as_str().unwrap())?;
+    assert_eq!(inspection.service, "fixture");
+    assert!(inspection.prices.is_empty());
+    let names: Vec<_> = inspection
+        .definition
+        .tools
+        .iter()
+        .map(|tool| &tool.name)
+        .collect();
+    let found_names: Vec<_> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, found_names);
+    let echo = inspection
+        .definition
+        .tools
+        .iter()
+        .find(|tool| tool.name == "echo")
+        .unwrap();
+    assert_eq!(echo.parameters["properties"]["query"]["type"], "string");
+    let echoed = client
+        .call(
+            "call",
+            json!({
+                "service": inspection.service, "tool": echo.name, "input": {"query": "hello"}
+            }),
+            Some(alice),
+        )
+        .await?;
+    let echoed: Value = serde_json::from_str(echoed["content"][0]["text"].as_str().unwrap())?;
+    assert_eq!(echoed["query"], "hello");
+
+    let (_, _, resource) = client
+        .post(
+            json!({
+                "jsonrpc": "2.0", "id": 3, "method": "resources/read",
+                "params": {"uri": "crab://fixture"}
+            }),
+            Some(alice),
+        )
+        .await?;
+    assert_eq!(
+        resource["result"]["contents"][0]["text"],
+        inspection.definition.readme
+    );
+    let resource: Value =
+        serde_json::from_str(resource["result"]["contents"][1]["text"].as_str().unwrap())?;
+    assert_eq!(resource, serde_json::to_value(&inspection.definition)?);
+
+    for (service, caller) in [
+        ("fixture", None),
+        ("fixture", Some(r#"{"id":"alice","app":"app"}"#)),
+        ("missing", Some(alice)),
+        ("owner/fixture", Some(alice)),
+    ] {
+        let inspected = client
+            .call("inspect", json!({"service": service}), caller)
+            .await?;
+        assert_eq!(inspected["isError"], true, "{inspected}");
+        let (_, _, resource) = client
+            .post(
+                json!({
+                    "jsonrpc": "2.0", "id": 4, "method": "resources/read",
+                    "params": {"uri": format!("crab://{service}")}
+                }),
+                caller,
+            )
+            .await?;
+        assert_eq!(resource["error"]["code"], -32002, "{resource}");
+    }
 
     let input = json!({"service": "fixture", "tool": "whoami"});
     let called = client.call("call", input.clone(), Some(alice)).await?;
@@ -162,6 +258,16 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         called["content"][0]["text"],
         r#""outside alice user https://id.example 42""#
     );
+    assert!(node.run("fixture", false).await?);
+    let stopped = client
+        .call("inspect", json!({"service": "fixture"}), Some(alice))
+        .await?;
+    assert_eq!(stopped["isError"], true);
+    let stopped = client
+        .call("search", json!({"query": "fixture"}), Some(alice))
+        .await?;
+    assert_eq!(stopped["content"][0]["text"], "[]");
+
     let (status, _, _) = client
         .post(
             json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}),

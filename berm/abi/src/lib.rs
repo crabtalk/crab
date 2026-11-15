@@ -17,6 +17,7 @@
 extern crate alloc;
 
 pub mod events;
+pub mod requests;
 pub mod secrets;
 pub mod wire;
 

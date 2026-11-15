@@ -1,0 +1,15 @@
+image = "agents/outbox"
+template = true
+buffer = 131072
+
+[tools.review]
+access = "accounts"
+title = "Review email"
+catalog = "outbox.review-email"
+budget = { cpu = 10000, read = 1, written = 1, memory = 2 }
+
+[tools.send]
+access = "accounts"
+title = "Send approved email"
+catalog = "outbox.send-email"
+budget = { cpu = 10000, read = 1, written = 1, memory = 2 }

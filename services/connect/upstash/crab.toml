@@ -1,5 +1,5 @@
 image = "connect/upstash"
-logo = "https://crab.talk/logos/templates/upstash-v1.png"
+logo = "https://crabtalk.ai/logos/templates/upstash-v1.png"
 template = true
 buffer = 1048576
 

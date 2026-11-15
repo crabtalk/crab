@@ -1,0 +1,24 @@
+[package]
+name = "crab-agent-outbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Review an agent's email before sending it"
+
+[lib]
+name = "agent_outbox"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+berm-lang.workspace = true
+crab-resend.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+berm-api.workspace = true
+berm-build.workspace = true
+berm-host = { workspace = true, features = ["test"] }
+serde_json.workspace = true
+tokio.workspace = true
