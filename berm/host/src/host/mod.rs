@@ -84,6 +84,7 @@ pub struct Inner<E: Env> {
     pub(crate) reserve: Arc<Pool>,
     /// Wakes the timer.
     pub(crate) waking: Notify,
+    pub(crate) scheduling: Notify,
     /// Uses not yet written.
     pub(crate) usage: Counts,
     /// Runs not yet written.
@@ -228,6 +229,7 @@ impl<E: Env> Host<E> {
                 pools,
                 reserve: engine.reserve.clone(),
                 waking: Notify::new(),
+                scheduling: Notify::new(),
                 usage: used,
                 calls: ran,
                 logs: emitted,
@@ -267,6 +269,8 @@ impl<E: Env> Host<E> {
         tokio::spawn(async move { loading.reconcile().await });
         let waking = self.clone();
         tokio::spawn(async move { waking.wakes().await });
+        let scheduled = self.clone();
+        tokio::spawn(async move { scheduled.workflow_timer().await });
     }
 
     /// Load every service as `services` names it.

@@ -31,6 +31,7 @@ serde_urlencoded.workspace = true
 sha2.workspace = true
 toml.workspace = true
 url.workspace = true
+uuid = { workspace = true, features = ["v5"] }
 utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]

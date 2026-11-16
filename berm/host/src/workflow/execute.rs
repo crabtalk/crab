@@ -161,6 +161,7 @@ impl<E: Env> Host<E> {
         trigger: Trigger,
         accepted: Accepted,
     ) -> Result<Run> {
+        self.workflow_available(service)?;
         let owner = self.deployed(service)?;
         let spec = owner
             .manifest
@@ -497,7 +498,7 @@ impl<E: Env> Host<E> {
             .context("workflow disappeared")
     }
 
-    fn workflow_available(&self, service: &str) -> Result<()> {
+    pub(crate) fn workflow_available(&self, service: &str) -> Result<()> {
         self.deployed(service)?;
         if self.stopped(service) || self.holds.holds(host::split(service).0) {
             return Err(deny(

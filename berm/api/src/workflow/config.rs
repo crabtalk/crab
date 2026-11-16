@@ -1,5 +1,5 @@
 use crate::{
-    Access, Budget, Limits, ToolSpec, schedule, schema,
+    Access, Budget, Limits, ToolSpec, digest, schedule, schema,
     workflow::{
         Policy,
         graph::{Entry, Kind},
@@ -52,6 +52,28 @@ pub struct Public {
     pub access: Access,
     pub price: Option<u64>,
 }
+
+impl Schedule {
+    pub fn revision(&self) -> String {
+        digest::json_hex(&serde_json::json!({"cron":self.cron,"input":self.input}))
+    }
+
+    pub fn check_input(&self, schema: &Value) -> Result<()> {
+        schema::validate(schema, &self.input).map_err(|error| ScheduleInput(error).into())
+    }
+}
+
+#[derive(Debug)]
+pub struct ScheduleInput(pub anyhow::Error);
+impl ScheduleInput {
+    pub const EXPLAIN: &'static str = "E0074";
+}
+impl fmt::Display for ScheduleInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid workflow schedule input: {}", self.0)
+    }
+}
+impl std::error::Error for ScheduleInput {}
 
 impl Config {
     pub fn control_budget(&self, default: Budget) -> Budget {
@@ -125,7 +147,7 @@ impl Spec {
         }
         self.entry.graph.check(Policy::default().max_each)?;
         if let Some(schedule) = &self.config.schedule {
-            schema::validate(&self.entry.graph.input, &schedule.input)?;
+            schedule.check_input(&self.entry.graph.input)?;
         }
         Ok(())
     }
@@ -149,7 +171,16 @@ pub struct Invalid(pub anyhow::Error);
 
 impl Invalid {
     pub fn explanation(error: &anyhow::Error) -> Option<&'static str> {
-        error.is::<Self>().then_some(Self::EXPLAIN)
+        if let Some(invalid) = error.downcast_ref::<Self>() {
+            return Some(if invalid.0.is::<ScheduleInput>() {
+                ScheduleInput::EXPLAIN
+            } else {
+                Self::EXPLAIN
+            });
+        }
+        error
+            .is::<ScheduleInput>()
+            .then_some(ScheduleInput::EXPLAIN)
     }
     pub const EXPLAIN: &'static str = "E0058";
 }

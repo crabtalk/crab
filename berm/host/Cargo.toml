@@ -10,7 +10,7 @@ keywords = ["berm", "wasm", "sandbox", "sqlite", "mcp"]
 categories = ["wasm", "virtualization"]
 
 [dependencies]
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 anyhow.workspace = true
 axum.workspace = true
 berm = { workspace = true, features = ["sqlite"] }

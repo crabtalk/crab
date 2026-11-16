@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 pub mod config;
 pub mod graph;
 pub mod run;
+pub mod schedule;
 pub mod spend;
 pub mod view;
 

@@ -3,9 +3,10 @@
 use crate::{
     images::Stored,
     state::{self, store::Store},
+    workflow::scheduled::Schedules,
 };
 use anyhow::Result;
-use berm_api::schedule as cron;
+use berm_api::{schedule as cron, workflow::config::Spec};
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::collections::{BTreeMap, HashMap};
 
@@ -138,6 +139,7 @@ pub(crate) async fn install(
     deprecated: Vec<String>,
     cron_tools: Vec<String>,
     crons: BTreeMap<String, String>,
+    workflows: Vec<Spec>,
     stopped: bool,
     project: Option<String>,
     declared_vars: Vec<String>,
@@ -174,6 +176,8 @@ pub(crate) async fn install(
             )?;
             deprecate(&tx, &scope, &name, &deprecated, now)?;
             schedule(&tx, &scope, &name, &cron_tools, &declared)?;
+            Schedules::install(&tx, &scope, &name, &workflows, now)
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(error.into()))?;
             state::vars::deploy(&tx, &scope, &name, &declared_vars, &vars)?;
             tx.commit()
         })

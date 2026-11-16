@@ -30,7 +30,7 @@ A service declaring `secret_resources = true` can use `{secret:ID}` for a runtim
 
 `Secrets::resource_owner` supplies account ownership metadata for runtime-resource binding checks; its default returns no grant. `berm.secret.resource` requires the resource capability and HTTP permission. `berm.http.fetch_all.literal_body` keeps body bytes literal while applying the usual header secret grants.
 
-Workflow declarations load from the service image, including services with no tools. The owner runtime includes control budgets, spend caps and checkpoint policy; public IDL includes only discoverable entries, graphs and task prices. Invalid graph/configuration records are refused before execution with `E0058`. Workflow schedule delivery is not implemented yet.
+Workflow declarations load from the service image, including services with no tools. The owner runtime includes control budgets, spend caps and checkpoint policy; public IDL includes only discoverable entries, graphs and task prices. Invalid graph/configuration records are refused before execution with `E0058`. Workflow schedules use five-field UTC cron expressions and copy their configured input into each run. Occurrence identities deduplicate delivery; stopped services and downtime skip occurrences without backfill. Refused and failed runs are not retried automatically. Embedders can admit owner-funded runs through `Peers::scheduled`; the native host admits them locally by default.
 
 `Host::control` executes a registered workflow control function. Application syscalls fail with HTTP status 422 and `E0059`; admission refusals retain their original status, headers and error body. Resource exhaustion, traps and oversized input/output fail the control invocation.
 

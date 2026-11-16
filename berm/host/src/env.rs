@@ -10,7 +10,10 @@ use berm::{
 };
 use berm_api::{
     host::{Link, Reply, Used},
-    workflow::run::{Binding, Receipt},
+    workflow::{
+        run::{Binding, Receipt},
+        schedule::Occurrence,
+    },
 };
 use std::future::Future;
 
@@ -104,6 +107,11 @@ pub trait Peers: Send + Sync + 'static {
         _dispatch: &str,
     ) -> impl Future<Output = Result<Option<Receipt>>> + Send {
         async { Ok(None) }
+    }
+
+    /// Return true after external admission, or false to admit locally.
+    fn scheduled(&self, _occurrence: &Occurrence) -> impl Future<Output = Result<bool>> + Send {
+        async { Ok(false) }
     }
 
     /// Hand `peer` the uses counted here of services it runs.

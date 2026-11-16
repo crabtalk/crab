@@ -174,6 +174,7 @@ impl<E: Env> Host<E> {
                 deprecated,
                 cron_tools,
                 manifest.crons.clone(),
+                manifest.workflows.clone(),
                 stopped,
                 project,
                 manifest.deps.vars.keys().cloned().collect(),
@@ -202,6 +203,7 @@ impl<E: Env> Host<E> {
         }
         if installed.is_ok() {
             self.waking.notify_one();
+            self.scheduling.notify_one();
             if let Err(e) = self.sample(service).await {
                 tracing::warn!(service, "sampling usage failed: {e:#}");
             }

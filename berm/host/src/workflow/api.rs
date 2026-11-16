@@ -135,10 +135,21 @@ impl<E: Env> Host<E> {
             .explained(Run::INITIATOR)
             .into());
         }
+        self.start_workflow_trigger(service, workflow, request, Trigger::Manual { caller })
+            .await
+    }
+
+    pub async fn start_workflow_trigger(
+        &self,
+        service: &str,
+        workflow: &str,
+        request: Start,
+        trigger: Trigger,
+    ) -> Result<Record> {
         Uuid::parse_str(&request.id)
             .map_err(|_| deny(StatusCode::BAD_REQUEST, "workflow run id must be a UUID"))?;
         let hash = digest::json_hex(
-            &serde_json::json!({"service":service,"workflow":workflow,"input":request.input,"quote":request.quote,"caller":{"id":caller.id,"key":caller.key,"app":caller.app,"user":caller.user}}),
+            &serde_json::json!({"service":service,"workflow":workflow,"input":request.input,"quote":request.quote,"trigger":match &trigger {Trigger::Manual {caller}=>serde_json::json!({"kind":"manual","caller":{"id":caller.id,"key":caller.key,"app":caller.app,"user":caller.user}}),other=>serde_json::to_value(other)?}}),
         );
         if let Some((_, original)) = self.workflows.admission(&request.id).await? {
             if original != hash {
@@ -151,14 +162,28 @@ impl<E: Env> Host<E> {
             }
             return self.workflow_record(service, workflow, &request.id).await;
         }
-        let inspected = self.inspect_workflow(service, workflow, Some(&caller))?;
+        let inspected = match &trigger {
+            Trigger::Manual { caller } => self.inspect_workflow(service, workflow, Some(caller))?,
+            Trigger::Schedule { .. } => {
+                Self::workflow_inspection(service, self.workflow_offer(service, workflow)?, None)?
+            }
+        };
         if inspected.quote != request.quote {
             return Err(deny(StatusCode::CONFLICT, "workflow terms changed")
                 .explained(Binding::CHANGED)
                 .into());
         }
-        let mut run =
-            self.prepare_workflow(service, workflow, request.input, Trigger::Manual { caller })?;
+        let mut run = match trigger {
+            Trigger::Schedule { key, at } => self.prepare_scheduled_workflow(
+                service,
+                workflow,
+                request.input,
+                &key,
+                at,
+                self.workflow_bindings(service, workflow)?,
+            )?,
+            trigger => self.prepare_workflow(service, workflow, request.input, trigger)?,
+        };
         run.id = request.id;
         let image = self.workflow_image(service).await?;
         self.workflows
