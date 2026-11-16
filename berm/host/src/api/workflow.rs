@@ -1,4 +1,4 @@
-use crate::{Denied, api::serve::Named, env::Env, host::Host, workflow::Intent};
+use crate::{Denied, api::serve::Named, env::Env, host::Host};
 use axum::{
     Extension, Json, Router,
     extract::{Path, Request, State},
@@ -72,12 +72,12 @@ async fn continue_run<E: Env>(
     Extension(Named(service)): Extension<Named>,
     Path((workflow, run)): Path<(String, String)>,
 ) -> Result<(StatusCode, Json<Record>), Denied> {
-    host.workflow_record(&service, &workflow, &run).await?;
-    let claim = host.claim_workflow(&run, Intent::Continue).await?;
-    host.launch_workflow(claim, None).await?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(host.workflow_record(&service, &workflow, &run).await?),
+        Json(
+            host.continue_local_workflow(&service, &workflow, &run)
+                .await?,
+        ),
     ))
 }
 async fn cancel<E: Env>(
@@ -85,9 +85,10 @@ async fn cancel<E: Env>(
     Extension(Named(service)): Extension<Named>,
     Path((workflow, run)): Path<(String, String)>,
 ) -> Result<Json<Record>, Denied> {
-    host.workflow_record(&service, &workflow, &run).await?;
-    host.cancel_workflow(&run).await?;
-    Ok(Json(host.workflow_record(&service, &workflow, &run).await?))
+    Ok(Json(
+        host.cancel_local_workflow(&service, &workflow, &run)
+            .await?,
+    ))
 }
 
 async fn no_store(request: Request, next: middleware::Next) -> Response {

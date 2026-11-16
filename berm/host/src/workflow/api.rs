@@ -2,7 +2,7 @@ use crate::{
     deny,
     env::{Env, Images},
     host::{self, Host},
-    workflow::StorageGrant,
+    workflow::{Intent, StorageGrant},
 };
 use anyhow::Result;
 use axum::http::StatusCode;
@@ -118,6 +118,29 @@ impl<E: Env> Host<E> {
             execution,
             accepted,
         })
+    }
+
+    pub async fn continue_local_workflow(
+        &self,
+        service: &str,
+        workflow: &str,
+        id: &str,
+    ) -> Result<Record> {
+        self.workflow_record(service, workflow, id).await?;
+        let claim = self.claim_workflow(id, Intent::Continue).await?;
+        self.launch_workflow(claim, None).await?;
+        self.workflow_record(service, workflow, id).await
+    }
+
+    pub async fn cancel_local_workflow(
+        &self,
+        service: &str,
+        workflow: &str,
+        id: &str,
+    ) -> Result<Record> {
+        self.workflow_record(service, workflow, id).await?;
+        self.cancel_workflow(id).await?;
+        self.workflow_record(service, workflow, id).await
     }
 
     pub async fn start_local_workflow(

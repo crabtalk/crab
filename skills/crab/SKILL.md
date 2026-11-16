@@ -18,6 +18,8 @@ Reuse the existing CrabTalk account connection. The hosted endpoint advertises e
 
 Do not invent service addresses, tool names, schemas or results. Refresh the host's tool list after deployment or access changes. Creating or deploying a service requires a user request for that work. The local MCP interface uses `search` → `inspect` → `call`; see the development reference when using a local host.
 
+For workflows, call `workflow_inspect` to discover available entries and inspect their graph, input schema, task price and quote. `workflow_run` takes `{service, workflow, request: {id, quote, input}}`; generate one UUID for `id`, and reuse the identical request after transport failure. Poll `workflow_status({service, workflow, id})` before deciding whether to explicitly continue with `workflow_continue` or cancel with `workflow_cancel`. Respect continuation eligibility; cancellation does not undo accepted effects.
+
 For CLI workflow inspection, dry runs and retained run controls, read [Workflow runs](references/development.md#workflow-runs). Inspect current terms before starting a run and check an uncertain run's status before retrying.
 
 ## Relay identities
