@@ -42,6 +42,41 @@ pub enum Trigger {
     Schedule { key: String, at: u64 },
 }
 
+/// Emitted only after the terminal attempt and its result commit together.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Completion {
+    pub run: String,
+    pub service: String,
+    pub attempt: String,
+    pub status: Status,
+}
+
+impl TryFrom<&Run> for Completion {
+    type Error = String;
+
+    fn try_from(run: &Run) -> Result<Self, Self::Error> {
+        if !matches!(
+            run.status,
+            Status::Succeeded | Status::Failed | Status::Indeterminate | Status::Cancelled
+        ) {
+            return Err("workflow attempt has not finished".into());
+        }
+        let attempt = run.attempts.last().ok_or("workflow has no attempt")?;
+        if attempt.status != run.status
+            || attempt.finished_at.is_none()
+            || (run.status == Status::Succeeded && run.result.is_none())
+        {
+            return Err("workflow terminal outcome is incomplete".into());
+        }
+        Ok(Self {
+            run: run.id.clone(),
+            service: run.service.clone(),
+            attempt: attempt.id.clone(),
+            status: run.status,
+        })
+    }
+}
+
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Accepted {

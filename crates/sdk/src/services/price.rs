@@ -1,10 +1,10 @@
-//! A tool's price a call, as a deploy sets it from `[tools]` in `crab.toml`.
+//! Fixed prices for tool calls and successful workflow runs.
 
 use berm_api::Manifest;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, str::FromStr};
 
-/// USD micros a call of a tool costs its caller, at least [`Price::MIN`].
+/// USD micros charged for one priced operation, at least [`Price::MIN`].
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "u64", into = "u64")]
@@ -63,4 +63,40 @@ pub fn check<'a>(
         }
     }
     Ok(())
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    #[default]
+    Tool,
+    Workflow,
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Tool => "tool",
+            Self::Workflow => "workflow",
+        })
+    }
+}
+
+impl FromStr for Kind {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "tool" => Ok(Self::Tool),
+            "workflow" => Ok(Self::Workflow),
+            _ => Err(format!("unknown priced operation kind {value:?}")),
+        }
+    }
+}
+
+impl TryFrom<String> for Kind {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
 }

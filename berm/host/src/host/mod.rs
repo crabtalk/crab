@@ -332,6 +332,7 @@ impl<E: Env> Host<E> {
     /// Write what was counted: uses of services this host runs here, and the
     /// rest to the peer each runs on.
     pub(crate) async fn flush(&self) -> Result<()> {
+        self.workflows.expire((self.now)()).await?;
         let _flushing = self.flushing.lock().await;
         let (used, rest) = self
             .usage

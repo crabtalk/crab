@@ -380,3 +380,114 @@ async fn expired_dispatch_lease_still_records_its_owned_in_flight_outcome() -> R
     assert_eq!(run.error, Some(failure()));
     Ok(())
 }
+
+#[tokio::test]
+async fn terminal_receipts_survive_restart_deletion_and_duplicate_acknowledgement() -> Result<()> {
+    let mut host = TestHost::open(0).await?;
+    let image = fixture::image(&[]);
+    insert(&host.host.workflows, "receipt", &image, u64::MAX).await?;
+    let claim = host
+        .host
+        .workflows
+        .claim("receipt", Intent::Start, 101, 200)
+        .await?;
+    assert!(
+        host.host
+            .workflows
+            .pending_completions(10)
+            .await?
+            .is_empty()
+    );
+    host.host
+        .workflows
+        .finish(
+            &claim,
+            Status::Failed,
+            None,
+            Some(failure()),
+            Meter::default(),
+            150,
+        )
+        .await?;
+    host.reopen().await?;
+    let receipts = host.host.workflows.pending_completions(10).await?;
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].attempt, claim.attempt);
+    assert_eq!(receipts[0].status, Status::Failed);
+    host.host.workflows.delete("receipt", 201).await?;
+    assert_eq!(host.host.workflows.pending_completions(10).await?, receipts);
+    host.host
+        .workflows
+        .acknowledge_completion("receipt", &claim.attempt)
+        .await?;
+    host.host
+        .workflows
+        .acknowledge_completion("receipt", &claim.attempt)
+        .await?;
+    assert!(
+        host.host
+            .workflows
+            .pending_completions(10)
+            .await?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn recovering_an_expired_attempt_durably_reports_indeterminate_without_restarting()
+-> Result<()> {
+    let host = TestHost::open(0).await?;
+    let image = fixture::image(&[]);
+    insert(&host.host.workflows, "interrupted", &image, u64::MAX).await?;
+    let claim = host
+        .host
+        .workflows
+        .claim("interrupted", Intent::Start, 101, 200)
+        .await?;
+    host.host.workflows.recover(200).await?;
+    host.host.workflows.recover(201).await?;
+    let receipts = host.host.workflows.pending_completions(10).await?;
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].attempt, claim.attempt);
+    assert_eq!(receipts[0].status, Status::Indeterminate);
+    assert_eq!(
+        host.host
+            .workflows
+            .get("interrupted")
+            .await?
+            .unwrap()
+            .attempts
+            .len(),
+        1
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn deleting_or_expiring_an_unreported_attempt_preserves_its_terminal_receipt() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let image = fixture::image(&[]);
+    for id in ["deleted", "expired"] {
+        insert(&host.host.workflows, id, &image, u64::MAX).await?;
+        host.host
+            .workflows
+            .claim(id, Intent::Start, 101, 200)
+            .await?;
+        if id == "deleted" {
+            host.host.workflows.delete(id, 200).await?;
+        } else {
+            host.host.workflows.expire(1100).await?;
+        }
+    }
+    let receipts = host.host.workflows.pending_completions(10).await?;
+    assert_eq!(receipts.len(), 2);
+    assert!(
+        receipts
+            .iter()
+            .all(|receipt| receipt.status == Status::Indeterminate)
+    );
+    assert!(host.host.workflows.get("deleted").await?.is_none());
+    assert!(host.host.workflows.get("expired").await?.is_none());
+    Ok(())
+}

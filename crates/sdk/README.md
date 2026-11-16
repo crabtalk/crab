@@ -71,3 +71,7 @@ Deployment responses and template manifests retain workflow declarations from th
 Apache-2.0
 
 Service usage includes an optional `database` snapshot with `used`, `limit` and epoch-second `at`. Missing snapshots from older hosts are unknown. Account periods expose `storage.databases` and `storage.objects`, the two components of allocated storage.
+
+Billing entries distinguish tool and workflow sales with `price::Kind`. Workflow settlement separates owner and unpriced runs from held, released and settled customer prices. A successful run has one settled customer charge across all attempts.
+
+`Earned::net` reports profit after all attributed costs. `Earned::payable` excludes costs already charged to the owning account; payout calculations use this balance before transfer fees.

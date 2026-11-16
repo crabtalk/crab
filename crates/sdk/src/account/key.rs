@@ -19,9 +19,9 @@ pub struct Key {
     /// When it last authenticated a request, to the minute.
     #[serde(default)]
     pub used_at: Option<i64>,
-    /// What the key may spend on tool prices in a UTC day, in USD micros.
+    /// What the key may spend on tool and workflow prices in a UTC day, in USD micros.
     pub budget: i64,
-    /// What it spent on tool prices today, UTC, in USD micros.
+    /// What it spent on tool and workflow prices today, UTC, in USD micros.
     #[serde(default)]
     pub spent: i64,
     /// The other accounts' priced services it may call.

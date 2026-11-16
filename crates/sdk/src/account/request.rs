@@ -239,7 +239,7 @@ pub struct Access {
     pub budget: Option<i64>,
     /// Its daily budget now, in USD micros.
     pub current: i64,
-    /// What it spent on tool prices today, UTC, in USD micros.
+    /// What it spent on tool and workflow prices today, UTC, in USD micros.
     pub spent: i64,
 }
 

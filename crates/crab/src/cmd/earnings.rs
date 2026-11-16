@@ -1,4 +1,4 @@
-//! `crab earnings` — what the account's priced tools earned, a UTC calendar
+//! `crab earnings` — what the account's priced operations earned, a UTC calendar
 //! month each, what is owed and the payouts; `connect` and `dashboard` open
 //! the account's Stripe Connect pages.
 
@@ -12,7 +12,7 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         return terminal::json(&earnings);
     }
     if earnings.months.is_empty() {
-        println!("no priced calls yet");
+        println!("no priced calls or workflow runs yet");
     } else {
         let width = earnings
             .months
@@ -23,20 +23,23 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             .unwrap_or(0)
             .max(7);
         println!(
-            "{:<width$}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}",
-            "MONTH", "CALLS", "REVENUE", "CUT", "COMPUTE", "NET"
+            "{:<width$}  {:<8}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}",
+            "MONTH", "KIND", "COUNT", "REVENUE", "CUT", "COST", "NET"
         );
         for month in &earnings.months {
-            line(&month.month, &month.earned, width);
+            line(&month.month, "", &month.earned, width);
             for tool in &month.tools {
                 line(
                     &format!("  {}.{}", tool.service, tool.tool),
+                    &tool.kind.to_string(),
                     &tool.earned,
                     width,
                 );
             }
         }
-        println!("compute is every priced call at the rates, failed ones included");
+        println!(
+            "cost includes failed work; account-funded costs are not deducted again from payouts"
+        );
     }
     println!();
     println!("owed     {}", format::usd(earnings.owed as f64));
@@ -83,9 +86,9 @@ pub fn dashboard(client: &Client) -> Result<()> {
     Ok(())
 }
 
-fn line(label: &str, earned: &Earned, width: usize) {
+fn line(label: &str, kind: &str, earned: &Earned, width: usize) {
     println!(
-        "{label:<width$}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}",
+        "{label:<width$}  {kind:<8}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}",
         format::count(earned.calls),
         format::usd(earned.revenue as f64),
         format::usd(earned.cut as f64),

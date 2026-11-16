@@ -438,6 +438,13 @@ async fn a_failed_terminal_write_exposes_neither_output_nor_success() -> Result<
     assert!(host.host.execute_workflow(&run.id).await.is_err());
     let retained = host.host.workflows.get(&run.id).await?.unwrap();
     assert_eq!(retained.status, Status::Running);
+    assert!(
+        host.host
+            .workflows
+            .pending_completions(10)
+            .await?
+            .is_empty()
+    );
     assert!(retained.result.is_none());
     assert!(matches!(retained.checkpoints["done"].state, State::Pending));
     assert!(matches!(

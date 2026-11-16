@@ -24,6 +24,7 @@ fn unknown_reservations_and_settlement_identities_survive_round_trip() {
     );
     for value in [
         json!({"state":"owner"}),
+        json!({"state":"free"}),
         json!({"state":"held","reservation":"hold-1"}),
         json!({"state":"released"}),
         json!({"state":"settled","transaction":"sale-1"}),

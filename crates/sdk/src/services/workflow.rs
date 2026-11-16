@@ -43,6 +43,7 @@ pub struct Spend {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Settlement {
     Owner,
+    Free,
     Held { reservation: String },
     Released,
     Settled { transaction: String },

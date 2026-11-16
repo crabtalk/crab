@@ -4,14 +4,17 @@ use berm_api::{
     Manifest, Meter, digest,
     workflow::{
         graph::{Entry, Kind, Target},
-        run::{Attempt, Checkpoint, Dispatch, Failure, Prepared, Run, State, Status},
+        run::{Attempt, Checkpoint, Completion, Dispatch, Failure, Prepared, Run, State, Status},
     },
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use std::{fmt, path::Path};
 use uuid::Uuid;
 
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001.sql"),
+    include_str!("migrations/0002.sql"),
+];
 
 #[derive(Clone)]
 pub struct Ledger {
@@ -272,6 +275,7 @@ impl Ledger {
             }
             if record.claim.is_some() {
                 Self::interrupted(&mut record, now);
+                Self::completion(tx, &record.run)?;
             }
             let allowed = match intent {
                 Intent::Start => record.run.status == Status::Pending,
@@ -441,8 +445,44 @@ impl Ledger {
             attempt.error = error;
             attempt.meter = meter;
             tx.execute("UPDATE runs SET body=?2,claim=NULL,lease=NULL WHERE id=?1", params![claim.run, Self::encode(&record.run)?])?;
+            Self::completion(tx, &record.run)?;
             Ok(())
         }).await
+    }
+
+    pub async fn pending_completions(&self, limit: u32) -> Result<Vec<Completion>> {
+        let rows = self
+            .store
+            .run(move |conn| {
+                let mut query =
+                    conn.prepare("SELECT body FROM completions ORDER BY rowid LIMIT ?1")?;
+                query
+                    .query_map([limit], |row| row.get::<_, Vec<u8>>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .await?;
+        rows.into_iter()
+            .map(|body| Ok(serde_json::from_slice(&body)?))
+            .collect()
+    }
+
+    pub async fn acknowledge_completion(&self, run: &str, attempt: &str) -> Result<()> {
+        let (run, attempt) = (run.to_owned(), attempt.to_owned());
+        self.store
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM completions WHERE run=?1 AND attempt=?2",
+                    params![run, attempt],
+                )
+            })
+            .await?;
+        Ok(())
+    }
+
+    fn completion(tx: &Transaction<'_>, run: &Run) -> Result<()> {
+        let completion = Completion::try_from(run).map_err(Refused::Invalid)?;
+        tx.execute("INSERT INTO completions(run,attempt,body) VALUES(?1,?2,?3) ON CONFLICT(run,attempt) DO NOTHING",params![completion.run,completion.attempt,serde_json::to_vec(&completion)?])?;
+        Ok(())
     }
 
     async fn write(
@@ -463,23 +503,24 @@ impl Ledger {
     }
 
     pub async fn recover(&self, now: u64) -> Result<usize> {
-        self.transaction(move |tx| {
-            let mut query =
-                tx.prepare("SELECT id FROM runs WHERE claim IS NOT NULL AND lease<=?1")?;
-            let ids = query
-                .query_map([i64::try_from(now)?], |row| row.get::<_, String>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            for id in &ids {
-                let mut record = Self::load(tx, id)?.context("run disappeared during recovery")?;
-                Self::interrupted(&mut record, now);
-                tx.execute(
-                    "UPDATE runs SET body=?2,claim=NULL,lease=NULL WHERE id=?1",
-                    params![id, Self::encode(&record.run)?],
-                )?;
-            }
-            Ok(ids.len())
-        })
-        .await
+        self.transaction(move |tx| Self::recover_in(tx, now)).await
+    }
+
+    fn recover_in(tx: &Transaction<'_>, now: u64) -> Result<usize> {
+        let mut query = tx.prepare("SELECT id FROM runs WHERE claim IS NOT NULL AND lease<=?1")?;
+        let ids = query
+            .query_map([i64::try_from(now)?], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for id in &ids {
+            let mut record = Self::load(tx, id)?.context("run disappeared during recovery")?;
+            Self::interrupted(&mut record, now);
+            tx.execute(
+                "UPDATE runs SET body=?2,claim=NULL,lease=NULL WHERE id=?1",
+                params![id, Self::encode(&record.run)?],
+            )?;
+            Self::completion(tx, &record.run)?;
+        }
+        Ok(ids.len())
     }
 
     pub async fn invalidate(&self, service: &str) -> Result<()> {
@@ -494,6 +535,7 @@ impl Ledger {
     pub async fn delete(&self, id: &str, now: u64) -> Result<bool> {
         let id = id.to_owned();
         self.transaction(move |tx| {
+            Self::recover_in(tx, now)?;
             let Some(record) = Self::load(tx, &id)? else {
                 return Ok(false);
             };
@@ -509,6 +551,7 @@ impl Ledger {
 
     pub async fn expire(&self, now: u64) -> Result<usize> {
         self.transaction(move |tx| {
+            Self::recover_in(tx, now)?;
             let deleted = tx.execute(
                 "DELETE FROM runs WHERE expires_at<=?1 AND (lease IS NULL OR lease<=?1)",
                 [i64::try_from(now)?],
