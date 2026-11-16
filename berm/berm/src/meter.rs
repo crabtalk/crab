@@ -13,6 +13,7 @@ use std::{
     },
     time::Instant,
 };
+use wasmtime::ToWasmtimeResult;
 
 /// Meters by service and the tool of it that ran.
 pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
@@ -23,7 +24,7 @@ pub type ByTool = BTreeMap<(Arc<str>, Arc<str>), Meter>;
 pub struct Meters(Mutex<ByTool>);
 
 impl Meters {
-    pub(crate) fn add(&self, service: Arc<str>, tool: Arc<str>, used: Meter) {
+    pub fn add(&self, service: Arc<str>, tool: Arc<str>, used: Meter) {
         *self.0.lock().entry((service, tool)).or_default() += used;
     }
 
@@ -68,7 +69,7 @@ pub struct Pool {
     pub(crate) codes: Mutex<Vec<Weak<Code>>>,
 }
 
-/// Retained executable code exceeds a scope's memory allowance.
+/// Retained code and running guests exceed a scope's memory allowance.
 #[derive(Debug)]
 pub struct MemoryLimit {
     pub held: u64,
@@ -79,7 +80,7 @@ impl fmt::Display for MemoryLimit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "retained code would hold {} bytes of memory, past its limit of {}",
+            "a scope would hold {} bytes of memory, past its limit of {}",
             self.held, self.limit
         )
     }
@@ -174,7 +175,7 @@ impl Pool {
         }
         if limit != 0 && held > limit {
             self.running.fetch_sub(bytes, Ordering::Relaxed);
-            bail!("growing would hold {held} bytes of memory, past its limit of {limit}");
+            return Err(MemoryLimit { held, limit }.into());
         }
         Ok(())
     }
@@ -288,9 +289,7 @@ impl wasmtime::ResourceLimiter for Held {
             )));
         }
         let grown = (desired - current) as u64;
-        self.pool
-            .grow(grown)
-            .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
+        self.pool.grow(grown).to_wasmtime_result()?;
         self.memory += grown;
         self.running.memory.fetch_add(grown, Ordering::Relaxed);
         Ok(true)

@@ -1,0 +1,13 @@
+error[E0080]: evaluation panicked: done: output must be reachable on every path; use optional references for guarded values
+ --> tests/ui/workflow_output.rs:6:1
+  |
+6 | #[workflow]
+  | ^^^^^^^^^^^ evaluation of `Flow::WORKFLOW::GUARDS` failed here
+
+note: erroneous constant encountered
+ --> tests/ui/workflow_output.rs:6:1
+  |
+6 | #[workflow]
+  | ^^^^^^^^^^^
+  |
+  = note: this note originates in the attribute macro `workflow` (in Nightly builds, run with -Z macro-backtrace for more info)

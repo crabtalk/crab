@@ -33,6 +33,10 @@ A guest cannot decline how far a chain of services may nest, the depth `Calls` i
 cargo run --example measure    # prices a host call, an invocation, an allocation
 ```
 
+Workflow control exports run through `Service::control` with their configured CPU/memory budget and the service buffer limit. Each invocation gets fresh guest state. Only argument/result ABI plumbing is permitted; application syscalls, including helper-mediated calls and clocks, trap before dispatch. Controls do not open application transaction scopes. Their meters are returned through the request's `Meters` and reported to `Calls::invoked`. `Calls::control_enter` supplies resource admission separately from application transactions. The host executes accepted workflow graphs using these exports.
+
+`Callsite::budget` contains the effective invocation limits. `workflow::scope` carries opaque spend authorization and an absolute attempt deadline through nested calls. Invocation scopes complete bookkeeping for every known outcome before their application changes commit or roll back.
+
 ## License
 
 AGPL-3.0-only

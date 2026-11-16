@@ -1,0 +1,13 @@
+error: workflow methods are plain functions without self, async, generics or impl Trait
+ --> tests/ui/workflow_shape.rs:9:5
+  |
+9 |     async fn done(input: &Input) -> u64 {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `support::Input`
+ --> tests/ui/workflow_shape.rs:4:5
+  |
+4 | use support::Input;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

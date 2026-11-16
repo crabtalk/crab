@@ -1,0 +1,13 @@
+error: first depends on unknown or later node later; use an earlier method name
+ --> tests/ui/workflow_forward.rs:9:14
+  |
+9 |     fn first(later: &u64) -> EchoCall {
+  |              ^^^^^^^^^^^
+
+warning: unused imports: `EchoCall` and `Input`
+ --> tests/ui/workflow_forward.rs:4:15
+  |
+4 | use support::{EchoCall, Input};
+  |               ^^^^^^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

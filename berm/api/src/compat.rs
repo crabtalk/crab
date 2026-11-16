@@ -19,12 +19,14 @@ pub struct Break {
 pub enum Surface {
     Tool(String),
     Event(String),
+    Workflow(String),
 }
 
 impl std::fmt::Display for Break {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.surface {
             Surface::Tool(name) => write!(f, "tool {name}: {}", self.reason),
+            Surface::Workflow(name) => write!(f, "workflow {name}: {}", self.reason),
             Surface::Event(name) => write!(f, "event {name}: {}", self.reason),
         }
     }
@@ -32,8 +34,10 @@ impl std::fmt::Display for Break {
 
 impl Manifest {
     pub fn upgrade_requires_review(&self, next: &Self) -> bool {
-        self.deps != next.deps
+        self.public != next.public
+            || self.deps != next.deps
             || self.crons != next.crons
+            || self.workflows != next.workflows
             || !self.breaks(next).is_empty()
             || next.tools.iter().any(|tool| {
                 self.tools
@@ -91,6 +95,45 @@ impl Manifest {
                 });
             }
         }
+        for old in self
+            .workflows
+            .iter()
+            .filter(|spec| spec.config.access.is_some())
+        {
+            let mut found = Vec::new();
+            match next
+                .workflows
+                .iter()
+                .find(|spec| spec.entry.name == old.entry.name)
+            {
+                None => found.push("removed".into()),
+                Some(new) => {
+                    if !new
+                        .config
+                        .access
+                        .is_some_and(|access| access.covers(old.config.access.unwrap()))
+                    {
+                        found.push("takes fewer kinds of caller".into());
+                    }
+                    accepts(
+                        "input",
+                        &old.entry.graph.input,
+                        &new.entry.graph.input,
+                        &mut found,
+                    );
+                    writes(
+                        "output",
+                        &old.entry.graph.output,
+                        &new.entry.graph.output,
+                        &mut found,
+                    );
+                }
+            }
+            breaks.extend(found.into_iter().map(|reason| Break {
+                surface: Surface::Workflow(old.entry.name.clone()),
+                reason,
+            }));
+        }
         for old in &self.events {
             let surface = Surface::Event(old.name.clone());
             let mut found = Vec::new();
@@ -112,17 +155,18 @@ fn tool(old: &ToolSpec, new: &ToolSpec, found: &mut Vec<String>) {
         found.push("no longer public".to_owned());
         return;
     }
-    if new.callers.is_some() && old.callers != new.callers {
-        found.push("takes fewer kinds of caller".to_owned());
+    if !new.access().unwrap().covers(old.access().unwrap()) {
+        found.push(if old.anonymous && !new.anonymous {
+            "no longer takes anonymous calls".to_owned()
+        } else {
+            "takes fewer kinds of caller".to_owned()
+        });
     }
     if old.query && !new.query {
         found.push("no longer a query".to_owned());
     }
     if old.events.is_some() && old.events != new.events {
         found.push("event source removed or renamed".to_owned());
-    }
-    if old.anonymous && !new.anonymous {
-        found.push("no longer takes anonymous calls".to_owned());
     }
     accepts("arguments", &old.parameters, &new.parameters, found);
     match (&old.returns, &new.returns) {
@@ -137,7 +181,7 @@ fn event(old: &EventSpec, new: &EventSpec, found: &mut Vec<String>) {
 }
 
 /// Whether what `new` reads still takes everything callers wrote against `old`.
-fn accepts(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
+pub(crate) fn accepts(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
     let old_inner = schema::nullable(old);
     let new_inner = schema::nullable(new);
     if old_inner.is_some() && new_inner.is_none() {
@@ -173,7 +217,7 @@ fn accepts(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
 }
 
 /// Whether what `new` writes is still read by callers built against `old`.
-fn writes(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
+pub(crate) fn writes(at: &str, old: &Value, new: &Value, found: &mut Vec<String>) {
     let old_inner = schema::nullable(old);
     let new_inner = schema::nullable(new);
     if old_inner.is_none() && new_inner.is_some() {

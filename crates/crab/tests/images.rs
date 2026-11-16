@@ -125,7 +125,7 @@ impl Drop for Registry {
 }
 
 #[tokio::test]
-async fn a_manifest_alone_deploys_an_exact_private_template_without_cargo() {
+async fn a_manifest_alone_deploys_an_exact_template_without_cargo() {
     let registry = Registry::new(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = true\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n[tools.unbuilt]\naccess = \"public\"\nprice = 100\n")).unwrap();
@@ -136,7 +136,7 @@ async fn a_manifest_alone_deploys_an_exact_private_template_without_cargo() {
         request["source"],
         json!({"owner":"alice-id", "name":"weather"})
     );
-    assert_eq!(request["public"], false);
+    assert!(request.get("public").is_none());
     assert_eq!(request["template"], false);
     assert_eq!(request["auto_upgrade"], false);
     assert_eq!(request["create"], true);
@@ -402,7 +402,7 @@ async fn source_deployment_starts_without_publishing_its_template() {
         .unwrap();
     let request = registry.sent(Method::PUT, "/services/bob/osv");
     assert!(request.get("stopped").is_none());
-    assert_eq!(request["public"], true);
+    assert!(request.get("public").is_none());
     assert!(request.get("template").is_none());
     assert!(request.get("publish_only").is_none());
     assert!(

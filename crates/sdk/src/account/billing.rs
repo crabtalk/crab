@@ -1,6 +1,6 @@
 //! Billing, plan-catalog, and invoice wire types.
 
-use crate::account::org::Kind;
+use crate::{account::org::Kind, services::price::Kind as PriceKind};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -71,22 +71,22 @@ pub struct Period {
     pub drawn: i64,
     /// Each share of an included amount reached, and running out of credit.
     pub warnings: Vec<Warning>,
-    /// What the account paid other accounts' tools' prices since `since`, by
-    /// tool, the most first.
+    /// Prices paid to other accounts since `since`, by operation, the most first.
     #[serde(default)]
     pub spent: Vec<Spent>,
 }
 
-/// What an account paid one tool's price.
+/// What an account paid one operation's price.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spent {
+    #[serde(default)]
+    pub kind: PriceKind,
     /// The service's owner, by handle, else by id.
     pub owner: String,
     pub service: String,
     pub tool: String,
-    /// Calls charged; a call is charged from its start and returned when it
-    /// fails.
+    /// Priced calls or runs, including current holds.
     pub calls: u64,
     /// In USD micros.
     pub micros: i64,
@@ -195,6 +195,19 @@ impl Included {
     }
 }
 
+impl From<Included> for [u64; 6] {
+    fn from(included: Included) -> Self {
+        [
+            included.runs,
+            included.cpu,
+            included.read,
+            included.written,
+            included.held,
+            0,
+        ]
+    }
+}
+
 /// A person's verification, which lets an account on Hobby deploy.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,7 +235,7 @@ pub struct SubscribeResponse {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credit {
-    /// Purchased credit, eligible for priced tools and paid-plan overage.
+    /// Purchased credit, eligible for tool/workflow prices and paid-plan overage.
     pub micros: i64,
     #[serde(default)]
     pub trial: Option<TrialCredit>,
@@ -234,7 +247,7 @@ pub struct Credit {
     pub refill_micros: i64,
 }
 
-/// Trial funds pay execution, excluding priced tools and subscriptions.
+/// Trial funds pay execution, excluding tool/workflow prices and subscriptions.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrialCredit {
@@ -270,7 +283,7 @@ pub struct CreditMonth {
     pub added: i64,
     /// Metered execution.
     pub overage: i64,
-    /// Other accounts' tools' prices, less what failed calls returned.
+    /// Other accounts' prices, less released holds.
     pub prices: i64,
     pub expired: i64,
     /// The balance when the month ended, or now for the current month.
@@ -294,7 +307,7 @@ pub struct Grant {
     pub expires_at: i64,
 }
 
-/// What an account's priced tools earned, a UTC calendar month each, newest
+/// What an account's priced operations earned, a UTC calendar month each, newest
 /// first, and what was paid out of it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -304,8 +317,7 @@ pub struct Earnings {
     pub connected: bool,
     /// Whether Stripe lets that account receive payouts.
     pub payouts_enabled: bool,
-    /// What closed months netted, each counted from `0`, less every payout
-    /// and its fees, in USD micros.
+    /// Closed months' payable balances, each counted from zero, less transfers and fees.
     pub owed: i64,
     /// Newest first.
     pub payouts: Vec<Payout>,
@@ -358,10 +370,12 @@ pub struct EarnedMonth {
     pub tools: Vec<EarnedTool>,
 }
 
-/// One tool's part of an [`EarnedMonth`].
+/// One priced operation's part of an [`EarnedMonth`].
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EarnedTool {
+    #[serde(default)]
+    pub kind: PriceKind,
     pub service: String,
     pub tool: String,
     #[serde(flatten)]
@@ -372,39 +386,49 @@ pub struct EarnedTool {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Earned {
-    /// Calls charged.
+    /// Completed tool calls or workflow runs.
     pub calls: u64,
     /// Their prices, summed.
     pub revenue: i64,
     /// The platform's cut of `revenue`.
     pub cut: i64,
-    /// What every priced call used, failed ones included, at the published
-    /// rates.
+    /// Managed execution and dependency charges attributed to these sales.
     pub compute: i64,
     /// `revenue` less `cut` and `compute`; below zero when compute is larger.
     pub net: i64,
+    /// Revenue less commission and costs deducted from earnings, before payout fees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payable: Option<i64>,
 }
 
 impl Earned {
-    pub fn new(calls: u64, revenue: i64, cut: i64, compute: i64) -> Self {
+    pub fn new(calls: u64, revenue: i64, cut: i64, compute: i64, deducted: i64) -> Self {
         Self {
             calls,
             revenue,
             cut,
             compute,
             net: revenue - cut - compute,
+            payable: Some(revenue - cut - deducted),
         }
+    }
+
+    /// Legacy responses omit this balance and deduct their costs from earnings.
+    pub fn payable(&self) -> i64 {
+        self.payable.unwrap_or(self.net)
     }
 }
 
 impl std::ops::AddAssign for Earned {
     fn add_assign(&mut self, other: Self) {
-        *self = Self::new(
-            self.calls + other.calls,
-            self.revenue + other.revenue,
-            self.cut + other.cut,
-            self.compute + other.compute,
-        );
+        *self = Self {
+            calls: self.calls + other.calls,
+            revenue: self.revenue + other.revenue,
+            cut: self.cut + other.cut,
+            compute: self.compute + other.compute,
+            net: self.net + other.net,
+            payable: Some(self.payable() + other.payable()),
+        };
     }
 }
 

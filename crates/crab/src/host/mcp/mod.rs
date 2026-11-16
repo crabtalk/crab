@@ -16,6 +16,8 @@ use rmcp::{
 };
 use std::sync::Arc;
 
+mod workflow;
+
 /// The most services a search answers.
 const FOUND: usize = 10;
 
@@ -34,7 +36,13 @@ impl Mcp {
         }
         let mut service = self.node.host.idl(name).ok()?;
         service.tools.retain(|tool| tool.callable_by(caller));
-        (!service.tools.is_empty()).then_some(service)
+        service.workflows.retain(|spec| {
+            self.node
+                .host
+                .inspect_workflow(name, &spec.entry.name, caller)
+                .is_ok()
+        });
+        (!service.tools.is_empty() || !service.workflows.is_empty()).then_some(service)
     }
 
     fn search(&self, query: &str, caller: Option<&Caller>) -> Vec<Found> {
@@ -131,7 +139,21 @@ impl ServerHandler for Mcp {
             mcp::CALL_DESCRIPTION,
             Arc::new(mcp::call_schema()),
         );
-        Ok(ListToolsResult::with_all_items(vec![search, inspect, call]))
+        let mut tools = vec![search, inspect, call];
+        tools.extend(mcp::workflow::Action::ALL.map(|action| {
+            Tool::new(
+                action.name(),
+                action.description(),
+                Arc::new(action.schema()),
+            )
+            .annotate(
+                ToolAnnotations::new()
+                    .read_only(action.read_only())
+                    .destructive(!action.read_only())
+                    .open_world(true),
+            )
+        }));
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     async fn call_tool(
@@ -143,6 +165,11 @@ impl ServerHandler for Mcp {
             .extensions
             .get::<Parts>()
             .and_then(|parts| parts.extensions.get::<Caller>());
+        if let Ok(action) = mcp::workflow::Action::try_from(request.name.as_ref()) {
+            return self
+                .workflow(action, request.arguments.unwrap_or_default(), caller)
+                .await;
+        }
         let arguments = request.arguments.unwrap_or_default();
         let field = |key: &str| {
             arguments

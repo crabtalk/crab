@@ -2,7 +2,7 @@
 
 use crate::{
     Access, Credential, DEFAULT_BUFFER, Deps, Http, Limits, ToolRecord, ToolSpec, Var, host,
-    logo::Logo, reference::Reference,
+    logo::Logo, reference::Reference, workflow::config::Config,
 };
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
@@ -12,6 +12,7 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 /// What the project file is called.
@@ -50,6 +51,8 @@ pub struct Project {
     /// What it says of each tool, by name.
     #[serde(default)]
     pub tools: BTreeMap<String, Tool>,
+    #[serde(default)]
+    pub workflows: BTreeMap<String, Config>,
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
@@ -109,6 +112,32 @@ pub struct Tool {
     /// What one call may use, each key at least 1.
     #[serde(default)]
     pub budget: Option<Limits>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub idempotency: Option<Duration>,
+}
+
+impl TryFrom<&Tool> for ToolRecord {
+    type Error = anyhow::Error;
+    fn try_from(tool: &Tool) -> Result<Self> {
+        let idempotency_ms = tool
+            .idempotency
+            .map(|duration| {
+                let milliseconds = u64::try_from(duration.as_millis())
+                    .context("idempotency must fit milliseconds")?;
+                if milliseconds == 0 {
+                    bail!("idempotency must be at least one millisecond");
+                }
+                Ok(milliseconds)
+            })
+            .transpose()?;
+        Ok(Self {
+            access: tool.access,
+            title: tool.title.clone(),
+            catalog: tool.catalog.clone(),
+            budget: tool.budget,
+            idempotency_ms,
+        })
+    }
 }
 
 fn deployed() -> bool {
@@ -134,6 +163,7 @@ impl Project {
         }
         for (name, tool) in &project.tools {
             let at = format!("{}: tools.{name}", path.display());
+            ToolRecord::try_from(tool).with_context(|| at.clone())?;
             if let Some(title) = &tool.title
                 && (title.chars().count() > ToolSpec::TITLE || title.contains(['\n', '\r']))
             {
@@ -200,6 +230,11 @@ impl Project {
                 bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
+        for (name, config) in &project.workflows {
+            config
+                .check()
+                .with_context(|| format!("workflows.{name}"))?;
+        }
         project.deps().check_secret_declarations()?;
         Ok(project)
     }
@@ -246,18 +281,10 @@ impl Project {
 
     /// What the build writes of each tool into the service record: all but
     /// its price.
-    pub fn records(&self) -> BTreeMap<String, ToolRecord> {
+    pub fn records(&self) -> Result<BTreeMap<String, ToolRecord>> {
         self.tools
             .iter()
-            .map(|(name, tool)| {
-                let record = ToolRecord {
-                    access: tool.access,
-                    title: tool.title.clone(),
-                    catalog: tool.catalog.clone(),
-                    budget: tool.budget,
-                };
-                (name.clone(), record)
-            })
+            .map(|(name, tool)| Ok((name.clone(), ToolRecord::try_from(tool)?)))
             .collect()
     }
 
@@ -276,6 +303,7 @@ impl Project {
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
             ("tools", !self.tools.is_empty()),
+            ("workflows", !self.workflows.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("vars", !self.vars.is_empty()),
             ("database.size", self.database.size.is_some()),

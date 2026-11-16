@@ -1,13 +1,12 @@
 //! What `#[tool]` expands a function into: the function, its record in the
 //! `.berm.abi` section, and the export the host calls.
 
-use berm_abi::{ABI_SECTION, ABI_VERSION, TOOL_PREFIX};
+use crate::{record, schema};
+use berm_abi::{ABI_VERSION, TOOL_PREFIX};
+use heck::ToUpperCamelCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    FnArg, GenericArgument, ItemFn, Pat, PathArguments, ReturnType, Type, ext::IdentExt,
-    meta::ParseNestedMeta,
-};
+use syn::{FnArg, ItemFn, Pat, ReturnType, Type, ext::IdentExt, meta::ParseNestedMeta};
 
 /// JSON Schema for a tool that takes no parameters.
 const DEFAULT_PARAMETERS: &str = r#"{"type":"object"}"#;
@@ -84,16 +83,40 @@ pub(crate) fn expand(options: Options, mut function: ItemFn) -> syn::Result<Toke
     let tool = Tool::read(options, &mut function)?;
     let record = tool.record()?;
     let export = tool.export();
+    let descriptor = tool.descriptor(&function.vis);
     Ok(quote! {
         #function
 
         #record
 
         #export
+        #descriptor
     })
 }
 
 impl Tool {
+    fn descriptor(&self, visibility: &syn::Visibility) -> TokenStream {
+        let name = format_ident!("{}Call", self.name.to_upper_camel_case());
+        let tool = &self.name;
+        let fields = self.params.iter().map(|param| {
+            let ident = &param.ident;
+            let ty = &param.ty;
+            quote!(pub #ident: #ty,)
+        });
+        let output = self
+            .reply
+            .as_ref()
+            .map_or_else(|| quote!(()), |ty| quote!(#ty));
+        quote! {
+            #[derive(::berm_lang::Schema)]
+            #visibility struct #name { #(#fields)* }
+            impl ::berm_lang::workflow::Call for #name {
+                const TARGET: ::berm_lang::workflow::Target = ::berm_lang::workflow::Target::Local { tool: #tool };
+                type Output = #output;
+            }
+        }
+    }
+
     /// Read `function` as a tool, stripping the doc comments off its
     /// parameters, which the compiler does not take.
     fn read(options: Options, function: &mut ItemFn) -> syn::Result<Self> {
@@ -175,7 +198,7 @@ impl Tool {
                 "#[tool] needs CARGO_PKG_NAME",
             ));
         };
-        let mut out = Pieces::default();
+        let mut out = record::Pieces::default();
         out.text(&format!(
             r#"{{"tool":{{"name":{},"description":{},"parameters":"#,
             serde_json::Value::from(self.name.as_str()),
@@ -231,19 +254,7 @@ impl Tool {
             r#"}},"abi_version":{ABI_VERSION},"crate":{}}}"#,
             serde_json::Value::from(krate)
         ));
-        out.flush();
-        let pieces = out.pieces;
-        Ok(quote! {
-            // This tool's record, in a custom section the host reads without
-            // compiling or running the image.
-            const _: () = {
-                const PIECES: &[::berm_lang::schema::Piece] = &[#(#pieces),*];
-                #[used]
-                #[cfg_attr(target_arch = "wasm32", unsafe(link_section = #ABI_SECTION))]
-                static RECORD: [u8; ::berm_lang::schema::len(PIECES)] =
-                    ::berm_lang::schema::render(PIECES);
-            };
-        })
+        Ok(out.emit())
     }
 
     /// The export the host calls: it reads the arguments, calls the tool and
@@ -274,6 +285,7 @@ impl Tool {
             },
         };
         quote! {
+            const _: extern "C" fn() = #symbol;
             #[doc = #doc]
             #[allow(deprecated)]
             #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
@@ -300,50 +312,11 @@ fn reply(output: &ReturnType) -> syn::Result<Option<Type>> {
     let ReturnType::Type(_, ty) = output else {
         return Err(wrong());
     };
-    let Type::Path(path) = &**ty else {
-        return Err(wrong());
-    };
-    let Some(segment) = path.path.segments.last() else {
-        return Err(wrong());
-    };
-    let PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return Err(wrong());
-    };
-    if segment.ident != "Result" {
-        return Err(wrong());
-    }
-    let Some(GenericArgument::Type(reply)) = args.args.first() else {
+    let Some(reply) = schema::inner(ty, "Result") else {
         return Err(wrong());
     };
     Ok(match reply {
         Type::Tuple(unit) if unit.elems.is_empty() => None,
         reply => Some(reply.clone()),
     })
-}
-
-/// A record as JSON text, with each schema left to the type that owns it.
-#[derive(Default)]
-struct Pieces {
-    pieces: Vec<TokenStream>,
-    text: String,
-}
-
-impl Pieces {
-    fn text(&mut self, text: &str) {
-        self.text.push_str(text);
-    }
-
-    fn shape(&mut self, shape: TokenStream) {
-        self.flush();
-        self.pieces
-            .push(quote!(::berm_lang::schema::Piece::Shape(&#shape)));
-    }
-
-    fn flush(&mut self) {
-        if !self.text.is_empty() {
-            let text = std::mem::take(&mut self.text);
-            self.pieces
-                .push(quote!(::berm_lang::schema::Piece::Text(#text)));
-        }
-    }
 }

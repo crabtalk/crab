@@ -2,7 +2,7 @@
 
 use crate::{env::Env, host::Host};
 use anyhow::{Context, Result};
-use berm::{ByTool, Client, Meter, Meters, Service, User, chain, tape::Taping};
+use berm::{ByTool, Client, Ended, Meter, Meters, Outcome, Service, User, chain, tape::Taping};
 use berm_api::{Output, host::NestedCall};
 use std::sync::Arc;
 
@@ -79,23 +79,23 @@ impl<E: Env> Host<E> {
                 own
             });
         let meter = self.metered(meters);
-        let outcome = outcome?;
-        if matches!(outcome.result, Output::Failed(_)) {
-            return Ok(Invoked {
-                result: outcome.result,
-                denied: outcome.denied,
-                meter,
-                own,
-                nested,
-            });
-        }
-        self.commits.commit(outcome.changes, None).await?;
+        let outcome = self.commit_outcome(outcome?).await?;
         Ok(Invoked {
             result: outcome.result,
-            denied: false,
+            denied: outcome.denied,
             meter,
             own,
             nested,
+        })
+    }
+
+    pub(crate) async fn commit_outcome(&self, outcome: Outcome) -> Result<Ended> {
+        if matches!(outcome.result, Output::Done(_)) {
+            self.commits.commit(outcome.changes, None).await?;
+        }
+        Ok(Ended {
+            result: outcome.result,
+            denied: outcome.denied,
         })
     }
 

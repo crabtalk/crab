@@ -1,0 +1,16 @@
+error[E0271]: type mismatch resolving `<NumberCall as Call>::Output == String`
+ --> tests/ui/call_output.rs:9:15
+  |
+9 |     consume::<NumberCall>();
+  |               ^^^^^^^^^^ type mismatch resolving `<NumberCall as Call>::Output == String`
+  |
+note: expected this to be `std::string::String`
+ --> tests/ui/call_output.rs:4:23
+  |
+4 | fn number() -> Result<u64> {
+  |                       ^^^
+note: required by a bound in `consume`
+ --> tests/ui/call_output.rs:7:20
+  |
+7 | fn consume<C: Call<Output = String>>() {}
+  |                    ^^^^^^^^^^^^^^^ required by this bound in `consume`

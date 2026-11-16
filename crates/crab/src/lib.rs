@@ -1,5 +1,6 @@
 //! `crab` — the local host, and the command-line client for it and Cloud.
 
+pub mod caller;
 pub mod cmd;
 pub mod context;
 pub mod fill;

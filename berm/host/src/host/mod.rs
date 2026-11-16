@@ -19,6 +19,7 @@ use crate::{
         store::Store,
     },
     wake,
+    workflow::{Eligibility, Ledger},
 };
 use anyhow::{Context, Result};
 use berm::{
@@ -45,6 +46,7 @@ use tower::Layer;
 
 pub use deploy::Installed;
 
+mod control;
 mod deploy;
 mod fetch;
 mod nest;
@@ -68,6 +70,7 @@ pub struct Inner<E: Env> {
     /// Where the host keeps its state. A daemon may keep tables of its own
     /// here, named apart from the host's.
     pub store: Store,
+    pub workflows: Ledger,
     pub(crate) berm: Arc<Berm>,
     /// Chains in flight. Each holds up to `depth + 1` guests, and a guest past
     /// `Config::instances` fails to instantiate.
@@ -81,6 +84,7 @@ pub struct Inner<E: Env> {
     pub(crate) reserve: Arc<Pool>,
     /// Wakes the timer.
     pub(crate) waking: Notify,
+    pub(crate) scheduling: Notify,
     /// Uses not yet written.
     pub(crate) usage: Counts,
     /// Runs not yet written.
@@ -156,6 +160,8 @@ impl<E: Env> Host<E> {
         } = edges;
         let now: Now = Arc::new(move || clock.now());
         let store = Store::open(state)?;
+        let workflows = Ledger::open(&state.with_extension("workflows.sqlite3"))?;
+        workflows.recover(now()).await?;
         let routes = Routes::open(store.clone()).await?;
         let holds = Holds::open(store.clone()).await?;
         let stops = Stops::open(store.clone()).await?;
@@ -216,12 +222,14 @@ impl<E: Env> Host<E> {
             let berm = Berm::new(&engine, calls, syscalls);
             Inner {
                 store,
+                workflows,
                 berm,
                 gate: Semaphore::new(chains as usize),
                 chains: chains as usize,
                 pools,
                 reserve: engine.reserve.clone(),
                 waking: Notify::new(),
+                scheduling: Notify::new(),
                 usage: used,
                 calls: ran,
                 logs: emitted,
@@ -261,6 +269,8 @@ impl<E: Env> Host<E> {
         tokio::spawn(async move { loading.reconcile().await });
         let waking = self.clone();
         tokio::spawn(async move { waking.wakes().await });
+        let scheduled = self.clone();
+        tokio::spawn(async move { scheduled.workflow_timer().await });
     }
 
     /// Load every service as `services` names it.
@@ -326,6 +336,7 @@ impl<E: Env> Host<E> {
     /// Write what was counted: uses of services this host runs here, and the
     /// rest to the peer each runs on.
     pub(crate) async fn flush(&self) -> Result<()> {
+        self.workflows.expire((self.now)()).await?;
         let _flushing = self.flushing.lock().await;
         let (used, rest) = self
             .usage
@@ -407,6 +418,7 @@ impl<E: Env> Host<E> {
             .clone();
         let _deploying = lock.lock().await;
         let (scope, name) = split(service);
+        self.workflows.invalidate(service).await?;
         self.berm.remove(service);
         self.databases.remove(service)?;
         let removed = service::remove(&self.store, scope, name).await?;
@@ -419,6 +431,21 @@ impl<E: Env> Host<E> {
     /// comes due stays. `false` when it is not deployed.
     pub async fn stop(&self, service: &str) -> Result<bool> {
         self.switch(service, false).await
+    }
+
+    pub async fn workflow_eligibility(&self, id: &str, now: u64) -> Result<Eligibility> {
+        let run = self
+            .workflows
+            .get(id)
+            .await?
+            .context("workflow run was not found")?;
+        if self.get(&run.service).is_none() {
+            return Ok(Eligibility::Removed);
+        }
+        if self.stopped(&run.service) {
+            return Ok(Eligibility::Stopped);
+        }
+        self.workflows.checkpoint_eligibility(id, now).await
     }
 
     /// Whether `service` is stopped.

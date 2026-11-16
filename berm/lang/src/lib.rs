@@ -7,11 +7,13 @@
 //! its reply, each typed by [`Schema`]. A service is a `cdylib` built for
 //! `wasm32-unknown-unknown` by `crab build`, which appends what its `crab.toml`
 //! and its kits declare; a host refuses an image cargo alone links. berm serves
-//! [`call`], [`emit`] ([`emit!`] for an `#[event]` struct), [`now`] and
+//! [`call`], [`emit()`] ([`emit!`] for an `#[event]` struct), [`now`] and
 //! [`random`] itself; [`after`], [`get`], [`set`], [`http::fetch`] and
 //! [`http::proxy`] trap as unknown host calls under a host that does not
-//! register them. What [`set`] writes is kept only if the call the host started
-//! returns a result; what [`emit`] emits is kept whatever it returns.
+//! register them. Storage reads see earlier writes in the same tool call.
+//! Storage changes commit only when the tool returns `Ok`; `Err`, a trap or
+//! an exceeded deadline discards pending changes. What [`emit()`] emits is kept
+//! whatever the call returns.
 //!
 //! ```ignore
 //! #![cfg_attr(target_arch = "wasm32", no_std)]
@@ -43,7 +45,9 @@ extern crate alloc;
 extern crate self as berm_lang;
 
 pub use berm_abi as abi;
-pub use berm_codegen::{Schema, declare_service, error_code, event, syscalls, tool};
+pub use berm_codegen::{
+    Branch, Schema, declare_service, error_code, event, syscalls, tool, workflow,
+};
 pub use call::{
     CallError, Caller, User, after, call, caller, client, client_ip, deny, limit, user, vouch,
 };
@@ -80,6 +84,7 @@ mod sql;
 mod store;
 pub mod test;
 mod var;
+pub mod workflow;
 
 // `wasm.rs` makes real host calls; `stub.rs` is the host a test stands in for.
 #[cfg_attr(target_arch = "wasm32", path = "sys/wasm.rs")]

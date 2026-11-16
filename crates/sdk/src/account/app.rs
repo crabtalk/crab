@@ -1,5 +1,6 @@
 //! App wire types: what lets a website call services from its users' browsers.
 
+use berm_api::host::Caller;
 use serde::{Deserialize, Serialize};
 
 /// The origin that admits a browser on any origin, for an anonymous app with
@@ -26,6 +27,17 @@ pub struct App {
 }
 
 impl App {
+    pub fn authorizes_workflow(&self, original: &Caller, service: &str) -> bool {
+        original.id == self.owner_id
+            && original.app.as_deref() == Some(&self.id)
+            && self.services.iter().any(|allowed| allowed == service)
+            && original.user.as_ref().is_some_and(|user| {
+                self.issuers
+                    .iter()
+                    .any(|issuer| issuer.issuer == user.issuer)
+            })
+    }
+
     /// Whether a browser on `origin` may call through this app.
     pub fn admits(&self, origin: &str) -> bool {
         self.origins

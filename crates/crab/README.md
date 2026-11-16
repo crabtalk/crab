@@ -129,9 +129,30 @@ crab org create acme
 crab --org acme billing
 ```
 
-A service's calls, cost, crons, wakes, visibility and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
+A service's calls, cost, crons, wakes and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
 
-## From a workflow
+## Workflow runs
+
+A deployed service may export workflows as well as tools. Inspect one before starting it:
+
+```sh
+crab workflow inspect owner/service.workflow
+crab workflow run owner/service.workflow '{"question":"What changed?"}' --dry-run
+crab workflow run owner/service.workflow '{"question":"What changed?"}' --yes
+crab workflow status owner/service.workflow <run-id>
+crab workflow continue owner/service.workflow <run-id> --yes
+crab workflow cancel owner/service.workflow <run-id> --yes
+```
+
+Replace the address and input with a deployed workflow's contract. Use `service.workflow` on the local context. `inspect` (also `workflow dry-run`) resolves its graph, dependencies, call-count bounds and current quote without executing application tools. `run --dry-run` also validates the input. Input is JSON, read from stdin when omitted; empty input supplies `{}`.
+
+`run` prints the graph and terms to stderr before confirmation, then returns the accepted run without waiting for completion. The fixed task price is charged only for a successful result. The owner's cumulative managed-spend cap and direct-call/control quote are separate; owner accounting is visible only to owners. Provider accounts charged independently remain outside the managed cap. A quote may change before admission, which revalidates it. `run`, `continue` and `cancel` use the existing confirmation prompt; scripts supply `--yes`. `--json`, also automatic when stdout is piped, prints one JSON inspection or run to stdout; progress and terms stay on stderr.
+
+The run ID prints before admission. If the response is lost, read `status` first. `run --id <run-id>` may resend the same identity with identical input and accepted terms; a different ID creates a new run. `status` includes checkpoints, result, expiry and continuation eligibility. `run`, `status` and `continue` exit `2` for failed, indeterminate or cancelled outcomes, and `0` otherwise. An accepted `cancel` exits `0`.
+
+`continue` retains the original input, image, prepared calls and successful checkpoints, uses the remaining owner cap and rechecks authorization and dependency terms. It never blindly retries an unknown external write; read its refusal and use `crab explain <code>` when provided. Expired or deleted checkpoints cannot continue. `cancel` stops new calls, but cannot recall a request already accepted by an external provider. On the local host, workflow inspection and admission reuse `call`'s unchecked `--caller`, `--issuer` and `--user` flags and default to `local`; admission requires a stable caller. Cloud uses the context credential. Local run controls operate on the local host's retained ledger.
+
+## From GitHub Actions
 
 The deploy is two lines:
 
@@ -155,7 +176,9 @@ Service code calls a running deployment with `berm_lang::call("owner/service", t
 
 Before deployment or template publication, measure the built WebAssembly tool on the local host with the largest supported workloads, add headroom, and check every key against the destination's ceilings. Default ceilings are 100,000 µs CPU (100 ms), 1,000,000 rows read, 1,000,000 written and 128 MiB memory. Rebuild and retest under the chosen budget. Native tests and image builds do not establish that it fits; CLI call meters include nested calls. See [Sizing a budget](https://crabtalk.ai/docs/guides/budgets#size-a-budget-before-deployment).
 
-`inspect(service)` on the local MCP endpoint returns the service definition, including its README and input schemas, and a `prices` map in USD micros (empty locally). Use `search` → `inspect` → `call`; resource reads expose the same caller-filtered definition. Stopped services and services with no callable tools are unavailable through inspection and resources.
+`inspect(service)` on the local MCP endpoint returns the service definition, including its README and input schemas, and a `prices` map in USD micros (empty locally). Use `search` → `inspect` → `call`; resource reads expose the same caller-filtered definition. Stopped services and services with no accessible tools or workflows are unavailable through inspection and resources.
+
+Workflow tools use the same admission contract as HTTP and the CLI. `workflow_inspect({})` lists accessible workflows; supply `service` and `workflow` for the graph, schemas, task price and quote. `workflow_run` takes `{service, workflow, request: {id, quote, input}}`, where `id` is a client-generated UUID. Reuse the identical request after a transport failure. Poll `workflow_status` with `{service, workflow, id}`; `workflow_continue` and `workflow_cancel` take the same arguments. Responses retain the run identity and accepted terms. Continuation is explicit and cancellation cannot undo accepted effects. Local workflow operations default to the trusted operator `local`; the caller header overrides it.
 
 Local MCP clients can send `x-berm-caller: {"id":"alice"}` on requests to `/mcp` to discover and call public tools as that caller. This identity is unverified; without the header, only anonymous tools are discoverable and callable.
 
@@ -175,11 +198,11 @@ The report separates the tool's own CPU, rows and peak memory from whole-chain c
 
 Template versions are immutable: changing an image requires a new package version. Each template retains three release images; its Versions tab selects exact images and lets publishers yank or unyank releases. New copies use the latest non-yanked stable release, or the latest non-yanked prerelease when no stable release is retained. Yanked releases cannot create new copies; existing copies keep working. `crab push DIR --notes "Fix pagination"` attaches up to 2000 characters of release notes. Pruned images become unavailable for new deployments; version identities remain reserved.
 
-`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crabtalk.ai/docs/guides/deploy#automatic-patch-updates).
+`crab deploy --from connect/github --version 1.2.3` selects an exact retained release. Omit `--version` for the latest non-yanked stable release, falling back to prereleases when no stable release is retained. `--auto-upgrade` opts the copy into newer stable patches in the same major and minor version; it is off by default and appears in the approval page. The website’s Deployment card changes this setting and reports failures. Visibility, permission, setup, schedule, incompatible contract and migration changes require manual review. Stopped services stay stopped. Redeploying from history disables automatic updates; switching template sources requires a fresh opt-in. See [Automatic patch updates](https://crabtalk.ai/docs/guides/deploy#automatic-patch-updates).
 
 Deploy history retains the current image and two previous successful images; older records remain without their uploaded image. Existing template copies retain their own images, independently of the publisher’s releases.
 
-`public` exposes a source deployment; `template` controls whether `crab push` publishes or withdraws the image. Both default to `false`. `crab push` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab push services/connect` selects only that catalog; running `crab push` inside it selects the same services. No catalog-level `crab.toml` is needed.
+`public` is embedded in the image and determines visibility for every deployment and template copy; `template` controls whether `crab push` publishes or withdraws the image. Both default to `false`. `crab push` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab push services/connect` selects only that catalog; running `crab push` inside it selects the same services. No catalog-level `crab.toml` is needed.
 
 Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. OCI paths use `<registry>/<owner>/<service>:<Cargo version>` when `image` is declared, or the Cargo package name without it. Deployments pin the OCI artifact digest.
 
@@ -187,7 +210,7 @@ Images upload to the selected host by default. `crab context add local http://lo
 
 `crab deploy` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `image = "connect/tinyfish:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
 
-Published-image deployment creates a private, unpublished instance under the selected account, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed, prices and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
+Published-image deployment creates an unpublished instance under the selected account with visibility from its image, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed, prices and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
 
 `crab deploy --from owner/name` remains available without a manifest. Copies have their own credentials and state.
 

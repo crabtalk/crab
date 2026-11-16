@@ -22,6 +22,16 @@ Tool responses carry `host::DENIED` (`berm-denied: 1`) when the tool refused its
 `Output::Failed` is the service's own report and arrives with the same `200` a
 result does: the call was fine and the tool said no.
 
+## Workflow contracts
+
+`workflow::graph` defines v1 entry records, typed call schemas, symbolic targets, dependencies, guards, and once/optional/each/branch/output shapes. `Entry::digest` hashes compact JSON with recursively sorted object keys; declaration and item order remain significant. `Source` pairs this graph identity with the complete service image digest. Unknown contract versions are refused.
+
+`workflow::run` defines accepted bindings, attempts, prepared payloads, ordered item dispatches and complete checkpoints. Only skipped values supply optional absence; pending, failed and unknown outcomes remain distinct. An unknown call retains its prepared input and operation key. External targets declare their idempotency window in milliseconds; no window forbids redispatch after an unknown outcome. Error records retain response status, headers and the full body, including explanation and recovery fields. Timestamps and durations use epoch milliseconds and milliseconds respectively.
+
+`workflow::Policy` configures the seven-day retention default and each-item ceiling (100 by default). Checkpoint capacity and control resource limits are explicit accepted fields. Workflow compilation emits these records; `berm-host` persists complete runs and executes accepted graphs. `Graph::check` verifies declaration order, bounds, case references, guard consistency and output reachability using the same validator as the compiler.
+
+`workflow::config::Config` reads the matching `[workflows.<name>]` table: access, title, task price, required `max_cost` and `checkpoint_bytes`, control budget, retention and optional UTC schedule/input. The image retains this configuration. Manifest loading checks local call schemas, graph validity, control export signatures and schedule inputs without executing controls. Services may export tools, workflows, or both. `Service.workflows` exposes public entries and task prices; `Runtime.workflows` includes the full owner configuration. Invalid workflow declarations carry the typed `workflow::config::Invalid` error.
+
 ## License
 
 Apache-2.0

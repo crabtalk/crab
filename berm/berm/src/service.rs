@@ -3,6 +3,7 @@
 use crate::{
     Caller, Callsite, Client, Deps, Meter, Meters, Syscall, User, abi, chain,
     code::Source,
+    control,
     engine::{self, Engine, Image},
     journal::{Changes, Journal, Mark},
     meter::{Held, Own, Pool, Running},
@@ -11,9 +12,17 @@ use crate::{
         call::{Calls, Enter, Invoked, Now, Ran, Scope},
     },
     tape::{Deck, Taping},
+    workflow,
 };
 use anyhow::{Context, Result, bail};
-use berm_api::{Budget, Callers, Manifest, Output, Runtime, digest, host};
+use berm_api::{
+    Budget, Callers, Manifest, Output, Runtime, digest, host,
+    workflow::{
+        graph::Target,
+        run::{Binding, Failure},
+        spend::Context as SpendContext,
+    },
+};
 use std::{
     collections::BTreeMap,
     error, fmt,
@@ -43,8 +52,10 @@ pub struct Service {
     deps: Arc<Deps>,
     /// Tool metadata, independent of executable residency.
     tools: BTreeMap<String, Tool>,
+    pub controls: BTreeMap<String, Budget>,
     /// What each invocation runs inside.
     enter: Enter,
+    control_enter: Option<Enter>,
     /// What `berm.now` answers.
     now: Now,
     /// What the services it calls are told it is named: the issuer of a user
@@ -65,6 +76,11 @@ struct Tool {
     query: bool,
     /// What one invocation of it is held to.
     budget: Budget,
+}
+
+pub(crate) enum Entry<'a> {
+    Tool(&'a str),
+    Control { workflow: &'a str, node: &'a str },
 }
 
 pub(crate) enum Load {
@@ -118,8 +134,8 @@ impl Service {
                 }
             }
         }
-        if tools.is_empty() {
-            bail!("service exports no tools");
+        if tools.is_empty() && manifest.workflows.is_empty() {
+            bail!("service exports no tools or workflows");
         }
         if manifest.tools.iter().filter(|tool| tool.stripe).count() > 1 {
             bail!("service declares more than one stripe tool");
@@ -134,6 +150,29 @@ impl Service {
                 .into());
             }
         }
+        for workflow in &manifest.workflows {
+            if let Some(key) = workflow
+                .config
+                .control_budget(engine.budget)
+                .past(&engine.most)
+            {
+                return Err(engine::PastMost {
+                    tool: format!("workflow {}", workflow.entry.name),
+                    key,
+                }
+                .into());
+            }
+        }
+        let controls = manifest
+            .workflows
+            .iter()
+            .map(|workflow| {
+                (
+                    workflow.entry.name.clone(),
+                    workflow.config.control_budget(engine.budget),
+                )
+            })
+            .collect();
         for tool in &manifest.tools {
             if !tools.contains_key(&tool.name) {
                 bail!(
@@ -184,7 +223,9 @@ impl Service {
             deps: Arc::new(manifest.deps.clone()),
             manifest,
             tools,
+            controls,
             enter: calls.enter.clone(),
+            control_enter: calls.control_enter.clone(),
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running,
@@ -202,6 +243,37 @@ impl Service {
     /// The tools this service exports, as its export table reports them.
     pub fn tools(&self) -> impl Iterator<Item = &str> {
         self.tools.keys().map(String::as_str)
+    }
+
+    pub fn binding(&self, target: Target) -> Result<Binding> {
+        let tool = self
+            .manifest
+            .tools
+            .iter()
+            .find(|tool| tool.name == target.tool())
+            .context("workflow target has no declared tool")?;
+        if matches!(target, Target::Service { .. }) {
+            anyhow::ensure!(
+                tool.public && self.reached_by_services(&tool.name),
+                "workflow target does not take service calls"
+            );
+        }
+        Ok(Binding {
+            service: self.name.to_string(),
+            image: digest::prefixed(&self.digest),
+            input: tool.parameters.clone(),
+            output: tool
+                .returns
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({"type":"null"})),
+            budget: self
+                .budget(&tool.name)
+                .context("workflow target has no budget")?,
+            query: tool.query,
+            idempotency_ms: tool.idempotency_ms,
+            authorization: digest::of(&serde_json::to_vec(&(tool.public, tool.callers))?),
+            target,
+        })
     }
 
     /// Whether `tool` is one any caller may reach.
@@ -242,6 +314,7 @@ impl Service {
     pub fn idl(&self, name: &str) -> berm_api::Service {
         let Manifest {
             abi_version: _,
+            public: _,
             crons: _,
             name: _,
             lang: _,
@@ -259,6 +332,7 @@ impl Service {
             readme,
             logo,
             tools,
+            workflows,
         } = &self.manifest;
         berm_api::Service {
             name: name.to_owned(),
@@ -270,6 +344,7 @@ impl Service {
             logo: logo.clone(),
             digest: self.digest.clone(),
             tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
+            workflows: workflows.iter().filter_map(|spec| spec.public()).collect(),
             vars: deps.vars.clone(),
         }
     }
@@ -285,12 +360,49 @@ impl Service {
                 .filter(|tool| !tool.public)
                 .cloned()
                 .collect(),
+            workflows: self.manifest.workflows.clone(),
             deps: self.manifest.deps.clone(),
             events: self.manifest.events.clone(),
             lang: self.manifest.lang.clone(),
             imports: self.manifest.imports.clone(),
             unresolved: Default::default(),
             project: None,
+        }
+    }
+
+    /// Run a registered control export with no application syscalls.
+    pub async fn control(
+        &self,
+        request: control::Request<'_>,
+    ) -> Result<abi::workflow::ControlOutput> {
+        let deadline = request.deadline.min(Instant::now() + self.deadline);
+        let ended = self
+            .invoke(
+                Entry::Control {
+                    workflow: request.workflow,
+                    node: request.node,
+                },
+                serde_json::to_vec(request.input)?,
+                None,
+                None,
+                None,
+                Client::default(),
+                1,
+                true,
+                deadline,
+                chain::next(),
+                Arc::new(Journal::default()),
+                request.meters,
+                Arc::from([self.name.clone()]),
+                None,
+                None,
+            )
+            .await?;
+        match ended.result {
+            Output::Done(result) => {
+                serde_json::from_str(&result).context("invalid workflow control result")
+            }
+            Output::Failed(message) => bail!("{message}"),
         }
     }
 
@@ -341,7 +453,7 @@ impl Service {
         let journal = Arc::new(Journal::default());
         let Ended { result, denied } = self
             .invoke(
-                tool,
+                Entry::Tool(tool),
                 args.into(),
                 caller.map(Caller::Outside),
                 key,
@@ -392,7 +504,7 @@ impl Service {
         let journal = Arc::new(Journal::default());
         let Ended { result, denied } = self
             .invoke(
-                tool,
+                Entry::Tool(tool),
                 args.into(),
                 caller,
                 key,
@@ -428,7 +540,7 @@ impl Service {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn invoke(
         &self,
-        tool: &str,
+        entry: Entry<'_>,
         args: Vec<u8>,
         caller: Option<Caller>,
         key: Option<Arc<str>>,
@@ -445,17 +557,62 @@ impl Service {
         parent: Option<&Callsite>,
     ) -> Result<Ended> {
         let (at_ms, began) = ((self.now)(), Instant::now());
-        let Some(Tool {
-            query: declared,
-            budget,
-        }) = self.tools.get(tool)
-        else {
-            bail!("service exports no tool named {tool:?}");
+        let (label, export, budget, declared, control) = match entry {
+            Entry::Tool(tool) => {
+                let Some(Tool { query, budget }) = self.tools.get(tool) else {
+                    bail!("service exports no tool named {tool:?}");
+                };
+                (
+                    tool.to_owned(),
+                    format!("{}{tool}", abi::TOOL_PREFIX),
+                    *budget,
+                    *query,
+                    false,
+                )
+            }
+            Entry::Control { workflow, node } => {
+                let spec = self
+                    .manifest
+                    .workflows
+                    .iter()
+                    .find(|spec| spec.entry.name == workflow)
+                    .with_context(|| format!("service has no workflow {workflow:?}"))?;
+                let node = spec
+                    .entry
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|entry| entry.id == node)
+                    .with_context(|| format!("workflow {workflow:?} has no node {node:?}"))?;
+                (
+                    format!("{workflow}/{}", node.id),
+                    node.export.clone(),
+                    self.controls[workflow],
+                    true,
+                    true,
+                )
+            }
         };
+        let tool = label.as_str();
 
+        let workflow = parent
+            .and_then(|parent| parent.workflow.clone())
+            .or_else(workflow::current);
+        let deadline = if let Some(context) = &workflow {
+            let left = context.deadline_at.saturating_sub((self.now)());
+            if left == 0 {
+                return Err(Failure { status: 409,headers: BTreeMap::new(),body: serde_json::json!({"error":"workflow attempt deadline expired","explain":SpendContext::EXPIRED}) }.into());
+            }
+            deadline.min(Instant::now() + Duration::from_millis(left))
+        } else {
+            deadline
+        };
         let mut at = Callsite {
             service: self.name.clone(),
             tool: tool.into(),
+            budget,
+            control,
+            workflow,
             deps: self.deps.clone(),
             caller,
             key,
@@ -463,7 +620,7 @@ impl Service {
             client,
             depth,
             stack,
-            query: query || *declared,
+            query: query || declared,
             deadline,
             chain,
             span: parent.map_or(0, |parent| parent.spans.fetch_add(1, Ordering::Relaxed)),
@@ -479,31 +636,63 @@ impl Service {
             database: Arc::default(),
         };
         at.meter(Meter {
-            runs: u64::from(depth == 1),
+            runs: u64::from(depth == 1 && !control),
             calls: 1,
             ..Meter::default()
         });
-        let scope = (self.enter)(self, &at).await?;
-        let image = if args.len() <= self.manifest.buffer {
-            Some(self.image.executable(deadline).await?)
+        let mut scope = if control {
+            match &self.control_enter {
+                Some(enter) => Some(enter(self, &at).await?),
+                None => None,
+            }
         } else {
-            None
+            Some((self.enter)(self, &at).await?)
         };
-        // A refusal drops the scope, which undoes what it holds.
-        let reserved = Held::new(
-            self.running.clone(),
-            self.pool.clone(),
-            self.reserve.clone(),
-            budget.memory,
-        )?;
-        let own = scope.own();
+        let prepared: Result<_> = async {
+            let image = if args.len() <= self.manifest.buffer {
+                Some(self.image.executable(deadline).await?)
+            } else {
+                None
+            };
+            let reserved = Held::new(
+                self.running.clone(),
+                self.pool.clone(),
+                self.reserve.clone(),
+                budget.memory,
+            )?;
+            Ok((image, reserved))
+        }
+        .await;
+        let (image, reserved) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                (self.invoked)(
+                    &at,
+                    tool,
+                    Meter::default(),
+                    Ran {
+                        at: at_ms,
+                        ms: began.elapsed().as_millis() as u64,
+                        outcome: host::Outcome::Refused,
+                    },
+                );
+                if let Some(scope) = &mut scope {
+                    scope.complete().await?;
+                }
+                return Err(error);
+            }
+        };
+        let own = scope.as_ref().is_some_and(|scope| scope.own());
         if own {
             at.journal = Arc::new(Journal::default());
         }
         let held = own.then(|| at.journal.clone());
         let mark = journal.mark();
         let site = at.clone();
+        let buffer = self.manifest.buffer;
         let invocation = Invocation {
+            buffer,
+            control,
             cpu: Arc::new(AtomicU64::new(budget.cpu)),
             limited: false,
             held: reserved,
@@ -517,7 +706,6 @@ impl Service {
             tape,
             memory: None,
         };
-        let buffer = self.manifest.buffer;
         let ended = match invocation.args.len() > buffer {
             true => Ok(Ended {
                 result: Output::Failed("arguments exceeded the input buffer".to_owned()),
@@ -526,25 +714,61 @@ impl Service {
             false => image
                 .as_ref()
                 .expect("input fits the buffer")
-                .call(tool, invocation)
+                .call(&export, invocation)
                 .await
                 .with_context(|| format!("service trapped in {tool}"))
                 .and_then(|finished| ended(finished, buffer)),
         };
-        self.ran(
-            &site,
-            tool,
-            &ended,
-            Ran {
-                at: at_ms,
-                ms: began.elapsed().as_millis() as u64,
-                outcome: match &ended {
-                    Ok(ended) => host::Outcome::of(&ended.result, ended.denied),
-                    Err(_) => host::Outcome::Failed,
+        if control
+            && !matches!(
+                &ended,
+                Ok(Ended {
+                    result: Output::Done(_),
+                    ..
+                })
+            )
+        {
+            site.meter(Meter {
+                failed: 1,
+                ..Meter::default()
+            });
+        }
+        if !control {
+            self.ran(
+                &site,
+                tool,
+                &ended,
+                Ran {
+                    at: at_ms,
+                    ms: began.elapsed().as_millis() as u64,
+                    outcome: match &ended {
+                        Ok(ended) => host::Outcome::of(&ended.result, ended.denied),
+                        Err(_) => host::Outcome::Failed,
+                    },
                 },
-            },
-        );
-        settle(&ended, scope, held, &journal, mark).await?;
+            );
+        }
+        if control {
+            (self.invoked)(
+                &site,
+                tool,
+                site.own.take(),
+                Ran {
+                    at: at_ms,
+                    ms: began.elapsed().as_millis() as u64,
+                    outcome: match &ended {
+                        Ok(ended) => host::Outcome::of(&ended.result, ended.denied),
+                        Err(_) => host::Outcome::Failed,
+                    },
+                },
+            );
+        }
+        if let Some(scope) = &mut scope {
+            scope.complete().await?;
+        }
+        if let Some(scope) = scope {
+            settle(&ended, scope, held, &journal, mark).await?;
+        }
         ended
     }
 
@@ -651,6 +875,8 @@ pub struct Outcome {
 
 /// Guest state for one invocation. Memory is per-invocation.
 pub struct Invocation {
+    pub(crate) control: bool,
+    pub(crate) buffer: usize,
     /// The service this invocation is of, and the chain it sits in.
     pub(crate) at: Callsite,
     /// What `berm.now` answers.

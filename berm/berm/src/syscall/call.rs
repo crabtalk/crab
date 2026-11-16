@@ -6,7 +6,7 @@
 
 use crate::{
     Berm, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Refused, Service, Syscall, abi,
-    clock, wire,
+    clock, service::Entry, wire,
 };
 use anyhow::{Result, bail};
 use berm_api::{Output, host::Outcome};
@@ -71,6 +71,11 @@ pub type Opening = Pin<Box<dyn Future<Output = Result<Box<dyn Scope>>> + Send>>;
 /// What one invocation runs inside, as the host opened it. Dropped without
 /// [`Scope::close`], it undoes what it holds.
 pub trait Scope: Send {
+    /// Complete bookkeeping for a known outcome before changes commit or roll back.
+    fn complete(&mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(async { Ok(()) })
+    }
+
     /// Whether the invocation holds its writes and logs on a journal of its
     /// own, handed to [`Scope::close`].
     fn own(&self) -> bool;
@@ -108,6 +113,7 @@ pub struct Calls {
     pub resolve: Resolve,
     pub named: Named,
     pub enter: Enter,
+    pub control_enter: Option<Enter>,
     pub now: Now,
     pub called: Reported,
     pub invoked: Invoked,
@@ -132,6 +138,7 @@ impl Calls {
             depth,
             resolve: Arc::new(|_, target, _| Ok(target.to_owned())),
             named: Arc::new(str::to_owned),
+            control_enter: None,
             enter: Arc::new(|_, _| Box::pin(async { Ok(Box::new(Unheld) as Box<dyn Scope>) })),
             now: Arc::new(clock::now),
             called: Arc::new(|_, _, _, _| {}),
@@ -149,6 +156,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
         resolve,
         named,
         enter: _,
+        control_enter: _,
         now: _,
         called,
         invoked: _,
@@ -246,7 +254,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                     .collect();
                 let invoked = target
                     .invoke(
-                        tool,
+                        Entry::Tool(tool),
                         args.as_bytes().to_vec(),
                         caller,
                         at.key.clone(),

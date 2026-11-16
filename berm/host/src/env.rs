@@ -1,13 +1,20 @@
 //! The edges a daemon gives its [`Host`](crate::Host): what differs between
 //! running services on a laptop and on a fleet's node.
 
-use crate::Layers;
+use crate::{Layers, deny};
 use anyhow::{Result, bail};
+use axum::http::StatusCode;
 use berm::{
     Callsite, Enter, Meter, Refused, clock,
     syscall::http::{Request, Response},
 };
-use berm_api::host::{Link, Reply, Used};
+use berm_api::{
+    host::{Link, Reply, Used},
+    workflow::{
+        run::{Binding, Receipt},
+        schedule::Occurrence,
+    },
+};
 use std::future::Future;
 
 /// One daemon's edges, as types.
@@ -78,6 +85,35 @@ pub trait Peers: Send + Sync + 'static {
         async move { Err(Refused(format!("this host has no account gateway for {service:?}")).into()) }
     }
 
+    fn binding(
+        &self,
+        _from: &str,
+        service: &str,
+        _tool: &str,
+    ) -> impl Future<Output = Result<Binding>> + Send {
+        async move {
+            Err(deny(
+                StatusCode::FORBIDDEN,
+                format!("this host has no metadata gateway for {service:?}"),
+            )
+            .into())
+        }
+    }
+
+    fn receipt(
+        &self,
+        _from: &str,
+        _run: &str,
+        _dispatch: &str,
+    ) -> impl Future<Output = Result<Option<Receipt>>> + Send {
+        async { Ok(None) }
+    }
+
+    /// Return true after external admission, or false to admit locally.
+    fn scheduled(&self, _occurrence: &Occurrence) -> impl Future<Output = Result<bool>> + Send {
+        async { Ok(false) }
+    }
+
     /// Hand `peer` the uses counted here of services it runs.
     fn ship(&self, peer: &str, used: &[Used]) -> impl Future<Output = Result<()>> + Send;
 }
@@ -119,7 +155,7 @@ pub trait Secrets: Send + Sync + 'static {
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
 }
 
-/// Told of each invocation after it ran, trapped or not. Cannot change how it ended.
+/// Known invocation outcomes, including refusals before guest execution.
 pub trait Observe: Send + Sync + 'static {
     /// `call` is the recorded run on this host, or `None` for a peer link.
     /// `used` excludes nested calls; `at.spent()` includes their CPU time.

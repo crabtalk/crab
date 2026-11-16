@@ -47,6 +47,39 @@ A `public` tool can be called by any account the host authenticates and any serv
 
 Off the guest's target this is an ordinary library, which is why the `cfg_attr` above is worth copying: tools then run under `cargo nextest run` with no wasm toolchain and no daemon. See `berm_lang::test`.
 
+## Call descriptors and branches
+
+`#[tool] fn compare(…)` also emits `CompareCall` beside the function, with the same visibility and public argument fields. It implements `workflow::Call`: `TARGET` is local, `Output` is the tool result type, and `CASES` describes union results. Type aliases preserve this contract. `declare_service!(mail)` adds `mail::SendCall` for its `send` tool; existing `mail::calls::send` and `mail::types` remain available. Imported descriptors retain the IDL's parameter and result schemas. An optional `idempotency_ms` on an imported tool declares its external redispatch window.
+
+`#[derive(Schema, Branch)]` accepts enums whose variants each wrap one distinct payload type. `workflow::Branch` supplies case metadata and the selected name. `workflow::Projection<Payload>::project(value)` consumes the enum and returns its payload only for that case. Imported union clients implement the same traits with distinct `<Enum><Variant>Payload` types in their `types` module; tuple payloads use a transparent wrapper.
+
+## Workflow graphs
+
+Use a unit struct and an inherent impl marked with `#[workflow]`. Every method has one `#[step]`, `#[branch]` or `#[output]`; there is exactly one output. Parameters name earlier producers, with `input` reserved for the common input type.
+
+```rust
+use berm_lang::workflow;
+
+struct EchoFlow;
+
+#[workflow]
+impl EchoFlow {
+    #[step]
+    fn first(input: &str) -> EchoCall {
+        EchoCall { query: input.into(), page: None }
+    }
+
+    #[output]
+    fn done(first: &Echo) -> String {
+        first.query.clone()
+    }
+}
+```
+
+This uses the `EchoCall` and `Echo` from the tool above. A step returns a call descriptor, `Option<Call>`, or `Vec<Call>` with `#[step(each, max = N)]` (1–100). A branch returns a `Branch` enum. Any method may return the existing `Result<T>`. Dependencies are immutable references; each results use slices and optional dependencies use `Option<&T>`. String producers can be borrowed as `&str`; output methods returning `()` may omit the return type. Distinct branch payload types select cases. Required dependencies propagate guards; joins across exclusive paths and the final output use optional references. Failed or pending producers never become optional absence.
+
+The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per method, and a versioned static record in `.berm.abi`. `EchoFlow::WORKFLOW` exposes that record as JSON bytes. Unused nodes, unknown/forward dependencies, impossible required joins and guarded outputs are compile errors. No method body analysis is performed. Configure each workflow under `[workflows.<name>]` in `crab.toml`, with required `max_cost` and positive `checkpoint_bytes`. Access and title are optional; checkpoint retention defaults to seven days. Build/deploy validates graph records and schedules without running controls. Native hosts prepare and execute accepted graphs through [`berm-host`](../host/README.md).
+
 ## Durable event sources
 
 `berm_lang::key::id()` returns the API key ID authenticated by the host, or `None` when no key was supplied. It persists across nested calls and never contains a token. `caller()` still identifies the immediate caller; `user()` identifies the verified end user.
@@ -78,6 +111,10 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 ## Runtime secret resources
 
 Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. The owner grants a resource ID to the deployed service for exact hosts. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
+
+## Storage transactions
+
+Reads within a tool call see its earlier writes, including pending changes from `set` and `set_json`. Storage changes commit only when the tool succeeds with `Ok`; `Err`, a trap or an exceeded deadline discards its pending changes. Independent calls cannot read uncommitted changes. SQL statements and key/value writes share a transaction when SQL storage is declared. HTTP actions and changes already committed by other services are outside that transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).
 
 ## Reaching a runtime
 

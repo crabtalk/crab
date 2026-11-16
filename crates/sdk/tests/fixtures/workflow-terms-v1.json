@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "source": {
+    "image": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "graph": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "execution": {
+    "bindings": {
+      "search": {
+        "target": {
+          "kind": "service",
+          "service": "owner/search",
+          "tool": "search",
+          "idempotency_ms": null
+        },
+        "service": "owner/search",
+        "image": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "input": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "question"
+          ]
+        },
+        "output": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budget": {
+          "cpu": 100000,
+          "read": 0,
+          "written": 0,
+          "memory": 33554432
+        },
+        "authorization": "grant-7"
+      }
+    },
+    "control_budget": {
+      "cpu": 100000,
+      "read": 0,
+      "written": 0,
+      "memory": 33554432
+    },
+    "control_buffer": 16384,
+    "checkpoint_bytes": 4194304,
+    "deadline_ms": 30000
+  },
+  "task_price": 50000,
+  "direct_cost": 30000,
+  "max_cost": 40000,
+  "rate_revision": "rates-1",
+  "dependencies": {
+    "search": {
+      "price": 1000,
+      "allowance": 30000
+    }
+  },
+  "external_billing": [
+    "provider-account"
+  ],
+  "rates": {
+    "runs": 150000000,
+    "overage": 20000,
+    "read": 1000000,
+    "written": 1000000000,
+    "held": 12,
+    "proxied": null
+  }
+}

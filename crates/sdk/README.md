@@ -48,14 +48,24 @@ A `429` that names its `Retry-After` is sent again after that wait, up to three 
 
 Billing balances keep purchased funds in `Credit::micros` and trial funds in `Credit::trial`, with grant amount, reserved funds and expiry. `Credit::recovery_until` records the account's hosting recovery deadline, including accounts that never received trial credit. `PublicPlan::trial` and `Verification::trial` expose the verification offer. `CreditHistory` reports purchased and trial activity separately.
 
+Workflow commercial contracts live in `services::workflow`. `Terms` keeps the fixed customer task price, conservative direct-call quote, and cumulative owner cap separate, with accepted execution bindings, an immutable rate snapshot and revision, and independently billed providers. `Spend` retains incurred and reserved USD micros as exact decimal strings; `Settlement` carries reservation or transaction identities. Execution contracts are in `berm_api::workflow`. Consumer inspection and run responses omit private owner accounting unless the authenticated caller manages the service.
+
+Deployment responses and template manifests retain workflow declarations from the image. Public `berm_api::Service.workflows` contains entry/graph, access, title and task price; owner `berm_api::Runtime.workflows` includes the full configuration. Older service responses may omit these fields.
+
+## Workflow runs
+
+`Client::workflow(service, workflow, caller)` inspects the entry without executing it. `Client::start_workflow(service, workflow, &Start { id, quote, input }, caller)` returns the admitted run with its accepted terms. Generate a UUID for each new run; reuse the same identity, quote and input when retrying an unanswered request. Transport retries never start another attempt. On Cloud, pass `None` for `caller`; a local host accepts an explicitly supplied, unverified `berm_api::host::Caller`.
+
+`Client::workflow_run(service, workflow, run)` reads retained outcomes. `continue_workflow` and `cancel_workflow` take the same arguments. Continuation is manual and preserves completed checkpoints, original payloads and operation keys. Cancellation stops new dispatches, drains in-flight work and does not undo effects. Only the owner and original authenticated initiator can read or manage a Cloud run. The SDK's optional accounting fields contain owner-only terms, incurred/reserved spend and customer settlement.
+
 ## Modules
 
 | Module    | Holds                                               |
 | --------- | --------------------------------------------------- |
 | `account` | Auth, users, orgs and teams, API keys, apps, billing |
-| `services` | Services: deploys, secrets, visibility, meters, costs |
+| `services` | Services: deploys, secrets, meters, costs |
 | `system`  | `/meta` (version, rates) and feedback               |
-| `mcp` | Shared tool names, input schemas, discovery and inspection types |
+| `mcp` | Shared tool names, workflow actions and argument schemas, discovery and inspection types |
 | `error`   | The two error envelopes the API answers with        |
 | `format`  | Byte counts in B, KB, MB, GB and TB (powers of 1024) |
 | `client`  | `Client`, `Owner`, `Error` (feature `client`)        |
@@ -67,3 +77,7 @@ Billing balances keep purchased funds in `Credit::micros` and trial funds in `Cr
 Apache-2.0
 
 Service usage includes an optional `database` snapshot with `used`, `limit` and epoch-second `at`. Missing snapshots from older hosts are unknown. Account periods expose `storage.databases` and `storage.objects`, the two components of allocated storage.
+
+Billing entries distinguish tool and workflow sales with `price::Kind`. Workflow settlement separates owner and unpriced runs from held, released and settled customer prices. A successful run has one settled customer charge across all attempts.
+
+`Earned::net` reports profit after all attributed costs. `Earned::payable` excludes costs already charged to the owning account; payout calculations use this balance before transfer fees.

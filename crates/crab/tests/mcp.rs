@@ -119,7 +119,7 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         )
         .await?;
     let advertised = listed["result"]["tools"].as_array().unwrap();
-    assert_eq!(advertised.len(), 3);
+    assert_eq!(advertised.len(), 8);
     let inspect = advertised
         .iter()
         .find(|tool| tool["name"] == "inspect")
@@ -275,5 +275,93 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         )
         .await?;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn local_mcp_workflows_share_quotes_run_identity_and_controls() -> Result<()> {
+    let image = fixture::image("berm-fixture")?;
+    let root = tempfile::tempdir()?;
+    let node = Node::new(
+        root.path().into(),
+        root.path().join("secrets.toml"),
+        8,
+        Duration::from_secs(10),
+        Duration::from_secs(30),
+        None,
+    )
+    .await?;
+    let digest = node.keep(&image).await?;
+    let deploy: Deploy =
+        serde_json::from_value(json!({"reference":digest,"digest":digest,"force":true}))?;
+    node.deploy("flow", deploy).await?;
+    let mut client = Client {
+        router: node.clone().router(),
+        session: None,
+    };
+    let (status, headers, _) = client.post(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}), None).await?;
+    assert_eq!(status, StatusCode::OK);
+    client.session = Some(headers["mcp-session-id"].to_str()?.to_owned());
+    client
+        .post(
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+            None,
+        )
+        .await?;
+    let inspected = client
+        .call(
+            "workflow_inspect",
+            json!({"service":"flow","workflow":"workflow_flow"}),
+            None,
+        )
+        .await?;
+    assert_eq!(inspected["isError"], false, "{inspected}");
+    assert!(inspected["structuredContent"]["entry"]["graph"]["nodes"].is_array());
+    let id = uuid::Uuid::new_v4().to_string();
+    let arguments = json!({"service":"flow","workflow":"workflow_flow","request":{"id":id,"quote":inspected["structuredContent"]["quote"],"input":{"count":2,"take":false}}});
+    let started = client.call("workflow_run", arguments.clone(), None).await?;
+    assert_eq!(started["isError"], false, "{started}");
+    assert_eq!(started["structuredContent"]["id"], id);
+    assert_eq!(
+        started["structuredContent"]["accepted"]["quote"],
+        inspected["structuredContent"]["quote"]
+    );
+    let control = json!({"service":"flow","workflow":"workflow_flow","id":id});
+    let complete = time::timeout(Duration::from_secs(10), async {
+        loop {
+            let run = client
+                .call("workflow_status", control.clone(), None)
+                .await
+                .unwrap();
+            assert_eq!(run["isError"], false, "{run}");
+            if run["structuredContent"]["status"] != "pending"
+                && run["structuredContent"]["status"] != "running"
+            {
+                break run;
+            }
+            time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await?;
+    assert_eq!(
+        complete["structuredContent"]["status"], "succeeded",
+        "{complete}"
+    );
+    let repeat = client.call("workflow_run", arguments, None).await?;
+    assert_eq!(
+        repeat["structuredContent"]["attempts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let refused = client
+        .call("workflow_continue", control.clone(), None)
+        .await?;
+    assert_eq!(refused["isError"], true);
+    assert_eq!(refused["structuredContent"]["status"], 409, "{refused}");
+    assert_eq!(refused["structuredContent"]["explain"], "E0064");
+    let cancelled = client.call("workflow_cancel", control, None).await?;
+    assert_eq!(cancelled["structuredContent"]["status"], "succeeded");
     Ok(())
 }

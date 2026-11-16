@@ -10,6 +10,7 @@ keywords = ["berm", "wasm", "sandbox", "sqlite", "mcp"]
 categories = ["wasm", "virtualization"]
 
 [dependencies]
+uuid = { workspace = true, features = ["v4"] }
 anyhow.workspace = true
 axum.workspace = true
 berm = { workspace = true, features = ["sqlite"] }
@@ -33,5 +34,7 @@ wasmparser = { workspace = true, optional = true }
 test = ["dep:berm-build", "dep:wasmparser"]
 
 [dev-dependencies]
+tempfile.workspace = true
+wat.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 toml.workspace = true

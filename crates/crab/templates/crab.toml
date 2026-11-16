@@ -24,11 +24,9 @@ access = "public"
 # Durable state is shared by every caller of this deployment.
 [tools.remember]
 access = "public"
-catalog = "memory.put"
 
 [tools.recall]
 access = "public"
-catalog = "memory.get"
 
 # Outbound HTTP destinations. Omitted or empty lists allow none.
 # [http]

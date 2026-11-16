@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "name": "research",
+  "graph": {
+    "input": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ]
+    },
+    "output": {
+      "type": "string"
+    },
+    "nodes": [
+      {
+        "id": "search",
+        "export": "berm_workflow_research_search",
+        "dependencies": [
+          {
+            "source": {
+              "kind": "input"
+            },
+            "optional": false,
+            "case": null
+          }
+        ],
+        "guards": [],
+        "kind": "step",
+        "call": {
+          "target": {
+            "kind": "service",
+            "service": "owner/search",
+            "tool": "search",
+            "idempotency_ms": null
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "question": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "question"
+            ]
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cases": []
+        },
+        "mode": {
+          "kind": "once"
+        }
+      },
+      {
+        "id": "report",
+        "export": "berm_workflow_research_report",
+        "dependencies": [
+          {
+            "source": {
+              "kind": "node",
+              "id": "search"
+            },
+            "optional": false,
+            "case": null
+          }
+        ],
+        "guards": [],
+        "kind": "output"
+      }
+    ]
+  }
+}

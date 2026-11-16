@@ -75,7 +75,7 @@ fn a_services_tools_are_read_and_a_kits_are_refused() {
     assert_eq!(search.access, Some(Access::Services));
     assert_eq!(search.price, Some(2_000));
     assert_eq!(
-        service.records()["search"].catalog.as_deref(),
+        service.records().unwrap()["search"].catalog.as_deref(),
         Some("web.search")
     );
     let kit = read("[tools.search]\naccess = \"public\"\n").unwrap();
@@ -281,4 +281,15 @@ fn builds_need_no_image_and_the_old_name_key_is_rejected() {
 fn service_call_destinations_are_not_manifest_declarations() {
     let error = read("calls = [\"alice/weather\"]").unwrap_err();
     assert!(format!("{error:#}").contains("calls"), "{error:#}");
+}
+
+#[test]
+fn tool_idempotency_windows_are_target_owned_and_positive() {
+    let project = read("[tools.send]\nidempotency = \"24h\"\n").unwrap();
+    assert_eq!(
+        project.records().unwrap()["send"].idempotency_ms,
+        Some(86_400_000)
+    );
+    assert!(read("[tools.send]\nidempotency = \"0s\"\n").is_err());
+    assert!(read("[tools.send]\nidempotency = \"1ns\"\n").is_err());
 }

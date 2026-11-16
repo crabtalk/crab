@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
+pub mod workflow;
+
 pub const SEARCH: &str = "search";
 pub const INSPECT: &str = "inspect";
 pub const CALL: &str = "call";
@@ -17,7 +19,9 @@ pub const REQUEST_SCHEME: &str = "crab-request://";
 pub const REQUEST_TEMPLATE: &str = "crab-request://{code}";
 
 pub const INSTRUCTIONS: &str = "Find services with `search`, use `inspect` for a service's \
-    README, tool schemas and prices, then run a tool with `call`.";
+    README, tool schemas and prices, then run a tool with `call`. Use `workflow_inspect` \
+    to discover workflow graphs and quotes, `workflow_run` to admit a run, and `workflow_status` \
+    to poll it. Continuation is explicit through `workflow_continue`.";
 
 pub const SEARCH_DESCRIPTION: &str = "Find services whose name, description or tools match a \
     query, best first, each with the tools it can be called on and their prices in USD micros.";

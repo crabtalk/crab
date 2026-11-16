@@ -41,7 +41,7 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
-    /// What the account's priced tools earned, a UTC calendar month each,
+    /// What the account's priced operations earned, a UTC calendar month each,
     /// newest first.
     pub async fn earnings(&self) -> Result<Earnings, Error> {
         let path = format!("{}/earnings", self.account()?.api());

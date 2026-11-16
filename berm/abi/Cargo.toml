@@ -11,3 +11,4 @@ categories = ["wasm", "no-std"]
 
 [dependencies]
 serde = { workspace = true, features = ["alloc"] }
+serde_json = { workspace = true, features = ["alloc"] }

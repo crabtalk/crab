@@ -7,6 +7,7 @@ use std::{collections::BTreeMap, fmt, net::IpAddr};
 /// Header carrying a tool call's [`Meter`], summed over every
 /// service the call reached, as JSON.
 pub const METER: &str = "berm-meter";
+pub const LAUNCHED: &str = "berm-launched";
 
 /// Response header set to `1` when a tool refused its caller.
 pub const DENIED: &str = "berm-denied";
@@ -258,6 +259,16 @@ pub struct Route {
 /// the chain it runs as.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retained_until: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted: Option<crate::workflow::run::Binding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<crate::workflow::spend::Context>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
     /// What the called service is told called it: a service's name, or
     /// nothing for a wake.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -284,6 +295,8 @@ pub struct Link {
 /// How a call between hosts ended, when the called service ran.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reply {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launched: Option<bool>,
     pub result: Output,
     /// The service refused its caller, through `berm.deny`.
     pub denied: bool,
@@ -300,6 +313,7 @@ pub struct Reply {
 pub enum Kind {
     Event,
     Tool,
+    Workflow,
 }
 
 /// Who used it.

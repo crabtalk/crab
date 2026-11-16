@@ -4,10 +4,12 @@ use crate::{
     host,
     record::calls::{self, Unsaved},
     state::store::Store,
-    wake::cron,
 };
 use anyhow::Result;
-use berm_api::host::{self as wire, CronJob};
+use berm_api::{
+    host::{self as wire, CronJob},
+    schedule as cron,
+};
 use rusqlite::{OptionalExtension, params};
 
 /// One pending wake.

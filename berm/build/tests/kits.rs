@@ -204,20 +204,22 @@ fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
     write(
         root,
         "provider/crab.toml",
-        "image = \"fixtures/provider\"\nlogo = \"https://example.com/provider.svg\"\n",
+        "image = \"fixtures/provider\"\nlogo = \"https://example.com/provider.svg\"\npublic = true\n",
     );
 
     let built = berm_build::build(&root.join("app"), None).unwrap();
     let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();
     assert!(manifest.logo.is_none());
+    assert!(!manifest.public);
 
     write(
         root,
         "app/crab.toml",
-        "image = \"fixtures/app\"\nlogo = \"https://example.com/app.svg\"\n",
+        "image = \"fixtures/app\"\nlogo = \"https://example.com/app.svg\"\npublic = true\n",
     );
     let built = berm_build::build(&root.join("app"), None).unwrap();
     let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();
+    assert!(manifest.public);
     assert_eq!(
         manifest.logo.unwrap().as_str(),
         "https://example.com/app.svg"

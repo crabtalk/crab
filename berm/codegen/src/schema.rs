@@ -152,7 +152,7 @@ fn named_fields(fields: &FieldsNamed) -> (Vec<TokenStream>, Vec<TokenStream>) {
         let description = if description.is_empty() { description } else { serde_json::Value::from(description).to_string() };
         let ty = &field.ty;
         let shape = quote!(::berm_lang::schema::Field { name: #name, description: #description, shape: &<#ty as ::berm_lang::Schema>::SHAPE });
-        let skip = optional(ty).then(|| quote!(#[serde(default, skip_serializing_if = "::core::option::Option::is_none")]));
+        let skip = inner(ty, "Option").is_some().then(|| quote!(#[serde(default, skip_serializing_if = "::core::option::Option::is_none")]));
         (shape, quote!(#skip #ident: #ty,))
     }).unzip()
 }
@@ -247,21 +247,23 @@ pub fn error_code(mut item: syn::ItemEnum) -> syn::Result<TokenStream> {
     })
 }
 
-/// Whether a type is `Option<T>`, which may be absent.
-pub fn optional(ty: &Type) -> bool {
-    if let Type::Path(path) = ty
-        && let Some(segment) = path.path.segments.last()
-        && segment.ident == "Option"
-        && let PathArguments::AngleBracketed(args) = &segment.arguments
-        && let Some(GenericArgument::Type(_)) = args.args.first()
-    {
-        return true;
+pub(crate) fn inner<'a>(ty: &'a Type, name: &str) -> Option<&'a Type> {
+    let Type::Path(path) = ty else { return None };
+    let segment = path.path.segments.last()?;
+    if segment.ident != name {
+        return None;
     }
-    false
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    match arguments.args.first()? {
+        GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    }
 }
 
 /// A variant's name as serde's `snake_case` writes it.
-fn snake(name: &str) -> String {
+pub(crate) fn snake(name: &str) -> String {
     let mut snake = String::new();
     for (at, character) in name.char_indices() {
         if at > 0 && character.is_uppercase() {

@@ -16,3 +16,20 @@ fn headroom_rounds_up_in_the_manifest_units_and_does_not_clip_to_ceilings() {
     assert_eq!(limits.over(most).past(&most), Some("cpu"));
     assert_eq!(most.past(&most), None);
 }
+
+#[test]
+fn overflowing_memory_limits_stay_above_host_ceilings() {
+    let budget = Budget {
+        cpu: 1,
+        read: 1,
+        written: 1,
+        memory: 1 << 30,
+    };
+    let configured = Limits {
+        memory: Some(u64::MAX),
+        ..Limits::default()
+    }
+    .over(budget);
+    assert_eq!(configured.memory, u64::MAX);
+    assert_eq!(configured.past(&budget), Some("memory"));
+}

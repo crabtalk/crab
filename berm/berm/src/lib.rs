@@ -7,7 +7,7 @@
 //! otherwise only the [`Syscall`]s the embedder passed in, built with
 //! [`syscall`]'s constructors; any other import traps. What `berm.set` and
 //! `berm.emit` write comes back from [`Service::call`] as [`Changes`] for the
-//! host to commit as one, and every invocation runs inside a [`Scope`] the host
+//! host to commit as one, and application tool invocations run inside a [`Scope`] the host
 //! opens through [`Calls::enter`].
 //!
 //! ```ignore
@@ -22,6 +22,7 @@ pub use anyhow;
 use anyhow::Result;
 pub use berm_abi as abi;
 pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
+use berm_api::{digest, workflow::spend::Context as SpendContext};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine, MissingHostCall, PastMost};
 use journal::Journal;
@@ -47,6 +48,7 @@ mod bound;
 pub mod chain;
 pub mod clock;
 mod code;
+pub mod control;
 #[cfg(feature = "sqlite")]
 pub mod database;
 mod engine;
@@ -58,6 +60,7 @@ mod service;
 pub mod syscall;
 pub mod tape;
 pub mod wire;
+pub mod workflow;
 
 /// What a syscall answers with, once it has. An `Err` reaches the guest as a
 /// failure message on the same wire as a result.
@@ -76,6 +79,9 @@ pub struct Callsite {
     pub service: Arc<str>,
     /// The tool this invocation runs.
     pub tool: Arc<str>,
+    pub budget: Budget,
+    pub control: bool,
+    pub workflow: Option<SpendContext>,
     /// What this service's manifest declares it reaches for.
     pub deps: Arc<Deps>,
     /// Who made this call: whoever the embedder named at the chain's first
@@ -218,6 +224,19 @@ impl Berm {
             .write()
             .expect("deployed services")
             .insert(name.to_owned(), service.clone());
+        Ok(service)
+    }
+
+    /// Load a retained image without changing the deployed service.
+    pub fn retained(&self, name: &str, image: &[u8]) -> Result<Arc<Service>> {
+        if let Some(service) = self
+            .get(name)
+            .filter(|service| service.digest == digest::hex(image))
+        {
+            return Ok(service);
+        }
+        let service = self.load(name, image, Load::Deploy)?;
+        service.pool.fits(service.bytes)?;
         Ok(service)
     }
 

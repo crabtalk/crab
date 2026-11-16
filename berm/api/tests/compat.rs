@@ -157,3 +157,12 @@ fn runtime_secret_resource_capability_requires_upgrade_review() {
     assert!(combined.secret_resources);
     assert!(!combined.is_empty());
 }
+
+#[test]
+fn automatic_upgrades_require_review_for_visibility_changes_in_either_direction() {
+    let private = manifest(json!({}), json!({}));
+    let mut public = private.clone();
+    public.public = true;
+    assert!(private.upgrade_requires_review(&public));
+    assert!(public.upgrade_requires_review(&private));
+}
