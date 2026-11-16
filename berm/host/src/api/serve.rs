@@ -48,6 +48,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/runtime", get(runtime::<E>))
         .route("/terms", get(terms::<E>))
         .route("/workflow-offers/{workflow}", get(workflow_offer::<E>))
+        .merge(crate::api::workflow::router::<E>())
         .route("/workflow-bindings/{tool}", get(workflow_binding::<E>))
         .route("/usage", get(usage::<E>))
         .route("/meters", get(meters::<E>))

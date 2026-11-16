@@ -1,0 +1,2 @@
+CREATE TABLE executions (run TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE, attempt TEXT NOT NULL, PRIMARY KEY (run, attempt));
+CREATE TABLE admissions (run TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, inspection BLOB NOT NULL, request_hash TEXT NOT NULL);

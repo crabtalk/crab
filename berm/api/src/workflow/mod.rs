@@ -5,6 +5,7 @@ pub mod config;
 pub mod graph;
 pub mod run;
 pub mod spend;
+pub mod view;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Offer {

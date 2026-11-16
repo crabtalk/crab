@@ -361,6 +361,8 @@ impl Run {
     pub const BUSY: &'static str = "E0068";
     pub const REMOVED: &'static str = "E0069";
     pub const CAPACITY: &'static str = "E0070";
+    pub const SERVICES_ONLY: &'static str = "E0073";
+    pub const INITIATOR: &'static str = "E0072";
     pub const FINISHED: &'static str = "E0064";
 
     pub fn check_continuation(&self, entry: &Entry, now: u64) -> Result<(), String> {

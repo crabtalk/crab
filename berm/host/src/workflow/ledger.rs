@@ -10,6 +10,7 @@ use berm_api::{
             Status,
         },
         spend::Context as SpendContext,
+        view,
     },
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
@@ -19,6 +20,8 @@ use uuid::Uuid;
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0001.sql"),
     include_str!("migrations/0002.sql"),
+    include_str!("migrations/0003.sql"),
+    include_str!("migrations/0004.sql"),
 ];
 
 #[derive(Clone)]
@@ -71,7 +74,7 @@ impl fmt::Display for Refused {
             Self::Missing => f.write_str("workflow run was not found"),
             Self::Busy => f.write_str("workflow run is claimed by another attempt"),
             Self::Expired => f.write_str("workflow checkpoints have expired"),
-            Self::Removed => f.write_str("workflow service was deleted"),
+            Self::Removed => f.write_str("workflow service or retained execution data was removed"),
             Self::Deadline => f.write_str("workflow attempt deadline expired"),
             Self::Cancelled => f.write_str("workflow cancellation stopped new dispatch"),
             Self::Unsafe(message) => f.write_str(message),
@@ -113,7 +116,29 @@ impl Ledger {
             .await?
     }
 
-    pub async fn insert(&self, mut run: Run, image: Vec<u8>, grant: StorageGrant) -> Result<()> {
+    pub async fn insert(&self, run: Run, image: Vec<u8>, grant: StorageGrant) -> Result<()> {
+        self.insert_admission(run, image, grant, None).await
+    }
+
+    pub async fn admit(
+        &self,
+        run: Run,
+        image: Vec<u8>,
+        grant: StorageGrant,
+        inspection: view::Inspection,
+        request_hash: String,
+    ) -> Result<()> {
+        self.insert_admission(run, image, grant, Some((inspection, request_hash)))
+            .await
+    }
+
+    async fn insert_admission(
+        &self,
+        mut run: Run,
+        image: Vec<u8>,
+        grant: StorageGrant,
+        admission: Option<(view::Inspection, String)>,
+    ) -> Result<()> {
         ensure!(
             run.status == Status::Pending && run.attempts.is_empty(),
             "new workflow runs must be pending without attempts"
@@ -205,7 +230,16 @@ impl Ledger {
         let entry = spec.entry.clone();
         let body = Self::encode(&run)?;
         self.transaction(move |tx| {
-            ensure!(Self::load(tx, &run.id)?.is_none(), "workflow run identity already exists");
+            if let Some(existing)=Self::load(tx,&run.id)? {
+                if let Some((_,hash))=&admission {
+                    let original:Option<String>=tx.query_row("SELECT request_hash FROM admissions WHERE run=?1",[&run.id],|row|row.get(0)).optional()?;
+                    if original.as_ref()!=Some(hash) {return Err(Refused::Invalid("workflow run identity was reused with different arguments".into()).into());}
+                }
+                ensure!(existing.run.service==run.service && existing.run.workflow==run.workflow && existing.run.source==run.source && existing.run.input==run.input && existing.run.accepted==run.accepted,"workflow run identity already exists");
+                return Ok(());
+            }
+            let consumed: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM identities WHERE run=?1)", [&run.id], |row| row.get(0))?;
+            if consumed { return Err(Refused::Removed.into()); }
             let mut needed = run.accepted.checkpoint_bytes;
             let retained: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM runs WHERE scope=?1 AND image=?2)",
@@ -217,8 +251,35 @@ impl Ledger {
             tx.execute("INSERT OR IGNORE INTO images(digest,image,bytes) VALUES (?1,?2,?3)", params![run.source.image, image, i64::try_from(image.len())?])?;
             tx.execute("INSERT INTO runs(id,scope,service,workflow,image,capacity,expires_at,body,entry) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 params![run.id, grant.scope, run.service, run.workflow, run.source.image, i64::try_from(run.accepted.checkpoint_bytes)?, i64::try_from(run.expires_at)?, body, serde_json::to_vec(&entry)?])?;
+            if let Some((inspection,hash))=admission {
+                tx.execute("INSERT INTO identities(run,request_hash) VALUES(?1,?2)",params![run.id,hash])?;
+                tx.execute("INSERT INTO admissions(run,inspection,request_hash) VALUES(?1,?2,?3)",params![run.id,serde_json::to_vec(&inspection)?,hash])?;
+            }
             Ok(())
         }).await
+    }
+
+    pub async fn admission(&self, id: &str) -> Result<Option<(view::Inspection, String)>> {
+        let id = id.to_owned();
+        let found: Option<(Option<Vec<u8>>, String)> = self
+            .store
+            .read(move |conn| {
+                conn.query_row(
+                    "SELECT a.inspection,i.request_hash FROM identities i
+                     LEFT JOIN admissions a ON a.run=i.run WHERE i.run=?1",
+                    [id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+            })
+            .await?;
+        match found {
+            Some((Some(inspection), hash)) => {
+                Ok(Some((serde_json::from_slice(&inspection)?, hash)))
+            }
+            Some((None, _)) => Err(Refused::Removed.into()),
+            None => Ok(None),
+        }
     }
 
     pub async fn get(&self, id: &str) -> Result<Option<Run>> {
@@ -228,6 +289,56 @@ impl Ledger {
                 Ok(Self::load(conn, &id).map(|record| record.map(|record| record.run)))
             })
             .await?
+    }
+
+    pub async fn view(&self, id: &str, now: u64) -> Result<Option<view::Run>> {
+        let id = id.to_owned();
+        self.store.read(move |conn| Ok((|| -> Result<_> {
+            let Some(record) = Self::load(conn, &id)? else { return Ok(None) };
+            if now>=record.run.expires_at {return Err(Refused::Expired.into());}
+            let refusal = match Self::eligibility(&record, now) {
+                Eligibility::Available => record.run.check_continuation(&record.entry,now).err().map(Refused::Unsafe),
+                Eligibility::Busy => Some(Refused::Busy),
+                Eligibility::Expired => Some(Refused::Expired),
+                Eligibility::Removed => Some(Refused::Removed),
+                Eligibility::Stopped => Some(Refused::Ineligible),
+                Eligibility::NotFailed => Some(Refused::Ineligible),
+            };
+            let continuation = match refusal {
+                None => view::Continuation::Available,
+                Some(error) => {
+                    let denied = crate::Denied::from(anyhow::Error::from(error));
+                    let reason = Failure {status:denied.status.as_u16(), headers:Default::default(), body:serde_json::json!({"error":denied.message,"explain":denied.explain})};
+                    view::Continuation::Unavailable {reason}
+                }
+            };
+            Ok(Some(view::Run::from_native(&record.run, continuation)))
+        })())).await?
+    }
+
+    pub async fn entry(&self, id: &str) -> Result<Option<Entry>> {
+        let id = id.to_owned();
+        self.store
+            .read(move |conn| {
+                Ok(Self::load(conn, &id).map(|record| record.map(|record| record.entry)))
+            })
+            .await?
+    }
+
+    pub async fn launch(&self, claim: &Claim, now: u64) -> Result<bool> {
+        let claim = claim.clone();
+        self.transaction(move |tx| {
+            let record = Self::fenced(tx, &claim)?;
+            if !record.lease.is_some_and(|until| until > now) {
+                return Err(Refused::Deadline.into());
+            }
+            let inserted = tx.execute(
+                "INSERT OR IGNORE INTO executions(run,attempt) VALUES(?1,?2)",
+                params![claim.run, claim.attempt],
+            )?;
+            Ok(inserted == 1)
+        })
+        .await
     }
 
     pub async fn image(&self, id: &str) -> Result<Vec<u8>> {

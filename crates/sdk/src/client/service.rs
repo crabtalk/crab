@@ -356,7 +356,7 @@ impl Client {
         }
     }
 
-    fn as_caller(
+    pub(crate) fn as_caller(
         &self,
         request: RequestBuilder,
         caller: Option<&Caller>,

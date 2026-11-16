@@ -194,6 +194,25 @@ impl<E: Env> Host<E> {
         })
     }
 
+    pub async fn preflight_workflow(&self, id: &str) -> Result<()> {
+        let run = self
+            .workflows
+            .get(id)
+            .await?
+            .ok_or(LedgerRefused::Missing)?;
+        self.workflow_owner(&run).await?;
+        match self
+            .workflows
+            .view(id, (self.now)())
+            .await?
+            .ok_or(LedgerRefused::Missing)?
+            .continuation
+        {
+            berm_api::workflow::view::Continuation::Available => Ok(()),
+            berm_api::workflow::view::Continuation::Unavailable { reason } => Err(reason.into()),
+        }
+    }
+
     /// The embedder authorizes admission; this entry starts a pending, accepted run.
     pub async fn claim_workflow(&self, id: &str, intent: Intent) -> Result<Claim> {
         let run = self
@@ -295,6 +314,31 @@ impl<E: Env> Host<E> {
 
     /// The embedder has claimed the attempt and authorized its spend context.
     pub async fn execute_claimed_workflow(&self, claim: Claim) -> Result<Run> {
+        if !self.workflows.launch(&claim, (self.now)()).await? {
+            return Err(LedgerRefused::Busy.into());
+        }
+        self.execute_started_workflow(claim).await
+    }
+
+    pub async fn launch_workflow(&self, claim: Claim, context: Option<SpendContext>) -> Result<()> {
+        if self.workflows.launch(&claim, (self.now)()).await? {
+            let host = self.clone();
+            tokio::spawn(async move {
+                let result = match context {
+                    Some(context) => {
+                        workflow::scope(context, host.execute_started_workflow(claim)).await
+                    }
+                    None => host.execute_started_workflow(claim).await,
+                };
+                if let Err(error) = result {
+                    tracing::error!(%error,"workflow execution interrupted");
+                }
+            });
+        }
+        Ok(())
+    }
+
+    async fn execute_started_workflow(&self, claim: Claim) -> Result<Run> {
         let run = self
             .workflows
             .get(&claim.run)
