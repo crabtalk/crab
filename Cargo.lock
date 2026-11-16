@@ -1161,6 +1161,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-page-watch"
+version = "0.1.6"
+dependencies = [
+ "anyhow",
+ "berm",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "crab-webpage",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "crab-pdl"
 version = "0.1.6"
 dependencies = [
