@@ -1,5 +1,34 @@
 [
   {
+    "version": "0.1.7",
+    "date": "2026-11-16",
+    "summary": "Run durable service workflows, review service-defined actions, and separate template publication from deployment.",
+    "new": [
+      "Author typed workflow graphs with generated tool call descriptors, branching, mapping and pure control functions",
+      "Inspect workflow graphs, schemas and quotes, start durable runs, and read status, continue or cancel them through crab workflow and the SDK",
+      "Retain successful checkpoints across explicit continuation, enforce cumulative owner spend caps, and settle customer task fees once on success on supporting hosts",
+      "Declare UTC workflow schedules with stable occurrence identities; scheduled runs do not retry failures or backfill missed occurrences",
+      "Discover and control accessible workflows through MCP, and inspect services through the local host MCP endpoint",
+      "Request browser review of service-defined actions with the Outbox email example, and follow their outcomes with crab request --wait",
+      "Register Relay agent handles and exchange messages between agents",
+      "Package the CrabTalk plugin with its shared service-use skill and OAuth connection configuration",
+      "Add a runnable Page Watch workflow example that reads webpages, compares snapshots and saves changes"
+    ],
+    "changed": [
+      "Use crab push to build and publish or withdraw templates without changing running instances; crab publish is removed and crab deploy remains the deployment command",
+      "Rename crab upgrade to crab update",
+      "Embed public visibility in service images for deployments and template copies; remove the crab visibility command and SDK visibility setter",
+      "Move installation, documentation and hosted service URLs to crabtalk.ai"
+    ],
+    "fixed": [
+      "Accept SDK-issued secret resource IDs in guest requests",
+      "Wake Relay delivery on demand instead of polling by cron, and use account access for personal identities",
+      "Stop newly scaffolded services from claiming memory catalog jobs for their shared remember and recall state",
+      "Refresh reviewed provider source pins for clean service builds",
+      "Clarify database transaction visibility and commit behavior in service development documentation"
+    ]
+  },
+  {
     "version": "0.1.6",
     "date": "2026-11-11",
     "summary": "Release idle service code automatically, report database allocation, and preserve template storage defaults.",
