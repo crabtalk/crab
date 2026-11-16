@@ -27,6 +27,7 @@ clap.workspace = true
 cargo_toml.workspace = true
 crabtalk-sdk = { workspace = true, features = ["client"] }
 hex = { workspace = true, features = ["std"] }
+humantime.workspace = true
 parking_lot.workspace = true
 pulldown-cmark.workspace = true
 ratatui.workspace = true
@@ -46,3 +47,4 @@ toml_edit.workspace = true
 tower.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+uuid = { workspace = true, features = ["v4"] }

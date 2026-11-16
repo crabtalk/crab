@@ -38,3 +38,4 @@ pub mod update;
 pub mod usage;
 pub mod var;
 pub mod wakes;
+pub mod workflow;

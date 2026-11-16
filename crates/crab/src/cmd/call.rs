@@ -1,17 +1,11 @@
 //! `crab call` — call one of a service's tools.
 
-use crate::{format, runtime};
-use anyhow::{Context, Result, ensure};
-use berm_api::{
-    Output,
-    host::{Caller, User},
-};
+use crate::{caller::Identity, format, runtime, terminal};
+use anyhow::Result;
+use berm_api::{Output, host::Caller};
 use clap::Args;
-use crabtalk_sdk::client::{self, Client};
-use std::{
-    io::{IsTerminal, Read},
-    process::ExitCode,
-};
+use crabtalk_sdk::client::Client;
+use std::process::ExitCode;
 
 /// A service that ran and said no, which is not berm failing to run it — the
 /// two leave by different doors so a script can tell them apart.
@@ -26,55 +20,13 @@ pub struct Call {
     pub tool: String,
     /// The argument object. Read from stdin when omitted.
     pub arguments: Option<String>,
-    /// On the local host, override the default caller `local`.
-    #[arg(long)]
-    pub caller: Option<String>,
-    /// On the local host, call without a caller.
-    #[arg(long, conflicts_with_all = ["caller", "issuer", "user"])]
-    pub anonymous: bool,
-    /// On the local host, the end user's issuer the service is told it is
-    /// called for.
-    #[arg(long, requires = "user")]
-    pub issuer: Option<String>,
-    /// On the local host, the end user's subject the service is told it is
-    /// called for.
-    #[arg(long, requires = "issuer")]
-    pub user: Option<String>,
-}
-
-impl Call {
-    pub fn caller(&self, client: &Client) -> Result<Option<Caller>> {
-        if client.owner.is_some() {
-            ensure!(
-                !self.anonymous
-                    && self.caller.is_none()
-                    && self.issuer.is_none()
-                    && self.user.is_none(),
-                "caller identity flags are only available on the local host; Cloud uses your credential"
-            );
-            return Ok(None);
-        }
-        Ok((!self.anonymous).then(|| Caller {
-            id: self
-                .caller
-                .clone()
-                .unwrap_or_else(|| client::LOCAL.to_owned()),
-            app: None,
-            user: self
-                .issuer
-                .clone()
-                .zip(self.user.clone())
-                .map(|(issuer, subject)| User { issuer, subject }),
-            client: None,
-            agent: None,
-            key: None,
-        }))
-    }
+    #[command(flatten)]
+    pub identity: Identity,
 }
 
 /// Call the tool `call` names, priced at `cloud`'s rates.
 pub fn run(client: &Client, cloud: &Client, call: &Call) -> Result<ExitCode> {
-    let caller = call.caller(client)?;
+    let caller = call.identity.resolve(client)?;
     tool(
         client,
         cloud,
@@ -95,7 +47,7 @@ pub fn tool(
     inline: Option<&str>,
     caller: Option<&Caller>,
 ) -> Result<ExitCode> {
-    let arguments = arguments(inline)?;
+    let arguments = terminal::arguments(inline)?;
     let (called, metering) = runtime::wait(async {
         tokio::join!(client.call(service, tool, arguments, caller), cloud.rates())
     });
@@ -129,28 +81,4 @@ pub fn tool(
             Ok(ExitCode::from(FAILED))
         }
     }
-}
-
-/// What was typed, what was piped in, or nothing, which is what MCP sends for a
-/// call with no arguments.
-///
-/// Trimmed: `echo '{}' | crab call` reaches the service as the same bytes
-/// typing it does.
-fn arguments(inline: Option<&str>) -> Result<Vec<u8>> {
-    let raw = match inline {
-        Some(arguments) => arguments.as_bytes().to_vec(),
-        None => {
-            let stdin = std::io::stdin();
-            if stdin.is_terminal() {
-                return Ok(Vec::new());
-            }
-            let mut piped = Vec::new();
-            stdin
-                .lock()
-                .read_to_end(&mut piped)
-                .context("cannot read arguments from stdin")?;
-            piped
-        }
-    };
-    Ok(raw.trim_ascii().to_vec())
 }

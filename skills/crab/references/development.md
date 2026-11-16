@@ -32,7 +32,7 @@ Memory is billed at the reserved budget during execution, waiting on fetches or 
 
 ## Workflow declarations
 
-A `#[workflow]` impl compiles typed step, branch and output signatures into a graph. The matching `[workflows.<name>]` table requires `max_cost` and positive `checkpoint_bytes`; it can set access, title, price, control budget, retention and a UTC schedule/input. `crab build` and deployment validate this metadata without executing builders. Workflow runs and workflow schedule delivery are not implemented yet. See [crab.toml](https://crabtalk.ai/docs/development/crab-toml#workflows).
+A `#[workflow]` impl compiles typed step, branch and output signatures into a graph. The matching `[workflows.<name>]` table requires `max_cost` and positive `checkpoint_bytes`; it can set access, title, price, control budget, retention and a UTC schedule/input. `crab build` and deployment validate this metadata without executing builders. Workflow execution keeps durable checkpoints; `crab workflow` inspects contracts and manages retained runs. See [crab.toml](https://crabtalk.ai/docs/development/crab-toml#workflows).
 
 ## Reusing services and libraries
 
@@ -64,6 +64,13 @@ A `#[workflow]` impl compiles typed step, branch and output signatures into a gr
 
 - On Cloud, a service is addressed as `owner/name`, its page at `https://crabtalk.ai/{owner}/{name}`. `crab inspect owner/name` prints another account's public service: its README and its public tools with their arguments. Read it before the first call.
 - `crab call owner/name <tool> '<arguments as JSON>'` calls one of its public tools, reading the arguments from stdin when they are left out. It prints the result, and what the call used on stderr; a tool that ran and refused exits 2.
+
+## Workflow runs
+
+- Inspect a deployed contract with `crab workflow inspect owner/service.workflow`; on the local context use `service.workflow`. `workflow dry-run` is an alias for inspection. The graph exposes dependencies and bounded call counts; current terms separate the successful-result task price from the owner's cumulative managed-spend cap. Detailed owner accounting is owner-only.
+- `crab workflow run owner/service.workflow '<input as JSON>' --dry-run` validates input without starting a run. `run ... --yes` admits one run and returns its identity; otherwise it asks for confirmation. Input may come from stdin. In scripts, stdout is one JSON object and the pre-execution graph and terms print on stderr. Reuse existing `--context` and `--org` selection; Cloud uses the credential and local admission defaults to the unchecked stable caller `local`.
+- Track it with `crab workflow status owner/service.workflow <run-id>`. After a lost admission response, inspect that identity before any new run. `run --id <run-id>` resends the same request only with identical input and terms. Do not use a new ID to retry an uncertain operation.
+- `workflow continue <address> <run-id> --yes` keeps original inputs and completed checkpoints and rechecks eligibility, terms, funding and the remaining cap. `workflow cancel <address> <run-id> --yes` stops new calls; it cannot undo effects already accepted by a target. Respect the user's authorization before either operation. Read expiry, continuation refusals and explanation codes; never repeatedly start new runs to bypass them.
 
 ## Local callers and MCP
 

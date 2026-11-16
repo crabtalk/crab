@@ -1,9 +1,9 @@
 //! What every command shares about talking to the person at the terminal.
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::{
-    io::{self, BufRead, IsTerminal, Write},
+    io::{self, BufRead, IsTerminal, Read, Write},
     process::Command,
 };
 
@@ -42,4 +42,24 @@ pub fn open(url: &str) -> bool {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let opened = Command::new("xdg-open").arg(url).status();
     opened.is_ok_and(|status| status.success())
+}
+
+/// Inline JSON or trimmed stdin; an interactive terminal without arguments supplies nothing.
+pub fn arguments(inline: Option<&str>) -> Result<Vec<u8>> {
+    let raw = match inline {
+        Some(arguments) => arguments.as_bytes().to_vec(),
+        None => {
+            let stdin = io::stdin();
+            if stdin.is_terminal() {
+                return Ok(Vec::new());
+            }
+            let mut piped = Vec::new();
+            stdin
+                .lock()
+                .read_to_end(&mut piped)
+                .context("cannot read arguments from stdin")?;
+            piped
+        }
+    };
+    Ok(raw.trim_ascii().to_vec())
 }

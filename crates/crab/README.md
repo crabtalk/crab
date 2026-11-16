@@ -131,7 +131,28 @@ crab --org acme billing
 
 A service's calls, cost, crons, wakes and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
 
-## From a workflow
+## Workflow runs
+
+A deployed service may export workflows as well as tools. Inspect one before starting it:
+
+```sh
+crab workflow inspect owner/service.workflow
+crab workflow run owner/service.workflow '{"question":"What changed?"}' --dry-run
+crab workflow run owner/service.workflow '{"question":"What changed?"}' --yes
+crab workflow status owner/service.workflow <run-id>
+crab workflow continue owner/service.workflow <run-id> --yes
+crab workflow cancel owner/service.workflow <run-id> --yes
+```
+
+Replace the address and input with a deployed workflow's contract. Use `service.workflow` on the local context. `inspect` (also `workflow dry-run`) resolves its graph, dependencies, call-count bounds and current quote without executing application tools. `run --dry-run` also validates the input. Input is JSON, read from stdin when omitted; empty input supplies `{}`.
+
+`run` prints the graph and terms to stderr before confirmation, then returns the accepted run without waiting for completion. The fixed task price is charged only for a successful result. The owner's cumulative managed-spend cap and direct-call/control quote are separate; owner accounting is visible only to owners. Provider accounts charged independently remain outside the managed cap. A quote may change before admission, which revalidates it. `run`, `continue` and `cancel` use the existing confirmation prompt; scripts supply `--yes`. `--json`, also automatic when stdout is piped, prints one JSON inspection or run to stdout; progress and terms stay on stderr.
+
+The run ID prints before admission. If the response is lost, read `status` first. `run --id <run-id>` may resend the same identity with identical input and accepted terms; a different ID creates a new run. `status` includes checkpoints, result, expiry and continuation eligibility. `run`, `status` and `continue` exit `2` for failed, indeterminate or cancelled outcomes, and `0` otherwise. An accepted `cancel` exits `0`.
+
+`continue` retains the original input, image, prepared calls and successful checkpoints, uses the remaining owner cap and rechecks authorization and dependency terms. It never blindly retries an unknown external write; read its refusal and use `crab explain <code>` when provided. Expired or deleted checkpoints cannot continue. `cancel` stops new calls, but cannot recall a request already accepted by an external provider. On the local host, workflow inspection and admission reuse `call`'s unchecked `--caller`, `--issuer` and `--user` flags and default to `local`; admission requires a stable caller. Cloud uses the context credential. Local run controls operate on the local host's retained ledger.
+
+## From GitHub Actions
 
 The deploy is two lines:
 

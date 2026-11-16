@@ -113,6 +113,8 @@ enum Command {
     Stop { names: Vec<String> },
     /// Call one of a service's tools.
     Call(cmd::call::Call),
+    /// Inspect and manage durable workflow runs.
+    Workflow(cmd::workflow::Workflow),
     /// Run a call that failed again, read from the context in use: here, the
     /// image it ran answered from its tape, or with `--on` on that context's
     /// host, against its state.
@@ -609,6 +611,7 @@ fn run() -> Result<ExitCode> {
     let cloud = || Ok::<_, anyhow::Error>(Contexts::load()?.get(args.context.as_deref())?.cloud());
 
     match &args.command {
+        Command::Workflow(workflow) => return workflow.run(&client()?, json, yes),
         Command::Login {
             host,
             github,

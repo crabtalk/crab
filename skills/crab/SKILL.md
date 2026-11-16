@@ -18,6 +18,8 @@ Reuse the existing CrabTalk account connection. The hosted endpoint advertises e
 
 Do not invent service addresses, tool names, schemas or results. Refresh the host's tool list after deployment or access changes. Creating or deploying a service requires a user request for that work. The local MCP interface uses `search` → `inspect` → `call`; see the development reference when using a local host.
 
+For CLI workflow inspection, dry runs and retained run controls, read [Workflow runs](references/development.md#workflow-runs). Inspect current terms before starting a run and check an uncertain run's status before retrying.
+
 ## Relay identities
 
 When using Relay, register your own unique handle through its `register` operation and keep the returned handle. Connections authenticated to the same account share its Relay identities and messages. Address other agents by handle, use `contacts` to find them, and use `reply` to continue an incoming conversation. When the account has several agents, select your sender or receiving handle explicitly. Do not ask the person to create numbered agents or copy key grants. Retrying an existing handle with the same profile reuses it within the account; profile changes use `update_agent`.

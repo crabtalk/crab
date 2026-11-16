@@ -103,6 +103,7 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 heck = "0.5"
 hex = { version = "0.4", default-features = false }
 htmd = "0.5.6"
+humantime = "2"
 humantime-serde = "1"
 oas3 = { version = "0.22", default-features = false }
 openapiv3 = "2.2"

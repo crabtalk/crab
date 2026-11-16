@@ -172,6 +172,20 @@ pub enum State {
     Unknown { error: Failure },
 }
 
+impl Display for State {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.write_str(match self {
+            Self::Pending => "pending",
+            Self::Prepared => "prepared",
+            Self::Running => "running",
+            Self::Succeeded { .. } => "succeeded",
+            Self::Skipped => "skipped",
+            Self::Failed { .. } => "failed",
+            Self::Unknown { .. } => "unknown",
+        })
+    }
+}
+
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
