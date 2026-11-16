@@ -14,15 +14,19 @@ use std::{fmt, time::Duration};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    #[serde(default)]
+    #[serde(default = "access", deserialize_with = "read_access")]
     pub access: Option<Access>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
+    pub example: Option<String>,
+    #[serde(default)]
     pub price: Option<u64>,
+    #[serde(default = "max_cost")]
     pub max_cost: u64,
     #[serde(default)]
     pub budget: Option<Limits>,
+    #[serde(default = "checkpoint_bytes")]
     pub checkpoint_bytes: u64,
     #[serde(default = "retention", with = "humantime_serde")]
     #[cfg_attr(feature = "utoipa", schema(value_type = String))]
@@ -95,14 +99,10 @@ impl Config {
             "retention must fit a positive millisecond duration"
         );
         if let Some(title) = &self.title {
-            ensure!(
-                title.chars().count() <= ToolSpec::TITLE && !title.contains(['\n', '\r']),
-                "a workflow title is one line of at most {} characters",
-                ToolSpec::TITLE
-            );
+            ToolSpec::check_title(title)?;
         }
         ensure!(
-            self.price.is_none() || self.access.is_some(),
+            self.price.is_none() || self.access.is_some_and(|access| access != Access::Internal),
             "a priced workflow needs caller access"
         );
         if let Some(budget) = self.budget {
@@ -156,7 +156,10 @@ impl Spec {
         Some(Public {
             entry: self.entry.clone(),
             title: self.config.title.clone(),
-            access: self.config.access?,
+            access: self
+                .config
+                .access
+                .filter(|access| *access != Access::Internal)?,
             price: self.config.price,
         })
     }
@@ -199,4 +202,35 @@ impl std::error::Error for Invalid {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.0.source()
     }
+}
+
+fn access() -> Option<Access> {
+    Some(Access::Public)
+}
+fn max_cost() -> u64 {
+    crate::DEFAULT_WORKFLOW_MAX_COST
+}
+fn checkpoint_bytes() -> u64 {
+    crate::DEFAULT_WORKFLOW_CHECKPOINT_BYTES
+}
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            access: access(),
+            title: None,
+            example: None,
+            price: None,
+            max_cost: max_cost(),
+            budget: None,
+            checkpoint_bytes: checkpoint_bytes(),
+            retain: retention(),
+            schedule: None,
+        }
+    }
+}
+
+fn read_access<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Access>, D::Error> {
+    Ok(Option::<Access>::deserialize(deserializer)?.filter(|access| *access != Access::Internal))
 }

@@ -166,3 +166,13 @@ fn automatic_upgrades_require_review_for_visibility_changes_in_either_direction(
     assert!(private.upgrade_requires_review(&public));
     assert!(public.upgrade_requires_review(&private));
 }
+
+#[test]
+fn compiled_price_changes_require_explicit_upgrade_review() {
+    let old = manifest(json!({}), json!({}));
+    let mut priced = old.clone();
+    priced.tools[0].price = Some(1000);
+    assert!(old.upgrade_requires_review(&priced));
+    assert!(priced.upgrade_requires_review(&old));
+    assert!(old.breaks(&priced).is_empty());
+}

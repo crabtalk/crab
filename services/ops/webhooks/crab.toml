@@ -15,32 +15,3 @@ guide = "Use a Standard Webhooks signing secret shared with your sender. Cloud v
 
 [crons]
 prune = "0 3 * * *"
-
-[tools.receive]
-budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
-[tools.prune]
-budget = { cpu = 100000, read = 20000, written = 10000, memory = 16 }
-
-[tools.events]
-access = "public"
-title = "List events"
-catalog = "webhooks.events"
-budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
-
-[tools.get]
-access = "public"
-title = "Read event"
-catalog = "webhooks.get"
-budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
-
-[tools.acknowledge]
-access = "public"
-title = "Acknowledge event"
-catalog = "webhooks.acknowledge"
-budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }
-
-[tools.delete]
-access = "public"
-title = "Delete event"
-catalog = "webhooks.delete"
-budget = { cpu = 100000, read = 20000, written = 10, memory = 16 }

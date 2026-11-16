@@ -11,6 +11,8 @@ use syn::{
 
 struct Workflow {
     item: ItemImpl,
+    config: berm_api::workflow::config::Config,
+    description: String,
     name: String,
     nodes: Vec<Node>,
     input: Type,
@@ -38,8 +40,11 @@ struct Parameter {
     borrowed: Type,
 }
 
-pub fn expand(item: ItemImpl) -> syn::Result<TokenStream> {
-    let workflow = Workflow::read(item)?;
+pub fn expand(
+    declaration: crate::declaration::Declaration,
+    item: ItemImpl,
+) -> syn::Result<TokenStream> {
+    let workflow = Workflow::read(declaration, item)?;
     let record = workflow.record()?;
     let exports = workflow.exports();
     let item = &workflow.item;
@@ -48,7 +53,10 @@ pub fn expand(item: ItemImpl) -> syn::Result<TokenStream> {
 }
 
 impl Workflow {
-    fn read(mut item: ItemImpl) -> syn::Result<Self> {
+    fn read(
+        mut declaration: crate::declaration::Declaration,
+        mut item: ItemImpl,
+    ) -> syn::Result<Self> {
         if item.trait_.is_some()
             || !item.generics.params.is_empty()
             || item.generics.where_clause.is_some()
@@ -65,6 +73,16 @@ impl Workflow {
                 "a workflow is a unit struct",
             ));
         };
+        let (title, description) = crate::declaration::docs(&item.attrs, &item.self_ty)?;
+        declaration
+            .0
+            .insert("title".into(), serde_json::json!(title));
+        let config: berm_api::workflow::config::Config =
+            serde_json::from_value(serde_json::Value::Object(declaration.0))
+                .map_err(|error| syn::Error::new_spanned(&item, error))?;
+        config
+            .check()
+            .map_err(|error| syn::Error::new_spanned(&item, error))?;
         let name = path
             .path
             .segments
@@ -125,6 +143,8 @@ impl Workflow {
         })?;
         Ok(Self {
             item,
+            config,
+            description,
             name,
             nodes,
             input,
@@ -179,8 +199,10 @@ impl Workflow {
         });
         let mut out = record::Pieces::default();
         out.text(&format!(
-            r#"{{"workflow":{{"version":1,"name":{},"graph":{{"input":"#,
-            serde_json::Value::from(self.name.as_str())
+            r#"{{"config":{},"workflow":{{"version":1,"name":{},"description":{},"graph":{{"input":"#,
+            serde_json::to_string(&self.config).unwrap(),
+            serde_json::Value::from(self.name.as_str()),
+            serde_json::Value::from(self.description.as_str())
         ));
         let input = &self.input;
         out.shape(quote!(<#input as ::berm_lang::Schema>::SHAPE));

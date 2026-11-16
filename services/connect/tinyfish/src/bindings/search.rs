@@ -5,6 +5,8 @@ crab_openapi::service! {
     raw_response: true,
     tools: false,
     operations: {
+        /// Search the web
+        #[tool(catalog = "web.search")]
         search: "GET /",
     },
 }

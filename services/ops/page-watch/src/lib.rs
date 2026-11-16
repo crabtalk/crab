@@ -34,8 +34,14 @@ pub struct Report {
     pub saved: bool,
 }
 
+/// Read server HTML using the existing Markdown service library
+///
 /// Read server HTML using the existing Markdown service library.
-#[tool(query)]
+#[tool(
+    query,
+    access = "internal",
+    budget(cpu = 60000, read = 1, written = 1, memory = 64)
+)]
 pub fn read(url: String) -> Result<Snapshot> {
     let reading = Reading::try_from(&Page::fetch(&url)?)?;
     Ok(Snapshot {
@@ -44,8 +50,14 @@ pub fn read(url: String) -> Result<Snapshot> {
     })
 }
 
+/// Find changes against the deployment's shared saved snapshots
+///
 /// Find changes against the deployment's shared saved snapshots.
-#[tool(query)]
+#[tool(
+    query,
+    access = "internal",
+    budget(cpu = 100000, read = 500000, written = 1, memory = 64)
+)]
 pub fn compare(pages: Vec<Snapshot>) -> Result<Changes> {
     let mut urls = Vec::new();
     for page in pages {
@@ -57,8 +69,13 @@ pub fn compare(pages: Vec<Snapshot>) -> Result<Changes> {
     Ok(Changes { urls })
 }
 
+/// Replace the deployment's shared snapshots with this batch
+///
 /// Replace the deployment's shared snapshots with this batch.
-#[tool]
+#[tool(
+    access = "internal",
+    budget(cpu = 100000, read = 1, written = 500000, memory = 64)
+)]
 pub fn save(pages: Vec<Snapshot>) -> Result<usize> {
     for page in &pages {
         berm_lang::set_json(&page.url, &page.markdown)?;
@@ -67,7 +84,8 @@ pub fn save(pages: Vec<Snapshot>) -> Result<usize> {
 }
 
 struct PageWatch;
-#[workflow]
+/// Check page changes
+#[workflow(price = 1000, budget(cpu = 100000, read = 0, written = 0, memory = 64))]
 impl PageWatch {
     #[step(each, max = 3)]
     fn pages(input: &Input) -> Vec<ReadCall> {

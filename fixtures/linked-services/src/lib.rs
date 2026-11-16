@@ -12,6 +12,8 @@ use posthog::{
 use resend::api as resend_api;
 use upstash::api::Redis;
 
+/// Read provider data through linked service APIs
+///
 /// Read provider data through linked service APIs.
 #[tool]
 pub fn inspect(

@@ -8,8 +8,10 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, tool};
 
+/// Search the web
+///
 /// Search one page of the open web through the deployment's TinyFish account.
-#[tool]
+#[tool(catalog = "web.search")]
 pub fn search(
     /// Search query.
     query: String,
@@ -19,8 +21,10 @@ pub fn search(
     api::search(&query, &options.unwrap_or_default())
 }
 
+/// Search recent news
+///
 /// Search one page of recent news through TinyFish.
-#[tool]
+#[tool(catalog = "web.search.news")]
 pub fn search_news(
     /// News query.
     query: String,
@@ -30,8 +34,10 @@ pub fn search_news(
     api::search_news(&query, &options.unwrap_or_default())
 }
 
+/// Search research publications
+///
 /// Search academic publications with year filters and citation metadata.
-#[tool]
+#[tool(catalog = "web.search.publications")]
 pub fn search_publications(
     /// Research topic.
     query: String,
@@ -41,8 +47,10 @@ pub fn search_publications(
     api::search_publications(&query, &options.unwrap_or_default())
 }
 
+/// Fetch clean page content
+///
 /// Extract 1–10 URLs as Markdown, HTML or JSON. Results retain per-URL failures.
-#[tool]
+#[tool(catalog = "web.extract")]
 pub fn fetch(
     /// HTTP or HTTPS URLs; at most ten.
     urls: Vec<String>,
@@ -52,8 +60,10 @@ pub fn fetch(
     api::fetch(&urls, &options.unwrap_or_default())
 }
 
+/// Run a browser agent
+///
 /// Start an asynchronous browser agent to work toward a natural-language goal.
-#[tool]
+#[tool(catalog = "web.agent.run")]
 pub fn run(
     /// Starting HTTP or HTTPS page URL.
     url: String,
@@ -65,8 +75,10 @@ pub fn run(
     api::run(&url, &goal, &options.unwrap_or_default())
 }
 
+/// Check a browser-agent run
+///
 /// Read an agent run's status, result, errors and captured step metadata.
-#[tool]
+#[tool(catalog = "web.agent.run.status")]
 pub fn run_status(
     /// Identifier returned by run.
     run_id: String,
@@ -74,8 +86,10 @@ pub fn run_status(
     api::run_status(&run_id)
 }
 
+/// Cancel a browser-agent run
+///
 /// Cancel a browser-agent run. Completed upstream steps remain billable.
-#[tool]
+#[tool(catalog = "web.agent.run.cancel")]
 pub fn run_cancel(
     /// Identifier returned by run.
     run_id: String,
@@ -83,8 +97,10 @@ pub fn run_cancel(
     api::run_cancel(&run_id)
 }
 
+/// Retrieve a step screenshot
+///
 /// Retrieve a captured step screenshot as base64-encoded JPEG.
-#[tool]
+#[tool(catalog = "web.agent.step.screenshot")]
 pub fn step_screenshot(
     /// Identifier returned by run.
     run_id: String,
@@ -94,8 +110,10 @@ pub fn step_screenshot(
     api::step_screenshot(&run_id, &step_id)
 }
 
+/// Retrieve step HTML
+///
 /// Retrieve a captured step's HTML snapshot.
-#[tool]
+#[tool(catalog = "web.agent.step.html")]
 pub fn step_html(
     /// Identifier returned by run.
     run_id: String,

@@ -8,13 +8,13 @@ use berm_lang::{
 mod service {
     use berm_lang::{Result, tool, workflow};
 
-    /// Echo a string.
+    /// Echo a string
     #[tool]
     fn echo(value: String) -> Result<String> {
         Ok(value)
     }
 
-    /// Accept a string.
+    /// Accept a string
     #[tool]
     fn sink(value: String) -> Result<()> {
         let _ = value;
@@ -22,6 +22,7 @@ mod service {
     }
 
     struct Text;
+    /// Text
     #[workflow]
     impl Text {
         #[step]
@@ -38,6 +39,7 @@ mod service {
     }
 
     struct Unit;
+    /// Unit
     #[workflow]
     impl Unit {
         #[step]
@@ -54,6 +56,7 @@ mod service {
     }
 
     struct Uncalled;
+    /// Uncalled
     #[workflow]
     impl Uncalled {
         #[step]

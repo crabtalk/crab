@@ -1,13 +1,13 @@
 error[E0080]: evaluation panicked: unused: node does not contribute to the workflow output
- --> tests/ui/workflow_disconnected.rs:6:1
+ --> tests/ui/workflow_disconnected.rs:7:1
   |
-6 | #[workflow]
+7 | #[workflow]
   | ^^^^^^^^^^^ evaluation of `Flow::WORKFLOW::GUARDS` failed here
 
 note: erroneous constant encountered
- --> tests/ui/workflow_disconnected.rs:6:1
+ --> tests/ui/workflow_disconnected.rs:7:1
   |
-6 | #[workflow]
+7 | #[workflow]
   | ^^^^^^^^^^^
   |
   = note: this note originates in the attribute macro `workflow` (in Nightly builds, run with -Z macro-backtrace for more info)

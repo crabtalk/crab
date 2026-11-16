@@ -12,8 +12,10 @@ const MAX_FORMATS: usize = 3;
 const MAX_AGE: u64 = 172_800_000;
 const MAX_MAP_LINKS: u64 = 1000;
 
+/// Scrape a page
+///
 /// Scrape one page. PDF parsing and charged extraction formats are disabled.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.extract"))]
 pub fn scrape(
     url: String,
     formats: Option<Vec<Format>>,
@@ -25,8 +27,10 @@ pub fn scrape(
     response(api::scrape(&types::ScrapeInput { body })?)
 }
 
+/// Search the web
+///
 /// Search up to ten web results without scraping their content.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.search"))]
 pub fn search(
     query: String,
     limit: u64,
@@ -45,8 +49,10 @@ pub fn search(
     response(api::search(&types::SearchInput { body })?)
 }
 
+/// Map a website
+///
 /// Discover URLs without scraping their content; limit is from 1 to 1000.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.map"))]
 pub fn map(
     url: String,
     search: Option<String>,
@@ -72,8 +78,10 @@ pub fn map(
     response(api::map(&types::MapInput { body })?)
 }
 
+/// Start a website crawl
+///
 /// Start a crawl of at most ten pages; PDF parsing and charged add-ons are disabled.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.crawl"))]
 pub fn crawl(
     url: String,
     limit: u64,
@@ -99,8 +107,10 @@ pub fn crawl(
     response(api::crawl(&types::CrawlInput { body })?)
 }
 
+/// Check a website crawl
+///
 /// Read one page of an owned crawl's results and credit usage. Pass skip from next.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.crawl.status"))]
 pub fn crawl_status(id: String, skip: Option<i64>) -> Result<Value> {
     skip_offset(skip)?;
     response(api::crawl_status(&types::CrawlStatusInput {
@@ -109,8 +119,10 @@ pub fn crawl_status(id: String, skip: Option<i64>) -> Result<Value> {
     })?)
 }
 
+/// Extract a batch of pages
+///
 /// Start a batch of one to ten URLs; formats are Markdown, HTML and links.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.extract.batch"))]
 pub fn batch_scrape(
     urls: Vec<String>,
     formats: Vec<Format>,
@@ -123,8 +135,13 @@ pub fn batch_scrape(
     response(api::batch_scrape(&types::BatchScrapeInput { body })?)
 }
 
+/// Check a batch scrape
+///
 /// Read one page of an owned batch's results and credit usage. Pass skip from next.
-#[cfg_attr(feature = "tools", berm_lang::tool)]
+#[cfg_attr(
+    feature = "tools",
+    berm_lang::tool(catalog = "web.extract.batch.status")
+)]
 pub fn batch_scrape_status(id: String, skip: Option<i64>) -> Result<Value> {
     skip_offset(skip)?;
     response(api::batch_scrape_status(&types::BatchScrapeStatusInput {

@@ -12,6 +12,8 @@ use serde_json::Value;
 pub struct Entry {
     pub version: Version,
     pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
     pub graph: Graph,
 }
 

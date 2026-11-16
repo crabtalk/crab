@@ -27,7 +27,7 @@ pub struct Config {
     /// The most rows one invocation may write.
     #[serde(default = "written")]
     pub written: u64,
-    /// What one invocation of a tool whose `crab.toml` sets no budget is held
+    /// What one invocation of a tool with no declared budget is held
     /// to: `cpu` in microseconds, `read`, `written`, and `memory` in bytes.
     #[serde(default = "budget")]
     pub budget: Budget,

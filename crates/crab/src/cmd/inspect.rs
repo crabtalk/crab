@@ -1,8 +1,8 @@
 //! `crab inspect` — what a service claims to be.
 
-use crate::{format, runtime, terminal};
-use anyhow::Result;
-use berm_api::{Access, Runtime, Service, ToolSpec};
+use crate::{format, project, runtime, terminal};
+use anyhow::{Context, Result};
+use berm_api::{Access, Manifest, Runtime, Service, ToolSpec, digest};
 use crabtalk_sdk::{
     client::{Client, Error},
     format as display,
@@ -10,6 +10,7 @@ use crabtalk_sdk::{
     system::meta::Metering,
 };
 use serde_json::Value;
+use std::{fs, path::Path};
 
 /// Print `name` as its caller sees it: the runtime too when the host answers
 /// it, which Cloud does for the service's owners alone, and what one run of
@@ -30,7 +31,63 @@ pub fn run(client: &Client, cloud: &Client, name: &str, json: bool) -> Result<()
         }));
     }
     let metering = runtime::wait(cloud.rates()).ok();
-    show(&service, runtime.as_ref(), &terms, metering.as_ref());
+    show(
+        &service,
+        runtime.as_ref(),
+        &terms,
+        metering.as_ref(),
+        runtime
+            .as_ref()
+            .map(|runtime| runtime.workflows.as_slice())
+            .unwrap_or_default(),
+    );
+    Ok(())
+}
+
+pub fn directory(dir: &Path, packages: &[String], json: bool) -> Result<()> {
+    anyhow::ensure!(dir.is_dir(), "inspect expects a service directory");
+    let dir = dir
+        .canonicalize()
+        .context("cannot resolve the service directory")?;
+    let selection = project::Selection::read(&dir, packages, true, true)?;
+    anyhow::ensure!(
+        !selection.services.is_empty(),
+        "no service in this directory"
+    );
+    let mut manifests = Vec::new();
+    for source in selection.services {
+        let image = berm_build::build(&source.dir, None).context("service build failed")?;
+        let bytes = fs::read(image).context("cannot read the built service image")?;
+        let manifest = Manifest::try_from(bytes.as_slice()).context("invalid service image")?;
+        if !json {
+            let service = Service {
+                name: manifest.name.clone(),
+                version: manifest.version.clone(),
+                description: manifest.description.clone(),
+                homepage: manifest.homepage.clone(),
+                repository: manifest.repository.clone(),
+                readme: manifest.readme.clone(),
+                logo: manifest.logo.clone(),
+                digest: digest::prefixed(&digest::hex(&bytes)),
+                tools: manifest.tools.clone(),
+                workflows: manifest
+                    .workflows
+                    .iter()
+                    .filter_map(|workflow| workflow.public())
+                    .collect(),
+                vars: manifest.deps.vars.clone(),
+            };
+            show(&service, None, &Terms::default(), None, &manifest.workflows);
+        }
+        manifests.push(manifest);
+    }
+    if json {
+        if manifests.len() == 1 {
+            terminal::json(&manifests[0])?;
+        } else {
+            terminal::json(&manifests)?;
+        }
+    }
     Ok(())
 }
 
@@ -39,6 +96,7 @@ pub fn show(
     runtime: Option<&Runtime>,
     terms: &Terms,
     metering: Option<&Metering>,
+    workflows: &[berm_api::workflow::config::Spec],
 ) {
     println!("{}", service.name);
     if !service.description.is_empty() {
@@ -60,6 +118,44 @@ pub fn show(
         println!();
         for line in service.readme.lines() {
             println!("  {line}");
+        }
+    }
+    if workflows.is_empty() {
+        for workflow in &service.workflows {
+            println!(
+                "  workflow {}: {}",
+                workflow.entry.name,
+                workflow.title.as_deref().unwrap_or_default()
+            );
+            println!("    access {}", workflow.access);
+            println!("    price {} USD micros", workflow.price.unwrap_or(0));
+        }
+    } else {
+        for workflow in workflows {
+            println!(
+                "  workflow {}: {}",
+                workflow.entry.name,
+                workflow.config.title.as_deref().unwrap_or_default()
+            );
+            println!(
+                "    access {}",
+                workflow.config.access.unwrap_or(Access::Internal)
+            );
+            println!(
+                "    price {} USD micros",
+                workflow.config.price.unwrap_or(0)
+            );
+            println!("    max_cost {} USD micros", workflow.config.max_cost);
+            println!("    checkpoint_bytes {}", workflow.config.checkpoint_bytes);
+            println!("    retain {} seconds", workflow.config.retain.as_secs());
+            let budget = workflow
+                .config
+                .control_budget(berm_host::Config::default().budget);
+            println!(
+                "    control budget: {}µs CPU, {} memory",
+                budget.cpu,
+                display::bytes(budget.memory)
+            );
         }
     }
     let Some(runtime) = runtime else {
@@ -141,8 +237,10 @@ fn tools<'a>(
             let price = terms
                 .tools
                 .get(&tool.name)
-                .and_then(|terms| terms.price)
-                .map(|price| price.to_string());
+                .and_then(|terms| terms.price.map(u64::from))
+                .or(tool.price)
+                .unwrap_or(0);
+            let price = Some(format!("{price} USD micros"));
             let dash = |value: Option<String>| value.unwrap_or_else(|| "-".to_owned());
             [
                 tool.name.clone(),
@@ -216,6 +314,25 @@ fn tools<'a>(
                     format::count(estimate.runs)
                 );
             }
+        }
+        if let Some(window) = tool.idempotency_ms {
+            println!("    idempotency {window}ms");
+        }
+        if let Some(example) = &tool.example {
+            println!("    example {example}");
+        }
+        if !terms.tools.contains_key(&tool.name) {
+            let budget = tool
+                .budget
+                .unwrap_or_default()
+                .over(berm_host::Config::default().budget);
+            println!(
+                "    at most {}µs of CPU, {} rows read, {} written and {} of memory a call",
+                budget.cpu,
+                budget.read,
+                budget.written,
+                display::bytes(budget.memory)
+            );
         }
         for parameter in properties(&tool.parameters) {
             println!("    {parameter}");

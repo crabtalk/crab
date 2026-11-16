@@ -1,7 +1,7 @@
 error: each requires max = N, where N is a positive integer no larger than 100
- --> tests/ui/workflow_each.rs:8:5
+ --> tests/ui/workflow_each.rs:9:5
   |
-8 |     #[step(each)]
+9 |     #[step(each)]
   |     ^^^^^^^^^^^^^
 
 warning: unused imports: `EchoCall` and `Input`

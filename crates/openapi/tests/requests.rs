@@ -16,10 +16,10 @@ crab_openapi::service! {
     spec: "tests/specs/api.json",
     client: crate::CLIENT,
     operations: {
-        fetch_item: "GET /items/{itemId}",
-        create_item: "POST /items",
-        ping: "GET /ping",
-        optional: "POST /optional",
+        #[doc = "Fetch item"] fetch_item: "GET /items/{itemId}",
+        #[doc = "Create item"] create_item: "POST /items",
+        #[doc = "Ping"] ping: "GET /ping",
+        #[doc = "Optional"] optional: "POST /optional",
     },
 }
 

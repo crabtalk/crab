@@ -31,13 +31,6 @@ public = true
 template = true
 logo = "https://example.com/logo.svg"
 
-# Who may call a tool, its display name, its price a call on Cloud in USD
-# micros, and the catalog job it does. A tool without a table is internal.
-[tools.search]
-access = "public"
-title = "Search the web"
-price = 2_000
-catalog = "web.search"
 
 # When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC.
@@ -58,7 +51,7 @@ seed = "seed.sqlite"
 
 `logo` is optional and must be an absolute HTTPS URL. Builds, deployments and publication reject invalid values without fetching the image. The URL belongs to the service image and is retained by template copies; linked libraries do not contribute a logo.
 
-`access` is `"public"`; `"anonymous"`, public and callable with no caller; or restricted to `"accounts"` or `"services"`. `title` is at most 60 characters on one line, `price` at least 100, `catalog` starts with a platform listed in [`crates/sdk/catalog.toml`](../sdk/catalog.toml), and `budget = { cpu, read, written, memory }` sets what one call may use, each key at least 1, CPU in microseconds, rows read and written, `memory` in MiB, a key left out the host's default. A price or catalog on a tool without `access` is refused, as is a table for a tool the service lacks; the build writes `access`, `title`, `catalog` and `budget` into the image, and a deploy carries `price`.
+Tools declare access, price, catalog and `budget(...)` on `#[tool]`. Access defaults to `"public"`; `"anonymous"`, `"accounts"`, `"services"` and `"internal"` select other callers. Price is in USD micros, at least 100 when set. The title is the first doc-comment line, at most 60 characters and without a final period; the remaining comment is the description. Every declaration, including price, is compiled into the image. `crab.toml` refuses `[tools]`.
 
 The build embeds `[database] size` as the image's default reservation. New deployments use it when no size is supplied; redeployments keep their existing reservation unless explicitly resized. Images built without a default use 1 GiB.
 
@@ -168,9 +161,11 @@ When pushing to an OCI registry with `--registry` or a context registry, `GITHUB
 
 `crab new` writes a service crate pinning `berm-lang` to the CLI release tag; it needs no running host.
 
+`crab inspect .` builds the service in the current directory and reads its image; `crab inspect ./services/foo` selects another directory, and `-p` selects services in a workspace. Arguments starting with `.` or `/` are directories; other arguments are service addresses. `--json` prints the built manifest. Local inspection shows tool access, prices, budgets and catalog jobs, plus workflow spend and checkpoint defaults; it has no deployment runtime, unresolved secrets or Cloud quote.
+
 `inspect` prints a service's README, a table of its tools with each one's access, title, catalog job, price, marks and description, and each tool's JSON Schema as the argument list it describes. On Cloud, `inspect owner/name` shows another account's public service: its README and public tools, without what only its owners see.
 
-`inspect` shows the most one call of each tool may use, which `budget` on its `[tools.<tool>]` in `crab.toml` sets; `budget NAME TOOL` prints what its runs used and a suggested `budget`, without checking host ceilings. `call` calls one public tool and prints what the call used on stderr; `usage` prints a service's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `call` defaults to the unchecked caller `local`; `--anonymous` calls without a caller and reaches only anonymous tools. `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a service reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud. These identity flags are local-only; Cloud uses the credential.
+`inspect` shows the most one call of each tool may use, which `budget(...)` on `#[tool]` sets; `budget NAME TOOL` prints what its runs used and a suggested `budget`, without checking host ceilings. `call` calls one public tool and prints what the call used on stderr; `usage` prints a service's meters over the last 30 days, a day each. Agents reach tools over MCP. On the local host, `call` defaults to the unchecked caller `local`; `--anonymous` calls without a caller and reaches only anonymous tools. `--caller alice --issuer https://id.example --user 42` makes the call as that caller and user, unchecked, so a service reading `berm_lang::caller()` and `user()` runs as it would for them on Cloud. These identity flags are local-only; Cloud uses the credential.
 
 Service code calls a running deployment with `berm_lang::call("owner/service", tool, args)` without a `calls` declaration. Cross-account targets must be public and accept service callers; priced calls charge the calling service's account. `crab idl owner/service` writes `idls/service.json`, retaining its owner for generated calls.
 
@@ -210,7 +205,7 @@ Images upload to the selected host by default. `crab context add local http://lo
 
 `crab deploy` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `image = "connect/tinyfish:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
 
-Published-image deployment creates an unpublished instance under the selected account with visibility from its image, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed, prices and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
+Published-image deployment creates an unpublished instance under the selected account with visibility from its image, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
 
 `crab deploy --from owner/name` remains available without a manifest. Copies have their own credentials and state.
 

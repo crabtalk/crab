@@ -13,6 +13,8 @@ extern crate alloc;
 use alloc::{format, string::String, vec::Vec};
 use berm_lang::{Result, Schema, tool};
 
+/// Put
+///
 /// Inserts `word` into `words`, writes it under `last` and emits it under
 /// the topic `put`.
 #[tool]
@@ -24,14 +26,18 @@ pub fn put(word: String) -> Result<()> {
     Ok(())
 }
 
+/// Inserts the `word` a webhook carries into `words`
+///
 /// Inserts the `word` a webhook carries into `words`.
-#[tool(webhook)]
+#[tool(webhook, access = "internal")]
 pub fn hook(word: String) -> Result<()> {
     let params = berm_lang::json::to(&[&word])?;
     berm_lang::sql("INSERT INTO words (word) VALUES (?)", &params)?;
     Ok(())
 }
 
+/// Answers how many rows `words` holds
+///
 /// Answers how many rows `words` holds.
 #[tool(query)]
 pub fn count() -> Result<u64> {
@@ -44,12 +50,16 @@ pub fn count() -> Result<u64> {
         .unwrap_or(0))
 }
 
+/// Note
+///
 /// Adds `text` to `berm-kit`'s table, and answers how many notes it holds.
 #[tool]
 pub fn note(text: String) -> Result<u64> {
     berm_kit::note(&text)
 }
 
+/// Relay
+///
 /// Writes `word` under `last`, calls `put` on `inner` with it, then `count`
 /// on `inner`, and answers what `count` did.
 #[tool]

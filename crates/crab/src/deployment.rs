@@ -141,7 +141,13 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
             client.secrets(name)
         )
     })?;
-    inspect::show(&deployed.service, Some(&running), &terms, None);
+    inspect::show(
+        &deployed.service,
+        Some(&running),
+        &terms,
+        None,
+        &running.workflows,
+    );
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }

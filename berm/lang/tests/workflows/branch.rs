@@ -2,6 +2,7 @@ use berm_lang::workflow;
 use support::{EchoCall, Input, No, Route, Yes};
 mod support;
 struct Flow;
+/// Flow
 #[workflow]
 impl Flow {
     #[branch]

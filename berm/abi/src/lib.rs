@@ -25,7 +25,7 @@ pub mod workflow;
 /// The version of the framing a service is built against and a host speaks:
 /// `(ptr, len)` and staged replies. A host refuses a service built against
 /// another. Adding or changing a host call does not change it.
-pub const ABI_VERSION: u32 = 7;
+pub const ABI_VERSION: u32 = 8;
 
 /// The module every host call is imported from.
 pub const MODULE: &str = "berm";

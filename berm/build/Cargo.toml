@@ -10,6 +10,7 @@ keywords = ["berm", "wasm", "build", "service"]
 categories = ["wasm", "development-tools::build-utils"]
 
 [dependencies]
+crabtalk-sdk.workspace = true
 anyhow.workspace = true
 berm-abi.workspace = true
 berm-api.workspace = true

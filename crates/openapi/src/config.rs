@@ -13,7 +13,7 @@ pub(crate) struct Config {
     pub base_url: Option<LitStr>,
     pub tools: bool,
     pub tools_cfg: Option<Meta>,
-    pub operations: Vec<(Ident, LitStr)>,
+    pub operations: Vec<(Ident, LitStr, Vec<syn::Attribute>)>,
 }
 
 impl Parse for Config {
@@ -74,10 +74,23 @@ impl Parse for Config {
                     braced!(content in input);
                     let mut selected = Vec::new();
                     while !content.is_empty() {
-                        selected.push((content.parse()?, {
-                            content.parse::<Token![:]>()?;
-                            content.parse()?
-                        }));
+                        let attrs = content.call(syn::Attribute::parse_outer)?;
+                        for attr in &attrs {
+                            if !attr.path().is_ident("doc") && !attr.path().is_ident("tool") {
+                                return Err(syn::Error::new_spanned(
+                                    attr,
+                                    "an operation takes doc comments and #[tool(...)]",
+                                ));
+                            }
+                        }
+                        selected.push((
+                            content.parse()?,
+                            {
+                                content.parse::<Token![:]>()?;
+                                content.parse()?
+                            },
+                            attrs,
+                        ));
                         if !content.is_empty() {
                             content.parse::<Token![,]>()?;
                         }

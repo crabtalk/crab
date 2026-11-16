@@ -46,7 +46,7 @@ Terminal outcomes enter the completion outbox in the same transaction as the fin
 
 `continue_workflow` manually claims a failed or indeterminate run with a fresh deadline. It preserves the original image, input, prepared payloads, branch choices, successful items and dependency bindings. The embedder must reauthorize the initiator, original funding authority and remaining cumulative spend before executing the claim. `Peers::receipt` can supply a durable result without dispatching the tool again. Unknown writes require the original key and the target's unexpired idempotency guarantee. There are no automatic step retries or crash continuation.
 
-A tool's `[tools.send] idempotency = "24h"` setting declares a guarantee enforced by that tool or its upstream provider. The host does not add idempotency to arbitrary tools. Prepared inputs must contain `idempotency_key`; continuation never changes the payload, key or original window start.
+A tool's `#[tool(idempotency = "24h")]` declaration declares a guarantee enforced by that tool or its upstream provider. The host does not add idempotency to arbitrary tools. Prepared inputs must contain `idempotency_key`; continuation never changes the payload, key or original window start.
 
 `cancel_workflow` fences new graph dispatch and drains active calls. It cannot undo their effects. Cancellation committed before the terminal result makes the attempt cancelled; cancellation after committed success preserves that success. The completion outbox reports the resulting terminal status.
 

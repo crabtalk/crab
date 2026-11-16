@@ -10,6 +10,15 @@ fn manifest(package: &str) -> Manifest {
 fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let resend = manifest("crab-resend");
     assert_eq!(resend.tools.len(), 3);
+    let send = resend
+        .tools
+        .iter()
+        .find(|tool| tool.name == "send")
+        .unwrap();
+    assert_eq!(send.price, None);
+    assert_eq!(send.title.as_deref(), Some("Send email"));
+    assert_eq!(send.idempotency_ms, Some(86_400_000));
+    assert_eq!(send.catalog, None);
     assert_eq!(resend.buffer, 1048576);
     assert_eq!(resend.deps.secrets, ["RESEND_API_KEY"]);
     assert!(!resend.deps.credentials["resend"].optional);
@@ -82,4 +91,26 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let hosts = &linked.deps.http.fetch;
     assert!(hosts.iter().any(|s| s == "api.github.com"));
     assert!(hosts.iter().any(|s| s == "api.resend.com"));
+}
+
+#[test]
+fn first_party_tools_have_registered_catalog_jobs_in_the_built_image() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services");
+    let catalog = crabtalk_sdk::catalog::Catalog::listed();
+    for group in ["agents", "web", "ops"] {
+        for entry in std::fs::read_dir(root.join(group)).unwrap() {
+            let dir = entry.unwrap().path();
+            if !dir.join("crab.toml").is_file() {
+                continue;
+            }
+            let image = std::fs::read(berm_build::build(&dir, None).unwrap()).unwrap();
+            let manifest = Manifest::try_from(image.as_slice()).unwrap();
+            for tool in manifest.tools.iter().filter(|tool| tool.public) {
+                let job = tool.catalog.as_deref().unwrap_or_else(|| {
+                    panic!("{}: {} has no catalog job", manifest.name, tool.name)
+                });
+                catalog.check(job).unwrap();
+            }
+        }
+    }
 }

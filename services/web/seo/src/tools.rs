@@ -2,10 +2,15 @@ use crate::report::Report;
 use berm_lang::{Result, tool};
 use webpage::page::Page;
 
+/// Check page SEO
+///
 /// Inspect server-returned HTML for basic SEO findings and their evidence.
 /// Checks page metadata, canonical links, h1 headings, image alt attributes
 /// and robots directives. It does not measure rankings or render JavaScript.
-#[tool]
+#[tool(
+    catalog = "web.seo",
+    budget(cpu = 50000, read = 1, written = 1, memory = 8)
+)]
 pub fn check(
     /// Absolute HTTP or HTTPS URL, without embedded credentials.
     url: String,

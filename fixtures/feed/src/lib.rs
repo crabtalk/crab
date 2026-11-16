@@ -16,12 +16,16 @@ use lake::{Kind, State, store, store::Version};
 
 mod source;
 
+/// Fetches the feed and stores each item new to it
+///
 /// Fetches the feed and stores each item new to it.
-#[tool(cron)]
+#[tool(cron, access = "internal")]
 pub fn tick() -> Result<()> {
     lake::tick::<Rss>()
 }
 
+/// Lists the items stored after `after`, oldest first
+///
 /// Lists the items stored after `after`, oldest first.
 #[tool(query)]
 pub fn posts(
@@ -38,6 +42,8 @@ pub fn posts(
     })
 }
 
+/// List
+///
 /// Follows the feed of records at `url`. Answers whether it was new.
 #[tool]
 pub fn list(url: String) -> Result<bool> {
@@ -47,12 +53,16 @@ pub fn list(url: String) -> Result<bool> {
     Ok(added)
 }
 
+/// Record
+///
 /// The latest version of record `id` in each feed that showed it.
 #[tool(query)]
 pub fn record(id: String) -> Result<Records> {
     Ok(Records::from(store::record_of::<Post>(&id)?))
 }
 
+/// Every version of record `id`, oldest first
+///
 /// Every version of record `id`, oldest first.
 #[tool(query)]
 pub fn versions(id: String) -> Result<Records> {

@@ -23,19 +23,3 @@ guide = "Create a personal API key in PostHog with query:read and access to your
 optional = true
 hosts = ["us.posthog.com", "eu.posthog.com"]
 secrets = [{ name = "POSTHOG_PERSONAL_API_KEY", label = "Personal API key" }]
-
-[tools.capture]
-access = "public"
-title = "Capture event"
-
-[tools.capture_batch]
-access = "public"
-title = "Capture batch"
-
-[tools.flags]
-access = "public"
-title = "Evaluate flags"
-
-[tools.query]
-access = "public"
-title = "Query analytics"

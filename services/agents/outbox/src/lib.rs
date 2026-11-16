@@ -49,8 +49,15 @@ impl Draft {
     }
 }
 
+/// Review email
+///
 /// Prepare an email for browser review without sending it.
-#[tool(request)]
+#[tool(
+    request,
+    access = "accounts",
+    catalog = "outbox.review-email",
+    budget(cpu = 10000, read = 1, written = 1, memory = 2)
+)]
 pub fn review(input: Draft) -> Result<Review<Draft>> {
     input.check()?;
     let mut body = format!(
@@ -74,8 +81,14 @@ pub fn review(input: Draft) -> Result<Review<Draft>> {
     Ok(review)
 }
 
+/// Send approved email
+///
 /// Execute an owner-approved email. The request ID is the provider idempotency key for retries within 24 hours.
-#[tool]
+#[tool(
+    access = "accounts",
+    catalog = "outbox.send-email",
+    budget(cpu = 10000, read = 1, written = 1, memory = 2)
+)]
 pub fn send(request: String, input: Draft) -> Result<Sent> {
     let Some(Caller::Outside(owner)) = berm_lang::caller()? else {
         return Err(berm_lang::deny("An account owner must approve this email"));

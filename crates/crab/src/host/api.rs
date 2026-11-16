@@ -111,9 +111,7 @@ async fn deploy(
     Extension(Named(name)): Extension<Named>,
     Json(deploy): Json<DeployRequest>,
 ) -> Result<Json<Deployed>, Denied> {
-    let priced: Vec<String> = deploy.prices.keys().cloned().collect();
     let deploy = node.prepare(deploy).await?;
-    node.priced(&deploy.digest, &priced).await?;
     let (deployed, breaks) = node.deploy(&name, deploy).await?;
     Ok(Json(Deployed {
         service: deployed.service.idl(&name),
@@ -186,9 +184,7 @@ async fn deploy_set(
     for (name, request) in set.services {
         let prepared = async {
             super::service::validate(&name)?;
-            let priced = request.prices.keys().cloned().collect::<Vec<_>>();
             let deploy = node.prepare(request).await?;
-            node.priced(&deploy.digest, &priced).await?;
             Ok::<_, Denied>(deploy)
         }
         .await;

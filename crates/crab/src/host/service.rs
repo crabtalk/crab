@@ -3,12 +3,12 @@
 use crate::host::Node;
 use axum::http::StatusCode;
 use berm_api::{
-    Break, Manifest, digest,
+    Break, digest,
     host::{self, Deploy},
 };
-use berm_host::{Denied, Images, Installed, deny};
+use berm_host::{Denied, Installed, deny};
 use berm_oci::{Access, Reference, Registry};
-use crabtalk_sdk::services::{price, service::DeployRequest};
+use crabtalk_sdk::services::service::DeployRequest;
 use std::str::FromStr;
 
 impl Node {
@@ -110,22 +110,6 @@ impl Node {
                 (name, installed, breaks)
             })
             .collect())
-    }
-
-    /// Refused naming the first of `priced` that is not a public tool of the
-    /// kept image `digest` names.
-    pub async fn priced(&self, digest: &str, priced: &[String]) -> Result<(), Denied> {
-        if priced.is_empty() {
-            return Ok(());
-        }
-        let image = self
-            .images
-            .pull(digest, digest)
-            .await
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-        let manifest = Manifest::try_from(image.as_slice())
-            .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-        price::check(&manifest, priced).map_err(|e| deny(StatusCode::BAD_REQUEST, e))
     }
 
     /// Keep `image` for a deploy to name, answering its digest.

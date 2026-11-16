@@ -127,7 +127,6 @@ impl Deploy {
                     size: Some(service.project.database.size()),
                     seed,
                     force: self.force,
-                    prices: project::prices(&service.project)?,
                     ..DeployRequest::default()
                 }
             };

@@ -6,6 +6,8 @@ extern crate alloc;
 
 use berm_lang::{Result, tool};
 
+/// Answers nothing
+///
 /// Answers nothing.
 #[tool]
 pub fn ping() -> Result<()> {

@@ -5,8 +5,10 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 use berm_lang::{Result, tool};
 
+/// Send email
+///
 /// Send an email through the deployment's Resend account. Acceptance does not imply delivery.
-#[tool]
+#[tool(idempotency = "24h")]
 pub fn send(
     /// Sender, recipients, subject and text or HTML body.
     email: Email,
@@ -16,8 +18,10 @@ pub fn send(
     api::send(&email, &idempotency_key)
 }
 
+/// Send batch emails
+///
 /// Send up to 100 emails in one Resend request.
-#[tool]
+#[tool(idempotency = "24h")]
 pub fn send_batch(
     /// Emails in delivery order.
     emails: Vec<Email>,
@@ -27,6 +31,8 @@ pub fn send_batch(
     api::send_batch(&emails, &idempotency_key)
 }
 
+/// Read email delivery
+///
 /// Read an email's current delivery event from Resend.
 #[tool]
 pub fn retrieve(

@@ -3,6 +3,3 @@ deploy = false
 
 [database]
 migrations = "migrations"
-
-[tools.ping]
-access = "public"

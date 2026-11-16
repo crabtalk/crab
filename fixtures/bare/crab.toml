@@ -1,11 +1,2 @@
 image = "fixtures/bare"
 deploy = false
-
-[tools.fetch]
-access = "public"
-
-[tools.vouch]
-access = "public"
-
-[tools.client_ip]
-access = "public"

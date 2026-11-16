@@ -29,13 +29,13 @@ use alloc::vec::Vec;
 use berm_lang::{Result, tool};
 use crabkit::lake::store;
 
-/// Fetches the feeds due and stores each item new to one.
+/// Fetches the feeds due and stores each item new to one
 #[tool(cron)]
 pub fn tick() -> Result<()> {
     crabkit::lake::tick::<Blog>()
 }
 
-/// Lists the posts stored after `after`, oldest first.
+/// Lists the posts stored after `after`, oldest first
 #[tool(query)]
 pub fn posts(after: u64) -> Result<Vec<Post>> {
     let stored = store::items::<Post>(None, after, 50)?;
@@ -43,10 +43,6 @@ pub fn posts(after: u64) -> Result<Vec<Post>> {
 }
 ```
 
-```toml
-[tools.posts]
-access = "public"
-```
 
 ## A source
 

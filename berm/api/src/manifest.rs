@@ -2,7 +2,7 @@
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
 use crate::{
-    Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec,
+    Access, DEFAULT_BUFFER, Http, Image, ToolSpec,
     events::Source,
     host,
     logo::Logo,
@@ -85,6 +85,7 @@ pub struct Manifest {
 /// The [`SERVICE_SECTION`] the build appends: the service's own declarations,
 /// from its package and its `crab.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceRecord {
     #[serde(default)]
     pub public: bool,
@@ -113,30 +114,39 @@ pub struct ServiceRecord {
     /// Default reservation for a new deployment, in bytes.
     #[serde(default = "host::database_size")]
     pub database_size: u64,
-    /// What `[tools]` in its `crab.toml` says of each tool, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tools: BTreeMap<String, ToolRecord>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub workflows: BTreeMap<String, Config>,
+    pub workflows: BTreeMap<String, crate::project::Workflow>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub crons: BTreeMap<String, String>,
 }
 
-/// What `[tools]` in a service's `crab.toml` says of one tool, applied onto
-/// its [`ToolSpec`].
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// A tool's compiled declaration in the ABI section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolRecord {
-    /// `None` is internal.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub access: Option<Access>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub catalog: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub budget: Option<Limits>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub idempotency_ms: Option<u64>,
+    #[serde(flatten)]
+    pub spec: ToolSpec,
+    #[serde(default = "public_access")]
+    pub access: Access,
+}
+fn public_access() -> Access {
+    Access::Public
+}
+
+impl TryFrom<ToolRecord> for ToolSpec {
+    type Error = anyhow::Error;
+    fn try_from(record: ToolRecord) -> Result<Self> {
+        let mut tool = record.spec;
+        if tool.cron || tool.stripe || tool.webhook {
+            anyhow::ensure!(
+                record.access == Access::Internal,
+                "host-triggered tool {} must be internal",
+                tool.name
+            );
+        }
+        tool.set_access(Some(record.access));
+        tool.check_declaration()?;
+        Ok(tool)
+    }
 }
 
 /// A library crate a service links that has a `crab.toml` of its own: its
@@ -569,6 +579,9 @@ impl Manifest {
         if !(host::MIN_DATABASE_SIZE..=host::MAX_DATABASE_SIZE).contains(&self.database_size) {
             bail!("default database size is outside the host limits");
         }
+        for tool in &self.tools {
+            tool.check_declaration()?;
+        }
         let mut names = BTreeSet::new();
         for spec in &self.workflows {
             if !names.insert(&spec.entry.name) {
@@ -659,7 +672,7 @@ impl Manifest {
 
 /// What an image claims to be, read without compiling or running it.
 ///
-/// Each tool takes its access, title and catalog from the service record.
+/// Tools and workflow declarations come from the ABI records.
 /// Refused when the image has no [`SERVICE_SECTION`], which a bare
 /// `cargo build` leaves out; when it declares neither tools nor workflows; when a tool record was
 /// compiled in a crate other than the service's; when the service record
@@ -685,7 +698,7 @@ impl TryFrom<&[u8]> for Manifest {
                     Invalid(anyhow::anyhow!("invalid workflow record: {error}"))
                 })?;
                 versioned(record.abi_version).map_err(Invalid::from)?;
-                workflows.push((record.workflow, record.krate));
+                workflows.push((record.workflow, record.config, record.krate));
                 continue;
             }
             match serde_json::from_value::<AbiRecord>(record)
@@ -698,7 +711,7 @@ impl TryFrom<&[u8]> for Manifest {
                     krate,
                 } => {
                     versioned(abi_version)?;
-                    tools.push((*tool, krate));
+                    tools.push((ToolSpec::try_from(*tool)?, krate));
                 }
                 AbiRecord::Service { abi_version } => {
                     versioned(abi_version)?;
@@ -732,41 +745,15 @@ impl TryFrom<&[u8]> for Manifest {
             None => Vec::new(),
         };
 
-        let mut records = std::mem::take(&mut service.tools);
-        let tools = tools
-            .into_iter()
-            .map(|(mut tool, krate)| {
-                if krate != service.name {
-                    bail!(
-                        "tool {:?} was compiled in {krate}, not in the service {}; a kit carries no tools",
-                        tool.name,
-                        service.name
-                    );
-                }
-                let record = records.remove(&tool.name).unwrap_or_default();
-                if record.access.is_some() && (tool.cron || tool.stripe || tool.webhook) {
-                    bail!(
-                        "tool {:?} is called by its host, and takes no access",
-                        tool.name
-                    );
-                }
-                tool.set_access(record.access);
-                tool.title = record.title;
-                tool.catalog = record.catalog;
-                tool.budget = record.budget;
-                if record.idempotency_ms == Some(0) {bail!("tool {} has a zero idempotency window",tool.name);}
-                tool.idempotency_ms = record.idempotency_ms;
-                Ok(tool)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        if let Some(name) = records.keys().next() {
-            bail!("[tools] names {name:?}, which the service has no tool of");
-        }
+        let tools = tools.into_iter().map(|(tool, krate)| {
+            if krate != service.name { bail!("tool {:?} was compiled in {krate}, not in the service {}; a kit carries no tools", tool.name, service.name); }
+            Ok(tool)
+        }).collect::<Result<Vec<_>>>()?;
 
         let mut configured = std::mem::take(&mut service.workflows);
         let workflows = workflows
             .into_iter()
-            .map(|(entry, krate)| {
+            .map(|(entry, mut config, krate)| {
                 if krate != service.name {
                     return Err(Invalid(anyhow::anyhow!(
                         "workflow {} was compiled in {krate}, not {}",
@@ -775,13 +762,9 @@ impl TryFrom<&[u8]> for Manifest {
                     ))
                     .into());
                 }
-                let config = configured.remove(&entry.name).ok_or_else(|| {
-                    Invalid(anyhow::anyhow!(
-                        "workflow {} needs a [workflows.{}] table",
-                        entry.name,
-                        entry.name
-                    ))
-                })?;
+                config.schedule = configured
+                    .remove(&entry.name)
+                    .and_then(|config| config.schedule);
                 Ok(Spec { entry, config })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -808,7 +791,6 @@ impl TryFrom<&[u8]> for Manifest {
             mut deps,
             database,
             database_size,
-            tools: _,
             workflows: _,
             crons,
         } = service;
@@ -882,7 +864,7 @@ enum AbiRecord {
     },
     /// One per `#[tool]`, naming the package it was compiled in.
     Tool {
-        tool: Box<ToolSpec>,
+        tool: Box<ToolRecord>,
         abi_version: u32,
         #[serde(rename = "crate")]
         krate: String,
@@ -897,6 +879,8 @@ enum AbiRecord {
 #[derive(Deserialize)]
 struct WorkflowRecord {
     workflow: Entry,
+    #[serde(default)]
+    config: Config,
     abi_version: u32,
     #[serde(rename = "crate")]
     krate: String,

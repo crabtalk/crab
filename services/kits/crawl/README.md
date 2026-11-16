@@ -18,7 +18,7 @@ The library's `crab.toml` declares `"berm.http.fetch" = ["*"]` and its migration
 ```rust,ignore
 use berm_lang::{Result, tool};
 
-/// Reads the sites due and fetches the pages due.
+/// Crawl the sites due
 #[tool(cron)]
 pub fn crawl() -> Result<()> {
     crabkit::crawl::tick::<Pages>()

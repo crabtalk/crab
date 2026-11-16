@@ -131,9 +131,11 @@ enum Command {
     },
     /// Show a service's README, tools and their arguments.
     Inspect {
-        /// The service: a name on the context's account, or `owner/name` on
-        /// Cloud for another account's public service.
+        /// A service address, or a source directory starting with `.` or `/`.
         name: String,
+        /// Select services in a source workspace.
+        #[arg(short = 'p', long = "package")]
+        packages: Vec<String>,
     },
     /// Write a deployed service's IDL, which `declare_service!` reads.
     Idl {
@@ -688,7 +690,14 @@ fn run() -> Result<ExitCode> {
         )?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
-        Command::Inspect { name } => cmd::inspect::run(&client()?, &cloud()?, name, json)?,
+        Command::Inspect { name, packages } => {
+            if name.starts_with(['.', '/']) {
+                cmd::inspect::directory(std::path::Path::new(name), packages, json)?;
+            } else {
+                anyhow::ensure!(packages.is_empty(), "--package selects a service directory");
+                cmd::inspect::run(&client()?, &cloud()?, name, json)?;
+            }
+        }
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
         Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,
         Command::Logs { name, after } => cmd::logs::run(&client()?, name, *after, json)?,

@@ -22,23 +22,21 @@ use alloc::string::String;
 use berm_lang::{Result, tool};
 use crabkit::stripe::{Data, Session, Subscriber};
 
-/// Opens a Checkout session subscribing the calling user to `plan`.
+/// Open a subscription checkout
+///
+/// Subscribes the calling user to `plan`.
 #[tool]
 pub fn upgrade(plan: String, success: String, cancel: String) -> Result<Session> {
     Subscriber::calling()?.checkout(&plan, &success, &cancel)
 }
 
-/// Keeps the subscription a Stripe event names.
+/// Keeps the subscription a Stripe event names
 #[tool(stripe)]
 pub fn webhook(data: Data) -> Result<()> {
     data.keep()
 }
 ```
 
-```toml
-[tools.upgrade]
-access = "public"
-```
 
 The service declares nothing the library already declares: the library's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `[http] fetch`, and its migrations, and they reach the service's manifest when the service links the library. Its tables are `stripe_customers` and `stripe_subscriptions`, in the service's database.
 

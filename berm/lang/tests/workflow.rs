@@ -25,7 +25,7 @@ enum Route {
     Same(Same),
 }
 
-/// Return a number.
+/// Return a number
 #[tool]
 fn add(value: u64) -> Result<u64> {
     Ok(value + 1)
@@ -33,6 +33,7 @@ fn add(value: u64) -> Result<u64> {
 type Add = AddCall;
 
 struct Track;
+/// Track
 #[workflow]
 impl Track {
     #[step]
@@ -197,6 +198,7 @@ fn branch_projections_and_optional_joins_preserve_selected_values() {
 
 berm_lang::declare_service!(variants);
 struct Remote;
+/// Remote
 #[workflow]
 impl Remote {
     #[step]
@@ -251,12 +253,13 @@ fn union_call_results_activate_typed_arms_and_join_without_cloning_payloads() {
     assert_eq!(value, 4);
 }
 
-/// Return an absent number.
+/// Return an absent number
 #[tool]
 fn nullable() -> Result<Option<u64>> {
     Ok(None)
 }
 struct NullResult;
+/// NullResult
 #[workflow]
 impl NullResult {
     #[step]

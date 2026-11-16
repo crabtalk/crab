@@ -14,7 +14,7 @@ const CLIENT: Client<'static> = Client {
 crab_openapi::service! {
     spec: "tests/specs/objects.json",
     client: crate::CLIENT,
-    operations: { query: "GET /query", tree: "POST /tree" },
+    operations: { #[doc = "Query"] query: "GET /query", #[doc = "Tree"] tree: "POST /tree" },
 }
 
 #[test]

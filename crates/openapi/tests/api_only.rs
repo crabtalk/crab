@@ -11,7 +11,7 @@ crab_openapi::service! {
     client: crate::CLIENT,
     base_url: "https://mirror.example.com/api",
     tools: cfg(any()),
-    operations: { ping: "GET /ping" },
+    operations: { #[doc = "Ping"] ping: "GET /ping" },
 }
 
 #[test]

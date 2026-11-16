@@ -46,14 +46,21 @@ impl Manifest {
                     .map_or_else(
                         || tool.public || tool.webhook || tool.stripe || tool.cron,
                         |old| {
-                            (old.access(), old.webhook, old.stripe, old.cron, &old.events)
-                                != (
-                                    tool.access(),
-                                    tool.webhook,
-                                    tool.stripe,
-                                    tool.cron,
-                                    &tool.events,
-                                )
+                            (
+                                old.access(),
+                                old.webhook,
+                                old.stripe,
+                                old.cron,
+                                &old.events,
+                                old.price,
+                            ) != (
+                                tool.access(),
+                                tool.webhook,
+                                tool.stripe,
+                                tool.cron,
+                                &tool.events,
+                                tool.price,
+                            )
                         },
                     )
             })

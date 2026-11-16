@@ -3,8 +3,7 @@
 
 use berm_abi::{ABI_SECTION, ABI_VERSION, KITS_SECTION, SERVICE_SECTION};
 use berm_api::{
-    Access, Credential, CredentialSecret, Deps, Image, Kit, Limits, Manifest, ServiceRecord,
-    ToolRecord, host,
+    Access, Credential, CredentialSecret, Deps, Image, Kit, Manifest, ServiceRecord, host,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -20,16 +19,16 @@ fn tool(name: &str, krate: &str) -> String {
 
 fn cron(name: &str) -> String {
     format!(
-        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}},"cron":true}},"abi_version":{ABI_VERSION},"crate":"demo"}}"#
+        r#"{{"tool":{{"name":"{name}","description":"d","parameters":{{"type":"object"}},"cron":true,"access":"internal"}},"abi_version":{ABI_VERSION},"crate":"demo"}}"#
     )
 }
 
 fn service() -> Vec<u8> {
-    with_tools(BTreeMap::new())
+    service_record()
 }
 
 /// The service record, with `tools` as `[tools]` of its `crab.toml` says.
-fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
+fn service_record() -> Vec<u8> {
     serde_json::to_vec(&ServiceRecord {
         public: false,
         lang: String::new(),
@@ -47,7 +46,6 @@ fn with_tools(tools: BTreeMap<String, ToolRecord>) -> Vec<u8> {
         },
         database: None,
         database_size: host::DATABASE_SIZE,
-        tools,
         workflows: BTreeMap::new(),
         crons: BTreeMap::new(),
     })
@@ -238,47 +236,63 @@ fn a_secret_in_two_credentials_is_refused() {
 }
 
 #[test]
-fn the_service_record_gives_each_tool_its_access_title_catalog_and_budget() {
-    let budget = Limits {
-        written: Some(10),
-        ..Limits::default()
-    };
-    let record = ToolRecord {
-        access: Some(Access::Accounts),
-        title: Some("Search the web".to_owned()),
-        catalog: Some("web.search".to_owned()),
-        budget: Some(budget),
-        idempotency_ms: None,
-    };
-    let abi = tool("a", "demo") + &tool("b", "demo");
-    let service = with_tools(BTreeMap::from([("a".to_owned(), record)]));
-    let manifest = Manifest::try_from(&*image(&abi, Some(&service), &[])).unwrap();
+fn abi_declarations_supply_access_price_title_catalog_and_budget() {
+    let mut record: Value = serde_json::from_str(&tool("a", "demo")).unwrap();
+    record["tool"]["access"] = "accounts".into();
+    record["tool"]["title"] = "Search the web".into();
+    record["tool"]["price"] = 2000.into();
+    record["tool"]["catalog"] = "web.search".into();
+    record["tool"]["budget"] = serde_json::json!({"written":10});
+    let abi = record.to_string() + &tool("b", "demo");
+    let manifest = Manifest::try_from(&*image(&abi, Some(&service()), &[])).unwrap();
     let a = &manifest.tools[0];
     assert_eq!(a.access(), Some(Access::Accounts));
-    assert!(a.public && !a.anonymous);
+    assert_eq!(a.price, Some(2000));
     assert_eq!(a.title.as_deref(), Some("Search the web"));
     assert_eq!(a.catalog.as_deref(), Some("web.search"));
-    assert_eq!(a.budget, Some(budget));
-    assert_eq!(manifest.tools[1].access(), None);
+    assert_eq!(a.budget.unwrap().written, Some(10));
+    assert_eq!(manifest.tools[1].access(), Some(Access::Public));
     assert_eq!(manifest.tools[1].budget, None);
 }
 
 #[test]
-fn a_record_for_a_tool_the_image_lacks_is_refused() {
-    let service = with_tools(BTreeMap::from([("gone".to_owned(), ToolRecord::default())]));
-    let error = Manifest::try_from(&*image(&tool("a", "demo"), Some(&service), &[])).unwrap_err();
-    assert!(error.to_string().contains("\"gone\""), "{error}");
+fn legacy_service_tool_maps_are_refused() {
+    let mut service: Value = serde_json::from_slice(&service()).unwrap();
+    service["tools"] = serde_json::json!({});
+    assert!(
+        Manifest::try_from(&*image(
+            &tool("a", "demo"),
+            Some(&serde_json::to_vec(&service).unwrap()),
+            &[]
+        ))
+        .is_err()
+    );
 }
 
 #[test]
-fn a_cron_tool_given_access_is_refused() {
-    let record = ToolRecord {
-        access: Some(Access::Public),
-        ..ToolRecord::default()
-    };
-    let service = with_tools(BTreeMap::from([("tick".to_owned(), record)]));
-    let error = Manifest::try_from(&*image(&cron("tick"), Some(&service), &[])).unwrap_err();
-    assert!(error.to_string().contains("takes no access"), "{error}");
+fn a_cron_tool_given_public_access_is_refused() {
+    let public_cron = cron("tick").replace("internal", "public");
+    let error = Manifest::try_from(&*image(&public_cron, Some(&service()), &[])).unwrap_err();
+    assert!(format!("{error:#}").contains("must be internal"), "{error}");
+}
+
+#[test]
+fn invalid_compiled_declarations_are_refused() {
+    for fields in [
+        serde_json::json!({"title":"Ends in a period."}),
+        serde_json::json!({"title":"x".repeat(61)}),
+        serde_json::json!({"access":"internal","price":100}),
+        serde_json::json!({"price":1}),
+        serde_json::json!({"budget":{"cpu":0}}),
+        serde_json::json!({"idempotency_ms":0}),
+    ] {
+        let mut record: Value = serde_json::from_str(&tool("a", "demo")).unwrap();
+        record["tool"]
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        assert!(Manifest::try_from(&*image(&record.to_string(), Some(&service()), &[])).is_err());
+    }
 }
 
 #[test]
@@ -423,4 +437,12 @@ fn visibility_is_read_from_the_service_image_and_defaults_private() {
         &[],
     );
     assert!(!Manifest::try_from(bytes.as_slice()).unwrap().public);
+}
+
+#[test]
+fn title_limits_count_characters_and_reject_final_periods() {
+    assert!(berm_api::ToolSpec::check_title(&"é".repeat(60)).is_ok());
+    for title in ["", "Send email.", "two\nlines", &"x".repeat(61)] {
+        assert!(berm_api::ToolSpec::check_title(title).is_err());
+    }
 }

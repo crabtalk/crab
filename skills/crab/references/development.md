@@ -12,7 +12,7 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - `crab build` automatically installs missing Rust build tools through the official rustup installer, then adds the `wasm32-unknown-unknown` target. No manual toolchain setup is required. The local loop needs no account or login. `crab --context default status` checks the local host; `crab plans` requires a Cloud context selected by `crab login`.
 - `crab dev -d` starts the local host at `127.0.0.1:7777` in the background, one per machine. `crab --context default deploy [dir]` builds and deploys there the service in `dir` (default `.`), or workspace services beneath it not marked `deploy = false`; `-p` selects names across the workspace instead, starting the host when it is not running; run it again after a change. `crab dev status` says whether the host runs; `crab dev stop` stops it. Other commands reach it with `--context default`. Its output is `~/.crab/host/host.log`.
 - A service with standard-library dependencies enables `berm-lang = { workspace = true, features = ["std"] }` and omits `#![no_std]`. Default guest builds remain `no_std`.
-- Size each tool's `crab.toml` budget from its built WebAssembly execution before Cloud deployment or template publication. Native tests and image builds do not establish valid runtime budgets. Follow [Sizing tool budgets](#sizing-tool-budgets).
+- Size each tool's `#[tool(budget(...))]` declaration from its built WebAssembly execution before Cloud deployment or template publication. Native tests and image builds do not establish valid runtime budgets. Follow [Sizing tool budgets](#sizing-tool-budgets).
 - On Cloud each service reserves its `[database] size`, 1GiB when unset, whatever it holds. Builds carry this default into the image for template copies. Redeployments keep their existing reservation unless explicitly resized. An account's services reserve at most its plan's storage together, and a deploy past it is refused, so size each service to what it holds (`crab usage <service>` reports database allocation; missing snapshots show `—`).
 
 ## Storage transactions
@@ -22,7 +22,7 @@ A tool reads its own pending storage writes during the call. Changes commit only
 ## Sizing tool budgets
 
 1. Define and enforce supported input bounds, including response sizes, batch counts, parser complexity and database size. Deploy locally with a provisional budget within the destination's ceilings; exercise representative and worst-case workloads repeatedly, including error paths. Use `crab bench <directory> <tool> --cases cases.jsonl --runs 10`, with representative and largest supported inputs and arranged HTTP responses; the [benchmark guide](https://crabtalk.ai/docs/guides/bench) defines the JSON Lines format. `delay_ms` on a response accounts for memory held while waiting; `--live-http` executes real requests on every repetition.
-2. Read the benchmark's own-tool CPU, rows and peak linear memory. CPU is in microseconds and memory in bytes; `crab.toml` memory is in MiB. Start with `ceil(1.5 × maximum)` per key, at least `1`. A budget-stopped run does not measure the work needed to finish. `crab call` and host-test meters include nested calls; `crab bench` separates own usage from chain cost. Exercise called tools separately too.
+2. Read the benchmark's own-tool CPU, rows and peak linear memory. CPU is in microseconds and memory in bytes; declaration memory is in MiB. Start with `ceil(1.5 × maximum)` per key, at least `1`. A budget-stopped run does not measure the work needed to finish. `crab call` and host-test meters include nested calls; `crab bench` separates own usage from chain cost. Exercise called tools separately too.
 3. Check every value against the destination host. Default ceilings are `cpu = 100_000` (100 ms), `read = 1_000_000`, `written = 1_000_000`, `memory = 128`. `cpu = 500_000` is 500 ms and is refused by a default host. Omitted keys use defaults: the ceilings above except `written = 10_000`. Raising the local CPU ceiling does not change Cloud's.
 4. Write the budget, rebuild, redeploy locally and repeat the workload before requesting Cloud approval or publishing. If it cannot fit with headroom, reduce resource use or supported input bounds; use batching or pagination when the operation supports them. Do not just lower the declaration.
 
@@ -32,7 +32,7 @@ Memory is billed at the reserved budget during execution, waiting on fetches or 
 
 ## Workflow declarations
 
-A `#[workflow]` impl compiles typed step, branch and output signatures into a graph. The matching `[workflows.<name>]` table requires `max_cost` and positive `checkpoint_bytes`; it can set access, title, price, control budget, retention and a UTC schedule/input. `crab build` and deployment validate this metadata without executing builders. Workflow execution keeps durable checkpoints; `crab workflow` inspects contracts and manages retained runs. See [crab.toml](https://crabtalk.ai/docs/development/crab-toml#workflows).
+A `#[workflow]` impl compiles typed step, branch and output signatures into a graph. Its attributes declare access, task price, `max_cost`, `budget(...)`, `checkpoint_bytes`, `retain` and optional `example`. Defaults are public access, free calls, host control budgets, 100,000 USD micros ($0.10) cumulative owner cost, 8 MiB checkpoints and seven-day retention. Only `[workflows.<name>.schedule]` stays in `crab.toml`. `crab build` validates the image without executing builders; `crab inspect .` builds and reads its complete declarations. `crab inspect owner/name` inspects a deployment. `crab workflow` manages durable runs.
 
 ## Reusing services and libraries
 
@@ -111,7 +111,7 @@ Read the relevant source before writing code. Repository paths refer to the publ
 | Durable `#[tool(events = "name")]` sources, typed event pages and resume cursors | [berm/lang/README.md#durable-event-sources](https://github.com/crabtalk/crab/blob/main/berm/lang/README.md#durable-event-sources), [berm/host/README.md](https://github.com/crabtalk/crab/blob/main/berm/host/README.md) |
 | Every `berm_lang` function and type, with its signature | https://crabtalk.ai/docs/development/api |
 | Callers, data, HTTP, calls between services, crons and wakes, vars: each one's rules | the matching page under https://crabtalk.ai/docs/development, as `/docs/development/http` |
-| `crab.toml` keys, `[tools]` and its `access`, `title`, `price`, `catalog`, `[http]`, secrets, credentials, libraries | https://crabtalk.ai/docs/development/crab-toml |
+| `crab.toml` runtime keys, `[http]`, secrets, credentials, libraries | https://crabtalk.ai/docs/development/crab-toml |
 | `crab bench`, JSON Lines workloads, HTTP fixtures and local cost estimates | https://crabtalk.ai/docs/guides/bench |
 | Budget units, measurement, headroom, host ceilings and E0013 | https://crabtalk.ai/docs/guides/budgets |
 | `crab dev`, the local host, local secrets, replaying a failed call | https://crabtalk.ai/docs/guides/local |
@@ -141,3 +141,9 @@ Read the relevant source before writing code. Repository paths refer to the publ
 - Update affected READMEs, examples, website guides and this skill alongside behavior or layout changes.
 - What a service needs from berm or a library and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.
 - To check a fix against a failed call's tape, run `crab replay <service> <id> --build` in the service crate. It builds locally, prints both digests, and reaches no live services. `--build` and `--on` exclude each other.
+
+## Tool declarations and titles
+
+Declare metadata beside the function: `#[tool(query, catalog = "web.search", budget(cpu = 50_000, memory = 32))]`. Access defaults to `public`; use `access = "internal"` for internal calls, or `anonymous`, `accounts` or `services`. Price defaults to free; `price = 2_000` charges $0.002 per call from the built image. Catalog and idempotency default to absent; `idempotency = "24h"` declares a target-owned deduplication window. `example = "Find recent Rust releases"` records an example task. A generated OpenAPI operation accepts the same `#[tool(...)]` declaration and doc-comment title in its operations map.
+
+The first doc-comment line is the title: at most 60 characters, no final period. Name the action verb first, such as "Send email" or "Count daily site views". Omit the service name and filler such as "This tool" or "Allows you to". After a blank comment line, describe inputs, side effects and limits. OpenAPI entries without a doc comment use the operation summary; a missing or invalid summary requires an entry doc comment. The operation description stays its description.

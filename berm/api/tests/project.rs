@@ -1,7 +1,7 @@
 //! `crab.toml`: credentials parsed, folded into `deps`, and a secret declared
 //! twice refused; `[tools]` read and checked.
 
-use berm_api::{Access, project::Project};
+use berm_api::project::Project;
 use std::fs;
 
 fn read(toml: &str) -> anyhow::Result<Project> {
@@ -66,51 +66,6 @@ fn the_auth_kits_credentials_parse() {
 }
 
 #[test]
-fn a_services_tools_are_read_and_a_kits_are_refused() {
-    let service = read(
-        "image = \"fixtures/app\"\n\n[tools.search]\naccess = \"services\"\ntitle = \"Search\"\nprice = 2_000\ncatalog = \"web.search\"\n",
-    )
-    .unwrap();
-    let search = &service.tools["search"];
-    assert_eq!(search.access, Some(Access::Services));
-    assert_eq!(search.price, Some(2_000));
-    assert_eq!(
-        service.records().unwrap()["search"].catalog.as_deref(),
-        Some("web.search")
-    );
-    let kit = read("[tools.search]\naccess = \"public\"\n").unwrap();
-    assert!(kit.check_kit().unwrap_err().to_string().contains("tools"));
-}
-
-#[test]
-fn a_price_or_catalog_on_an_internal_tool_is_refused() {
-    for key in ["price = 2_000", "catalog = \"web.search\""] {
-        let error = read(&format!(
-            "image = \"fixtures/app\"\n[tools.search]\n{key}\n"
-        ))
-        .unwrap_err();
-        assert!(error.to_string().contains("internal tool"), "{error}");
-    }
-}
-
-#[test]
-fn a_title_past_sixty_characters_or_one_line_is_refused() {
-    let long = "x".repeat(61);
-    for title in [long.as_str(), "two\\nlines"] {
-        let error = read(&format!(
-            "image = \"fixtures/app\"\n[tools.search]\ntitle = \"{title}\"\n"
-        ))
-        .unwrap_err();
-        assert!(error.to_string().contains("one line"), "{error}");
-    }
-    read(&format!(
-        "image = \"fixtures/app\"\n[tools.search]\ntitle = \"{}\"\n",
-        "é".repeat(60)
-    ))
-    .unwrap();
-}
-
-#[test]
 fn an_unknown_access_or_key_is_refused() {
     assert!(read("image = \"fixtures/app\"\n[tools.search]\naccess = \"everyone\"\n").is_err());
     assert!(read("image = \"fixtures/app\"\n[tools.search]\nprices = 1\n").is_err());
@@ -127,33 +82,9 @@ fn a_pattern_that_is_not_a_regular_expression_is_refused() {
 }
 
 #[test]
-fn a_budget_key_of_zero_or_unknown_is_refused() {
-    let budget = |set: &str| {
-        read(&format!(
-            "image = \"fixtures/app\"\n[tools.search]\nbudget = {{ {set} }}\n"
-        ))
-    };
-    let error = budget("cpu = 5_000, written = 0").unwrap_err();
-    assert!(
-        error.to_string().contains("budget.written is at least 1"),
-        "{error}"
-    );
-    assert!(budget("rows = 10").is_err());
-    let read = budget("written = 100, memory = 16").unwrap();
-    let limits = read.tools["search"].budget.unwrap();
-    assert_eq!(
-        (limits.written, limits.memory, limits.cpu),
-        (Some(100), Some(16), None)
-    );
-}
-
-#[test]
 fn linked_services_validate_migration_identity_without_rejecting_deployment_settings() {
-    let service =
-        read("image = \"fixtures/github\"\n[tools.repository]\naccess = \"public\"\n[vars]\nlimit = {}\n")
-            .unwrap();
+    let service = read("image = \"fixtures/github\"\n[vars]\nlimit = {}\n").unwrap();
     service.check_dependency().unwrap();
-    assert_eq!(service.tools.len(), 1);
     let missing = read("[database]\nmigrations = \"migrations\"\n").unwrap();
     assert!(missing.check_dependency().is_err());
 }
@@ -284,12 +215,30 @@ fn service_call_destinations_are_not_manifest_declarations() {
 }
 
 #[test]
-fn tool_idempotency_windows_are_target_owned_and_positive() {
-    let project = read("[tools.send]\nidempotency = \"24h\"\n").unwrap();
-    assert_eq!(
-        project.records().unwrap()["send"].idempotency_ms,
-        Some(86_400_000)
-    );
-    assert!(read("[tools.send]\nidempotency = \"0s\"\n").is_err());
-    assert!(read("[tools.send]\nidempotency = \"1ns\"\n").is_err());
+fn legacy_declarations_are_refused_even_when_empty_or_equal_to_defaults() {
+    for source in [
+        r#"[tools]"#,
+        r#"[tools.echo]"#,
+        r#"[tools.echo]
+access = "public""#,
+        r#"[workflows.echo]
+access = "public""#,
+        r#"[workflows.echo]
+max_cost = 100000"#,
+        r#"[workflows.echo]
+checkpoint_bytes = 8388608"#,
+        r#"[workflows.echo]
+retain = "7d""#,
+        r#"[workflows.echo]
+price = 100"#,
+    ] {
+        assert!(read(source).is_err(), "{source}");
+    }
+    read(
+        r#"[workflows.echo.schedule]
+cron = "0 8 * * *"
+input = {}
+"#,
+    )
+    .unwrap();
 }

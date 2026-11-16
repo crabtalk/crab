@@ -3,7 +3,7 @@
 //! cargo builds the service's `cdylib` for [`TARGET`]. Its `.berm.abi` section
 //! holds what the compiler wrote: a record per `#[tool]` and per `#[event]`.
 //! The build appends a `.berm.service` section, from the service's package and
-//! its `crab.toml`, each `[tools]` table but its `price` included, and a
+//! its `crab.toml`, and a
 //! `.berm.kits` section, from each kit it links: each crate cargo compiled for
 //! [`TARGET`] in that build, other than the service, with a `crab.toml` beside
 //! its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
@@ -86,7 +86,6 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         deps: project.deps(),
         database: migrations(service.manifest_path.dir(), &project)?,
         database_size: project.database.size(),
-        tools: project.records()?,
         workflows: project.workflows.clone(),
         crons: project.crons.clone().unwrap_or_default(),
     };
@@ -124,8 +123,11 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
 
     let bytes = Image(&bytes).with_section(SERVICE_SECTION, &serde_json::to_vec(&record)?)?;
     let bytes = Image(&bytes).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;
-    Manifest::try_from(bytes.as_slice())
+    let manifest = Manifest::try_from(bytes.as_slice())
         .with_context(|| format!("{} is not a service", service.name))?;
+    crabtalk_sdk::catalog::Catalog::listed()
+        .check_manifest(&manifest)
+        .map_err(anyhow::Error::msg)?;
 
     let file = built
         .file_name()

@@ -128,7 +128,7 @@ impl Drop for Registry {
 async fn a_manifest_alone_deploys_an_exact_template_without_cargo() {
     let registry = Registry::new(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = true\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n[tools.unbuilt]\naccess = \"public\"\nprice = 100\n")).unwrap();
+    fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = true\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n")).unwrap();
     registry.deploy(dir.path(), &[], true).await.unwrap();
     let request = registry.sent(Method::PUT, "/services/bob/weather");
     assert_eq!(request["reference"], DIGEST);

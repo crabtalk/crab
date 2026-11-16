@@ -1,20 +1,2 @@
 image = "fixtures/site"
 deploy = false
-
-[tools.watch]
-access = "public"
-
-[tools.watch_first]
-access = "public"
-
-[tools.list]
-access = "public"
-
-[tools.urls]
-access = "public"
-
-[tools.page]
-access = "public"
-
-[tools.read]
-access = "public"

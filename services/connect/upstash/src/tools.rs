@@ -5,6 +5,8 @@ fn database() -> Result<Redis> {
     Redis::new(&berm_lang::var("UPSTASH_REDIS_REST_URL")?)
 }
 
+/// Get
+///
 /// Read a Redis string. A missing key returns null.
 #[tool]
 pub fn get(
@@ -14,6 +16,8 @@ pub fn get(
     database()?.get(&key)
 }
 
+/// Set
+///
 /// Write a Redis string, optionally with an expiry.
 #[tool]
 pub fn set(
@@ -27,6 +31,8 @@ pub fn set(
     database()?.set(&key, &value, expiry_seconds)
 }
 
+/// Delete
+///
 /// Delete Redis keys and return how many existed.
 #[tool]
 pub fn delete(
@@ -36,6 +42,8 @@ pub fn delete(
     database()?.delete(&keys)
 }
 
+/// Expire
+///
 /// Change a key's expiry; zero deletes it immediately.
 #[tool]
 pub fn expire(
@@ -47,6 +55,8 @@ pub fn expire(
     database()?.expire(&key, seconds)
 }
 
+/// TTL
+///
 /// Read remaining seconds. -1 means persistent; -2 means missing.
 #[tool]
 pub fn ttl(
@@ -56,6 +66,8 @@ pub fn ttl(
     database()?.ttl(&key)
 }
 
+/// Increment
+///
 /// Increment a Redis integer by a signed amount. Do not blindly retry failures.
 #[tool]
 pub fn increment(
@@ -67,6 +79,8 @@ pub fn increment(
     database()?.increment(&key, amount)
 }
 
+/// Pipeline
+///
 /// Run Redis commands in order, with possible interleaving. Inspect each returned error.
 #[tool]
 pub fn pipeline(
@@ -76,6 +90,8 @@ pub fn pipeline(
     database()?.pipeline(&commands)
 }
 
+/// Transaction
+///
 /// Run Redis commands without interleaving. Runtime errors do not roll back other commands.
 #[tool]
 pub fn transaction(

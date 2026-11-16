@@ -1,9 +1,6 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{
-    Access, Credential, DEFAULT_BUFFER, Deps, Http, Limits, ToolRecord, ToolSpec, Var, host,
-    logo::Logo, reference::Reference, workflow::config::Config,
-};
+use crate::{Credential, DEFAULT_BUFFER, Deps, Http, Var, host, logo::Logo, reference::Reference};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use regex::Regex;
@@ -12,7 +9,6 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 /// What the project file is called.
@@ -48,11 +44,8 @@ pub struct Project {
     /// `"*/5 * * * *"`. Absent, no cron tool is scheduled.
     #[serde(default)]
     pub crons: Option<BTreeMap<String, String>>,
-    /// What it says of each tool, by name.
     #[serde(default)]
-    pub tools: BTreeMap<String, Tool>,
-    #[serde(default)]
-    pub workflows: BTreeMap<String, Config>,
+    pub workflows: BTreeMap<String, Workflow>,
     /// Secrets it names in `{secret:NAME}` that are in no credential.
     #[serde(default)]
     pub secrets: Vec<String>,
@@ -91,53 +84,11 @@ pub struct Database {
     pub migrations: Option<PathBuf>,
 }
 
-/// One tool's table in `[tools]` of `crab.toml`.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Tool {
-    /// Who may call it; absent, it is internal.
+pub struct Workflow {
     #[serde(default)]
-    pub access: Option<Access>,
-    /// Its short display name, at most [`ToolSpec::TITLE`] characters on one
-    /// line.
-    #[serde(default)]
-    pub title: Option<String>,
-    /// Its price a call on Cloud, in USD micros: `2_000` is $0.002. A deploy
-    /// carries it.
-    #[serde(default)]
-    pub price: Option<u64>,
-    /// The catalog job it does, as `company.enrich`.
-    #[serde(default)]
-    pub catalog: Option<String>,
-    /// What one call may use, each key at least 1.
-    #[serde(default)]
-    pub budget: Option<Limits>,
-    #[serde(default, with = "humantime_serde::option")]
-    pub idempotency: Option<Duration>,
-}
-
-impl TryFrom<&Tool> for ToolRecord {
-    type Error = anyhow::Error;
-    fn try_from(tool: &Tool) -> Result<Self> {
-        let idempotency_ms = tool
-            .idempotency
-            .map(|duration| {
-                let milliseconds = u64::try_from(duration.as_millis())
-                    .context("idempotency must fit milliseconds")?;
-                if milliseconds == 0 {
-                    bail!("idempotency must be at least one millisecond");
-                }
-                Ok(milliseconds)
-            })
-            .transpose()?;
-        Ok(Self {
-            access: tool.access,
-            title: tool.title.clone(),
-            catalog: tool.catalog.clone(),
-            budget: tool.budget,
-            idempotency_ms,
-        })
-    }
+    pub schedule: Option<crate::workflow::config::Schedule>,
 }
 
 fn deployed() -> bool {
@@ -160,36 +111,6 @@ impl Project {
                 );
             }
             seen.push(&secret.name);
-        }
-        for (name, tool) in &project.tools {
-            let at = format!("{}: tools.{name}", path.display());
-            ToolRecord::try_from(tool).with_context(|| at.clone())?;
-            if let Some(title) = &tool.title
-                && (title.chars().count() > ToolSpec::TITLE || title.contains(['\n', '\r']))
-            {
-                bail!(
-                    "{at}: a title is one line of at most {} characters",
-                    ToolSpec::TITLE
-                );
-            }
-            if let Some((key, _)) = tool
-                .budget
-                .iter()
-                .flat_map(Limits::keys)
-                .find(|(_, v)| *v == 0)
-            {
-                bail!("{at}: budget.{key} is at least 1");
-            }
-            if tool.access.is_none() {
-                for (key, set) in [
-                    ("price", tool.price.is_some()),
-                    ("catalog", tool.catalog.is_some()),
-                ] {
-                    if set {
-                        bail!("{at} sets {key} on an internal tool; give it access");
-                    }
-                }
-            }
         }
         if project.vars.len() > Var::MAX {
             bail!(
@@ -230,10 +151,10 @@ impl Project {
                 bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
-        for (name, config) in &project.workflows {
-            config
-                .check()
-                .with_context(|| format!("workflows.{name}"))?;
+        for workflow in project.workflows.values() {
+            if let Some(schedule) = &workflow.schedule {
+                crate::schedule::parse(&schedule.cron)?;
+            }
         }
         project.deps().check_secret_declarations()?;
         Ok(project)
@@ -279,15 +200,6 @@ impl Project {
         }
     }
 
-    /// What the build writes of each tool into the service record: all but
-    /// its price.
-    pub fn records(&self) -> Result<BTreeMap<String, ToolRecord>> {
-        self.tools
-            .iter()
-            .map(|(name, tool)| Ok((name.clone(), ToolRecord::try_from(tool)?)))
-            .collect()
-    }
-
     /// The most bytes a call's arguments, and a tool's result, may hold.
     pub fn buffer(&self) -> usize {
         self.buffer.unwrap_or(DEFAULT_BUFFER)
@@ -302,7 +214,6 @@ impl Project {
             ("template", self.template),
             ("deploy", !self.deploy),
             ("crons", self.crons.is_some()),
-            ("tools", !self.tools.is_empty()),
             ("workflows", !self.workflows.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("vars", !self.vars.is_empty()),

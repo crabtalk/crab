@@ -11,7 +11,7 @@ mod bindings {
         spec: "tests/specs/api.json",
         client: crate::bindings::CLIENT,
         module: crate::bindings,
-        operations: { ping: "GET /ping" },
+        operations: { #[doc = "Ping"] #[tool(access = "accounts", price = 2000, catalog = "web.search", budget(cpu = 5000), idempotency = "24h", example = "Check availability")] ping: "GET /ping" },
     }
 }
 

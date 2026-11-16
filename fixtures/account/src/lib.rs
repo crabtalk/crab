@@ -9,9 +9,11 @@ use alloc::string::String;
 use auth::{Account, Identity, Session};
 use berm_lang::{Result, tool};
 
+/// Github
+///
 /// Signs in with a GitHub authorization code, creating the account on the
 /// identity's first sign-in, and answers a session of it.
-#[tool]
+#[tool(access = "anonymous")]
 pub fn github(
     /// The `code` GitHub sent the user back with.
     code: String,
@@ -21,9 +23,11 @@ pub fn github(
     Identity::github(&code, &redirect)?.sign_in()
 }
 
+/// Google
+///
 /// Signs in with a Google authorization code, creating the account on the
 /// identity's first sign-in, and answers a session of it.
-#[tool]
+#[tool(access = "anonymous")]
 pub fn google(
     /// The `code` Google sent the user back with.
     code: String,
@@ -36,9 +40,11 @@ pub fn google(
     Identity::google(&code, &redirect, verifier.as_deref())?.sign_in()
 }
 
+/// Link github
+///
 /// Adds the GitHub identity behind an authorization code to the account
 /// a session is signed in to, and answers the account.
-#[tool]
+#[tool(access = "anonymous")]
 pub fn link_github(
     /// The session's token.
     session: String,
@@ -50,9 +56,11 @@ pub fn link_github(
     Identity::github(&code, &redirect)?.link(&session)
 }
 
+/// Link google
+///
 /// Adds the Google identity behind an authorization code to the account
 /// a session is signed in to, and answers the account.
-#[tool]
+#[tool(access = "anonymous")]
 pub fn link_google(
     /// The session's token.
     session: String,
@@ -67,9 +75,11 @@ pub fn link_google(
     Identity::google(&code, &redirect, verifier.as_deref())?.link(&session)
 }
 
+/// Account
+///
 /// The account a session is signed in to, and the identities that sign
 /// in to it.
-#[tool(query)]
+#[tool(query, access = "anonymous")]
 pub fn account(
     /// The session's token.
     session: String,
@@ -77,8 +87,10 @@ pub fn account(
     Account::load(Account::session(&session)?)
 }
 
+/// Signs a session out, answering whether it was signed in
+///
 /// Signs a session out, answering whether it was signed in.
-#[tool]
+#[tool(access = "anonymous")]
 pub fn sign_out(
     /// The session's token.
     session: String,

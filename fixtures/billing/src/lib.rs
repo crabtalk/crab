@@ -9,9 +9,11 @@ use alloc::string::String;
 use berm_lang::{Result, tool};
 use stripe::{Data, Session, Subscriber};
 
+/// Checkout
+///
 /// Opens a Stripe Checkout session subscribing the calling user to a
 /// plan, and answers the URL to send them to.
-#[tool]
+#[tool(access = "services")]
 pub fn checkout(
     /// The plan: the `lookup_key` of one of the product's Stripe prices.
     price: String,
@@ -23,9 +25,11 @@ pub fn checkout(
     Subscriber::calling()?.checkout(&price, &success, &cancel)
 }
 
+/// Portal
+///
 /// Opens a Stripe customer portal session for the calling user, and
 /// answers the URL to send them to.
-#[tool]
+#[tool(access = "services")]
 pub fn portal(
     /// Where the portal sends the user back to.
     back: String,
@@ -33,15 +37,19 @@ pub fn portal(
     Subscriber::calling()?.portal(&back)
 }
 
+/// Plan
+///
 /// The calling user's plan: the `lookup_key` of the price their active or
 /// trialing subscription is on, or `null` without one.
-#[tool(query)]
+#[tool(query, access = "services")]
 pub fn plan() -> Result<Option<String>> {
     Subscriber::calling()?.plan()
 }
 
+/// Webhook
+///
 /// Keeps the subscription a Stripe event names as Stripe answers it now.
-#[tool(stripe)]
+#[tool(stripe, access = "internal")]
 pub fn webhook(
     /// What the event is about.
     data: Data,

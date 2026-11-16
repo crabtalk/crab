@@ -11,6 +11,7 @@ description = "OpenAPI bindings and tools for berm services"
 proc-macro = true
 
 [dependencies]
+berm-api.workspace = true
 heck.workspace = true
 oas3.workspace = true
 openapiv3.workspace = true
@@ -20,7 +21,6 @@ serde_json = { workspace = true, features = ["std"] }
 syn.workspace = true
 
 [dev-dependencies]
-berm-api.workspace = true
 berm-build.workspace = true
 wasmparser.workspace = true
 berm-lang.workspace = true
