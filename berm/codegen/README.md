@@ -26,3 +26,5 @@ Each `#[tool]` expands to the function, its export `berm_tool_<name>`, and its r
 ## License
 
 Apache-2.0
+
+Repeat `example = "find recent Rust releases"` on `#[tool]` or an OpenAPI operation entry for up to three example tasks, at most 120 characters each. The built image stores them in `examples`, and `crab inspect` lists them.

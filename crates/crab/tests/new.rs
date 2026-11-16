@@ -38,7 +38,7 @@ async fn renamed_starter_tools_build_and_state_survives_callers_and_restarts() -
     let source = project.join("src/lib.rs");
     fs::write(
         &source,
-        fs::read_to_string(&source)?.replace("pub fn echo(", "pub fn greeting(").replace("#[tool]\npub fn greeting", "#[tool(price = 2000, idempotency = \"24h\", catalog = \"web.search\", example = \"Echo a greeting\")]\npub fn greeting"),
+        fs::read_to_string(&source)?.replace("pub fn echo(", "pub fn greeting(").replace("#[tool]\npub fn greeting", "#[tool(price = 2000, idempotency = \"24h\", catalog = \"web.search\", example = \"Echo a greeting\", example = \"Greet a new teammate\", example = \"Say hello in French\")]\npub fn greeting"),
     )?;
     let image = fs::read(berm_build::build(&project, None)?)?;
     let manifest = berm_api::Manifest::try_from(image.as_slice())?;
@@ -49,7 +49,14 @@ async fn renamed_starter_tools_build_and_state_survives_callers_and_restarts() -
         .unwrap();
     assert_eq!(greeting.price, Some(2000));
     assert_eq!(greeting.idempotency_ms, Some(86_400_000));
-    assert_eq!(greeting.example.as_deref(), Some("Echo a greeting"));
+    assert_eq!(
+        greeting.examples,
+        [
+            "Echo a greeting",
+            "Greet a new teammate",
+            "Say hello in French"
+        ]
+    );
     assert_eq!(greeting.catalog.as_deref(), Some("web.search"));
     let state = root.path().join("host");
     let node = Node::new(

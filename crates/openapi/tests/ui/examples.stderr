@@ -1,0 +1,5 @@
+error: a tool has at most 3 example tasks
+ --> tests/ui/examples.rs:9:114
+  |
+9 |     operations: { #[doc = "Ping"] #[tool(example = "one", example = "two", example = "three", example = "four")] ping: "GET /ping" },
+  |                                                                                                                  ^^^^

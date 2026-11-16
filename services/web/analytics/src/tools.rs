@@ -63,6 +63,8 @@ pub fn record(
 #[tool(
     query,
     catalog = "web.analytics.days",
+    example = "count my site’s visits from AI assistants last week",
+    example = "compare daily visitors this month",
     budget(cpu = 100000, read = 500000, written = 1, memory = 16)
 )]
 pub fn days(site: String, from: Option<u64>, to: Option<u64>) -> Result<Days> {

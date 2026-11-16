@@ -1,0 +1,13 @@
+error: a tool has at most 3 example tasks
+ --> tests/ui/tool_examples_many.rs:5:4
+  |
+5 | fn search() -> Result<()> {
+  |    ^^^^^^
+
+warning: unused import: `Result`
+ --> tests/ui/tool_examples_many.rs:1:17
+  |
+1 | use berm_lang::{Result, tool};
+  |                 ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

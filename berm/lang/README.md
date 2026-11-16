@@ -118,3 +118,5 @@ Past its arguments, a service reaches who called, its own state, a database, its
 Apache-2.0
 
 `berm_lang::secret::owner(id, host)` reads ownership metadata for a resource granted to the deployment at that host, never its value. `http::fetch_all_literal_body` sends body bytes unchanged and substitutes secrets only in header values. Use it for user-supplied message content.
+
+Repeat `example = "find recent Rust releases"` on `#[tool]` or an OpenAPI operation entry for up to three example tasks, at most 120 characters each. The built image stores them in `examples`, and `crab inspect` lists them.

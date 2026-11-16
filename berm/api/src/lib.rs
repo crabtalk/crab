@@ -292,8 +292,8 @@ impl std::fmt::Display for Limits {
 pub struct ToolSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub example: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<String>,
     pub name: String,
     pub description: String,
     /// JSON Schema for the tool's arguments, as the model receives it.
@@ -357,6 +357,8 @@ impl ToolSpec {
     /// The most characters a title holds.
     pub const TITLE: usize = 60;
     pub const MIN_PRICE: u64 = 100;
+    pub const EXAMPLES: usize = 3;
+    pub const EXAMPLE_CHARS: usize = 120;
 
     pub fn check_title(title: &str) -> anyhow::Result<()> {
         anyhow::ensure!(!title.trim().is_empty(), "a title needs an action");
@@ -371,6 +373,22 @@ impl ToolSpec {
 
     pub fn check_declaration(&self) -> anyhow::Result<()> {
         let tool = self;
+        anyhow::ensure!(
+            tool.examples.len() <= Self::EXAMPLES,
+            "a tool has at most {} example tasks",
+            Self::EXAMPLES
+        );
+        for example in &tool.examples {
+            anyhow::ensure!(
+                !example.trim().is_empty(),
+                "an example task cannot be empty"
+            );
+            anyhow::ensure!(
+                example.chars().count() <= Self::EXAMPLE_CHARS,
+                "an example task has at most {} characters",
+                Self::EXAMPLE_CHARS
+            );
+        }
         if let Some(title) = &tool.title {
             ToolSpec::check_title(title)?;
         }

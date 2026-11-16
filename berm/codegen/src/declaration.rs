@@ -12,6 +12,15 @@ impl Declaration {
             .get_ident()
             .map(ToString::to_string)
             .unwrap_or_default();
+        if key == "example" && !workflow {
+            let example = meta.value()?.parse::<syn::LitStr>()?.value();
+            let examples = self
+                .0
+                .entry("examples")
+                .or_insert_with(|| Value::Array(Vec::new()));
+            examples.as_array_mut().unwrap().push(Value::from(example));
+            return Ok(());
+        }
         if self.0.contains_key(&key) {
             return Err(meta.error("duplicate declaration"));
         }

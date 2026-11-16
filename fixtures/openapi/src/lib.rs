@@ -18,7 +18,7 @@ crab_openapi::service! {
         #[tool(access = "internal")]
         /// Create an item
         create_item: "POST /items",
-        #[tool(access = "internal")]
+        #[tool(access = "internal", example = "Check whether the API is reachable", example = "Verify the API before syncing", example = "Check API availability")]
         /// Ping the API
         ping: "GET /ping",
         #[tool(access = "internal")]

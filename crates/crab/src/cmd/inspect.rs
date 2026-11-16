@@ -318,7 +318,7 @@ fn tools<'a>(
         if let Some(window) = tool.idempotency_ms {
             println!("    idempotency {window}ms");
         }
-        if let Some(example) = &tool.example {
+        for example in &tool.examples {
             println!("    example {example}");
         }
         if !terms.tools.contains_key(&tool.name) {

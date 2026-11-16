@@ -241,6 +241,11 @@ fn abi_declarations_supply_access_price_title_catalog_and_budget() {
     record["tool"]["access"] = "accounts".into();
     record["tool"]["title"] = "Search the web".into();
     record["tool"]["price"] = 2000.into();
+    record["tool"]["examples"] = serde_json::json!([
+        "Find recent Rust releases",
+        "é".repeat(120),
+        "Find Svelte updates"
+    ]);
     record["tool"]["catalog"] = "web.search".into();
     record["tool"]["budget"] = serde_json::json!({"written":10});
     let abi = record.to_string() + &tool("b", "demo");
@@ -248,6 +253,15 @@ fn abi_declarations_supply_access_price_title_catalog_and_budget() {
     let a = &manifest.tools[0];
     assert_eq!(a.access(), Some(Access::Accounts));
     assert_eq!(a.price, Some(2000));
+    assert_eq!(
+        a.examples,
+        [
+            "Find recent Rust releases".to_owned(),
+            "é".repeat(120),
+            "Find Svelte updates".to_owned()
+        ]
+    );
+    assert!(manifest.tools[1].examples.is_empty());
     assert_eq!(a.title.as_deref(), Some("Search the web"));
     assert_eq!(a.catalog.as_deref(), Some("web.search"));
     assert_eq!(a.budget.unwrap().written, Some(10));
@@ -285,6 +299,9 @@ fn invalid_compiled_declarations_are_refused() {
         serde_json::json!({"price":1}),
         serde_json::json!({"budget":{"cpu":0}}),
         serde_json::json!({"idempotency_ms":0}),
+        serde_json::json!({"examples":["one", "two", "three", "four"]}),
+        serde_json::json!({"examples":["x".repeat(121)]}),
+        serde_json::json!({"examples":["   "]}),
     ] {
         let mut record: Value = serde_json::from_str(&tool("a", "demo")).unwrap();
         record["tool"]
