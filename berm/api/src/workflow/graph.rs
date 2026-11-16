@@ -27,9 +27,9 @@ pub struct Graph {
 impl Entry {
     /// SHA-256 of compact JSON with recursively sorted object keys. Array order is significant.
     pub fn digest(&self) -> Result<String, serde_json::Error> {
-        let mut value = serde_json::to_value(self)?;
-        value.sort_all_objects();
-        Ok(digest::of(&serde_json::to_vec(&value)?))
+        Ok(digest::prefixed(&digest::json_hex(&serde_json::to_value(
+            self,
+        )?)))
     }
 }
 
@@ -258,6 +258,19 @@ impl Call {
             self.target == binding.target,
             "workflow binding targets another tool"
         );
+        if let Target::Service {
+            idempotency_ms: Some(requested),
+            ..
+        } = self.target
+        {
+            ensure!(
+                requested > 0
+                    && binding
+                        .idempotency_ms
+                        .is_some_and(|available| available >= requested),
+                "target does not provide the declared idempotency window"
+            );
+        }
         self.check_schemas(&binding.input, Some(&binding.output))
     }
 

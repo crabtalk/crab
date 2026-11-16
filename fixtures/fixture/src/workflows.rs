@@ -179,3 +179,44 @@ impl WorkflowNested {
         calls.to_vec()
     }
 }
+
+/// The endpoint must retain idempotency keys for at least ten seconds.
+#[tool]
+fn workflow_mail(url: String, idempotency_key: String) -> Result<String> {
+    let response = berm_lang::http::fetch(
+        "POST",
+        &url,
+        &[("Idempotency-Key", &idempotency_key)],
+        b"hello",
+    )?;
+    if response.status != 200 {
+        return Err("mail delivery was not acknowledged".into());
+    }
+    Ok(String::from_utf8(response.body).map_err(|_| "mail response is not UTF-8")?)
+}
+
+#[derive(Schema)]
+struct MailInput {
+    url: String,
+    keys: Vec<String>,
+}
+
+struct WorkflowMail;
+#[workflow]
+impl WorkflowMail {
+    #[step(each, max = 3)]
+    fn messages(input: &MailInput) -> Vec<WorkflowMailCall> {
+        input
+            .keys
+            .iter()
+            .map(|key| WorkflowMailCall {
+                url: input.url.clone(),
+                idempotency_key: key.clone(),
+            })
+            .collect()
+    }
+    #[output]
+    fn done(messages: &[String]) -> Vec<String> {
+        messages.to_vec()
+    }
+}

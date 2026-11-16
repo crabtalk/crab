@@ -4,6 +4,7 @@
 //! services by and serves its own routes beside it; everything a service
 //! observes is the host's.
 
+use crate::workflow::Refused as WorkflowRefused;
 use axum::{
     Json,
     body::Body,
@@ -12,7 +13,11 @@ use axum::{
 };
 use berm_api::{
     Failed,
-    workflow::{config::Invalid, run::Failure},
+    workflow::{
+        config::Invalid,
+        run::{Failure, Run},
+        spend::Context as SpendContext,
+    },
 };
 use serde_json::Value;
 use std::fmt;
@@ -129,6 +134,9 @@ impl From<anyhow::Error> for Denied {
         if let Some(failure) = e.downcast_ref::<Failure>() {
             return failure.clone().into();
         }
+        if let Some(refused) = e.downcast_ref::<WorkflowRefused>() {
+            return refused.clone().into();
+        }
         if e.is::<berm::MemoryLimit>() {
             return deny(StatusCode::TOO_MANY_REQUESTS, e.to_string()).explained(Self::MEMORY);
         }
@@ -171,5 +179,33 @@ impl From<Failure> for Denied {
         );
         denied.failure = Some(failure);
         denied
+    }
+}
+
+impl From<WorkflowRefused> for Denied {
+    fn from(error: WorkflowRefused) -> Self {
+        let message = error.to_string();
+        match error {
+            WorkflowRefused::Capacity => {
+                deny(StatusCode::FORBIDDEN, message).explained(Run::CAPACITY)
+            }
+            WorkflowRefused::Missing => deny(StatusCode::NOT_FOUND, message),
+            WorkflowRefused::Busy => deny(StatusCode::CONFLICT, message).explained(Run::BUSY),
+            WorkflowRefused::Expired => deny(StatusCode::GONE, message).explained(Run::EXPIRED),
+            WorkflowRefused::Removed => deny(StatusCode::GONE, message).explained(Run::REMOVED),
+            WorkflowRefused::Ineligible => {
+                deny(StatusCode::CONFLICT, message).explained(Run::FINISHED)
+            }
+            WorkflowRefused::Deadline => {
+                deny(StatusCode::CONFLICT, message).explained(SpendContext::EXPIRED)
+            }
+            WorkflowRefused::Cancelled => {
+                deny(StatusCode::CONFLICT, message).explained(SpendContext::CANCELLED)
+            }
+            WorkflowRefused::Unsafe(_) => {
+                deny(StatusCode::CONFLICT, message).explained(Run::UNSAFE)
+            }
+            WorkflowRefused::Invalid(_) => deny(StatusCode::UNPROCESSABLE_ENTITY, message),
+        }
     }
 }

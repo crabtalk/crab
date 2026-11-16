@@ -1,9 +1,9 @@
 use crate::{
     Budget, Meter,
-    host::Caller,
+    host::{self, Caller},
     workflow::{
         Version,
-        graph::{Source, Target},
+        graph::{Entry, Source, Target},
     },
 };
 use http::{HeaderName, HeaderValue, Response, header};
@@ -12,7 +12,7 @@ use serde_json::Value;
 use std::{
     collections::BTreeMap,
     error::Error as StdError,
-    fmt::{Display, Error as FmtError, Formatter, Result as FmtResult},
+    fmt::{Debug, Display, Error as FmtError, Formatter, Result as FmtResult},
     str::FromStr,
 };
 
@@ -40,6 +40,24 @@ pub struct Run {
 pub enum Trigger {
     Manual { caller: Caller },
     Schedule { key: String, at: u64 },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Claim {
+    pub run: String,
+    pub token: String,
+    pub attempt: String,
+    pub deadline_at: u64,
+}
+
+impl Debug for Claim {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Claim")
+            .field("run", &self.run)
+            .field("attempt", &self.attempt)
+            .field("deadline_at", &self.deadline_at)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Emitted only after the terminal attempt and its result commit together.
@@ -100,6 +118,8 @@ pub struct Binding {
     pub budget: Budget,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub query: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_ms: Option<u64>,
     /// Revision of the authorization accepted before effects.
     pub authorization: String,
 }
@@ -175,17 +195,32 @@ pub struct Item {
     pub index: u32,
     pub state: State,
     pub dispatches: Vec<Dispatch>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub receipts: Vec<Receipt>,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dispatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launched: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
     pub id: String,
     pub attempt: String,
     pub started_at: u64,
     pub finished_at: Option<u64>,
     pub state: State,
     pub meter: Meter,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Receipt {
+    pub dispatch: String,
+    pub input: String,
+    pub binding: String,
+    pub outcome: State,
 }
 
 /// Preserve the complete response body, including explanation and recovery fields.
@@ -223,6 +258,8 @@ impl Checkpoint {
                     if old.id != new.id
                         || old.attempt != new.attempt
                         || old.started_at != new.started_at
+                        || old.operation != new.operation
+                        || (old.launched.is_some() && old.launched != new.launched)
                     {
                         return Err("dispatch identity cannot change".into());
                     }
@@ -242,7 +279,125 @@ impl Checkpoint {
     }
 }
 
+impl PreparedCall {
+    pub const IDEMPOTENCY_KEY: &'static str = "idempotency_key";
+}
+
+impl Failure {
+    pub fn launched(&self) -> Option<bool> {
+        self.headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(host::LAUNCHED))?
+            .1
+            .parse()
+            .ok()
+    }
+}
+
+impl Item {
+    pub fn retry_operation(
+        &self,
+        prepared: &PreparedCall,
+        binding: &Binding,
+        now: u64,
+    ) -> Result<Option<String>, String> {
+        let Some(last) = self.dispatches.last() else {
+            return if self.state == State::Pending {
+                Ok(None)
+            } else {
+                Err("call history is incomplete".into())
+            };
+        };
+        if self.dispatches.iter().all(|dispatch| {
+            dispatch.launched == Some(false) || self.receipts.iter().any(|receipt|receipt.dispatch == dispatch.id && matches!(&receipt.outcome,State::Failed {error} if error.launched() == Some(false)))
+        }) {return Ok(None);}
+        let operation = last.operation.as_ref().unwrap_or(&last.id);
+        if !self
+            .dispatches
+            .iter()
+            .any(|dispatch| &dispatch.id == operation)
+        {
+            return Err("original dispatch is missing".into());
+        }
+        let started = self
+            .dispatches
+            .iter()
+            .map(|dispatch| dispatch.started_at)
+            .min()
+            .ok_or("call history is incomplete")?;
+        let stable_key = prepared.operation_key.as_deref().is_some_and(|key| {
+            !key.is_empty()
+                && prepared
+                    .input
+                    .get(PreparedCall::IDEMPOTENCY_KEY)
+                    .and_then(Value::as_str)
+                    == Some(key)
+        });
+        let inside = binding.idempotency_ms.is_some_and(|window| {
+            window > 0
+                && now >= started
+                && started.checked_add(window).is_some_and(|until| now < until)
+        });
+        if inside && stable_key {
+            return Ok(matches!(self.state, State::Unknown { .. }).then(|| operation.clone()));
+        }
+        if binding.query {
+            return Ok(None);
+        }
+        Err(if binding.idempotency_ms.is_none() {
+            "target provides no idempotency window"
+        } else if !stable_key {
+            "saved payload has no unchanged idempotency key"
+        } else {
+            "target idempotency window has expired"
+        }
+        .into())
+    }
+}
+
 impl Run {
+    pub const EXPIRED: &'static str = "E0066";
+    pub const UNSAFE: &'static str = "E0067";
+    pub const BUSY: &'static str = "E0068";
+    pub const REMOVED: &'static str = "E0069";
+    pub const CAPACITY: &'static str = "E0070";
+    pub const FINISHED: &'static str = "E0064";
+
+    pub fn check_continuation(&self, entry: &Entry, now: u64) -> Result<(), String> {
+        for node in &entry.graph.nodes {
+            let checkpoint = self
+                .checkpoints
+                .get(&node.id)
+                .ok_or("workflow checkpoint is missing")?;
+            if matches!(checkpoint.state, State::Succeeded { .. } | State::Skipped) {
+                continue;
+            }
+            if let Some(Prepared::Calls { calls }) = &checkpoint.prepared {
+                if calls.len() != checkpoint.items.len() {
+                    return Err(format!("{} has an incomplete item list", node.id));
+                }
+                let binding = self
+                    .accepted
+                    .bindings
+                    .get(&node.id)
+                    .ok_or("accepted binding is missing")?;
+                for (item, prepared) in checkpoint.items.iter().zip(calls) {
+                    if matches!(item.state, State::Succeeded { .. }) {
+                        continue;
+                    }
+                    item.retry_operation(prepared, binding, now)
+                        .map_err(|error| format!("{}[{}]: {error}", node.id, item.index))?;
+                }
+            } else if matches!(checkpoint.state, State::Running | State::Unknown { .. }) {
+                return Err(format!(
+                    "{} has an incomplete execution checkpoint",
+                    node.id
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn interrupt(&mut self, error: Failure, now: u64) {
         let cancelled = self.status == Status::Cancelling;
         self.status = if cancelled {

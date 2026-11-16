@@ -248,6 +248,7 @@ fn the_service_record_gives_each_tool_its_access_title_catalog_and_budget() {
         title: Some("Search the web".to_owned()),
         catalog: Some("web.search".to_owned()),
         budget: Some(budget),
+        idempotency_ms: None,
     };
     let abi = tool("a", "demo") + &tool("b", "demo");
     let service = with_tools(BTreeMap::from([("a".to_owned(), record)]));

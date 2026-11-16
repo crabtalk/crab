@@ -12,6 +12,7 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 /// What the project file is called.
@@ -111,6 +112,32 @@ pub struct Tool {
     /// What one call may use, each key at least 1.
     #[serde(default)]
     pub budget: Option<Limits>,
+    #[serde(default, with = "humantime_serde::option")]
+    pub idempotency: Option<Duration>,
+}
+
+impl TryFrom<&Tool> for ToolRecord {
+    type Error = anyhow::Error;
+    fn try_from(tool: &Tool) -> Result<Self> {
+        let idempotency_ms = tool
+            .idempotency
+            .map(|duration| {
+                let milliseconds = u64::try_from(duration.as_millis())
+                    .context("idempotency must fit milliseconds")?;
+                if milliseconds == 0 {
+                    bail!("idempotency must be at least one millisecond");
+                }
+                Ok(milliseconds)
+            })
+            .transpose()?;
+        Ok(Self {
+            access: tool.access,
+            title: tool.title.clone(),
+            catalog: tool.catalog.clone(),
+            budget: tool.budget,
+            idempotency_ms,
+        })
+    }
 }
 
 fn deployed() -> bool {
@@ -136,6 +163,7 @@ impl Project {
         }
         for (name, tool) in &project.tools {
             let at = format!("{}: tools.{name}", path.display());
+            ToolRecord::try_from(tool).with_context(|| at.clone())?;
             if let Some(title) = &tool.title
                 && (title.chars().count() > ToolSpec::TITLE || title.contains(['\n', '\r']))
             {
@@ -253,18 +281,10 @@ impl Project {
 
     /// What the build writes of each tool into the service record: all but
     /// its price.
-    pub fn records(&self) -> BTreeMap<String, ToolRecord> {
+    pub fn records(&self) -> Result<BTreeMap<String, ToolRecord>> {
         self.tools
             .iter()
-            .map(|(name, tool)| {
-                let record = ToolRecord {
-                    access: tool.access,
-                    title: tool.title.clone(),
-                    catalog: tool.catalog.clone(),
-                    budget: tool.budget,
-                };
-                (name.clone(), record)
-            })
+            .map(|(name, tool)| Ok((name.clone(), ToolRecord::try_from(tool)?)))
             .collect()
     }
 

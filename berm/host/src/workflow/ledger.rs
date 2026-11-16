@@ -1,10 +1,15 @@
 use crate::{Store, host};
 use anyhow::{Context, Result, ensure};
+pub use berm_api::workflow::run::Claim;
 use berm_api::{
-    Manifest, Meter, digest,
+    Manifest, Meter, digest, schema,
     workflow::{
         graph::{Entry, Kind, Target},
-        run::{Attempt, Checkpoint, Completion, Dispatch, Failure, Prepared, Run, State, Status},
+        run::{
+            Attempt, Checkpoint, Completion, Dispatch, Failure, Prepared, Receipt, Run, State,
+            Status,
+        },
+        spend::Context as SpendContext,
     },
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
@@ -27,14 +32,6 @@ pub struct StorageGrant {
     pub bytes: u64,
 }
 
-#[derive(Debug, Clone)]
-pub struct Claim {
-    pub run: String,
-    pub token: String,
-    pub attempt: String,
-    pub deadline_at: u64,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
     Start,
@@ -51,7 +48,7 @@ pub enum Eligibility {
     NotFailed,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Refused {
     Capacity,
     Missing,
@@ -59,6 +56,9 @@ pub enum Refused {
     Expired,
     Removed,
     Ineligible,
+    Deadline,
+    Cancelled,
+    Unsafe(String),
     Invalid(String),
 }
 
@@ -72,6 +72,9 @@ impl fmt::Display for Refused {
             Self::Busy => f.write_str("workflow run is claimed by another attempt"),
             Self::Expired => f.write_str("workflow checkpoints have expired"),
             Self::Removed => f.write_str("workflow service was deleted"),
+            Self::Deadline => f.write_str("workflow attempt deadline expired"),
+            Self::Cancelled => f.write_str("workflow cancellation stopped new dispatch"),
+            Self::Unsafe(message) => f.write_str(message),
             Self::Ineligible => f.write_str("workflow run is not eligible for this attempt"),
             Self::Invalid(message) => f.write_str(message),
         }
@@ -149,7 +152,7 @@ impl Ledger {
             grant.scope == host::split(&run.service).0,
             "storage grant belongs to another scope"
         );
-        berm_api::schema::validate(&spec.entry.graph.input, &run.input)?;
+        schema::validate(&spec.entry.graph.input, &run.input)?;
         ensure!(
             run.expires_at
                 == run
@@ -259,6 +262,76 @@ impl Ledger {
             .await?
     }
 
+    pub async fn reconcile(&self, id: &str, receipt: Receipt, now: u64) -> Result<()> {
+        let id = id.to_owned();
+        self.transaction(move |tx| {
+            let mut record = Self::load(tx, &id)?.ok_or(Refused::Missing)?;
+            match Self::eligibility(&record, now) {
+                Eligibility::Available => {}
+                Eligibility::Busy => return Err(Refused::Busy.into()),
+                Eligibility::Expired => return Err(Refused::Expired.into()),
+                _ => return Err(Refused::Ineligible.into()),
+            }
+            for (node, checkpoint) in &mut record.run.checkpoints {
+                let Some(Prepared::Calls { calls }) = &checkpoint.prepared else {
+                    continue;
+                };
+                for item in &mut checkpoint.items {
+                    if !item
+                        .dispatches
+                        .iter()
+                        .any(|dispatch| dispatch.id == receipt.dispatch)
+                    {
+                        continue;
+                    }
+                    if let Some(prior) = item
+                        .receipts
+                        .iter()
+                        .find(|prior| prior.dispatch == receipt.dispatch)
+                    {
+                        ensure!(prior == &receipt, "receipt contradicts a recorded outcome");
+                        return Ok(());
+                    }
+                    ensure!(
+                        matches!(item.state, State::Unknown { .. }),
+                        "only unknown calls accept a receipt"
+                    );
+                    let binding = &record.run.accepted.bindings[node];
+                    ensure!(
+                        receipt.input == digest::json_hex(&calls[item.index as usize].input)
+                            && receipt.binding == digest::json_hex(&serde_json::to_value(binding)?),
+                        "receipt identity differs from the saved call"
+                    );
+                    match &receipt.outcome {
+                        State::Succeeded { value } => schema::validate(&binding.output, value)?,
+                        State::Failed { error } if error.launched() == Some(false) => {}
+                        _ => {
+                            return Err(Refused::Invalid(
+                                "receipt has no authoritative outcome".into(),
+                            )
+                            .into());
+                        }
+                    }
+                    if matches!(receipt.outcome, State::Succeeded { .. })
+                        || item.dispatches.last().is_some_and(|dispatch| {
+                            dispatch.id == receipt.dispatch && dispatch.operation.is_none()
+                        })
+                    {
+                        item.state = receipt.outcome.clone();
+                    }
+                    item.receipts.push(receipt);
+                    tx.execute(
+                        "UPDATE runs SET body=?2 WHERE id=?1",
+                        params![id, Self::encode(&record.run)?],
+                    )?;
+                    return Ok(());
+                }
+            }
+            Err(Refused::Invalid("receipt dispatch is absent".into()).into())
+        })
+        .await
+    }
+
     pub async fn claim(&self, id: &str, intent: Intent, now: u64, deadline: u64) -> Result<Claim> {
         let id = id.to_owned();
         self.transaction(move |tx| {
@@ -285,6 +358,12 @@ impl Ledger {
             };
             if !allowed {
                 return Err(Refused::Ineligible.into());
+            }
+            if intent == Intent::Continue {
+                record
+                    .run
+                    .check_continuation(&record.entry, now)
+                    .map_err(Refused::Unsafe)?;
             }
             let claim = Claim {
                 run: id.clone(),
@@ -348,14 +427,25 @@ impl Ledger {
         let (claim, node) = (claim.clone(), node.to_owned());
         self.transaction(move |tx| {
             let mut record = Self::fenced(tx, &claim)?;
-            ensure!(
-                record.lease.is_some_and(|lease| lease > now),
-                "workflow dispatch deadline expired"
-            );
-            ensure!(
-                !record.invalidated && record.run.status == Status::Running,
-                "workflow cannot dispatch in its current state"
-            );
+            if !record.lease.is_some_and(|lease| lease > now) {
+                return Err(Refused::Deadline.into());
+            }
+            if record.invalidated {
+                return Err(Refused::Removed.into());
+            }
+            if record.run.status == Status::Cancelling {
+                return Err(Refused::Cancelled.into());
+            }
+            if record.run.status != Status::Running {
+                return Err(Refused::Ineligible.into());
+            }
+            let binding = record
+                .run
+                .accepted
+                .bindings
+                .get(&node)
+                .context("accepted binding is missing")?
+                .clone();
             let checkpoint = record
                 .run
                 .checkpoints
@@ -379,7 +469,12 @@ impl Ledger {
                 ),
                 "workflow item cannot dispatch in its current state"
             );
+            let operation = item
+                .retry_operation(&calls[index], &binding, now)
+                .map_err(Refused::Unsafe)?;
             let dispatch = Dispatch {
+                launched: None,
+                operation,
                 id: Uuid::new_v4().to_string(),
                 attempt: claim.attempt.clone(),
                 started_at: now,
@@ -418,13 +513,14 @@ impl Ledger {
         let claim = claim.clone();
         self.transaction(move |tx| {
             let mut record = Self::fenced(tx, &claim)?;
+            let (status,output,error)=if record.run.status==Status::Cancelling {(Status::Cancelled,None,Some(Self::cancellation()))} else {(status,output,error)};
             let result = match output {
                 Some(checkpoint) => {
                     ensure!(status == Status::Succeeded, "only success may record workflow output");
                     let output = record.entry.graph.nodes.iter().find(|node| matches!(node.kind, Kind::Output)).context("workflow has no output")?;
                     let State::Succeeded {value} = &checkpoint.state else { anyhow::bail!("workflow output did not succeed") };
                     ensure!(matches!(&checkpoint.prepared,Some(Prepared::Output {value:prepared}) if prepared == value), "workflow result differs from its output checkpoint");
-                    berm_api::schema::validate(&record.entry.graph.output,value)?;
+                    schema::validate(&record.entry.graph.output,value)?;
                     let result = value.clone();
                     record.run.checkpoints.get_mut(&output.id).context("output checkpoint is missing")?.advance(checkpoint).map_err(Refused::Invalid)?;
                     ensure!(record.run.checkpoints.values().all(|checkpoint| matches!(checkpoint.state, State::Succeeded { .. } | State::Skipped)), "success requires all nodes to finish");
@@ -448,6 +544,46 @@ impl Ledger {
             Self::completion(tx, &record.run)?;
             Ok(())
         }).await
+    }
+
+    pub async fn cancel(&self, id: &str, now: u64) -> Result<Run> {
+        let id = id.to_owned();
+        self.transaction(move |tx| {
+            Self::recover_in(tx, now)?;
+            let mut record = Self::load(tx, &id)?.ok_or(Refused::Missing)?;
+            match record.run.status {
+                Status::Pending => {
+                    record.run.status = Status::Cancelled;
+                    record.run.error = Some(Self::cancellation());
+                }
+                Status::Running => record.run.status = Status::Cancelling,
+                _ => return Ok(record.run),
+            }
+            tx.execute(
+                "UPDATE runs SET body=?2 WHERE id=?1",
+                params![id, Self::encode(&record.run)?],
+            )?;
+            Ok(record.run)
+        })
+        .await
+    }
+
+    pub async fn active(&self, claim: &Claim, now: u64) -> Result<()> {
+        let claim = claim.clone();
+        self.transaction(move |tx| {
+            let record = Self::fenced(tx, &claim)?;
+            if record.run.status == Status::Cancelling {
+                return Err(Refused::Cancelled.into());
+            }
+            if record.invalidated {
+                return Err(Refused::Removed.into());
+            }
+            if record.lease.is_none_or(|until| until <= now) {
+                return Err(Refused::Deadline.into());
+            }
+            Ok(())
+        })
+        .await
     }
 
     pub async fn pending_completions(&self, limit: u32) -> Result<Vec<Completion>> {
@@ -595,7 +731,20 @@ impl Ledger {
     }
 
     fn interrupted(record: &mut Record, now: u64) {
-        record.run.interrupt(Self::interruption(), now);
+        let error = if record.run.status == Status::Cancelling {
+            Self::cancellation()
+        } else {
+            Self::interruption()
+        };
+        record.run.interrupt(error, now);
+    }
+
+    fn cancellation() -> Failure {
+        Failure {
+            status: 409,
+            headers: Default::default(),
+            body: serde_json::json!({"error":"workflow cancelled","explain":SpendContext::CANCELLED}),
+        }
     }
 
     fn interruption() -> Failure {

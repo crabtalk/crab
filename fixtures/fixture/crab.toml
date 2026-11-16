@@ -139,3 +139,12 @@ checkpoint_bytes = 1048576
 access = "public"
 max_cost = 2000
 checkpoint_bytes = 1048576
+
+[tools.workflow_mail]
+access = "public"
+idempotency = "10s"
+
+[workflows.workflow_mail]
+access = "public"
+max_cost = 10000
+checkpoint_bytes = 1048576

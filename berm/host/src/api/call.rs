@@ -462,111 +462,128 @@ impl<E: Env> Host<E> {
         args: Vec<u8>,
         link: Link,
     ) -> Result<Reply, Denied> {
-        let deployed = self.get(service).ok_or_else(|| {
-            deny(
-                StatusCode::NOT_FOUND,
-                format!("no service named {service:?} is deployed"),
-            )
-        })?;
-        if let Some(binding) = &link.accepted {
-            let current = deployed.binding(binding.target.clone()).map_err(|error| {
-                deny(StatusCode::CONFLICT, format!("{error:#}")).explained(Binding::CHANGED)
+        let meters = Arc::new(Meters::default());
+        let mut launched = false;
+        let result = async {
+            let deployed = self.get(service).ok_or_else(|| {
+                deny(
+                    StatusCode::NOT_FOUND,
+                    format!("no service named {service:?} is deployed"),
+                )
             })?;
-            if current != *binding || binding.service != service || binding.target.tool() != tool {
-                return Err(
-                    deny(StatusCode::CONFLICT, "workflow dependency binding changed")
-                        .explained(Binding::CHANGED),
-                );
+            if let Some(binding) = &link.accepted {
+                let current = deployed.binding(binding.target.clone()).map_err(|error| {
+                    deny(StatusCode::CONFLICT, format!("{error:#}")).explained(Binding::CHANGED)
+                })?;
+                if current != *binding
+                    || binding.service != service
+                    || binding.target.tool() != tool
+                {
+                    return Err(
+                        deny(StatusCode::CONFLICT, "workflow dependency binding changed")
+                            .explained(Binding::CHANGED),
+                    );
+                }
             }
-        }
-        let refused = |message: String| {
+            let refused = |message: String| {
+                self.usage.record(
+                    service,
+                    Kind::Tool,
+                    tool,
+                    Source::Service,
+                    &link.from,
+                    Outcome::Refused,
+                );
+                Err(deny(StatusCode::FORBIDDEN, message))
+            };
+            if self.holds.holds(host::split(service).0) {
+                return refused(format!("{service} is held"));
+            }
+            if self.stops.stopped(service) {
+                return refused(format!("{service} is stopped"));
+            }
+            if !deployed.public(tool) {
+                return refused(format!("{service} has no public tool named {tool:?}"));
+            }
+            if link.caller.is_some() && !deployed.reached_by_services(tool) {
+                return refused(format!("{service}.{tool} takes no calls from services"))
+                    .map_err(|denied| denied.explained(Denied::SERVICE_CALLERS));
+            }
+            let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
+            let invoke = deployed.link(
+                berm::Link {
+                    caller: link
+                        .caller
+                        .as_ref()
+                        .map(|_| berm::Caller::Service(link.from.as_str().into())),
+                    key: link.key.as_deref().map(Into::into),
+                    user: link.user.as_ref().map(host::user),
+                    client: Client {
+                        key: link.client.as_deref().map(Into::into),
+                        ip: link.client_ip,
+                    },
+                    depth: link.depth,
+                    query: link.query,
+                    deadline: Instant::now() + Duration::from_millis(link.timeout),
+                    stack: link
+                        .stack
+                        .iter()
+                        .map(|service| Arc::from(service.as_str()))
+                        .collect(),
+                },
+                tool,
+                args,
+                meters.clone(),
+            );
+            let outcome = match link.workflow {
+                Some(context) => berm::workflow::scope(context, invoke).await,
+                None => invoke.await,
+            };
+            let used = meters.take();
+            launched = used.values().any(|used| used.calls > 0);
+            self.metered(used.clone());
+            let outcome = match outcome {
+                Ok(outcome) => outcome,
+                Err(error) if error.is::<Failure>() => return Err(error.into()),
+                Err(error) => match error.downcast::<Refused>() {
+                    Ok(Refused(message)) => return refused(message),
+                    Err(error) => return Err(error.into()),
+                },
+            };
+            let outcome = self.commit_outcome(outcome).await?;
+            let ended = Outcome::of(&outcome.result, outcome.denied);
             self.usage.record(
                 service,
                 Kind::Tool,
                 tool,
                 Source::Service,
                 &link.from,
-                Outcome::Refused,
+                ended,
             );
-            Err(deny(StatusCode::FORBIDDEN, message))
-        };
-        if self.holds.holds(host::split(service).0) {
-            return refused(format!("{service} is held"));
+            Ok(Reply {
+                launched: Some(launched),
+                result: outcome.result,
+                denied: outcome.denied,
+                meters: used.into_iter().fold(
+                    BTreeMap::new(),
+                    |mut meters: BTreeMap<String, BTreeMap<String, Meter>>,
+                     ((service, tool), used)| {
+                        meters
+                            .entry(service.to_string())
+                            .or_default()
+                            .insert(tool.to_string(), used);
+                        meters
+                    },
+                ),
+            })
         }
-        if self.stops.stopped(service) {
-            return refused(format!("{service} is stopped"));
-        }
-        if !deployed.public(tool) {
-            return refused(format!("{service} has no public tool named {tool:?}"));
-        }
-        if link.caller.is_some() && !deployed.reached_by_services(tool) {
-            return refused(format!("{service}.{tool} takes no calls from services"))
-                .map_err(|denied| denied.explained(Denied::SERVICE_CALLERS));
-        }
-        let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
-        let meters = Arc::new(Meters::default());
-        let invoke = deployed.link(
-            berm::Link {
-                caller: link
-                    .caller
-                    .as_ref()
-                    .map(|_| berm::Caller::Service(link.from.as_str().into())),
-                key: link.key.as_deref().map(Into::into),
-                user: link.user.as_ref().map(host::user),
-                client: Client {
-                    key: link.client.as_deref().map(Into::into),
-                    ip: link.client_ip,
-                },
-                depth: link.depth,
-                query: link.query,
-                deadline: Instant::now() + Duration::from_millis(link.timeout),
-                stack: link
-                    .stack
-                    .iter()
-                    .map(|service| Arc::from(service.as_str()))
-                    .collect(),
-            },
-            tool,
-            args,
-            meters.clone(),
-        );
-        let outcome = match link.workflow {
-            Some(context) => berm::workflow::scope(context, invoke).await,
-            None => invoke.await,
-        };
-        let used = meters.take();
-        self.metered(used.clone());
-        let outcome = match outcome {
-            Ok(outcome) => outcome,
-            Err(error) if error.is::<Failure>() => return Err(error.into()),
-            Err(error) => match error.downcast::<Refused>() {
-                Ok(Refused(message)) => return refused(message),
-                Err(error) => return Err(error.into()),
-            },
-        };
-        let outcome = self.commit_outcome(outcome).await?;
-        let ended = Outcome::of(&outcome.result, outcome.denied);
-        self.usage.record(
-            service,
-            Kind::Tool,
-            tool,
-            Source::Service,
-            &link.from,
-            ended,
-        );
-        Ok(Reply {
-            result: outcome.result,
-            denied: outcome.denied,
-            meters: used.into_iter().fold(
-                BTreeMap::new(),
-                |mut meters: BTreeMap<String, BTreeMap<String, Meter>>, ((service, tool), used)| {
-                    meters
-                        .entry(service.to_string())
-                        .or_default()
-                        .insert(tool.to_string(), used);
-                    meters
-                },
-            ),
+        .await;
+        result.map_err(|denied: Denied| {
+            let mut failure = Failure::from(&denied);
+            failure
+                .headers
+                .insert(wire::LAUNCHED.into(), launched.to_string());
+            failure.into()
         })
     }
 

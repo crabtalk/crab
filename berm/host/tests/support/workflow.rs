@@ -2,7 +2,7 @@ use berm_api::{
     Budget, Manifest, digest,
     workflow::{
         Version,
-        graph::{Kind, Source},
+        graph::{Kind, Source, Target},
         run::{Accepted, Binding, Run, Status, Trigger},
     },
 };
@@ -55,6 +55,10 @@ pub fn run(id: &str, image: &[u8]) -> Run {
                     output: call.output.clone(),
                     budget,
                     query: false,
+                    idempotency_ms: match call.target {
+                        Target::Service { idempotency_ms, .. } => idempotency_ms,
+                        _ => None,
+                    },
                     authorization: "revision-1".into(),
                 },
             )),

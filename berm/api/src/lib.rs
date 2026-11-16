@@ -299,6 +299,9 @@ pub struct ToolSpec {
     /// `berm.set`, `berm.emit` and `berm.call.after`, so it commits nothing.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub query: bool,
+    /// Reusing an unchanged key and payload cannot repeat effects within this window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_ms: Option<u64>,
     /// Named durable event history exposed by this read-only tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<String>,

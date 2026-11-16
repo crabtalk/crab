@@ -21,6 +21,7 @@ bytesize.workspace = true
 hex = { workspace = true, features = ["std"] }
 object.workspace = true
 wasmparser.workspace = true
+wasm-encoder.workspace = true
 regex.workspace = true
 semver.workspace = true
 rusqlite = { workspace = true, optional = true }

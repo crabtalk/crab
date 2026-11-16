@@ -23,5 +23,6 @@ impl Debug for Context {
 
 impl Context {
     pub const EXPIRED: &'static str = "E0062";
+    pub const CANCELLED: &'static str = "E0071";
     pub const DEFERRED: &'static str = "E0063";
 }

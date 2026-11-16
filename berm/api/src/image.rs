@@ -4,6 +4,7 @@ use crate::workflow::config::Spec;
 use anyhow::{Context, Result, bail, ensure};
 use object::{Object, ObjectSection};
 use std::collections::BTreeMap;
+use wasm_encoder::{Module, RawSection};
 use wasmparser::{ExternalKind, Parser, Payload, TypeRef};
 
 /// A wasm module's bytes.
@@ -108,6 +109,23 @@ impl<'a> Image<'a> {
             }
         }
         Ok(())
+    }
+
+    pub fn replace_section(&self, name: &str, data: &[u8]) -> Result<Vec<u8>> {
+        let mut module = Module::new();
+        for payload in Parser::new(0).parse_all(self.0) {
+            let payload = payload?;
+            if matches!(&payload,Payload::CustomSection(section) if section.name() == name) {
+                continue;
+            }
+            if let Some((id, range)) = payload.as_section() {
+                module.section(&RawSection {
+                    id,
+                    data: &self.0[range],
+                });
+            }
+        }
+        Image(&module.finish()).with_section(name, data)
     }
 
     /// Its bytes with `payload` appended as the custom section `name`.

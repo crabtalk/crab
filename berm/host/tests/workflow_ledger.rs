@@ -1,7 +1,9 @@
 use anyhow::Result;
 use berm_api::{
-    Meter,
-    workflow::run::{Checkpoint, Dispatch, Failure, Item, Prepared, PreparedCall, State, Status},
+    Image, Meter, digest, host,
+    workflow::run::{
+        Checkpoint, Dispatch, Failure, Item, Prepared, PreparedCall, Receipt, State, Status,
+    },
 };
 use berm_host::{
     test::TestHost,
@@ -41,11 +43,11 @@ fn prepared() -> Checkpoint {
         prepared: Some(Prepared::Calls {
             calls: vec![
                 PreparedCall {
-                    input: json!(1),
+                    input: json!({"value":1,"idempotency_key":"stable-0"}),
                     operation_key: Some("stable-0".into()),
                 },
                 PreparedCall {
-                    input: json!(2),
+                    input: json!({"value":2,"idempotency_key":"stable-1"}),
                     operation_key: Some("stable-1".into()),
                 },
             ],
@@ -54,12 +56,16 @@ fn prepared() -> Checkpoint {
             Item {
                 index: 0,
                 state: State::Succeeded { value: json!(11) },
+                receipts: vec![],
                 dispatches: vec![],
             },
             Item {
                 index: 1,
                 state: State::Running,
+                receipts: vec![],
                 dispatches: vec![Dispatch {
+                    launched: None,
+                    operation: None,
                     id: "dispatch-1".into(),
                     attempt: "attempt-1".into(),
                     started_at: 102,
@@ -489,5 +495,127 @@ async fn deleting_or_expiring_an_unreported_attempt_preserves_its_terminal_recei
     );
     assert!(host.host.workflows.get("deleted").await?.is_none());
     assert!(host.host.workflows.get("expired").await?.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_replay_that_never_launched_cannot_clear_the_original_uncertainty() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let ledger = &host.host.workflows;
+    insert(ledger, "uncertain", &fixture::image(&[]), u64::MAX).await?;
+    let claim = ledger.claim("uncertain", Intent::Start, 101, 200).await?;
+    ledger.checkpoint(&claim, "send", prepared()).await?;
+    ledger.recover(200).await?;
+    let replay = ledger
+        .claim("uncertain", Intent::Continue, 201, 300)
+        .await?;
+    let dispatch = ledger.begin_dispatch(&replay, "send", 1, 202).await?;
+    assert_eq!(dispatch.operation.as_deref(), Some("dispatch-1"));
+    ledger.recover(300).await?;
+    let run = ledger.get("uncertain").await?.unwrap();
+    let Some(Prepared::Calls { calls }) = &run.checkpoints["send"].prepared else {
+        panic!("missing calls")
+    };
+    let mut error = failure();
+    error.headers.insert(host::LAUNCHED.into(), "false".into());
+    ledger
+        .reconcile(
+            "uncertain",
+            Receipt {
+                dispatch: dispatch.id,
+                input: digest::json_hex(&calls[1].input),
+                binding: digest::json_hex(&serde_json::to_value(&run.accepted.bindings["send"])?),
+                outcome: State::Failed { error },
+            },
+            301,
+        )
+        .await?;
+    assert!(matches!(
+        ledger.get("uncertain").await?.unwrap().checkpoints["send"].items[1].state,
+        State::Unknown { .. }
+    ));
+    let next = ledger
+        .claim("uncertain", Intent::Continue, 302, 400)
+        .await?;
+    let dispatch = ledger.begin_dispatch(&next, "send", 1, 303).await?;
+    assert_eq!(dispatch.operation.as_deref(), Some("dispatch-1"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn known_failures_cannot_extend_the_prepared_calls_idempotency_window() -> Result<()> {
+    for launched in [true, false] {
+        let host = TestHost::open(0).await?;
+        let ledger = &host.host.workflows;
+        let image = fixture::image(&[]);
+        let mut record: serde_json::Value =
+            serde_json::from_slice(Image(&image).section(berm::abi::ABI_SECTION)?.unwrap())?;
+        record["workflow"]["graph"]["nodes"][0]["call"]["target"]["idempotency_ms"] = json!(100);
+        let image =
+            Image(&image).replace_section(berm::abi::ABI_SECTION, &serde_json::to_vec(&record)?)?;
+        let mut run = fixture::run("window", &image);
+        run.accepted
+            .bindings
+            .get_mut("send")
+            .unwrap()
+            .idempotency_ms = Some(100);
+        ledger
+            .insert(
+                run.clone(),
+                image,
+                StorageGrant {
+                    scope: "owner".into(),
+                    bytes: u64::MAX,
+                },
+            )
+            .await?;
+        let claim = ledger.claim("window", Intent::Start, 101, 200).await?;
+        let mut checkpoint = prepared();
+        checkpoint.state = State::Failed { error: failure() };
+        let item = &mut checkpoint.items[1];
+        item.state = State::Failed { error: failure() };
+        item.dispatches[0].state = item.state.clone();
+        item.dispatches[0].finished_at = Some(110);
+        item.dispatches[0].launched = Some(true);
+        ledger.checkpoint(&claim, "send", checkpoint).await?;
+        ledger
+            .finish(
+                &claim,
+                Status::Failed,
+                None,
+                Some(failure()),
+                Meter::default(),
+                110,
+            )
+            .await?;
+        let next = ledger.claim("window", Intent::Continue, 150, 250).await?;
+        let dispatch = ledger.begin_dispatch(&next, "send", 1, 151).await?;
+        assert!(dispatch.operation.is_none());
+        let mut checkpoint = ledger.get("window").await?.unwrap().checkpoints["send"].clone();
+        let item = &mut checkpoint.items[1];
+        item.state = State::Failed { error: failure() };
+        let dispatch = item.dispatches.last_mut().unwrap();
+        dispatch.state = item.state.clone();
+        dispatch.finished_at = Some(160);
+        dispatch.launched = Some(launched);
+        checkpoint.state = State::Failed { error: failure() };
+        ledger.checkpoint(&next, "send", checkpoint).await?;
+        ledger
+            .finish(
+                &next,
+                Status::Failed,
+                None,
+                Some(failure()),
+                Meter::default(),
+                160,
+            )
+            .await?;
+        let refusal = ledger
+            .claim("window", Intent::Continue, 203, 303)
+            .await
+            .unwrap_err();
+        assert!(matches!(refusal.downcast_ref(), Some(Refused::Unsafe(_))));
+        assert_eq!(ledger.get("window").await?.unwrap().attempts.len(), 2);
+    }
     Ok(())
 }

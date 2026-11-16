@@ -270,6 +270,7 @@ impl Service {
                 .budget(&tool.name)
                 .context("workflow target has no budget")?,
             query: tool.query,
+            idempotency_ms: tool.idempotency_ms,
             authorization: digest::of(&serde_json::to_vec(&(tool.public, tool.callers))?),
             target,
         })

@@ -15,10 +15,12 @@ secrets = [{ name = "RESEND_API_KEY", label = "API key" }]
 [tools.send]
 access = "public"
 title = "Send email"
+idempotency = "24h"
 
 [tools.send_batch]
 access = "public"
 title = "Send batch emails"
+idempotency = "24h"
 
 [tools.retrieve]
 access = "public"

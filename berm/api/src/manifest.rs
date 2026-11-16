@@ -135,6 +135,8 @@ pub struct ToolRecord {
     pub catalog: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget: Option<Limits>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_ms: Option<u64>,
 }
 
 /// A library crate a service links that has a `crab.toml` of its own: its
@@ -752,6 +754,8 @@ impl TryFrom<&[u8]> for Manifest {
                 tool.title = record.title;
                 tool.catalog = record.catalog;
                 tool.budget = record.budget;
+                if record.idempotency_ms == Some(0) {bail!("tool {} has a zero idempotency window",tool.name);}
+                tool.idempotency_ms = record.idempotency_ms;
                 Ok(tool)
             })
             .collect::<Result<Vec<_>>>()?;

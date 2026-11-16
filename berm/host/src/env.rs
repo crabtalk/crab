@@ -1,13 +1,17 @@
 //! The edges a daemon gives its [`Host`](crate::Host): what differs between
 //! running services on a laptop and on a fleet's node.
 
-use crate::Layers;
+use crate::{Layers, deny};
 use anyhow::{Result, bail};
+use axum::http::StatusCode;
 use berm::{
     Callsite, Enter, Meter, Refused, clock,
     syscall::http::{Request, Response},
 };
-use berm_api::host::{Link, Reply, Used};
+use berm_api::{
+    host::{Link, Reply, Used},
+    workflow::run::{Binding, Receipt},
+};
 use std::future::Future;
 
 /// One daemon's edges, as types.
@@ -76,6 +80,30 @@ pub trait Peers: Send + Sync + 'static {
         _link: Link,
     ) -> impl Future<Output = Result<Reply>> + Send {
         async move { Err(Refused(format!("this host has no account gateway for {service:?}")).into()) }
+    }
+
+    fn binding(
+        &self,
+        _from: &str,
+        service: &str,
+        _tool: &str,
+    ) -> impl Future<Output = Result<Binding>> + Send {
+        async move {
+            Err(deny(
+                StatusCode::FORBIDDEN,
+                format!("this host has no metadata gateway for {service:?}"),
+            )
+            .into())
+        }
+    }
+
+    fn receipt(
+        &self,
+        _from: &str,
+        _run: &str,
+        _dispatch: &str,
+    ) -> impl Future<Output = Result<Option<Receipt>>> + Send {
+        async { Ok(None) }
     }
 
     /// Hand `peer` the uses counted here of services it runs.

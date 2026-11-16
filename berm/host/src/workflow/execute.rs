@@ -2,7 +2,7 @@ use crate::{
     Denied, deny,
     env::{Env, Peers},
     host::{self, Host},
-    workflow::{Claim, Intent},
+    workflow::{Claim, Eligibility, Intent, Refused as LedgerRefused},
 };
 use anyhow::{Context, Result, bail, ensure};
 use axum::http::StatusCode;
@@ -34,8 +34,6 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
-
-const IDEMPOTENCY_KEY: &str = "idempotency_key";
 
 impl<E: Env> Host<E> {
     pub fn workflow_offer(&self, service: &str, workflow: &str) -> Result<Offer> {
@@ -73,6 +71,7 @@ impl<E: Env> Host<E> {
     }
 
     pub fn workflow_binding(&self, service: &str, tool: &str) -> Result<Binding> {
+        self.workflow_available(service)?;
         let deployed = self.deployed(service)?;
         if !deployed.public(tool) {
             return Err(deny(StatusCode::NOT_FOUND, "no such public tool").into());
@@ -196,28 +195,102 @@ impl<E: Env> Host<E> {
     }
 
     /// The embedder authorizes admission; this entry starts a pending, accepted run.
-    pub async fn execute_workflow(&self, id: &str) -> Result<Run> {
+    pub async fn claim_workflow(&self, id: &str, intent: Intent) -> Result<Claim> {
         let run = self
             .workflows
             .get(id)
             .await?
-            .context("no such workflow run")?;
+            .ok_or(LedgerRefused::Missing)?;
+        let now = (self.now)();
+        if intent == Intent::Continue {
+            match self.workflows.checkpoint_eligibility(id, now).await? {
+                Eligibility::Available => {}
+                Eligibility::Busy => return Err(LedgerRefused::Busy.into()),
+                Eligibility::Expired => return Err(LedgerRefused::Expired.into()),
+                Eligibility::Removed => return Err(LedgerRefused::Removed.into()),
+                Eligibility::Stopped => {
+                    return Err(deny(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "workflow service is stopped",
+                    )
+                    .explained(Denied::PAUSED)
+                    .into());
+                }
+                Eligibility::NotFailed => return Err(LedgerRefused::Ineligible.into()),
+            }
+            self.workflow_owner(&run).await?;
+            for checkpoint in run.checkpoints.values() {
+                for item in &checkpoint.items {
+                    if matches!(item.state, State::Unknown { .. }) {
+                        for dispatch in item.dispatches.iter().rev() {
+                            if let Some(receipt) = self
+                                .peers
+                                .receipt(&run.service, &run.id, &dispatch.id)
+                                .await?
+                            {
+                                self.workflows.reconcile(id, receipt, (self.now)()).await?;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let now = (self.now)();
         let duration = Duration::from_millis(run.accepted.deadline_ms).min(self.deadline);
-        let deadline = Instant::now()
-            .checked_add(duration)
-            .context("workflow deadline overflow")?;
-        let claim = self
-            .workflows
+        self.workflows
             .claim(
                 id,
-                Intent::Start,
+                intent,
                 now,
                 now.checked_add(duration.as_millis().try_into()?)
                     .context("workflow deadline overflow")?,
             )
-            .await?;
-        self.execute_attempt(run, claim, deadline).await
+            .await
+    }
+
+    pub async fn execute_workflow(&self, id: &str) -> Result<Run> {
+        let claim = self.claim_workflow(id, Intent::Start).await?;
+        self.execute_claimed_workflow(claim).await
+    }
+
+    pub async fn continue_workflow(&self, id: &str) -> Result<Run> {
+        let claim = self.claim_workflow(id, Intent::Continue).await?;
+        self.execute_claimed_workflow(claim).await
+    }
+
+    pub async fn cancel_workflow(&self, id: &str) -> Result<Run> {
+        self.workflows.cancel(id, (self.now)()).await
+    }
+
+    async fn workflow_owner(&self, run: &Run) -> Result<Arc<Service>> {
+        self.workflow_available(&run.service)?;
+        let bytes = self.workflows.image(&run.id).await?;
+        let owner = self.berm.retained(&run.service, &bytes)?;
+        for binding in run.accepted.bindings.values() {
+            let mut current = match binding.target {
+                Target::Local { .. } => owner.binding(binding.target.clone())?,
+                Target::Service { .. }
+                    if host::split(&binding.service).0 == host::split(&run.service).0 =>
+                {
+                    self.workflow_binding(&binding.service, binding.target.tool())?
+                }
+                Target::Service { .. } => {
+                    self.peers
+                        .binding(&run.service, &binding.service, binding.target.tool())
+                        .await?
+                }
+            };
+            current.target = binding.target.clone();
+            if current != *binding {
+                return Err(
+                    deny(StatusCode::CONFLICT, "workflow dependency binding changed")
+                        .explained(Binding::CHANGED)
+                        .into(),
+                );
+            }
+        }
+        Ok(owner)
     }
 
     /// The embedder has claimed the attempt and authorized its spend context.
@@ -271,8 +344,7 @@ impl<E: Env> Host<E> {
             .context("workflow disappeared")?;
         let executed = async {
             let _slot = tokio::time::timeout_at(deadline.into(), self.gate.acquire()).await??;
-            let bytes = self.workflows.image(&run.id).await?;
-            let owner = self.berm.retained(&run.service, &bytes)?;
+            let owner = self.workflow_owner(&run).await?;
             let entry = owner
                 .manifest
                 .workflows
@@ -301,6 +373,7 @@ impl<E: Env> Host<E> {
                     Instant::now() < deadline,
                     "workflow attempt exceeded its deadline"
                 );
+                self.workflows.active(&claim, (self.now)()).await?;
                 self.workflow_available(&run.service)?;
                 if Self::skip_node(&run, node)? {
                     let mut checkpoint = run.checkpoints[&node.id].clone();
@@ -498,17 +571,11 @@ impl<E: Env> Host<E> {
                             schema::validate(&call.input, &input)?;
                             schema::validate(&binding.input, &input)?;
                             let operation_key = input
-                                .get(IDEMPOTENCY_KEY)
+                                .get(PreparedCall::IDEMPOTENCY_KEY)
                                 .and_then(Value::as_str)
                                 .filter(|key| !key.is_empty())
                                 .map(str::to_owned);
-                            if matches!(
-                                call.target,
-                                Target::Service {
-                                    idempotency_ms: Some(_),
-                                    ..
-                                }
-                            ) {
+                            if binding.idempotency_ms.is_some() {
                                 ensure!(
                                     operation_key.is_some(),
                                     "idempotent workflow targets require a nonempty idempotency_key"
@@ -525,6 +592,7 @@ impl<E: Env> Host<E> {
                             .map(|(index, _)| Item {
                                 index: index as u32,
                                 state: State::Pending,
+                                receipts: vec![],
                                 dispatches: vec![],
                             })
                             .collect();
@@ -592,6 +660,7 @@ impl<E: Env> Host<E> {
             if matches!(checkpoint.items[index].state, State::Succeeded { .. }) {
                 continue;
             }
+            self.workflows.active(claim, (self.now)()).await?;
             self.workflow_available(&run.service)?;
             ensure!(
                 Instant::now() < deadline,
@@ -625,7 +694,13 @@ impl<E: Env> Host<E> {
                 .workflows
                 .begin_dispatch(claim, &node.id, index, (self.now)())
                 .await
-                .map_err(Persistence)?;
+                .map_err(|error| {
+                    if error.is::<LedgerRefused>() {
+                        error
+                    } else {
+                        Persistence(error).into()
+                    }
+                })?;
             checkpoint.items[index].state = State::Running;
             checkpoint.items[index].dispatches.push(dispatched);
             checkpoint.state = State::Running;
@@ -643,6 +718,13 @@ impl<E: Env> Host<E> {
                 });
             let args = serde_json::to_vec(&prepared.input)?;
             let local = target.is_some();
+            let replay = checkpoint.items[index]
+                .dispatches
+                .last()
+                .unwrap()
+                .operation
+                .clone();
+            let mut launched = None;
             let result = if let Some(target) = target {
                 let link = InvocationLink {
                     caller: Some(Caller::Service(run.service.as_str().into())),
@@ -671,6 +753,8 @@ impl<E: Env> Host<E> {
                 }
             } else {
                 let link = Link {
+                    retained_until: Some(run.expires_at),
+                    replay: replay.clone(),
                     workflow: workflow::current(),
                     operation: checkpoint.items[index]
                         .dispatches
@@ -695,6 +779,7 @@ impl<E: Env> Host<E> {
                     .call(&binding.service, call.target.tool(), args, link)
                     .await
                     .map(|reply| {
+                        launched = reply.launched;
                         for (service, tools) in reply.meters {
                             for (tool, used) in tools {
                                 meters.add(service.as_str().into(), tool.as_str().into(), used);
@@ -728,7 +813,15 @@ impl<E: Env> Host<E> {
             };
             *total += used;
             checkpoint.meter += used;
-            let state = match result {
+            if local {
+                launched = Some(used.calls > 0);
+            }
+            if !local && let Err(error) = &result {
+                if let Some(failure) = error.downcast_ref::<Failure>() {
+                    launched = failure.launched();
+                }
+            }
+            let mut state = match result {
                 Ok((Output::Done(text), _)) => match serde_json::from_str(&text)
                     .map_err(anyhow::Error::from)
                     .and_then(|value| {
@@ -771,10 +864,25 @@ impl<E: Env> Host<E> {
                     }
                 }
             };
+            if launched == Some(false)
+                && let State::Unknown { error } = &state
+            {
+                state = State::Failed {
+                    error: error.clone(),
+                };
+            }
             let dispatch = checkpoint.items[index].dispatches.last_mut().unwrap();
+            dispatch.launched = launched;
             dispatch.state = state.clone();
             dispatch.finished_at = Some((self.now)());
             dispatch.meter = used;
+            if replay.is_some()
+                && let State::Failed { error } = &state
+            {
+                state = State::Unknown {
+                    error: error.clone(),
+                };
+            }
             checkpoint.items[index].state = state.clone();
             if let State::Failed { error } | State::Unknown { error } = &state {
                 checkpoint.state = state.clone();
@@ -820,6 +928,10 @@ impl<E: Env> Host<E> {
     }
 
     fn execution_failure(error: &anyhow::Error) -> Failure {
+        if let Some(refused) = error.downcast_ref::<LedgerRefused>() {
+            return Failure::from(&Denied::from(refused.clone()));
+        }
+
         if error.is::<MemoryLimit>() {
             return Failure::from(
                 &deny(StatusCode::TOO_MANY_REQUESTS, error.to_string()).explained(Denied::MEMORY),

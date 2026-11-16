@@ -119,6 +119,8 @@ pub(crate) fn calls<E: Env>(
                 let from = at.service.to_string();
                 let (service, tool) = (deployed.to_owned(), tool.to_owned());
                 let link = Link {
+                    retained_until: None,
+                    replay: None,
                     accepted: None,
                     workflow: at.workflow.clone(),
                     operation: at
@@ -154,6 +156,7 @@ pub(crate) fn calls<E: Env>(
                         result,
                         denied,
                         meters,
+                        ..
                     } = match peer {
                         Some(peer) => host.peers.link(&peer, &service, &tool, args, link).await?,
                         None => host.peers.call(&service, &tool, args, link).await?,

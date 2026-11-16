@@ -186,9 +186,16 @@ async fn changed_dependency_is_refused_before_tool_dispatch() -> Result<()> {
     host.deploy("owner/fixture", &changed).await?;
     let result = host.host.execute_workflow(&run.id).await?;
     assert_eq!(result.status, Status::Failed);
-    assert!(result.checkpoints["ask"].items[0].dispatches.is_empty());
+    assert!(
+        result.checkpoints["ask"]
+            .items
+            .iter()
+            .all(|item| item.dispatches.is_empty())
+    );
     assert_eq!(result.error.unwrap().body["explain"], "E0060");
     let link = Link {
+        retained_until: None,
+        replay: None,
         workflow: None,
         operation: None,
         accepted: Some(run.accepted.bindings["ask"].clone()),
@@ -287,10 +294,18 @@ mod ledger_fixture;
 #[tokio::test]
 async fn host_enforces_each_bounds_on_untrusted_control_outputs() -> Result<()> {
     let host = TestHost::open(100).await?;
-    let image = ledger_fixture::image(&[json!(0), json!(1), json!(2), json!(3)]);
+    let fixture = fixture::image("berm-fixture")?;
+    host.deploy("owner/fixture", &fixture).await?;
+    let binding = host.host.workflow_binding("owner/fixture", "echo")?;
+    let bytes = ledger_fixture::image(&[json!(0), json!(1), json!(2), json!(3)]);
+    let mut record: Value =
+        serde_json::from_slice(Image(&bytes).section(berm::abi::ABI_SECTION)?.unwrap())?;
+    record["workflow"]["graph"]["nodes"][0]["call"] = json!({"target":{"kind":"service","service":"fixture","tool":"echo","idempotency_ms":null},"input":binding.input,"output":binding.output,"cases":[]});
+    let image =
+        Image(&bytes).replace_section(berm::abi::ABI_SECTION, &serde_json::to_vec(&record)?)?;
     host.deploy("owner/identity", &image).await?;
     let mut run = ledger_fixture::run("overflow", &image);
-    run.accepted.control_budget = host.host.get("owner/identity").unwrap().controls["identity"];
+    run.accepted = host.host.workflow_bindings("owner/identity", "identity")?;
     host.host
         .workflows
         .insert(
@@ -526,5 +541,193 @@ async fn native_offer_keeps_internal_bindings_and_nested_each_results() -> Resul
     let run = host.host.execute_workflow(&run.id).await?;
     assert_eq!(run.status, Status::Succeeded, "{:?}", run.error);
     assert_eq!(run.checkpoints["calls"].items.len(), 2);
+    Ok(())
+}
+
+async fn lost_mail(host: &TestHost, keys: &[&str]) -> Result<Run> {
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/flow", &image).await?;
+    let mut run = host.host.prepare_workflow(
+        "owner/flow",
+        "workflow_mail",
+        json!({"url":"http://127.0.0.1/mail","keys":keys}),
+        trigger(),
+    )?;
+    run.accepted.deadline_ms = 1000;
+    host.host
+        .workflows
+        .insert(
+            run.clone(),
+            image,
+            StorageGrant {
+                scope: "owner".into(),
+                bytes: u64::MAX,
+            },
+        )
+        .await?;
+    host.arrange("POST", "http://127.0.0.1/mail", 200, b"accepted-email");
+    let index = if keys.len() > 1 { 1 } else { 0 };
+    host.host.workflows.store.run(move |conn| conn.execute_batch(&format!("CREATE TRIGGER lose_result BEFORE UPDATE ON runs WHEN json_extract(CAST(NEW.body AS TEXT),'$.checkpoints.messages.items[{index}].state.state')='succeeded' BEGIN SELECT RAISE(ABORT,'result persistence lost'); END;"))).await?;
+    assert!(host.host.execute_workflow(&run.id).await.is_err());
+    assert_eq!(host.fetched().len(), index + 1);
+    host.host
+        .workflows
+        .store
+        .run(|conn| conn.execute_batch("DROP TRIGGER lose_result"))
+        .await?;
+    Ok(run)
+}
+
+#[tokio::test]
+async fn lost_email_result_keeps_payload_keys_and_completed_each_items() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let run = lost_mail(&host, &["first", "second", "third"]).await?;
+    host.set_now(1101);
+    host.host.workflows.recover(host.now()).await?;
+    let old = host.host.workflows.get(&run.id).await?.unwrap();
+    let first = old.checkpoints["messages"].items[0].clone();
+    let result = host.host.continue_workflow(&run.id).await?;
+    assert_eq!(result.status, Status::Succeeded, "{:?}", result.error);
+    assert_eq!(
+        result.result,
+        Some(json!([
+            "accepted-email",
+            "accepted-email",
+            "accepted-email"
+        ]))
+    );
+    assert_eq!(result.checkpoints["messages"].items[0], first);
+    assert_eq!(result.attempts.len(), 2);
+    let requests = host.fetched();
+    let keys = requests
+        .iter()
+        .map(|request| {
+            request
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("Idempotency-Key"))
+                .unwrap()
+                .1
+                .as_str()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(keys, ["first", "second", "second", "third"]);
+    assert_eq!(requests[1].body, requests[2].body);
+    Ok(())
+}
+
+#[tokio::test]
+async fn email_after_its_original_window_is_refused_with_an_explanation() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let run = lost_mail(&host, &["email"]).await?;
+    host.set_now(10100);
+    host.host.workflows.recover(host.now()).await?;
+    let response = berm_host::Denied::from(host.host.continue_workflow(&run.id).await.unwrap_err())
+        .into_response();
+    assert_eq!(response.status(), 409);
+    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await?)?;
+    assert_eq!(body["explain"], "E0067");
+    assert_eq!(host.fetched().len(), 1);
+    assert_eq!(
+        host.host
+            .workflows
+            .get(&run.id)
+            .await?
+            .unwrap()
+            .attempts
+            .len(),
+        1
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancellation_drains_one_email_and_fences_the_next_dispatch() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let run = admit(
+        &host,
+        "workflow_mail",
+        json!({"url":"http://127.0.0.1/mail","keys":["first","second"]}),
+    )
+    .await?;
+    let ready = host.fetch.respond_blocked(
+        "POST",
+        "http://127.0.0.1/mail",
+        Response {
+            status: 200,
+            headers: vec![],
+            body: b"accepted".to_vec(),
+        },
+    );
+    let executing = host.host.clone();
+    let id = run.id.clone();
+    let task = tokio::spawn(async move { executing.execute_workflow(&id).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while host.fetched().is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await?;
+    assert_eq!(
+        host.host.cancel_workflow(&run.id).await?.status,
+        Status::Cancelling
+    );
+    ready.notify_one();
+    let result = task.await??;
+    assert_eq!(result.status, Status::Cancelled);
+    assert!(result.result.is_none());
+    assert_eq!(host.fetched().len(), 1);
+    assert!(matches!(
+        result.checkpoints["messages"].items[0].state,
+        State::Succeeded { .. }
+    ));
+    assert!(result.attempts[0].meter.calls > 0);
+    assert_eq!(
+        host.host.workflows.pending_completions(10).await?[0].status,
+        Status::Cancelled
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn continuation_reuses_branch_and_items_with_the_original_image() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let run = admit(&host, "workflow_flow", json!({"count":3,"take":true})).await?;
+    host.host.workflows.store.run(|conn|conn.execute_batch("CREATE TRIGGER stop_dispatch BEFORE UPDATE ON runs WHEN json_extract(CAST(NEW.body AS TEXT),'$.checkpoints.items.items[1].dispatches[0].state.state')='running' BEGIN SELECT RAISE(ABORT,'dispatch journal unavailable'); END;")).await?;
+    assert!(host.host.execute_workflow(&run.id).await.is_err());
+    host.host
+        .workflows
+        .store
+        .run(|conn| conn.execute_batch("DROP TRIGGER stop_dispatch"))
+        .await?;
+    host.set_now(run.created_at + run.accepted.deadline_ms + 1);
+    host.host.workflows.recover(host.now()).await?;
+    let saved = host.host.workflows.get(&run.id).await?.unwrap();
+    let bytes = fixture::image("berm-fixture")?;
+    host.deploy(
+        "owner/flow",
+        &Image(&bytes).with_section("updated-image", b"new")?,
+    )
+    .await?;
+    let (a, b) = tokio::join!(
+        host.host.continue_workflow(&run.id),
+        host.host.continue_workflow(&run.id)
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    let completed = a.or(b)?;
+    assert_eq!(completed.status, Status::Succeeded, "{:?}", completed.error);
+    assert_eq!(completed.source, run.source);
+    assert_eq!(completed.checkpoints["choose"], saved.checkpoints["choose"]);
+    assert_eq!(
+        completed.checkpoints["items"].items[0],
+        saved.checkpoints["items"].items[0]
+    );
+    let items: Value =
+        serde_json::from_slice(&host.state("owner/flow", "workflow_items").await?.unwrap())?;
+    assert_eq!(items, json!([99, 88, 0, 1, 2]));
+    assert_eq!(
+        host.host.cancel_workflow(&run.id).await?.status,
+        Status::Succeeded
+    );
     Ok(())
 }
