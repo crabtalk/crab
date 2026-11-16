@@ -1,6 +1,6 @@
 use anyhow::Result;
 use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
-use berm_api::workflow::config::Invalid;
+use berm_api::workflow::config::{Invalid, ScheduleInput};
 use berm_build::fixture;
 use berm_host::test::TestHost;
 use serde_json::{Value, json};
@@ -33,16 +33,26 @@ async fn workflow_only_services_deploy_with_public_and_owner_metadata() -> Resul
 #[tokio::test]
 async fn invalid_workflow_config_reaches_the_caller_with_its_explanation() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = workflow::image(
-        json!({"max_cost":1000,"checkpoint_bytes":4096,"schedule":{"cron":"0 8 * * *","input":"wrong"}}),
-    );
-    let error = match host.deploy("identity", &image).await {
-        Ok(_) => panic!("accepted invalid schedule input"),
-        Err(error) => error,
-    };
-    let response = error.downcast::<berm_host::Denied>()?.into_response();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await?)?;
-    assert_eq!(body["explain"], Invalid::EXPLAIN);
+    for (config, explain) in [
+        (
+            json!({"max_cost":1000,"checkpoint_bytes":0}),
+            Invalid::EXPLAIN,
+        ),
+        (
+            json!({"max_cost":1000,"checkpoint_bytes":4096,"schedule":{"cron":"0 8 * * *","input":"wrong"}}),
+            ScheduleInput::EXPLAIN,
+        ),
+    ] {
+        let image = workflow::image(config);
+        let error = match host.deploy("identity", &image).await {
+            Ok(_) => panic!("accepted invalid workflow configuration"),
+            Err(error) => error,
+        };
+        let response = error.downcast::<berm_host::Denied>()?.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await?)?;
+        assert_eq!(body["explain"], explain);
+    }
     Ok(())
 }

@@ -520,9 +520,7 @@ impl Ledger {
                 .checkpoints
                 .get_mut(&node)
                 .context("unknown workflow node")?;
-            current
-                .advance(checkpoint)
-                .map_err(|message| Refused::Invalid(message))?;
+            current.advance(checkpoint).map_err(Refused::Invalid)?;
             Ok(())
         })
         .await

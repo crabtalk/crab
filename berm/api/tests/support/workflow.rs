@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use berm_api::Image;
 use serde_json::{Value, json};
 

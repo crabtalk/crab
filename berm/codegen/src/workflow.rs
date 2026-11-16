@@ -35,7 +35,7 @@ struct Parameter {
     name: String,
     owned: Type,
     optional: bool,
-    slice: bool,
+    borrowed: Type,
 }
 
 pub fn expand(item: ItemImpl) -> syn::Result<TokenStream> {
@@ -298,13 +298,15 @@ impl Workflow {
             let fallible = node.fallible.then(|| quote!(?));
             let mut decode = Vec::new();
             let arguments = node.parameters.iter().map(|parameter| {
+                let owned = &parameter.owned;
+                let borrowed = &parameter.borrowed;
+                let borrow = quote!(<#owned as ::core::borrow::Borrow<#borrowed>>::borrow);
                 if parameter.name == "input" {
-                    let value = if parameter.slice { quote!(__berm_input.as_slice()) } else { quote!(&__berm_input) };
+                    let value = quote!(#borrow(&__berm_input));
                     return if parameter.optional { quote!(Some(#value)) } else { value };
                 }
                 let id = &parameter.name;
                 let variable = format_ident!("__berm_{}", id);
-                let owned = &parameter.owned;
                 let (_, producer) = self.producer(parameter).unwrap();
                 let output = producer.value_type();
                 let missing = format!("missing workflow dependency {id}");
@@ -318,11 +320,12 @@ impl Workflow {
                         None => return Err(#missing.into()),
                     };
                 });
+                let value = quote!(#variable.as_ref().map(#borrow));
                 if parameter.optional {
-                    if parameter.slice { quote!(#variable.as_deref()) } else { quote!(#variable.as_ref()) }
+                    value
                 } else {
                     let skipped = format!("required workflow dependency {id} is skipped");
-                    if parameter.slice { quote!(#variable.as_deref().ok_or(#skipped)?) } else { quote!(#variable.as_ref().ok_or(#skipped)?) }
+                    quote!(#value.ok_or(#skipped)?)
                 }
             }).collect::<Vec<_>>();
             let prepare = match &node.kind {
@@ -347,6 +350,7 @@ impl Workflow {
                 Kind::Output => quote!(::berm_lang::abi::workflow::ControlOutput::Output { value: ::berm_lang::serde_json::to_value(result)? }),
             };
             quote! {
+                const _: extern "C" fn() = #symbol;
                 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
                 pub extern "C" fn #symbol() {
                     ::berm_lang::dispatch::run(|bytes| {
@@ -396,12 +400,17 @@ impl Node {
             ));
         }
         let attribute = &attributes[0];
-        let ReturnType::Type(_, declared) = &signature.output else {
-            return Err(syn::Error::new_spanned(
-                signature,
-                "workflow methods need an explicit return type",
-            ));
+        let declared = match &signature.output {
+            ReturnType::Type(_, declared) => (**declared).clone(),
+            ReturnType::Default if attribute.path().is_ident("output") => syn::parse_quote!(()),
+            ReturnType::Default => {
+                return Err(syn::Error::new_spanned(
+                    signature,
+                    "workflow methods need an explicit return type",
+                ));
+            }
         };
+        let declared = &declared;
         let fallible = schema::inner(declared, "Result").is_some();
         let result = schema::inner(declared, "Result")
             .unwrap_or(declared)
@@ -489,18 +498,21 @@ impl Node {
                 ));
             }
             concrete(&reference.elem)?;
-            let (owned, slice) = match &*reference.elem {
+            let owned = match &*reference.elem {
                 Type::Slice(slice) => {
                     let ty = &slice.elem;
-                    (syn::parse_quote!(::berm_lang::__private::Vec<#ty>), true)
+                    syn::parse_quote!(::berm_lang::__private::Vec<#ty>)
                 }
-                ty => (ty.clone(), false),
+                Type::Path(path) if path.path.is_ident("str") => {
+                    syn::parse_quote!(::berm_lang::__private::String)
+                }
+                ty => ty.clone(),
             };
             parameters.push(Parameter {
                 name: pattern.ident.unraw().to_string(),
                 owned,
                 optional,
-                slice,
+                borrowed: (*reference.elem).clone(),
             });
         }
         let name = signature.ident.unraw().to_string();

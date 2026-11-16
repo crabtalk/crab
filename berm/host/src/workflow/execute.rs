@@ -35,6 +35,12 @@ use std::{
 };
 use uuid::Uuid;
 
+struct Execution<'a> {
+    claim: &'a Claim,
+    deadline: Instant,
+    total: Meter,
+}
+
 impl<E: Env> Host<E> {
     pub fn workflow_offer(&self, service: &str, workflow: &str) -> Result<Offer> {
         let owner = self.deployed(service)?;
@@ -366,21 +372,24 @@ impl<E: Env> Host<E> {
         claim: Claim,
         deadline: Instant,
     ) -> Result<Run> {
-        if let Some(context) = workflow::current() {
-            if context.run != run.id
+        if let Some(context) = workflow::current()
+            && (context.run != run.id
                 || context.attempt != claim.attempt
                 || context.deadline_at != claim.deadline_at
-                || context.owner != host::split(&run.service).0
-            {
-                return Err(deny(
-                    StatusCode::CONFLICT,
-                    "workflow spend authorization belongs to another attempt",
-                )
-                .explained(SpendContext::EXPIRED)
-                .into());
-            }
+                || context.owner != host::split(&run.service).0)
+        {
+            return Err(deny(
+                StatusCode::CONFLICT,
+                "workflow spend authorization belongs to another attempt",
+            )
+            .explained(SpendContext::EXPIRED)
+            .into());
         }
-        let mut total = Meter::default();
+        let mut execution = Execution {
+            claim: &claim,
+            deadline,
+            total: Meter::default(),
+        };
         // Take the claimed state, including its durable attempt identity.
         run = self
             .workflows
@@ -427,7 +436,7 @@ impl<E: Env> Host<E> {
                     continue;
                 }
                 if let Err(error) = self
-                    .execute_node(&owner, &entry, &claim, &mut run, node, deadline, &mut total)
+                    .execute_node(&owner, &entry, &mut run, node, &mut execution)
                     .await
                 {
                     if !error.is::<Persistence>()
@@ -465,7 +474,7 @@ impl<E: Env> Host<E> {
                         Status::Succeeded,
                         Some(value),
                         None,
-                        total,
+                        execution.total,
                         (self.now)(),
                     )
                     .await?
@@ -488,7 +497,14 @@ impl<E: Env> Host<E> {
                     Status::Failed
                 };
                 self.workflows
-                    .finish(&claim, status, None, Some(failure), total, (self.now)())
+                    .finish(
+                        &claim,
+                        status,
+                        None,
+                        Some(failure),
+                        execution.total,
+                        (self.now)(),
+                    )
                     .await?;
             }
         }
@@ -549,11 +565,9 @@ impl<E: Env> Host<E> {
         &self,
         owner: &Arc<Service>,
         entry: &Entry,
-        claim: &Claim,
         run: &mut Run,
         node: &Node,
-        deadline: Instant,
-        total: &mut Meter,
+        execution: &mut Execution<'_>,
     ) -> Result<()> {
         let mut checkpoint = run.checkpoints[&node.id].clone();
         if checkpoint.prepared.is_none() {
@@ -584,13 +598,13 @@ impl<E: Env> Host<E> {
                     workflow: &run.workflow,
                     node: &node.id,
                     input: &input,
-                    deadline,
+                    deadline: execution.deadline,
                     meters: meters.clone(),
                 })
                 .await;
             let used = self.metered(meters.take());
             checkpoint.meter += used;
-            *total += used;
+            execution.total += used;
             let result = match result {
                 Ok(value) => value,
                 Err(error) => {
@@ -598,7 +612,8 @@ impl<E: Env> Host<E> {
                     checkpoint.state = State::Failed {
                         error: failure.clone(),
                     };
-                    self.save_node(claim, run, node, checkpoint).await?;
+                    self.save_node(execution.claim, run, node, checkpoint)
+                        .await?;
                     return Err(Failed(failure).into());
                 }
             };
@@ -686,14 +701,16 @@ impl<E: Env> Host<E> {
                 checkpoint.state = State::Failed {
                     error: failure.clone(),
                 };
-                self.save_node(claim, run, node, checkpoint).await?;
+                self.save_node(execution.claim, run, node, checkpoint)
+                    .await?;
                 return Err(Failed(failure).into());
             }
             if matches!(node.kind, Kind::Output) {
                 run.checkpoints.insert(node.id.clone(), checkpoint);
                 return Ok(());
             }
-            self.save_node(claim, run, node, checkpoint.clone()).await?;
+            self.save_node(execution.claim, run, node, checkpoint.clone())
+                .await?;
         }
         let Some(Prepared::Calls { calls }) = checkpoint.prepared.clone() else {
             return Ok(());
@@ -705,10 +722,10 @@ impl<E: Env> Host<E> {
             if matches!(checkpoint.items[index].state, State::Succeeded { .. }) {
                 continue;
             }
-            self.workflows.active(claim, (self.now)()).await?;
+            self.workflows.active(execution.claim, (self.now)()).await?;
             self.workflow_available(&run.service)?;
             ensure!(
-                Instant::now() < deadline,
+                Instant::now() < execution.deadline,
                 "workflow attempt exceeded its deadline"
             );
             let binding = &run.accepted.bindings[&node.id];
@@ -737,7 +754,7 @@ impl<E: Env> Host<E> {
             }
             let dispatched = self
                 .workflows
-                .begin_dispatch(claim, &node.id, index, (self.now)())
+                .begin_dispatch(execution.claim, &node.id, index, (self.now)())
                 .await
                 .map_err(|error| {
                     if error.is::<LedgerRefused>() {
@@ -780,7 +797,7 @@ impl<E: Env> Host<E> {
                     client: Client::default(),
                     depth: 1,
                     query: false,
-                    deadline,
+                    deadline: execution.deadline,
                     stack: Arc::from([
                         Arc::from(run.service.as_str()),
                         Arc::from(binding.service.as_str()),
@@ -814,7 +831,8 @@ impl<E: Env> Host<E> {
                     client_ip: None,
                     depth: 1,
                     query: false,
-                    timeout: deadline
+                    timeout: execution
+                        .deadline
                         .saturating_duration_since(Instant::now())
                         .as_millis()
                         .try_into()?,
@@ -856,15 +874,16 @@ impl<E: Env> Host<E> {
                         total
                     })
             };
-            *total += used;
+            execution.total += used;
             checkpoint.meter += used;
             if local {
                 launched = Some(used.calls > 0);
             }
-            if !local && let Err(error) = &result {
-                if let Some(failure) = error.downcast_ref::<Failure>() {
-                    launched = failure.launched();
-                }
+            if !local
+                && let Err(error) = &result
+                && let Some(failure) = error.downcast_ref::<Failure>()
+            {
+                launched = failure.launched();
             }
             let mut state = match result {
                 Ok((Output::Done(text), _)) => match serde_json::from_str(&text)
@@ -932,10 +951,12 @@ impl<E: Env> Host<E> {
             if let State::Failed { error } | State::Unknown { error } = &state {
                 checkpoint.state = state.clone();
                 let error = error.clone();
-                self.save_node(claim, run, node, checkpoint).await?;
+                self.save_node(execution.claim, run, node, checkpoint)
+                    .await?;
                 return Err(Failed(error).into());
             }
-            self.save_node(claim, run, node, checkpoint.clone()).await?;
+            self.save_node(execution.claim, run, node, checkpoint.clone())
+                .await?;
         }
         let values = checkpoint
             .items
@@ -954,7 +975,7 @@ impl<E: Env> Host<E> {
                 .context("workflow step has no result")?
         };
         checkpoint.state = State::Succeeded { value };
-        self.save_node(claim, run, node, checkpoint).await
+        self.save_node(execution.claim, run, node, checkpoint).await
     }
 
     async fn save_node(

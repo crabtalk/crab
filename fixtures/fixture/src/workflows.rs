@@ -114,7 +114,7 @@ impl WorkflowFlow {
         optional: Option<&u32>,
         maybe: Option<&u32>,
         items: &[u32],
-        identity: &String,
+        identity: &str,
     ) -> FlowOutput {
         FlowOutput {
             left: *left,
@@ -122,7 +122,7 @@ impl WorkflowFlow {
             values: items.to_vec(),
             optional: optional.copied(),
             maybe: maybe.copied(),
-            identity: identity.clone(),
+            identity: identity.into(),
         }
     }
 }
@@ -136,8 +136,8 @@ impl WorkflowExternal {
         crate::fixture::WhoamiCall {}
     }
     #[output]
-    fn done(ask: &String) -> String {
-        ask.clone()
+    fn done(ask: &str) -> String {
+        ask.into()
     }
 }
 
@@ -145,11 +145,11 @@ struct WorkflowFlaky;
 #[workflow]
 impl WorkflowFlaky {
     #[step]
-    fn call(input: &String) -> crate::FlakyCall {
-        crate::FlakyCall { url: input.clone() }
+    fn call(input: &str) -> crate::FlakyCall {
+        crate::FlakyCall { url: input.into() }
     }
     #[output]
-    fn done(call: &()) -> () {
+    fn done(call: &()) {
         let _ = call;
     }
 }

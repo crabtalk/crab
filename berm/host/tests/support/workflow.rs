@@ -7,7 +7,6 @@ use berm_api::{
     },
 };
 use serde_json::{Value, json};
-#[allow(dead_code)]
 #[path = "../../../api/tests/support/workflow.rs"]
 mod workflow;
 pub const CAPACITY: u64 = 32768;

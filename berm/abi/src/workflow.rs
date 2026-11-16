@@ -101,13 +101,13 @@ pub const fn validate<'a>(
     let mut input = false;
     at = 0;
     while at < n {
-        if let Kind::Step { maximum, .. } = nodes[at].kind {
-            if maximum == 0 || maximum > max_each {
-                return Err(Invalid {
-                    node: at,
-                    kind: InvalidKind::Each,
-                });
-            }
+        if let Kind::Step { maximum, .. } = nodes[at].kind
+            && (maximum == 0 || maximum > max_each)
+        {
+            return Err(Invalid {
+                node: at,
+                kind: InvalidKind::Each,
+            });
         }
         let mut dep = 0;
         while dep < nodes[at].dependencies.len() {

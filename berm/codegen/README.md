@@ -21,7 +21,7 @@ Each `#[tool]` expands to the function, its export `berm_tool_<name>`, and its r
 
 `#[tool]` also emits a `<ToolName>Call` input descriptor with a local `workflow::Call` target. `declare_service!` adds external descriptors while retaining its calling functions and response types. `#[derive(Branch)]` emits case metadata and consuming `workflow::Projection<T>` implementations for distinct tuple payloads. See [Call descriptors and branches](../lang/README.md#call-descriptors-and-branches).
 
-`#[workflow]` compiles a unit-struct impl into typed control adapters and a static graph record. Dependency names and type projections determine wiring and guards; method bodies are not inspected. Graph validation is shared with `berm_api::workflow::graph::Graph::check`. See [Workflow graphs](../lang/README.md#workflow-graphs). Runtime control restrictions and execution are not implemented yet.
+`#[workflow]` compiles a unit-struct impl into typed control adapters and a static graph record. Dependency names and type projections determine wiring and guards; method bodies are not inspected. Graph validation is shared with `berm_api::workflow::graph::Graph::check`. See [Workflow graphs](../lang/README.md#workflow-graphs). Native hosts execute these graphs with restricted controls through [`berm-host`](../host/README.md).
 
 ## License
 

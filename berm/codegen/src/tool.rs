@@ -285,6 +285,7 @@ impl Tool {
             },
         };
         quote! {
+            const _: extern "C" fn() = #symbol;
             #[doc = #doc]
             #[allow(deprecated)]
             #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
