@@ -4,6 +4,15 @@ use berm::{Changes, Scope};
 use std::{future::Future, pin::Pin};
 
 impl Scope for Entered {
+    fn complete(&mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(async move {
+            if let Some(admitted) = &mut self.admitted {
+                admitted.complete().await?;
+            }
+            Ok(())
+        })
+    }
+
     fn own(&self) -> bool {
         true
     }

@@ -64,11 +64,19 @@ pub(crate) fn enter(commits: Commits, additional: Option<Enter>) -> Enter {
         let admitted = additional.as_ref().map(|enter| enter(service, at));
         let first = at.depth == 1;
         Box::pin(async move {
-            let admitted = match admitted {
+            let mut admitted = match admitted {
                 Some(admitted) => Some(admitted.await?),
                 None => None,
             };
-            let held = entering.await?;
+            let held = match entering.await {
+                Ok(held) => held,
+                Err(error) => {
+                    if let Some(scope) = &mut admitted {
+                        scope.complete().await?;
+                    }
+                    return Err(error);
+                }
+            };
             Ok(Box::new(Entered {
                 commits,
                 held,

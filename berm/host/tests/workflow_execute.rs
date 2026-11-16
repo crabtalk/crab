@@ -1,18 +1,22 @@
 use anyhow::Result;
 use axum::{body::to_bytes, response::IntoResponse};
-use berm::syscall::http::Response;
+use berm::{Calls, Enter, syscall::http::Response, workflow as spend};
 use berm_api::{
-    Image, Manifest,
+    Image, Manifest, Output,
     host::{Caller, Link, User},
     workflow::{
         graph::{Kind, Target},
-        run::{Run, State, Status, Trigger},
+        run::{Failure, Run, State, Status, Trigger},
+        spend::Context as SpendContext,
     },
 };
 use berm_build::fixture;
-use berm_host::{test::TestHost, workflow::StorageGrant};
+use berm_host::{Config, test::TestHost, workflow::StorageGrant};
 use serde_json::{Value, json};
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 fn trigger() -> Trigger {
     Trigger::Manual {
@@ -185,6 +189,8 @@ async fn changed_dependency_is_refused_before_tool_dispatch() -> Result<()> {
     assert!(result.checkpoints["ask"].items[0].dispatches.is_empty());
     assert_eq!(result.error.unwrap().body["explain"], "E0060");
     let link = Link {
+        workflow: None,
+        operation: None,
         accepted: Some(run.accepted.bindings["ask"].clone()),
         caller: Some("owner/flow".into()),
         from: "owner/flow".into(),
@@ -438,5 +444,80 @@ async fn a_failed_terminal_write_exposes_neither_output_nor_success() -> Result<
         retained.checkpoints["spin"].state,
         State::Succeeded { .. }
     ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn workflow_spend_follows_nested_calls_and_refuses_owner_work_after_the_attempt() -> Result<()>
+{
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let observed = seen.clone();
+    let unheld = Calls::by_name(4).enter;
+    let enter: Enter = Arc::new(move |service, at| {
+        observed
+            .lock()
+            .unwrap()
+            .push((at.service.to_string(), at.workflow.clone()));
+        unheld(service, at)
+    });
+    let host = TestHost::open_with_scope(100, Config::default(), Some(enter)).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/source", &image).await?;
+    host.deploy("owner/fixture", &image).await?;
+    let context = SpendContext {
+        run: "run".into(),
+        attempt: "attempt".into(),
+        owner: "owner".into(),
+        deadline_at: 100_000,
+        authorization: "private-grant".into(),
+    };
+    let args =
+        serde_json::to_vec(&json!({"service":"fixture","tool":"whoami","args":"{}","delay":null}))?;
+    let called = spend::scope(context.clone(), host.call("owner/source", "invoke", &args)).await?;
+    assert!(matches!(called.result, Output::Done(_)));
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 2);
+    assert!(
+        seen.iter()
+            .all(|(_, found)| *found == Some(context.clone()))
+    );
+    let args =
+        serde_json::to_vec(&json!({"service":"fixture","tool":"whoami","args":"{}","delay":1}))?;
+    let called = spend::scope(context.clone(), host.call("owner/source", "invoke", &args)).await?;
+    let Output::Failed(message) = called.result else {
+        anyhow::bail!("deferred call was accepted");
+    };
+    assert!(message.contains("E0063"), "{message}");
+    assert!(host.wakes().await?.is_empty());
+    let mut expired = context;
+    expired.deadline_at = 100;
+    let service = host.host.get("owner/source").unwrap();
+    let error = spend::scope(expired, service.call(None, "whoami", b"{}".to_vec()))
+        .await
+        .unwrap_err();
+    let failure = error.downcast_ref::<Failure>().unwrap();
+    assert_eq!(failure.status, 409);
+    assert_eq!(failure.body["explain"], "E0062");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn native_offer_keeps_internal_bindings_and_nested_each_results() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/fixture", &image).await?;
+    let run = admit(
+        &host,
+        "workflow_nested",
+        json!({"service":"fixture","tool":"whoami","args":"{}"}),
+    )
+    .await?;
+    let offer = host.host.workflow_offer("owner/flow", "workflow_nested")?;
+    assert_eq!(offer.source, run.source);
+    assert_eq!(offer.local_bindings, run.accepted.bindings);
+    let run = host.host.execute_workflow(&run.id).await?;
+    assert_eq!(run.status, Status::Succeeded, "{:?}", run.error);
+    assert_eq!(run.checkpoints["calls"].items.len(), 2);
     Ok(())
 }

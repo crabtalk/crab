@@ -1,7 +1,8 @@
 use berm_api::workflow::{
     Policy, Version,
     graph::{Entry, Kind, Mode, Producer},
-    run::{Prepared, Run, State},
+    run::{Failure, Prepared, Run, State},
+    spend::Context,
 };
 use serde_json::{Value, json};
 
@@ -111,4 +112,41 @@ fn graph_validation_rejects_unbounded_fanout_and_forward_references() {
         id: "report".into(),
     };
     assert!(entry.graph.check(100).is_err());
+}
+
+#[test]
+fn spend_authorization_is_carried_but_never_debugged_and_failure_http_is_complete() {
+    let context = Context {
+        run: "run".into(),
+        attempt: "attempt".into(),
+        owner: "owner".into(),
+        deadline_at: 100_000,
+        authorization: "private-authorization".into(),
+    };
+    assert!(!format!("{context:?}").contains("private-authorization"));
+    assert_eq!(
+        serde_json::from_value::<Context>(serde_json::to_value(&context).unwrap()).unwrap(),
+        context
+    );
+    let failure = Failure {
+        status: 402,
+        headers: [
+            ("retry-after".into(), "3".into()),
+            ("connection".into(), "x-internal".into()),
+            ("x-internal".into(), "discard".into()),
+            ("content-length".into(), "1".into()),
+        ]
+        .into(),
+        body: serde_json::json!({"error":"cap exhausted","explain":"E0061","recovery":{"action":"inspect"}}),
+    };
+    let expected = failure.body.clone();
+    let response = http::Response::<Vec<u8>>::try_from(failure).unwrap();
+    assert_eq!(response.status(), 402);
+    assert_eq!(response.headers()["retry-after"], "3");
+    assert!(!response.headers().contains_key("x-internal"));
+    assert!(!response.headers().contains_key("content-length"));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(response.body()).unwrap(),
+        expected
+    );
 }

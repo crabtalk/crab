@@ -311,6 +311,7 @@ dependencies = [
  "chrono",
  "croner",
  "hex",
+ "http",
  "humantime-serde",
  "jsonschema",
  "object 0.40.0",

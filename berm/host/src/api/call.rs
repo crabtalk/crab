@@ -17,7 +17,7 @@ use berm::{
 use berm_api::{
     Deps, Listing, Logged, Meter, Output, Setting, Terms, ToolTerms,
     host::{self as wire, Kind, Link, Metered, Outcome, Reply, Route, Source, Usage, Used},
-    workflow::run::Binding,
+    workflow::run::{Binding, Failure},
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -505,37 +505,40 @@ impl<E: Env> Host<E> {
         }
         let _slot = self.gate.acquire().await.map_err(anyhow::Error::from)?;
         let meters = Arc::new(Meters::default());
-        let outcome = deployed
-            .link(
-                berm::Link {
-                    caller: link
-                        .caller
-                        .as_ref()
-                        .map(|_| berm::Caller::Service(link.from.as_str().into())),
-                    key: link.key.as_deref().map(Into::into),
-                    user: link.user.as_ref().map(host::user),
-                    client: Client {
-                        key: link.client.as_deref().map(Into::into),
-                        ip: link.client_ip,
-                    },
-                    depth: link.depth,
-                    query: link.query,
-                    deadline: Instant::now() + Duration::from_millis(link.timeout),
-                    stack: link
-                        .stack
-                        .iter()
-                        .map(|service| Arc::from(service.as_str()))
-                        .collect(),
+        let invoke = deployed.link(
+            berm::Link {
+                caller: link
+                    .caller
+                    .as_ref()
+                    .map(|_| berm::Caller::Service(link.from.as_str().into())),
+                key: link.key.as_deref().map(Into::into),
+                user: link.user.as_ref().map(host::user),
+                client: Client {
+                    key: link.client.as_deref().map(Into::into),
+                    ip: link.client_ip,
                 },
-                tool,
-                args,
-                meters.clone(),
-            )
-            .await;
+                depth: link.depth,
+                query: link.query,
+                deadline: Instant::now() + Duration::from_millis(link.timeout),
+                stack: link
+                    .stack
+                    .iter()
+                    .map(|service| Arc::from(service.as_str()))
+                    .collect(),
+            },
+            tool,
+            args,
+            meters.clone(),
+        );
+        let outcome = match link.workflow {
+            Some(context) => berm::workflow::scope(context, invoke).await,
+            None => invoke.await,
+        };
         let used = meters.take();
         self.metered(used.clone());
         let outcome = match outcome {
             Ok(outcome) => outcome,
+            Err(error) if error.is::<Failure>() => return Err(error.into()),
             Err(error) => match error.downcast::<Refused>() {
                 Ok(Refused(message)) => return refused(message),
                 Err(error) => return Err(error.into()),

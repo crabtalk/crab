@@ -260,6 +260,10 @@ pub struct Route {
 pub struct Link {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accepted: Option<crate::workflow::run::Binding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<crate::workflow::spend::Context>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
     /// What the called service is told called it: a service's name, or
     /// nothing for a wake.
     #[serde(default, skip_serializing_if = "Option::is_none")]

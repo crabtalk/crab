@@ -100,6 +100,7 @@ pub(crate) fn calls<E: Env>(
                 observe.invoked(at, call, &used);
             })
         },
+        control_enter: enter.clone(),
         enter: commit::enter(commits, enter),
         now,
         remote: {
@@ -119,6 +120,11 @@ pub(crate) fn calls<E: Env>(
                 let (service, tool) = (deployed.to_owned(), tool.to_owned());
                 let link = Link {
                     accepted: None,
+                    workflow: at.workflow.clone(),
+                    operation: at
+                        .workflow
+                        .as_ref()
+                        .map(|_| uuid::Uuid::new_v4().to_string()),
                     caller: link.caller.map(|caller| match caller {
                         Caller::Outside(name) | Caller::Service(name) => name.to_string(),
                     }),

@@ -17,7 +17,7 @@ fn accepted_terms_keep_price_quote_and_cumulative_cap_separate() {
 
 #[test]
 fn unknown_reservations_and_settlement_identities_survive_round_trip() {
-    let spend = json!({"run":"run-1","incurred":400,"reserved":1000});
+    let spend = json!({"run":"run-1","incurred":"400","reserved":"1000"});
     assert_eq!(
         serde_json::to_value(serde_json::from_value::<Spend>(spend.clone()).unwrap()).unwrap(),
         spend

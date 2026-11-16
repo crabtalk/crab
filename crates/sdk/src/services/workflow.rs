@@ -1,4 +1,4 @@
-use crate::services::price::Price;
+use crate::{services::price::Price, system::meta::Rates};
 use berm_api::workflow::{Version, graph::Source, run::Accepted};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -16,6 +16,7 @@ pub struct Terms {
     /// Cumulative managed charge cap in USD micros, across all attempts.
     pub max_cost: u64,
     pub rate_revision: String,
+    pub rates: Rates,
     pub dependencies: BTreeMap<String, DependencyTerms>,
     /// Provider accounts charged independently of the managed cap.
     pub external_billing: Vec<String>,
@@ -28,13 +29,13 @@ pub struct DependencyTerms {
     pub allowance: u64,
 }
 
-/// Reservations remain attributable when a dispatch outcome is unknown.
+/// Exact USD micros as decimal strings; unknown dispatches retain their reservations.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Spend {
     pub run: String,
-    pub incurred: u64,
-    pub reserved: u64,
+    pub incurred: String,
+    pub reserved: String,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

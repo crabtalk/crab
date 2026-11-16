@@ -12,11 +12,16 @@ use crate::{
         call::{Calls, Enter, Invoked, Now, Ran, Scope},
     },
     tape::{Deck, Taping},
+    workflow,
 };
 use anyhow::{Context, Result, bail};
 use berm_api::{
     Budget, Callers, Manifest, Output, Runtime, digest, host,
-    workflow::{graph::Target, run::Binding},
+    workflow::{
+        graph::Target,
+        run::{Binding, Failure},
+        spend::Context as SpendContext,
+    },
 };
 use std::{
     collections::BTreeMap,
@@ -50,6 +55,7 @@ pub struct Service {
     pub controls: BTreeMap<String, Budget>,
     /// What each invocation runs inside.
     enter: Enter,
+    control_enter: Option<Enter>,
     /// What `berm.now` answers.
     now: Now,
     /// What the services it calls are told it is named: the issuer of a user
@@ -219,6 +225,7 @@ impl Service {
             tools,
             controls,
             enter: calls.enter.clone(),
+            control_enter: calls.control_enter.clone(),
             now: calls.now.clone(),
             invoked: calls.invoked.clone(),
             running,
@@ -587,9 +594,24 @@ impl Service {
         };
         let tool = label.as_str();
 
+        let workflow = parent
+            .and_then(|parent| parent.workflow.clone())
+            .or_else(workflow::current);
+        let deadline = if let Some(context) = &workflow {
+            let left = context.deadline_at.saturating_sub((self.now)());
+            if left == 0 {
+                return Err(Failure { status: 409,headers: BTreeMap::new(),body: serde_json::json!({"error":"workflow attempt deadline expired","explain":SpendContext::EXPIRED}) }.into());
+            }
+            deadline.min(Instant::now() + Duration::from_millis(left))
+        } else {
+            deadline
+        };
         let mut at = Callsite {
             service: self.name.clone(),
             tool: tool.into(),
+            budget,
+            control,
+            workflow,
             deps: self.deps.clone(),
             caller,
             key,
@@ -617,23 +639,48 @@ impl Service {
             calls: 1,
             ..Meter::default()
         });
-        let scope = if control {
-            None
+        let mut scope = if control {
+            match &self.control_enter {
+                Some(enter) => Some(enter(self, &at).await?),
+                None => None,
+            }
         } else {
             Some((self.enter)(self, &at).await?)
         };
-        let image = if args.len() <= self.manifest.buffer {
-            Some(self.image.executable(deadline).await?)
-        } else {
-            None
+        let prepared: Result<_> = async {
+            let image = if args.len() <= self.manifest.buffer {
+                Some(self.image.executable(deadline).await?)
+            } else {
+                None
+            };
+            let reserved = Held::new(
+                self.running.clone(),
+                self.pool.clone(),
+                self.reserve.clone(),
+                budget.memory,
+            )?;
+            Ok((image, reserved))
+        }
+        .await;
+        let (image, reserved) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                (self.invoked)(
+                    &at,
+                    tool,
+                    Meter::default(),
+                    Ran {
+                        at: at_ms,
+                        ms: began.elapsed().as_millis() as u64,
+                        outcome: host::Outcome::Refused,
+                    },
+                );
+                if let Some(scope) = &mut scope {
+                    scope.complete().await?;
+                }
+                return Err(error);
+            }
         };
-        // A refusal drops the scope, which undoes what it holds.
-        let reserved = Held::new(
-            self.running.clone(),
-            self.pool.clone(),
-            self.reserve.clone(),
-            budget.memory,
-        )?;
         let own = scope.as_ref().is_some_and(|scope| scope.own());
         if own {
             at.journal = Arc::new(Journal::default());
@@ -699,6 +746,24 @@ impl Service {
                     },
                 },
             );
+        }
+        if control {
+            (self.invoked)(
+                &site,
+                tool,
+                site.own.take(),
+                Ran {
+                    at: at_ms,
+                    ms: began.elapsed().as_millis() as u64,
+                    outcome: match &ended {
+                        Ok(ended) => host::Outcome::of(&ended.result, ended.denied),
+                        Err(_) => host::Outcome::Failed,
+                    },
+                },
+            );
+        }
+        if let Some(scope) = &mut scope {
+            scope.complete().await?;
         }
         if let Some(scope) = scope {
             settle(&ended, scope, held, &journal, mark).await?;

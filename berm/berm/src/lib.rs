@@ -21,8 +21,8 @@
 pub use anyhow;
 use anyhow::Result;
 pub use berm_abi as abi;
-use berm_api::digest;
 pub use berm_api::{Budget, Deps, Logged, MAX_LOG, Manifest, Meter, Output, Reach, ToolSpec};
+use berm_api::{digest, workflow::spend::Context as SpendContext};
 pub use berm_codegen::hosts;
 pub use engine::{Config, Engine, MissingHostCall, PastMost};
 use journal::Journal;
@@ -60,6 +60,7 @@ mod service;
 pub mod syscall;
 pub mod tape;
 pub mod wire;
+pub mod workflow;
 
 /// What a syscall answers with, once it has. An `Err` reaches the guest as a
 /// failure message on the same wire as a result.
@@ -78,6 +79,9 @@ pub struct Callsite {
     pub service: Arc<str>,
     /// The tool this invocation runs.
     pub tool: Arc<str>,
+    pub budget: Budget,
+    pub control: bool,
+    pub workflow: Option<SpendContext>,
     /// What this service's manifest declares it reaches for.
     pub deps: Arc<Deps>,
     /// Who made this call: whoever the embedder named at the chain's first

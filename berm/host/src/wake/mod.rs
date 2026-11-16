@@ -3,20 +3,23 @@
 //! and the timer calls each when it is due.
 
 use crate::{
+    deny,
     env::{Env, Peers},
     execution::Invoked,
     host::{self, Host, Inner},
     record::calls,
 };
-use anyhow::{Result, bail};
+use anyhow::{Error, Result, bail};
+use axum::http::StatusCode;
 use berm::{
-    Callsite, Meter, Syscall,
+    Callsite, Meter, Refused, Syscall,
     syscall::after,
     tape::{Recorder, Taping},
 };
 use berm_api::{
     Output,
     host::{Kind, Link, Outcome, Reply, Source},
+    workflow::{run::Failure, spend::Context},
 };
 use std::{sync::Weak, time::Duration};
 
@@ -41,6 +44,20 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
         let host = host::alive(&host);
         async move {
             let host = host?;
+            if at
+                .workflow
+                .as_ref()
+                .is_some_and(|context| context.owner == host::split(&at.service).0)
+            {
+                let failure = Failure::from(
+                    &deny(
+                        StatusCode::FORBIDDEN,
+                        "workflow spend authorization does not cover deferred service calls",
+                    )
+                    .explained(Context::DEFERRED),
+                );
+                return Err(Error::from(Refused(failure.to_string())).context(failure));
+            }
             if wake.service.contains('/') {
                 bail!("a service wakes services in its own scope, by name");
             }
@@ -143,6 +160,8 @@ impl<E: Env> Host<E> {
                 };
                 let link = Link {
                     accepted: None,
+                    workflow: None,
+                    operation: None,
                     caller: None,
                     key: None,
                     from,

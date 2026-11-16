@@ -119,7 +119,7 @@ pub trait Secrets: Send + Sync + 'static {
     fn names(&self, service: &str) -> impl Future<Output = Result<Vec<String>>> + Send;
 }
 
-/// Told of each invocation after it ran, trapped or not. Cannot change how it ended.
+/// Known invocation outcomes, including refusals before guest execution.
 pub trait Observe: Send + Sync + 'static {
     /// `call` is the recorded run on this host, or `None` for a peer link.
     /// `used` excludes nested calls; `at.spent()` includes their CPU time.

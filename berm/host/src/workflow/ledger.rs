@@ -168,10 +168,7 @@ impl Ledger {
                     .bindings
                     .get(&node.id)
                     .context("missing accepted dependency binding")?;
-                ensure!(
-                    binding.target == call.target,
-                    "accepted binding targets another tool"
-                );
+                call.check_binding(binding)?;
                 if matches!(call.target, Target::Local { .. }) {
                     ensure!(
                         binding.service == run.service && binding.image == run.source.image,

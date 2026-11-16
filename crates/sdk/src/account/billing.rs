@@ -195,6 +195,19 @@ impl Included {
     }
 }
 
+impl From<Included> for [u64; 6] {
+    fn from(included: Included) -> Self {
+        [
+            included.runs,
+            included.cpu,
+            included.read,
+            included.written,
+            included.held,
+            0,
+        ]
+    }
+}
+
 /// A person's verification, which lets an account on Hobby deploy.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

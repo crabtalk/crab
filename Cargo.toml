@@ -91,6 +91,7 @@ supabase = { package = "crabkit-supabase", path = "services/kits/supabase", vers
 jsonschema = { version = "0.61", default-features = false }
 anyhow = "1.0"
 axum = "0.8"
+http = "1"
 base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 bytesize = { version = "2.7", features = ["serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

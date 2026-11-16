@@ -70,13 +70,7 @@ impl Metering {
 
     /// The same bound as `most`, in billionths of a USD micro.
     pub fn maximum(&self, budget: &Budget, deadline: u64) -> u128 {
-        let meter = Meter {
-            runs: 1,
-            read: budget.read,
-            written: budget.written,
-            held: (budget.memory >> 20) * deadline * 1000,
-            ..Meter::default()
-        };
+        let meter = budget.maximum(deadline);
         self.rates
             .call_charge(&meter, budget.cpu.saturating_sub(self.included_cpu))
     }
@@ -105,7 +99,7 @@ const UNITS: [&str; 6] = ["runs", "overage", "read", "written", "held", "proxied
 
 /// The [`Unit`] a plan includes of each of [`UNITS`], in its order; proxied
 /// bytes have none.
-const INCLUDED: [Option<Unit>; 6] = [
+pub const INCLUDED: [Option<Unit>; 6] = [
     Some(Unit::Runs),
     Some(Unit::Cpu),
     Some(Unit::Read),
@@ -192,7 +186,7 @@ impl Rates {
     }
 
     /// What `units` of [`UNITS`] cost, in billionths of a USD micro.
-    fn metered(&self, units: [u64; 6]) -> u128 {
+    pub fn metered(&self, units: [u64; 6]) -> u128 {
         units
             .iter()
             .zip(self.rates())
@@ -227,7 +221,7 @@ fn day_units(day: &MeteredDay) -> [u64; 6] {
 }
 
 /// `meter`'s units of [`UNITS`] with `overage`, in its order.
-fn called(meter: &Meter, overage: u64) -> [u64; 6] {
+pub fn called(meter: &Meter, overage: u64) -> [u64; 6] {
     [
         meter.runs,
         overage,
@@ -239,7 +233,7 @@ fn called(meter: &Meter, overage: u64) -> [u64; 6] {
 }
 
 /// `billionths` of a USD micro as a decimal of USD micros: `0.120000005`.
-fn decimal(billionths: u128) -> String {
+pub fn decimal(billionths: u128) -> String {
     let fraction = format!("{:09}", billionths % RATE_SCALE);
     match fraction.trim_end_matches('0') {
         "" => (billionths / RATE_SCALE).to_string(),

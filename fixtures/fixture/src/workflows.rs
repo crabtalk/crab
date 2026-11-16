@@ -153,3 +153,29 @@ impl WorkflowFlaky {
         let _ = call;
     }
 }
+
+#[derive(Schema)]
+struct NestedInput {
+    service: String,
+    tool: String,
+    args: String,
+}
+struct WorkflowNested;
+#[workflow]
+impl WorkflowNested {
+    #[step(each, max = 2)]
+    fn calls(input: &NestedInput) -> Vec<crate::InvokeCall> {
+        (0..2)
+            .map(|_| crate::InvokeCall {
+                service: input.service.clone(),
+                tool: input.tool.clone(),
+                args: input.args.clone(),
+                delay: None,
+            })
+            .collect()
+    }
+    #[output]
+    fn done(calls: &[String]) -> Vec<String> {
+        calls.to_vec()
+    }
+}

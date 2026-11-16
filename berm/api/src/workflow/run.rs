@@ -6,9 +6,15 @@ use crate::{
         graph::{Source, Target},
     },
 };
+use http::{HeaderName, HeaderValue, Response, header};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::BTreeMap,
+    error::Error as StdError,
+    fmt::{Display, Error as FmtError, Formatter, Result as FmtResult},
+    str::FromStr,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Run {
@@ -240,13 +246,92 @@ impl Run {
     }
 }
 
-impl fmt::Display for Failure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.body.fmt(f)
+impl Display for Failure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let mut wire = serde_json::to_value(self).map_err(|_| FmtError)?;
+        if let (Some(wire), Some(body)) = (wire.as_object_mut(), self.body.as_object()) {
+            for (key, value) in body {
+                wire.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
+        f.write_str(&wire.to_string())
     }
 }
-impl std::error::Error for Failure {}
+impl StdError for Failure {}
 
 impl Binding {
     pub const CHANGED: &'static str = "E0060";
+}
+
+impl TryFrom<Failure> for Response<Vec<u8>> {
+    type Error = anyhow::Error;
+
+    fn try_from(failure: Failure) -> Result<Self, Self::Error> {
+        let connection = failure
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("connection"))
+            .flat_map(|(_, value)| {
+                value
+                    .split(',')
+                    .map(|name| name.trim().to_ascii_lowercase())
+            })
+            .collect::<Vec<_>>();
+        let mut response = Response::builder()
+            .status(failure.status)
+            .body(serde_json::to_vec(&failure.body)?)?;
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        for (name, value) in failure.headers {
+            let name = HeaderName::try_from(name)?;
+            if connection.iter().any(|token| token == name.as_str())
+                || matches!(
+                    name.as_str(),
+                    "content-type"
+                        | "connection"
+                        | "content-length"
+                        | "content-encoding"
+                        | "transfer-encoding"
+                        | "keep-alive"
+                        | "proxy-authenticate"
+                        | "proxy-authorization"
+                        | "te"
+                        | "trailer"
+                        | "upgrade"
+                )
+            {
+                continue;
+            }
+            response
+                .headers_mut()
+                .insert(name, HeaderValue::try_from(value)?);
+        }
+        Ok(response)
+    }
+}
+
+impl FromStr for Failure {
+    type Err = serde_json::Error;
+
+    fn from_str(message: &str) -> Result<Self, Self::Err> {
+        let body: Value = serde_json::from_str(message)?;
+        if let Ok(failure) = serde_json::from_value(body.clone()) {
+            return Ok(failure);
+        }
+        if body.get("error").is_none() {
+            return Err(serde::de::Error::custom("no error envelope"));
+        }
+        let status = body
+            .get("status")
+            .and_then(Value::as_u64)
+            .filter(|status| (400..600).contains(status))
+            .unwrap_or(422) as u16;
+        Ok(Self {
+            status,
+            headers: BTreeMap::new(),
+            body,
+        })
+    }
 }

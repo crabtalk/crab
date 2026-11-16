@@ -192,6 +192,19 @@ pub struct Budget {
 }
 
 impl Budget {
+    pub fn maximum(&self, deadline_ms: u64) -> Meter {
+        Meter {
+            runs: 1,
+            calls: 1,
+            cpu: self.cpu,
+            read: self.read,
+            written: self.written,
+            memory: self.memory,
+            held: (self.memory >> 20) * deadline_ms * 1000,
+            ..Meter::default()
+        }
+    }
+
     pub fn past(&self, most: &Self) -> Option<&'static str> {
         [
             ("cpu", self.cpu, most.cpu),

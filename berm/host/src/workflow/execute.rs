@@ -7,21 +7,22 @@ use crate::{
 use anyhow::{Context, Result, bail, ensure};
 use axum::http::StatusCode;
 use berm::{
-    Caller, Client, MemoryLimit, Meters, Refused, Service,
+    Caller, Client, Link as InvocationLink, MemoryLimit, Meters, Refused, Service,
     abi::workflow::{ControlInput, ControlOutput, ControlValue},
-    control,
+    control, workflow,
 };
 use berm_api::{
     Meter, Output, digest,
     host::{Kind as UsageKind, Link, Outcome as UsageOutcome, Source as UsageSource, User},
     schema,
     workflow::{
-        Version,
+        Offer, Version,
         graph::{Entry, Kind, Mode, Node, Producer, Selection, Source, Target},
         run::{
             Accepted, Binding, Checkpoint, Failure, Item, Prepared, PreparedCall, Run, State,
             Status, Trigger,
         },
+        spend::Context as SpendContext,
     },
 };
 use serde_json::{Value, json};
@@ -37,6 +38,60 @@ use uuid::Uuid;
 const IDEMPOTENCY_KEY: &str = "idempotency_key";
 
 impl<E: Env> Host<E> {
+    pub fn workflow_offer(&self, service: &str, workflow: &str) -> Result<Offer> {
+        let owner = self.deployed(service)?;
+        let spec = owner
+            .manifest
+            .workflows
+            .iter()
+            .find(|spec| spec.entry.name == workflow)
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such workflow"))?;
+        Ok(Offer {
+            source: Source {
+                image: digest::prefixed(&owner.digest),
+                graph: spec.entry.digest()?,
+            },
+            local_bindings: spec
+                .entry
+                .graph
+                .nodes
+                .iter()
+                .filter_map(|node| match &node.kind {
+                    Kind::Step { call, .. } if matches!(call.target, Target::Local { .. }) => Some(
+                        owner
+                            .binding(call.target.clone())
+                            .map(|binding| (node.id.clone(), binding)),
+                    ),
+                    _ => None,
+                })
+                .collect::<Result<_>>()?,
+            spec: spec.clone(),
+            control_budget: owner.controls[workflow],
+            control_buffer: owner.manifest.buffer as u64,
+            deadline_ms: self.deadline.as_millis().try_into()?,
+        })
+    }
+
+    pub fn workflow_binding(&self, service: &str, tool: &str) -> Result<Binding> {
+        let deployed = self.deployed(service)?;
+        if !deployed.public(tool) {
+            return Err(deny(StatusCode::NOT_FOUND, "no such public tool").into());
+        }
+        if !deployed.reached_by_services(tool) {
+            return Err(deny(
+                StatusCode::FORBIDDEN,
+                "workflow target takes no calls from services",
+            )
+            .explained(Denied::SERVICE_CALLERS)
+            .into());
+        }
+        deployed.binding(Target::Service {
+            service: service.into(),
+            tool: tool.into(),
+            idempotency_ms: None,
+        })
+    }
+
     /// Resolve locally deployed dependencies without executing control functions or tools.
     pub fn workflow_bindings(&self, service: &str, workflow: &str) -> Result<Accepted> {
         let owner = self.deployed(service)?;
@@ -45,7 +100,7 @@ impl<E: Env> Host<E> {
             .workflows
             .iter()
             .find(|spec| spec.entry.name == workflow)
-            .context("no such workflow")?;
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such workflow"))?;
         let mut bindings = BTreeMap::new();
         for node in &spec.entry.graph.nodes {
             let Kind::Step { call, .. } = &node.kind else {
@@ -95,13 +150,25 @@ impl<E: Env> Host<E> {
         input: Value,
         trigger: Trigger,
     ) -> Result<Run> {
+        let accepted = self.workflow_bindings(service, workflow)?;
+        self.prepare_accepted_workflow(service, workflow, input, trigger, accepted)
+    }
+
+    pub fn prepare_accepted_workflow(
+        &self,
+        service: &str,
+        workflow: &str,
+        input: Value,
+        trigger: Trigger,
+        accepted: Accepted,
+    ) -> Result<Run> {
         let owner = self.deployed(service)?;
         let spec = owner
             .manifest
             .workflows
             .iter()
             .find(|spec| spec.entry.name == workflow)
-            .context("no such workflow")?;
+            .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such workflow"))?;
         schema::validate(&spec.entry.graph.input, &input)?;
         let created_at = (self.now)();
         Ok(Run {
@@ -119,7 +186,7 @@ impl<E: Env> Host<E> {
             expires_at: created_at
                 .checked_add(spec.config.retain.as_millis().try_into()?)
                 .context("workflow retention overflow")?,
-            accepted: self.workflow_bindings(service, workflow)?,
+            accepted,
             status: Status::Pending,
             attempts: vec![],
             checkpoints: BTreeMap::new(),
@@ -153,12 +220,48 @@ impl<E: Env> Host<E> {
         self.execute_attempt(run, claim, deadline).await
     }
 
+    /// The embedder has claimed the attempt and authorized its spend context.
+    pub async fn execute_claimed_workflow(&self, claim: Claim) -> Result<Run> {
+        let run = self
+            .workflows
+            .get(&claim.run)
+            .await?
+            .context("no such workflow run")?;
+        let now = (self.now)();
+        if claim.deadline_at <= now {
+            return Err(
+                deny(StatusCode::CONFLICT, "workflow attempt deadline expired")
+                    .explained(SpendContext::EXPIRED)
+                    .into(),
+            );
+        }
+        let duration = Duration::from_millis(claim.deadline_at - now)
+            .min(Duration::from_millis(run.accepted.deadline_ms))
+            .min(self.deadline);
+        self.execute_attempt(run, claim, Instant::now() + duration)
+            .await
+    }
+
     pub(crate) async fn execute_attempt(
         &self,
         mut run: Run,
         claim: Claim,
         deadline: Instant,
     ) -> Result<Run> {
+        if let Some(context) = workflow::current() {
+            if context.run != run.id
+                || context.attempt != claim.attempt
+                || context.deadline_at != claim.deadline_at
+                || context.owner != host::split(&run.service).0
+            {
+                return Err(deny(
+                    StatusCode::CONFLICT,
+                    "workflow spend authorization belongs to another attempt",
+                )
+                .explained(SpendContext::EXPIRED)
+                .into());
+            }
+        }
         let mut total = Meter::default();
         // Take the claimed state, including its durable attempt identity.
         run = self
@@ -506,6 +609,7 @@ impl<E: Env> Host<E> {
             };
             // The captured target remains fixed across deployment changes.
             if let Some(target) = &target {
+                self.workflow_available(&binding.service)?;
                 if target.binding(call.target.clone()).map_err(|error| {
                     deny(StatusCode::CONFLICT, format!("{error:#}")).explained(Binding::CHANGED)
                 })? != *binding
@@ -540,7 +644,7 @@ impl<E: Env> Host<E> {
             let args = serde_json::to_vec(&prepared.input)?;
             let local = target.is_some();
             let result = if let Some(target) = target {
-                let link = berm::Link {
+                let link = InvocationLink {
                     caller: Some(Caller::Service(run.service.as_str().into())),
                     key: identity
                         .and_then(|caller| caller.key.as_deref())
@@ -567,6 +671,11 @@ impl<E: Env> Host<E> {
                 }
             } else {
                 let link = Link {
+                    workflow: workflow::current(),
+                    operation: checkpoint.items[index]
+                        .dispatches
+                        .last()
+                        .map(|dispatch| dispatch.id.clone()),
                     accepted: Some(binding.clone()),
                     caller: Some(run.service.clone()),
                     from: run.service.clone(),
@@ -631,16 +740,21 @@ impl<E: Env> Host<E> {
                         error: Self::execution_failure(&error),
                     },
                 },
-                Ok((Output::Failed(message), denied)) => State::Failed {
-                    error: Failure {
-                        status: if denied { 403 } else { 422 },
+                Ok((Output::Failed(message), denied)) => {
+                    let mut error = message.parse::<Failure>().unwrap_or_else(|_| Failure {
+                        status: 422,
                         headers: BTreeMap::new(),
-                        body: serde_json::from_str::<Value>(&message)
-                            .ok()
-                            .filter(|body| body.get("error").is_some())
-                            .unwrap_or_else(|| json!({"error":message})),
-                    },
-                },
+                        body: json!({"error":message}),
+                    });
+                    if denied && error.status == 422 {
+                        error.status = 403;
+                    }
+                    if error.status >= 500 {
+                        State::Unknown { error }
+                    } else {
+                        State::Failed { error }
+                    }
+                }
                 Err(error) => {
                     let refused = error.is::<Refused>()
                         || error

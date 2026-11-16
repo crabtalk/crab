@@ -16,6 +16,7 @@ use berm_api::{
         CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
         Usage, Wakes,
     },
+    workflow::{Offer, run::Binding},
 };
 use serde::Deserialize;
 
@@ -46,6 +47,8 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/idl", get(idl::<E>))
         .route("/runtime", get(runtime::<E>))
         .route("/terms", get(terms::<E>))
+        .route("/workflow-offers/{workflow}", get(workflow_offer::<E>))
+        .route("/workflow-bindings/{tool}", get(workflow_binding::<E>))
         .route("/usage", get(usage::<E>))
         .route("/meters", get(meters::<E>))
         .route("/live", get(live::<E>))
@@ -382,4 +385,25 @@ async fn var<E: Env>(
 ) -> Result<StatusCode, Denied> {
     host.set_var(&service, &var, value).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn workflow_offer<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(WorkflowName { workflow }): Path<WorkflowName>,
+) -> Result<Json<Offer>, Denied> {
+    Ok(Json(host.workflow_offer(&service, &workflow)?))
+}
+
+async fn workflow_binding<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(Tool { tool }): Path<Tool>,
+) -> Result<Json<Binding>, Denied> {
+    Ok(Json(host.workflow_binding(&service, &tool)?))
+}
+
+#[derive(Deserialize)]
+struct WorkflowName {
+    workflow: String,
 }

@@ -1,11 +1,12 @@
 use anyhow::Result;
 use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
-use berm::{Meters, control};
+use berm::{Enter, Meters, control, workflow as spend};
+use berm_api::workflow::{run::Failure, spend::Context as SpendContext};
 use berm_build::fixture;
-use berm_host::test::TestHost;
+use berm_host::{Config, test::TestHost};
 use serde_json::{Value, json};
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 #[path = "../../api/tests/support/workflow.rs"]
@@ -247,5 +248,50 @@ async fn account_memory_refusals_keep_the_existing_status_and_explanation() -> R
         .unwrap_err();
     assert_eq!(error.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(error.explain, Some("E0019"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn control_admission_has_its_budget_and_spend_context_and_preserves_full_refusals()
+-> Result<()> {
+    let seen = Arc::new(Mutex::new(None));
+    let observed = seen.clone();
+    let enter: Enter = Arc::new(move |_, at| {
+        *observed.lock().unwrap() = Some(at.clone());
+        Box::pin(async {
+            Err(Failure {
+            status: 402,headers: [("retry-after".into(),"3".into())].into(),
+            body: json!({"error":"cap exhausted","explain":"E0061","recovery":{"next":"inspect"}}),
+        }.into())
+        })
+    });
+    let host = TestHost::open_with_scope(0, Config::default(), Some(enter)).await?;
+    host.deploy("identity", &image("", "", "", json!({"cpu":1234})))
+        .await?;
+    let context = SpendContext {
+        run: "run".into(),
+        attempt: "attempt".into(),
+        owner: "owner".into(),
+        deadline_at: 100_000,
+        authorization: "private-grant".into(),
+    };
+    let input = berm::abi::workflow::ControlInput {
+        input: json!(0),
+        nodes: Default::default(),
+    };
+    let denied = spend::scope(context.clone(), execute(&host, &input, Arc::default()))
+        .await
+        .unwrap_err();
+    let response = denied.into_response();
+    assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
+    assert_eq!(response.headers()["retry-after"], "3");
+    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await?)?;
+    assert_eq!(body["explain"], "E0061");
+    assert_eq!(body["recovery"]["next"], "inspect");
+    let at = seen.lock().unwrap().take().unwrap();
+    assert!(at.control);
+    assert_eq!(at.budget.cpu, 1234);
+    assert_eq!(at.workflow, Some(context));
+    assert!(host.state("identity", "anything").await?.is_none());
     Ok(())
 }

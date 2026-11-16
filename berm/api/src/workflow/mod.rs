@@ -1,7 +1,20 @@
+use crate::Budget;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 pub mod config;
 pub mod graph;
 pub mod run;
+pub mod spend;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Offer {
+    pub source: graph::Source,
+    pub spec: config::Spec,
+    pub local_bindings: BTreeMap<String, run::Binding>,
+    pub control_budget: Budget,
+    pub control_buffer: u64,
+    pub deadline_ms: u64,
+}
 
 /// Epoch timestamps and durations in this module use milliseconds.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
