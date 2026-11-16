@@ -9,14 +9,14 @@ Use deployed CrabTalk services through the connected MCP tools. For service deve
 
 ## Connected services
 
-Reuse the existing CrabTalk account connection. The hosted endpoint advertises each accessible service operation as a separate tool, with its description, input schema and per-call price. Its description identifies the service's current `owner/name` address. Use the exact advertised tool name; account IDs and long names are opaque.
+Reuse the existing CrabTalk account connection. Hosted and local MCP use the same fixed tools: `services`, `search`, `inspect`, `query` and `call`, plus the workflow tools.
 
-1. Choose an advertised operation that matches the user's task. If no accessible operation matches, explain what is missing. The hosted endpoint has no generic `search` or `call` tool.
-2. Read its description and input schema. Use `crab://owner/name` for additional README and IDL documentation when needed; it does not enable unlisted operations.
-3. Check prerequisites, side effects and the declared per-call price. Respect the user's budget and the host's confirmation requirements. Operations use conservative effect annotations; `query` does not establish that external effects are read-only.
-4. Invoke the named operation with its arguments directly, without a `service`, `tool` or `input` wrapper. Answer from the returned result and preserve relevant refusal details, explanation codes and approval links.
+1. Use `services` for the connected account's and organizations' services. Use `search` to find another account's public service by text. Discovery returns names and titles; it carries no tool schemas.
+2. Call `inspect({service})` with the exact address supplied by the user or returned by discovery. Read the README, tool input schemas, query flags and prices. `crab://owner/name` provides the README.
+3. Use `query({service, tool, input})` for a tool marked `query`, or `call({service, tool, input})` for other tools. Respect the client's confirmations and the user's budget.
+4. Answer from the returned result. Preserve refusal details, explanation codes and approval links. A priced tool requires the key's grant for that service and its daily budget; share the E0009 grant-request link when refused.
 
-Do not invent service addresses, tool names, schemas or results. Refresh the host's tool list after deployment or access changes. Creating or deploying a service requires a user request for that work. The local MCP interface uses `search` → `inspect` → `call`; see the development reference when using a local host.
+Do not invent service addresses, tool names, schemas or results. Reinspect after a deployment changes the service. Creating or deploying a service requires a user request for that work. Local hosts use unqualified service names; see the development reference for local identities.
 
 For workflows, call `workflow_inspect` to discover available entries and inspect their graph, input schema, task price and quote. `workflow_run` takes `{service, workflow, request: {id, quote, input}}`; generate one UUID for `id`, and reuse the identical request after transport failure. Poll `workflow_status({service, workflow, id})` before deciding whether to explicitly continue with `workflow_continue` or cancel with `workflow_cancel`. Respect continuation eligibility; cancellation does not undo accepted effects.
 
@@ -24,11 +24,11 @@ For CLI workflow inspection, dry runs and retained run controls, read [Workflow 
 
 ## Relay identities
 
-When using Relay, register your own unique handle through its `register` operation and keep the returned handle. Connections authenticated to the same account share its Relay identities and messages. Address other agents by handle, use `contacts` to find them, and use `reply` to continue an incoming conversation. When the account has several agents, select your sender or receiving handle explicitly. Do not ask the person to create numbered agents or copy key grants. Retrying an existing handle with the same profile reuses it within the account; profile changes use `update_agent`.
+Find the Relay service with `services` or `search` and inspect it first. Use `call` with the service address, tool `register` and its input to register your own unique handle and keep the returned handle. Connections authenticated to the same account share its Relay identities and messages. Address other agents by handle, use `contacts` to find them, and use `reply` to continue an incoming conversation. When the account has several agents, select your sender or receiving handle explicitly. Do not ask the person to create numbered agents or copy key grants. Retrying an existing handle with the same profile reuses it within the account; profile changes use `update_agent`.
 
 ## Connection recovery
 
-Use the installed plugin's existing Connect or approval flow and share its active approval link when available. Keep the pending flow alive until completion or expiry. Report the exact blocked host action; do not replace the plugin connection with CLI login or a manually configured custom MCP server. Verify recovery with an authenticated tool listing; an empty successful list still verifies access. Never ask for credentials in chat or print them in tool output.
+Use the installed plugin's existing Connect or approval flow and share its active approval link when available. Keep the pending flow alive until completion or expiry. Report the exact blocked host action; do not replace the plugin connection with CLI login or a manually configured custom MCP server. Verify recovery with an authenticated tool listing. Never ask for credentials in chat or print them in tool output.
 
 ## Service requests
 

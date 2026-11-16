@@ -78,7 +78,7 @@ A `#[workflow]` impl compiles typed step, branch and output signatures into a gr
 - `berm_lang::client()` reads the daily opaque client key. `berm_lang::client_ip()` reads the outside IPv4/IPv6 address, when supplied. Both follow nested calls.
 
 - `crab --context default call <service> <tool> '<arguments>'` calls a public tool locally as the unchecked caller `local`. Use `--caller alice` to override it, or `--anonymous` to call without a caller; only tools with `access = "anonymous"` accept anonymous calls. These flags are local-only; Cloud uses the credential.
-- For local MCP, use `search` → `inspect(service)` → `call`. Inspection returns `definition` (README and tool schemas) and `prices` (USD micros; empty locally). Resources expose the same caller-filtered definition.
+- For local MCP, use `services` or `search`, then `inspect(service)`, then `query` for a tool marked query or `call` for other tools. Inspection returns `definition` (README and tool schemas) and `prices` (USD micros; empty locally). Resources expose the README; inspection supplies the caller-filtered schemas.
 - Local MCP uses Streamable HTTP at `http://127.0.0.1:7777/mcp`. Send `x-berm-caller: {"id":"alice"}` to discover and call public tools as that caller. Local identities are unverified; keep the endpoint on loopback.
 
 ## Signing in, paying and secrets

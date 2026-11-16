@@ -119,7 +119,12 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         )
         .await?;
     let advertised = listed["result"]["tools"].as_array().unwrap();
-    assert_eq!(advertised.len(), 8);
+    assert_eq!(advertised.len(), 10);
+    for (name, read_only) in [("services", true), ("query", true), ("call", false)] {
+        let tool = advertised.iter().find(|tool| tool["name"] == name).unwrap();
+        assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
+        assert_eq!(tool["annotations"]["destructiveHint"], !read_only);
+    }
     let inspect = advertised
         .iter()
         .find(|tool| tool["name"] == "inspect")
@@ -196,9 +201,7 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         resource["result"]["contents"][0]["text"],
         inspection.definition.readme
     );
-    let resource: Value =
-        serde_json::from_str(resource["result"]["contents"][1]["text"].as_str().unwrap())?;
-    assert_eq!(resource, serde_json::to_value(&inspection.definition)?);
+    assert_eq!(resource["result"]["contents"].as_array().unwrap().len(), 1);
 
     for (service, caller) in [
         ("fixture", None),
@@ -222,6 +225,36 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         assert_eq!(resource["error"]["code"], -32002, "{resource}");
     }
 
+    let owned = client.call("services", json!({}), Some(alice)).await?;
+    assert_eq!(owned["content"][0]["text"], "[\"fixture\"]");
+    let hidden = client.call("services", json!({}), None).await?;
+    assert_eq!(hidden["content"][0]["text"], "[]");
+    assert!(tools.iter().all(|tool| tool.get("parameters").is_none()
+        && tool.get("description").is_none()
+        && tool.get("price").is_none()));
+    let queried = client
+        .call(
+            "query",
+            json!({"service":"fixture", "tool":"peek", "input":{}}),
+            Some(alice),
+        )
+        .await?;
+    assert_ne!(queried["isError"], true, "{queried}");
+    let refused = client
+        .call(
+            "query",
+            json!({"service":"fixture", "tool":"whoami", "input":{}}),
+            Some(alice),
+        )
+        .await?;
+    assert_eq!(refused["isError"], true);
+    assert_eq!(refused["structuredContent"]["explain"], "E0077");
+    assert!(
+        refused["structuredContent"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("use call")
+    );
     let input = json!({"service": "fixture", "tool": "whoami"});
     let called = client.call("call", input.clone(), Some(alice)).await?;
     assert_eq!(called["content"][0]["text"], r#""outside alice""#);
