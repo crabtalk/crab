@@ -9,4 +9,4 @@ secrets = [{ name = "DATAFORSEO_AUTH_TOKEN", label = "Base64 API login:API passw
 [image]
 name = "connect/dataforseo"
 logo = "https://crabtalk.ai/logos/templates/dataforseo-v1.png"
-template = true
+deploy = true

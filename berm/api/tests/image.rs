@@ -29,6 +29,7 @@ fn service() -> Vec<u8> {
 
 fn service_record() -> Vec<u8> {
     serde_json::to_vec(&ServiceRecord {
+        deploy: false,
         public: false,
         lang: String::new(),
         name: "demo".to_owned(),

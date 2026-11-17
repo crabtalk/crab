@@ -7,7 +7,7 @@ Check your HTTP endpoints on a schedule and retain their observations. Each priv
 If this listing offers **Deploy**, deploy a copy without a local build:
 
 ```sh
-crab deploy --from owner/uptime
+crab deploy owner/uptime
 crab call you/uptime watch '{"name":"API","url":"https://example.com/health","interval_minutes":5}'
 crab call you/uptime check '{"name":"API"}'
 ```

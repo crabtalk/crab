@@ -216,7 +216,7 @@ fn a_published_image_does_not_prepare_build_tools() {
         .output()
         .unwrap();
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("Cloud context"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("a service address is owner/service"));
     assert!(!fixture.root.path().join("log").exists());
 }
 
@@ -229,7 +229,7 @@ fn build_explicitly_selects_local_source() {
     )
     .unwrap();
     let output = fixture
-        .command("deploy")
+        .command("up")
         .args(["--build", "--context", "default"])
         .output()
         .unwrap();

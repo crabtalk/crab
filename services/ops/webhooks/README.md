@@ -7,7 +7,7 @@ Keep signed JSON events until your agents read and acknowledge them. Each privat
 If this listing offers **Deploy**, create a private copy:
 
 ```sh
-crab deploy --from owner/webhooks
+crab deploy owner/webhooks
 crab secret request you/webhooks --for "Verify events sent to this inbox"
 ```
 

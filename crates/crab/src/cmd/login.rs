@@ -100,7 +100,6 @@ fn keep(name: &str, host: &str, token: String, account: Option<PublicAccount>) -
     contexts.contexts.insert(
         name.to_owned(),
         Context {
-            registry: None,
             host: host.to_owned(),
             token: Some(token),
             owner: Some(Owner::User(who.clone())),

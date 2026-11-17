@@ -14,4 +14,4 @@ tick = "* * * * *"
 [image]
 name = "ops/uptime"
 public = false
-template = true
+deploy = true

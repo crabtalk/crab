@@ -4,9 +4,7 @@
 use std::{future::Future, sync::LazyLock};
 use tokio::runtime::{Builder, Runtime};
 
-/// One runtime for the process, on every core for the local host's calls.
-/// `berm-oci`'s blocking `reqwest` panics inside a runtime, so `crab`'s
-/// commands stay synchronous.
+/// One runtime for the process.
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
     Builder::new_multi_thread()
         .enable_all()

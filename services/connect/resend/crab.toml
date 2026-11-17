@@ -7,4 +7,4 @@ secrets = [{ name = "RESEND_API_KEY", label = "API key" }]
 [image]
 name = "connect/resend"
 logo = "https://crabtalk.ai/logos/templates/resend-v1.png"
-template = true
+deploy = true

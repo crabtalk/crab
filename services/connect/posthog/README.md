@@ -4,7 +4,7 @@ Capture events, evaluate feature flags and run HogQL analytics queries in the de
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/posthog` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
+With Crab signed in to Cloud, replace `owner/posthog` with the address of a running deployment you can access. If only a published image is available, deploy it first.
 
 ```sh
 crab call owner/posthog query '{"sql":"select event, count() from events group by event limit 10","name":"Event totals"}'
@@ -19,7 +19,7 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
-crab deploy --from owner/posthog
+crab deploy owner/posthog
 ```
 
 Set `POSTHOG_REGION` to `us` (default) or `eu`. Capture and flags need `POSTHOG_PROJECT_TOKEN`. Queries need the numeric `POSTHOG_PROJECT_ID` and `POSTHOG_PERSONAL_API_KEY` with `query:read` and access to that project. Credential groups are optional; set the ones your tools use. Keep the copy private when the project is for your own use.
@@ -38,7 +38,7 @@ crab var set posthog POSTHOG_REGION eu
 crab var set posthog POSTHOG_PROJECT_ID 123
 ```
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
+To build a modified version or deploy when no image is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 

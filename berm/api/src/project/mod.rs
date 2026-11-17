@@ -84,7 +84,7 @@ pub struct Image {
     #[serde(default)]
     pub public: bool,
     #[serde(default)]
-    pub template: bool,
+    pub deploy: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,15 +177,6 @@ impl Project {
             {
                 bail!("{}: credentials.{id}: {why}", path.display());
             }
-        }
-        if project
-            .image
-            .as_ref()
-            .is_some_and(|image| image.public && image.template)
-        {
-            bail!(
-                "`public` can't be set on a template: every copy would be callable by every account."
-            );
         }
         for (id, credential) in &project.credentials {
             for host in credential.hosts.iter().flatten() {

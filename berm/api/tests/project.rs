@@ -56,7 +56,7 @@ fn retired_project_keys_are_refused_without_a_compatibility_path() {
         "image = \"fixtures/app\"",
         "logo = \"https://example.com/logo.svg\"",
         "public = true",
-        "template = true",
+        "deploy = true",
         "deploy = false",
         "formerly = []",
         "secrets = []",
@@ -76,22 +76,17 @@ fn image_publication_and_logos_use_one_table() {
     assert!(read("").unwrap().image.is_none());
     let private = read("[image]\nname = \"fixtures/app\"").unwrap();
     let image = private.image.unwrap();
-    assert!(!image.public && !image.template);
-    for (public, template) in [(true, false), (false, true)] {
+    assert!(!image.public && !image.deploy);
+    for (public, deploy) in [(true, false), (false, true), (true, true)] {
         let image = read(&format!(
-            "[image]\nname = \"fixtures/app\"\npublic = {public}\ntemplate = {template}"
+            "[image]\nname = \"fixtures/app\"\npublic = {public}\ndeploy = {deploy}"
         ))
         .unwrap()
         .image
         .unwrap();
-        assert_eq!((image.public, image.template), (public, template));
+        assert_eq!((image.public, image.deploy), (public, deploy));
     }
-    assert!(
-        read("[image]\nname = \"fixtures/app\"\npublic = true\ntemplate = true")
-            .unwrap_err()
-            .to_string()
-            .contains("can't be set on a template")
-    );
+    assert!(read("[image]\nname = \"fixtures/app\"\ntemplate = true").is_err());
     let logo = read("[image]\nname = \"fixtures/app\"\nlogo = \"https://example.com/logo.svg\"")
         .unwrap()
         .image

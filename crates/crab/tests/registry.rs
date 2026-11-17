@@ -1,78 +1,44 @@
-use crab_agent::{cmd::deploy::Deploy, context::Context, host::Node};
-use crabtalk_sdk::client::Client;
-use std::{path::Path, time::Duration};
-
-#[test]
-fn contexts_without_a_registry_remain_direct_upload_targets() {
-    let context: Context = toml::from_str("host = \"http://localhost:7777\"\n").unwrap();
-    assert!(context.registry.is_none());
-    let context: Context =
-        toml::from_str("host = \"http://localhost:7777\"\nregistry = \"localhost:5001\"\n")
-            .unwrap();
-    assert_eq!(context.registry.as_deref(), Some("localhost:5001"));
+use berm_host::{Images, Stored};
+#[tokio::test]
+async fn local_images_are_kept_and_read_by_verified_digest() {
+    let root = tempfile::tempdir().unwrap();
+    let stored = Stored::open(root.path());
+    let bytes = b"an image stored locally";
+    let digest = stored.put(bytes).await.unwrap();
+    assert!(stored.holds(&digest).await);
+    let at = "alice/weather:1.0.0".parse().unwrap();
+    stored.bind(&at, &digest).await.unwrap();
+    let reopened = Stored::open(root.path());
+    assert_eq!(reopened.resolve(&at).await.unwrap(), Some(digest.clone()));
+    assert_eq!(
+        reopened
+            .resolve(&"alice/weather".parse().unwrap())
+            .await
+            .unwrap(),
+        Some(digest.clone())
+    );
+    assert_eq!(
+        stored.pull("alice/weather:1.0.0", &digest).await.unwrap(),
+        bytes
+    );
+    assert!(
+        stored
+            .pull("alice/weather", "sha256:missing")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
-#[ignore = "needs TEST_REGISTRY"]
-async fn a_context_registry_deploys_to_a_local_node_and_survives_restart() {
-    let registry = std::env::var("TEST_REGISTRY").unwrap();
+async fn a_local_version_cannot_be_rebound_by_concurrent_pulls() {
     let root = tempfile::tempdir().unwrap();
-    let node = Node::new(
-        root.path().into(),
-        root.path().join("secrets.toml"),
-        8,
-        Duration::from_secs(1),
-        Duration::from_secs(60),
-        None,
-    )
-    .await
-    .unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    let router = node.clone().router();
-    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-    let client = Client::new(&url);
-    let build = Deploy {
-        dir: Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv"),
-        packages: Vec::new(),
-        registry: None,
-        force: false,
-        build: true,
-        from: None,
-        version: None,
-        auto_upgrade: false,
-        copy: Vec::new(),
-    };
-    tokio::task::spawn_blocking(move || build.run(&client, true, Some(&registry)))
-        .await
-        .unwrap()
-        .unwrap();
-    let deployed = node.get("osv").unwrap();
-    let digest = deployed.digest.clone();
-    let listing = Client::new(&url).listing("osv").await.unwrap();
-    assert!(listing.reference.unwrap().contains("@sha256:"));
-    server.abort();
-    drop(deployed);
-    drop(node);
-    let reopened = Node::new(
-        root.path().into(),
-        root.path().join("secrets.toml"),
-        8,
-        Duration::from_secs(1),
-        Duration::from_secs(60),
-        None,
-    )
-    .await
-    .unwrap();
-    let restored = tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if let Some(service) = reopened.get("osv") {
-                break service;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("the node restores its cached image");
-    assert_eq!(restored.digest, digest);
+    let stored = Stored::open(root.path());
+    let first = stored.put(b"first image").await.unwrap();
+    let second = stored.put(b"second image").await.unwrap();
+    let at = "alice/weather:1.0.0".parse().unwrap();
+    let (a, b) = tokio::join!(stored.bind(&at, &first), stored.bind(&at, &second));
+    assert_ne!(a.is_ok(), b.is_ok());
+    let kept = stored.resolve(&at).await.unwrap().unwrap();
+    assert_eq!(kept, if a.is_ok() { first } else { second });
+    stored.bind(&at, &kept).await.unwrap();
 }

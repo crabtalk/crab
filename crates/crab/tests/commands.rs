@@ -9,7 +9,8 @@ fn push_is_the_only_publication_command() {
     assert!(output.status.success());
     let help = String::from_utf8(output.stdout).unwrap();
     assert!(help.contains("Usage: crab push"), "{help}");
-    assert!(help.contains("--notes"));
+    assert!(!help.contains("--notes"));
+    assert!(!help.contains("--registry"));
     assert!(!help.contains("--stopped"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_crab"))

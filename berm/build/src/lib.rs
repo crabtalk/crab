@@ -67,6 +67,7 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
     }
     let mut record = ServiceRecord {
         public: project.image.as_ref().is_some_and(|image| image.public),
+        deploy: project.image.as_ref().is_some_and(|image| image.deploy),
         name: service.name.clone(),
         version: service.version.clone(),
         lang: String::new(),

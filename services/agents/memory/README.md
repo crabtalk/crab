@@ -7,7 +7,7 @@ Share persistent notes and context across your agents. Each private copy has one
 If this listing offers **Deploy**, create a private copy without a local build:
 
 ```sh
-crab deploy --from owner/memory
+crab deploy owner/memory
 crab call you/memory put '{"namespace":"project","key":"release-notes","content":"The next release needs a migration guide.","expected_revision":0}'
 ```
 

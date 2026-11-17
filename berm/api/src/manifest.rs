@@ -27,6 +27,8 @@ pub struct Manifest {
     pub abi_version: u32,
     #[serde(default)]
     pub public: bool,
+    #[serde(default)]
+    pub deploy: bool,
     /// The package it was built from.
     #[serde(default)]
     pub name: String,
@@ -90,6 +92,8 @@ pub struct Manifest {
 pub struct ServiceRecord {
     #[serde(default)]
     pub public: bool,
+    #[serde(default)]
+    pub deploy: bool,
     /// The package it was built from. Each tool record names it.
     pub name: String,
     #[serde(default)]
@@ -695,6 +699,7 @@ impl TryFrom<&[u8]> for Manifest {
 
         let ServiceRecord {
             public,
+            deploy,
             name,
             version,
             lang,
@@ -754,6 +759,7 @@ impl TryFrom<&[u8]> for Manifest {
         let mut manifest = Manifest {
             abi_version: ABI_VERSION,
             public,
+            deploy,
             name,
             version,
             lang,

@@ -4,4 +4,4 @@ size = "16MiB"
 [image]
 name = "ops/page-watch"
 public = false
-template = false
+deploy = false

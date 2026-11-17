@@ -61,6 +61,7 @@ impl Node {
 
         Router::new()
             .merge(secret_resources::router())
+            .route("/images/{owner}/{name}", get(stored_image).put(bind_image))
             .route(HEALTH, get(|| async { StatusCode::NO_CONTENT }))
             .route(&format!("/users/{LOCAL}/services"), get(list))
             .route(
@@ -345,4 +346,59 @@ async fn revoke_secret(
 
 pub(crate) fn internal(error: anyhow::Error) -> Denied {
     deny(StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}"))
+}
+
+async fn stored_image(
+    State(node): State<Arc<Node>>,
+    Path((owner, name)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<std::collections::BTreeMap<String, String>>,
+) -> Result<Json<crabtalk_sdk::services::service::Image>, Denied> {
+    let text = match query.get("version") {
+        Some(version) => format!("{owner}/{name}:{version}"),
+        None => format!("{owner}/{name}"),
+    };
+    let reference = text
+        .parse::<berm_api::reference::Reference>()
+        .map_err(|e| deny(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let digest = node
+        .images
+        .resolve(&reference)
+        .await
+        .map_err(|e| deny(StatusCode::BAD_REQUEST, e.to_string()))?
+        .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such local image"))?;
+    let bytes = berm_host::Images::pull(&node.images, &text, &digest)
+        .await
+        .map_err(|e| deny(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let manifest = berm_api::Manifest::try_from(bytes.as_slice()).map_err(Denied::manifest)?;
+    Ok(Json(crabtalk_sdk::services::service::Image {
+        owner,
+        name,
+        digest,
+        manifest,
+        deployments: Vec::new(),
+    }))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Binding {
+    digest: String,
+}
+async fn bind_image(
+    State(node): State<Arc<Node>>,
+    Path((owner, name)): Path<(String, String)>,
+    Json(binding): Json<Binding>,
+) -> Result<StatusCode, Denied> {
+    let bytes = berm_host::Images::pull(&node.images, &binding.digest, &binding.digest)
+        .await
+        .map_err(|e| deny(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let manifest = berm_api::Manifest::try_from(bytes.as_slice()).map_err(Denied::manifest)?;
+    let reference = format!("{owner}/{name}:{}", manifest.version)
+        .parse::<berm_api::reference::Reference>()
+        .map_err(|e| deny(StatusCode::BAD_REQUEST, e.to_string()))?;
+    node.images
+        .bind(&reference, &binding.digest)
+        .await
+        .map_err(|e| deny(StatusCode::CONFLICT, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
 }

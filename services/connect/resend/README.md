@@ -4,7 +4,7 @@ Send email through the deployment’s Resend account, send a batch of up to 100 
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/resend` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
+With Crab signed in to Cloud, replace `owner/resend` with the address of a running deployment you can access. If only a published image is available, deploy it first.
 
 Replace the sender with a domain verified in the deployment’s Resend account and choose the intended recipient. This call sends an email.
 
@@ -21,12 +21,12 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
-crab deploy --from owner/resend
+crab deploy owner/resend
 ```
 
 Set `RESEND_API_KEY` through the copy’s credential setup and verify your sending domain in Resend. Sending-only keys support `send` and `send_batch`; `retrieve` needs full access. Keep the copy private when its sending account is for your own use.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
+To build a modified version or deploy when no image is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 

@@ -7,4 +7,4 @@ fetch = ["api.osv.dev"]
 [image]
 name = "connect/osv"
 logo = "https://crabtalk.ai/logos/templates/osv-v1.png"
-template = true
+deploy = true

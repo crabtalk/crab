@@ -2,4 +2,4 @@ buffer = 131072
 
 [image]
 name = "agents/outbox"
-template = true
+deploy = true

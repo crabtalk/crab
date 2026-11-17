@@ -9,4 +9,4 @@ secrets = [{ name = "ANYAPI_API_KEY", label = "API key" }]
 [image]
 name = "connect/anyapi"
 logo = "https://crabtalk.ai/logos/templates/anyapi-v1.svg"
-template = true
+deploy = true

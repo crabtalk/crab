@@ -16,7 +16,7 @@ The configured customer task price is 1,000 USD micros ($0.001), settled only on
 
 ## Run your own copy
 
-This example is not configured as a published template. If a publisher makes a template available, use its Deploy control or `crab deploy --from OWNER/TEMPLATE`; consuming an existing deployment or template needs no local build. To run this source example from the public repository checkout:
+This example is not configured as a published image. If a publisher makes a template available, use its Deploy control or `crab deploy OWNER/TEMPLATE`; consuming an existing deployment or template needs no local build. To run this source example from the public repository checkout:
 
 ```sh
 cd services/ops/page-watch

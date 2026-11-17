@@ -37,7 +37,7 @@ The local host starts automatically. To deploy the same service to CrabTalk Clou
 
 ```sh
 crab login
-crab deploy
+crab up
 ```
 
 A repo can declare its published address in `crab.toml`, without a separate name:
@@ -45,10 +45,10 @@ A repo can declare its published address in `crab.toml`, without a separate name
 ```toml
 [image]
 name = "connect/tinyfish"
-template = true
+deploy = true
 ```
 
-`crab push` builds and publishes to that address, using the Cargo version and checking publication permissions. `crab deploy` consumes that release under your selected account without building. `crab deploy --build` deploys local source. An image is optional for building; a standalone file selects a release with `[image] name = "connect/tinyfish:1.2.3"`.
+`crab push` builds and publishes an image to Cloud. `crab up` builds and deploys your source. `crab deploy owner/name --version 1.2.3` deploys a published image; `crab pull owner/name:1.2.3` downloads it for the local host.
 
 For services exporting workflows, `crab workflow inspect owner/service.workflow` resolves the graph and quote without execution; `crab workflow run` starts a retained run, and `status`, `continue` and `cancel` manage it. See [workflow commands](crates/crab/README.md#workflow-runs).
 

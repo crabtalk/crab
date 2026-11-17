@@ -11,4 +11,4 @@ prune = "0 * * * *"
 [image]
 name = "web/analytics"
 public = false
-template = true
+deploy = true

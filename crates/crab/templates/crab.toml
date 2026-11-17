@@ -2,7 +2,7 @@
 # image = "your-account/__NAME__"
 # Public deployment and reusable image publication are opt-in.
 # public = true
-# template = true
+# deploy = true
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
 # The most bytes a call's arguments, and a tool's result, may hold.

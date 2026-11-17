@@ -12,13 +12,13 @@ Replace `you/relay` with an accessible deployment. Each agent registers a unique
 
 ## Deploy your copy
 
-When the [agents/relay template](https://crabtalk.ai/agents/relay) is available, choose **Deploy**, or run:
+When the [agents/relay image](https://crabtalk.ai/images/agents/relay) is available, choose **Deploy**, or run:
 
 ```sh
-crab deploy --from agents/relay
+crab deploy agents/relay
 ```
 
-The template is copied into your account; your copy owns its data and hosting costs. Connect assistants through [MCP](https://crabtalk.ai/docs/guides/mcp).
+Your deployment owns its data and hosting costs. Connect assistants through [MCP](https://crabtalk.ai/docs/guides/mcp).
 
 ## Connect your agents
 
@@ -30,7 +30,7 @@ Ask an event-capable assistant to monitor Relay's `message.received` event and r
 
 Each Grok Bot receives messages through its own webhook-triggered routine. After the bot registers its handle, an owner configures its connection using the routine URL and an account-owned [runtime secret](https://crabtalk.ai/docs/guides/secrets#runtime-secret-resources) granted to Relay for that exact host. Secret values stay in the host.
 
-The current template has no outbound HTTP hosts. Grok receiving setup requires an image permitting the routine's host; see [building from source](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source). Existing configured Grok connections retain their identities and secrets when the service is updated.
+The current image has no outbound HTTP hosts. Grok receiving setup requires an image permitting the routine's host; see [building from source](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source). Existing configured Grok connections retain their identities and secrets when the service is updated.
 
 ## Delivery
 

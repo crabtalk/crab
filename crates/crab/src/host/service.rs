@@ -7,17 +7,21 @@ use berm_api::{
     host::{self, Deploy},
 };
 use berm_host::{Denied, Installed, deny};
-use berm_oci::{Access, Reference, Registry};
 use crabtalk_sdk::services::service::DeployRequest;
-use std::str::FromStr;
 
 impl Node {
-    /// Registry images are cached locally before installation.
+    /// Deploy an image held in the local store.
     pub async fn prepare(&self, deploy: DeployRequest) -> Result<host::Deploy, Denied> {
-        if deploy.publish_only || deploy.source.is_some() || deploy.create {
+        if !deploy.overrides.is_empty() || deploy.auto_upgrade.is_some() {
             return Err(deny(
                 StatusCode::BAD_REQUEST,
-                "template publication and copies require Cloud",
+                "visibility, prices and automatic upgrades apply only on Cloud; switch to a Cloud context",
+            ));
+        }
+        if deploy.publish_only {
+            return Err(deny(
+                StatusCode::BAD_REQUEST,
+                "publish images through Cloud",
             ));
         }
         if deploy.seed.is_some() {
@@ -26,21 +30,13 @@ impl Node {
                 "a seed starts a service on Cloud; the local host's own database is where one is made",
             ));
         }
-        let digest = if deploy.reference.starts_with(digest::PREFIX) {
-            deploy.reference.clone()
-        } else {
-            let reference = Reference::from_str(&deploy.reference)
-                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
-            let bytes = tokio::task::spawn_blocking(move || {
-                let registry = Registry::open(&reference, Access::Read)?;
-                let (digest, _) = registry.describe(&reference.reference)?;
-                registry.blob(&digest)
-            })
-            .await
-            .map_err(|e| deny(StatusCode::BAD_GATEWAY, e.to_string()))?
-            .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
-            self.keep(&bytes).await?
-        };
+        if !deploy.reference.starts_with(digest::PREFIX) {
+            return Err(deny(
+                StatusCode::BAD_REQUEST,
+                "deploy a locally stored image digest; use crab pull first",
+            ));
+        }
+        let digest = deploy.reference.clone();
         Ok(host::Deploy {
             digest,
             reference: deploy.reference,

@@ -306,6 +306,7 @@ impl Service {
         let Manifest {
             abi_version: _,
             public: _,
+            deploy: _,
             crons: _,
             name: _,
             lang: _,
@@ -334,7 +335,11 @@ impl Service {
             readme: readme.clone(),
             logo: logo.clone(),
             digest: self.digest.clone(),
-            tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
+            tools: tools
+                .iter()
+                .filter(|tool| tool.public || self.manifest.deploy)
+                .cloned()
+                .collect(),
             workflows: workflows.iter().filter_map(|spec| spec.public()).collect(),
             vars: deps.vars.clone(),
         }

@@ -7,4 +7,4 @@ size = "64MiB"
 [image]
 name = "agents/memory"
 public = false
-template = true
+deploy = true

@@ -4,4 +4,4 @@ size = "1MiB"
 [image]
 name = "web/seo"
 public = true
-template = false
+deploy = false

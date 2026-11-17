@@ -10,7 +10,7 @@ Replace `you/outbox` with an accessible deployment on a host supporting service 
 
 ## Deploy your copy
 
-When the [agents/outbox template](https://crabtalk.ai/agents/outbox) is available, choose **Deploy**, or run `crab deploy --from agents/outbox`. Your copy uses its own Resend API key and hosting account. Create a sending key at https://resend.com/api-keys and verify the sender domain in Resend. Supply the key through the deployment’s credential page.
+When the [agents/outbox template](https://crabtalk.ai/agents/outbox) is available, choose **Deploy**, or run `crab deploy agents/outbox`. Your copy uses its own Resend API key and hosting account. Create a sending key at https://resend.com/api-keys and verify the sender domain in Resend. Supply the key through the deployment’s credential page.
 
 The outbox supports plain text of up to 4000 bytes and 100 lines, one to five recipients, and a subject of up to 200 bytes. It does not accept HTML email.
 

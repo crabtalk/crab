@@ -11,4 +11,4 @@ secrets = [{ name = "GITHUB_TOKEN", label = "Access token" }]
 [image]
 name = "connect/github"
 logo = "https://crabtalk.ai/logos/templates/github-v1.svg"
-template = true
+deploy = true

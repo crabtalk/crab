@@ -61,7 +61,6 @@ berm-build = { path = "berm/build", version = "0.1.7" }
 berm-codegen = { path = "berm/codegen", version = "0.1.7" }
 berm-host = { path = "berm/host", version = "0.1.7" }
 berm-lang = { path = "berm/lang", version = "0.1.7" }
-berm-oci = { path = "berm/oci", version = "0.1.7" }
 
 # html
 html = { package = "crab-html", path = "crates/html", version = "0.1.7" }
@@ -154,7 +153,6 @@ pulldown-cmark = { version = "0.13", default-features = false }
 ratatui = "0.30"
 regex = "1"
 toml = "1"
-toml_edit = "0.25"
 tower = { version = "0.5", features = ["util"] }
 trybuild = "1"
 wat = "1"
