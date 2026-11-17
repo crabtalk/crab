@@ -8,4 +8,4 @@
 //! are conditions it runs under.
 
 pub(crate) mod cpu;
-pub(crate) mod watchdog;
+pub mod watchdog;

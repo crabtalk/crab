@@ -44,7 +44,7 @@ pub use syscall::call::{
     Scope,
 };
 
-mod bound;
+pub mod bound;
 pub mod chain;
 pub mod clock;
 mod code;

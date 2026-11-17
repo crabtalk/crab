@@ -27,6 +27,8 @@ The embedder registers host capabilities as `Syscall`s. Known ABI calls with no 
 
 A guest cannot decline how far a chain of services may nest, the depth `Calls` is built with, or how long one may run, `bound/watchdog.rs`.
 
+The SQLite execution backend interrupts SQL statements at the invocation deadline, including statements that have not produced a result row. An interrupted writing invocation rolls back its transaction.
+
 `Manifest::try_from(bytes)` reads what an image claims to be without compiling or running it.
 
 ```sh

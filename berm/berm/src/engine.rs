@@ -409,7 +409,7 @@ impl Image {
             );
         }
         if Instant::now() >= deadline {
-            bail!("invocation exceeded its deadline");
+            bail!(watchdog::Expired);
         }
         instance?;
         called?;

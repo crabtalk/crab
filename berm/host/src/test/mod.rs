@@ -44,7 +44,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::MutexGuard;
 
@@ -557,6 +557,7 @@ impl TestHost {
             .read(
                 0,
                 Statement {
+                    deadline: Instant::now() + self.config.deadline,
                     sql: sql.to_owned(),
                     params: params.to_string(),
                 },

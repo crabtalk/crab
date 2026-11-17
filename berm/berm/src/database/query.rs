@@ -1,13 +1,17 @@
 //! The service's statements against a connection.
 
-use crate::{Refused, bound::cpu, syscall::sql::Statement};
+use crate::{
+    Refused,
+    bound::{cpu, watchdog},
+    syscall::sql::Statement,
+};
 use anyhow::{Context, Result, bail};
 use rusqlite::{
     Connection, Error, StatementStatus,
     hooks::{AuthAction, AuthContext, Authorization},
     types::{Value, ValueRef},
 };
-use std::{cell::Cell, io::Write};
+use std::{cell::Cell, io::Write, time::Instant};
 
 /// The largest reply one statement may answer with, in bytes.
 const MAX_REPLY: usize = 4 << 20;
@@ -82,6 +86,9 @@ pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> 
     let params: Vec<serde_json::Value> =
         serde_json::from_str(&statement.params).context("the parameters are not a JSON array")?;
     let start = cpu::now();
+    let deadline = statement.deadline;
+    anyhow::ensure!(Instant::now() < deadline, watchdog::Expired);
+    conn.progress_handler(1000, Some(move || Instant::now() >= deadline))?;
     GUEST.set(true);
     let ran = (|| {
         let mut prepared = conn
@@ -136,6 +143,8 @@ pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> 
         })
     })();
     GUEST.set(false);
+    conn.progress_handler(0, None::<fn() -> bool>)?;
+    anyhow::ensure!(Instant::now() < deadline, watchdog::Expired);
     ran
 }
 

@@ -141,6 +141,10 @@ impl From<anyhow::Error> for Denied {
         if let Some(refused) = e.downcast_ref::<WorkflowRefused>() {
             return refused.clone().into();
         }
+        if e.is::<berm::bound::watchdog::Expired>() {
+            return deny(StatusCode::GATEWAY_TIMEOUT, e.to_string())
+                .explained(berm::bound::watchdog::Expired::EXPLANATION);
+        }
         if e.is::<berm::MemoryLimit>() {
             return deny(StatusCode::TOO_MANY_REQUESTS, e.to_string()).explained(Self::MEMORY);
         }
