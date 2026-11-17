@@ -20,6 +20,8 @@ Nested calls use qualified `owner/service` addresses or bare names within the ca
 
 `Host::live` returns a fresh `database` snapshot: committed SQLite allocation, the writer's enforced capacity, and an epoch-second measurement time. WAL, logs and code caches are excluded. Recorded database snapshots refresh on deployment and each background flush; history reads do not write samples. The legacy `stored` field remains separate.
 
+Service databases share caches of at most 64 idle writer connections and 64 idle read connections per host. Active transactions retain their writer connection. Writer jobs execute in submission order on Tokio's blocking pool; idle services hold no dedicated writer thread. Capacity limits and SQL guards are reapplied when a connection reopens.
+
 ## License
 
 AGPL-3.0-only
