@@ -1,7 +1,7 @@
 use crate::{api, format::Format, types};
-use alloc::{format, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec::Vec};
 use berm_lang::{
-    Result,
+    RawValue, Result,
     serde_json::{self, Value, json},
 };
 
@@ -21,7 +21,7 @@ pub fn scrape(
     formats: Option<Vec<Format>>,
     only_main_content: Option<bool>,
     max_age: Option<u64>,
-) -> Result<Value> {
+) -> Result<Box<RawValue>> {
     let mut body = json!({"url":url});
     basic_options(&mut body, formats, only_main_content, max_age)?;
     response(api::scrape(&types::ScrapeInput { body })?)
@@ -36,7 +36,7 @@ pub fn search(
     limit: u64,
     include_domains: Option<Vec<String>>,
     exclude_domains: Option<Vec<String>>,
-) -> Result<Value> {
+) -> Result<Box<RawValue>> {
     item_count(limit)?;
     let mut body = json!({"query":query,"limit":limit});
     filters(
@@ -59,7 +59,7 @@ pub fn map(
     limit: Option<u64>,
     include_subdomains: Option<bool>,
     ignore_query_parameters: Option<bool>,
-) -> Result<Value> {
+) -> Result<Box<RawValue>> {
     let mut body = json!({"url":url});
     if let Some(value) = search {
         body["search"] = value.into();
@@ -88,7 +88,7 @@ pub fn crawl(
     max_discovery_depth: Option<u64>,
     include_paths: Option<Vec<String>>,
     exclude_paths: Option<Vec<String>>,
-) -> Result<Value> {
+) -> Result<Box<RawValue>> {
     item_count(limit)?;
     let mut body = json!({"url":url,"limit":limit,"scrapeOptions":{"parsers":[]}});
     if let Some(value) = max_discovery_depth {
@@ -111,7 +111,7 @@ pub fn crawl(
 ///
 /// Read one page of an owned crawl's results and credit usage. Pass skip from next.
 #[cfg_attr(feature = "tools", berm_lang::tool(catalog = "web.crawl.status"))]
-pub fn crawl_status(id: String, skip: Option<i64>) -> Result<Value> {
+pub fn crawl_status(id: String, skip: Option<i64>) -> Result<Box<RawValue>> {
     skip_offset(skip)?;
     response(api::crawl_status(&types::CrawlStatusInput {
         path: types::CrawlStatusInputPath { id },
@@ -128,7 +128,7 @@ pub fn batch_scrape(
     formats: Vec<Format>,
     only_main_content: Option<bool>,
     max_age: Option<u64>,
-) -> Result<Value> {
+) -> Result<Box<RawValue>> {
     item_count(urls.len() as u64)?;
     let mut body = json!({"urls":urls});
     basic_options(&mut body, Some(formats), only_main_content, max_age)?;
@@ -142,7 +142,7 @@ pub fn batch_scrape(
     feature = "tools",
     berm_lang::tool(catalog = "web.extract.batch.status")
 )]
-pub fn batch_scrape_status(id: String, skip: Option<i64>) -> Result<Value> {
+pub fn batch_scrape_status(id: String, skip: Option<i64>) -> Result<Box<RawValue>> {
     skip_offset(skip)?;
     response(api::batch_scrape_status(&types::BatchScrapeStatusInput {
         path: types::BatchScrapeStatusInputPath { id },
@@ -201,8 +201,13 @@ fn skip_offset(skip: Option<i64>) -> Result<()> {
     Ok(())
 }
 
-fn response(value: Value) -> Result<Value> {
-    if value["success"] == false {
+fn response(value: Box<RawValue>) -> Result<Box<RawValue>> {
+    let fields = serde_json::from_str::<BTreeMap<String, &RawValue>>(value.get()).ok();
+    if fields
+        .as_ref()
+        .and_then(|fields| fields.get("success"))
+        .is_some_and(|success| success.get() == "false")
+    {
         return Err(format!("Firecrawl: {value}").into());
     }
     Ok(value)

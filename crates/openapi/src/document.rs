@@ -445,12 +445,22 @@ impl Document {
         let module = &config.module;
         let output = if config.raw_response {
             quote!(::berm_lang::http::Response)
-        } else {
+        } else if config.response.is_some() {
             quote!(::berm_lang::serde_json::Value)
+        } else {
+            quote!(::alloc::boxed::Box<::berm_lang::RawValue>)
         };
-        let decode = (!config.raw_response).then(|| quote! {
-            let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
-        });
+        let decode = if config.raw_response {
+            None
+        } else if config.response.is_some() {
+            Some(quote! {
+                let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
+            })
+        } else {
+            Some(quote! {
+                let response = response.read_raw(client.name)?;
+            })
+        };
         let response = config.response.as_ref().map_or_else(
             || quote!(Ok(response)),
             |handler| quote!(#handler(response)),
@@ -478,7 +488,7 @@ impl Document {
             #[doc = ""]
             #[doc = #description]
             #tool_attr
-            pub fn #name(input: #module::types::#input) -> ::berm_lang::Result<::berm_lang::serde_json::Value> {
+            pub fn #name(input: #module::types::#input) -> ::berm_lang::Result<#output> {
                 #module::api::#name(&input)
             }
         };

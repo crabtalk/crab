@@ -1,4 +1,4 @@
-use berm_lang::{Branch, Result, Schema, tool, workflow};
+use berm_lang::{Branch, Result, Schema, store, tool, workflow};
 use webpage::{page::Page, reading::Reading};
 
 #[derive(Schema)]
@@ -61,7 +61,7 @@ pub fn read(url: String) -> Result<Snapshot> {
 pub fn compare(pages: Vec<Snapshot>) -> Result<Changes> {
     let mut urls = Vec::new();
     for page in pages {
-        let previous: Option<String> = berm_lang::get_json(&page.url)?;
+        let previous: Option<String> = store::get_str(&page.url)?;
         if previous.as_ref() != Some(&page.markdown) {
             urls.push(page.url);
         }
@@ -78,7 +78,7 @@ pub fn compare(pages: Vec<Snapshot>) -> Result<Changes> {
 )]
 pub fn save(pages: Vec<Snapshot>) -> Result<usize> {
     for page in &pages {
-        berm_lang::set_json(&page.url, &page.markdown)?;
+        store::set_str(&page.url, &page.markdown)?;
     }
     Ok(pages.len())
 }

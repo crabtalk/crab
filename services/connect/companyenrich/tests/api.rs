@@ -18,7 +18,10 @@ fn company_lookup_encodes_expansion_and_uses_host_managed_bearer_authentication(
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::enrich_company(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::enrich_company(&input).unwrap()).unwrap(),
+        response
+    );
     let request = &test::fetched()[0];
     assert_eq!(
         request.header("Authorization"),
@@ -41,7 +44,10 @@ fn search_keeps_nested_filters_nulls_and_explicit_pagination() {
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::search_companies(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::search_companies(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(test::fetched().len(), 1);
     assert_eq!(
         serde_json::from_slice::<Value>(&test::fetched()[0].body).unwrap(),
@@ -62,7 +68,10 @@ fn people_scroll_keeps_education_filters_and_cursor_without_followup_requests() 
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::scroll_people(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::scroll_people(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(test::fetched().len(), 1);
     assert_eq!(
         serde_json::from_slice::<Value>(&test::fetched()[0].body).unwrap(),
@@ -82,7 +91,8 @@ fn bulk_email_jobs_keep_outcome_counts_and_require_explicit_status_calls() {
         br#"{"job_id":"job-1","status":"pending"}"#,
     );
     assert_eq!(
-        api::start_bulk_email_enrichment(&input).unwrap()["job_id"],
+        berm_lang::serde_json::to_value(api::start_bulk_email_enrichment(&input).unwrap()).unwrap()
+            ["job_id"],
         "job-1"
     );
     assert_eq!(test::fetched().len(), 1);
@@ -99,7 +109,10 @@ fn bulk_email_jobs_keep_outcome_counts_and_require_explicit_status_calls() {
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::get_bulk_email_enrichment(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::get_bulk_email_enrichment(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(test::fetched().len(), 2);
 }
 
@@ -115,7 +128,7 @@ fn company_export_preserves_search_and_webhook_without_downloading_results() {
         br#"{"job_id":"export-1","status":"pending"}"#,
     );
     assert_eq!(
-        api::start_company_export(&input).unwrap()["job_id"],
+        berm_lang::serde_json::to_value(api::start_company_export(&input).unwrap()).unwrap()["job_id"],
         "export-1"
     );
     assert_eq!(
@@ -131,7 +144,10 @@ fn company_export_preserves_search_and_webhook_without_downloading_results() {
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::get_company_export(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::get_company_export(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(test::fetched().len(), 2);
 }
 
@@ -147,7 +163,10 @@ fn job_filters_support_nullable_enum_schema_and_path_segments_are_encoded() {
         200,
         br#"{"items":[],"totalItems":0}"#,
     );
-    assert_eq!(api::list_jobs(&input).unwrap()["totalItems"], 0);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::list_jobs(&input).unwrap()).unwrap()["totalItems"],
+        0
+    );
     let input: types::GetJobInput =
         serde_json::from_value(json!({"path":{"jobId":"a/b+c"}})).unwrap();
     test::respond(
@@ -156,7 +175,10 @@ fn job_filters_support_nullable_enum_schema_and_path_segments_are_encoded() {
         200,
         br#"{"status":"processing"}"#,
     );
-    assert_eq!(api::get_job(&input).unwrap()["status"], "processing");
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::get_job(&input).unwrap()).unwrap()["status"],
+        "processing"
+    );
 }
 
 #[test]

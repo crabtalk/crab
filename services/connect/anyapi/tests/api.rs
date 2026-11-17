@@ -26,7 +26,10 @@ fn company_lookup_preserves_source_controls_filters_and_idempotency() {
         200,
         &serde_json::to_vec(&expected).unwrap(),
     );
-    assert_eq!(api::linkedin_company(&input).unwrap(), expected);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::linkedin_company(&input).unwrap()).unwrap(),
+        expected
+    );
     let request = &test::fetched()[0];
     assert_eq!(
         serde_json::from_slice::<Value>(&request.body).unwrap(),
@@ -49,7 +52,7 @@ fn search_sends_the_callers_cursor_without_paging_or_retrying() {
         200,
         br#"{"output":{"posts":[],"nextCursor":"next/page+2"},"costUsd":0.01}"#,
     );
-    let result = api::twitter_search(&input).unwrap();
+    let result = berm_lang::serde_json::to_value(api::twitter_search(&input).unwrap()).unwrap();
     assert_eq!(result["output"]["nextCursor"], "next/page+2");
     let requests = test::fetched();
     assert_eq!(requests.len(), 1);
@@ -71,7 +74,7 @@ fn not_found_preserves_the_charge_and_rate_limits_preserve_retry_metadata() {
         200,
         br#"{"output":{"found":false,"data":null,"reason":"not_found"},"costUsd":0.002}"#,
     );
-    let result = api::tiktok_profile(&input).unwrap();
+    let result = berm_lang::serde_json::to_value(api::tiktok_profile(&input).unwrap()).unwrap();
     assert_eq!(result["output"]["found"], false);
     assert_eq!(result["costUsd"], 0.002);
     test::respond_with(

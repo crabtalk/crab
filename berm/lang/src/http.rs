@@ -7,12 +7,12 @@
 //! manifest enables `secret_resources`. The service never holds the value.
 
 use crate::{
-    Error, Result,
+    Error, RawValue, Result,
     abi::wire,
     host::{self, CallError},
     sys,
 };
-use alloc::{format, string::String, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use serde::de::DeserializeOwned;
 
 /// An upstream API's headers and error context. Secret placeholders remain host-managed.
@@ -80,6 +80,26 @@ impl Response {
     pub fn read<T: DeserializeOwned>(&self, provider: &str) -> Result<T> {
         self.json()
             .map_err(|error| format!("{provider} returned an unreadable response: {error}").into())
+    }
+
+    /// Consume the body as validated JSON without building a value tree.
+    pub fn read_raw(self, provider: &str) -> Result<Box<RawValue>> {
+        let unreadable = |error| {
+            Error::from(format!(
+                "{provider} returned an unreadable response: {error}"
+            ))
+        };
+        let body = String::from_utf8(self.body).map_err(|error| {
+            Error::from(format!(
+                "{provider} returned an unreadable response: {error}"
+            ))
+        })?;
+        RawValue::from_string(if body.is_empty() {
+            String::from("null")
+        } else {
+            body
+        })
+        .map_err(unreadable)
     }
 
     /// The body read as JSON.

@@ -15,7 +15,10 @@ fn news_selects_the_news_vertical_and_uses_the_deployment_key() {
         &serde_json::to_vec(&expected).unwrap(),
     );
     assert_eq!(
-        news::search_news("AI policy".into(), Some(5), Some("en".into())).unwrap(),
+        berm_lang::serde_json::to_value(
+            news::search_news("AI policy".into(), Some(5), Some("en".into())).unwrap()
+        )
+        .unwrap(),
         expected
     );
     assert_eq!(
@@ -31,7 +34,7 @@ fn maps_preserves_explicit_pagination_without_fetching_another_page() {
     }))
     .unwrap();
     test::respond("GET", "https://api.litescrape.com/api/google/maps?q=coffee&hl=en&start=20", 200, br#"{"local_results":[],"litescrape_pagination":{"next":"https://api.litescrape.com/api/google/maps?start=40"}}"#);
-    let response = api::google_maps(&input).unwrap();
+    let response = berm_lang::serde_json::to_value(api::google_maps(&input).unwrap()).unwrap();
     assert!(response["litescrape_pagination"]["next"].is_string());
     assert_eq!(test::fetched().len(), 1);
 }
@@ -55,7 +58,10 @@ fn post_fetch_preserves_nested_browser_options_and_query_timeout() {
         200,
         br##"{"url":"https://example.com","content":"# Example"}"##,
     );
-    assert_eq!(api::web_fetch_post(&input).unwrap()["content"], "# Example");
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::web_fetch_post(&input).unwrap()).unwrap()["content"],
+        "# Example"
+    );
     let request = &test::fetched()[0];
     assert_eq!(request.header("Content-Type"), Some("application/json"));
     assert_eq!(
@@ -76,7 +82,8 @@ fn screenshots_return_base64_without_a_separate_download() {
         200,
         br#"{"url":"https://example.com","screenshot_base64":"iVBORw0KGgo=","full_page":true}"#,
     );
-    let response = api::web_screenshot_post(&input).unwrap();
+    let response =
+        berm_lang::serde_json::to_value(api::web_screenshot_post(&input).unwrap()).unwrap();
     assert_eq!(response["screenshot_base64"], "iVBORw0KGgo=");
     assert_eq!(test::fetched().len(), 1);
 }

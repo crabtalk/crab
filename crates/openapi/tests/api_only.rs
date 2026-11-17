@@ -17,5 +17,8 @@ crab_openapi::service! {
 #[test]
 fn api_only_bindings_can_override_the_document_server() {
     test::respond("GET", "https://mirror.example.com/api/ping", 204, b"");
-    assert_eq!(api::ping(&types::PingInput {}).unwrap(), Value::Null);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::ping(&types::PingInput {}).unwrap()).unwrap(),
+        Value::Null
+    );
 }

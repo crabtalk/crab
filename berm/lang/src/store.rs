@@ -50,3 +50,19 @@ pub fn set_json<T: serde::Serialize>(key: &str, value: &T) -> Result<(), CallErr
         .map_err(|error| CallError::Failed(alloc::format!("unserializable value: {error}")))?;
     set(key, &bytes)
 }
+
+/// Read UTF-8 text, or `None` when the key has no value.
+pub fn get_str(key: &str) -> Result<Option<String>, CallError> {
+    get(key)?
+        .map(|bytes| {
+            String::from_utf8(bytes).map_err(|_| {
+                CallError::Failed(alloc::format!("{key} holds a value that isn't UTF-8"))
+            })
+        })
+        .transpose()
+}
+
+/// Stage UTF-8 text without JSON quoting or escaping.
+pub fn set_str(key: &str, value: &str) -> Result<(), CallError> {
+    set(key, value.as_bytes())
+}

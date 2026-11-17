@@ -105,6 +105,12 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. The owner grants a resource ID to the deployed service for exact hosts. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
 
+## Stored values
+
+Use `store::get_str` and `store::set_str` for UTF-8 text, `get_json` and `set_json` for structured values, and `get` and `set` for bytes. Text is stored without JSON quotes or escapes; `store::get_str` fails with the key name when existing bytes are not UTF-8.
+
+`http::Response::read_raw` consumes a provider's JSON body as `Box<RawValue>` without building a value tree. Empty responses become `null`; invalid JSON fails with the provider's unreadable-response error. Generated OpenAPI operations use it unless they declare a response handler or request the HTTP response itself.
+
 ## Storage transactions
 
 Reads within a tool call see its earlier writes, including pending changes from `set` and `set_json`. Storage changes commit only when the tool succeeds with `Ok`; `Err`, a trap or an exceeded deadline discards its pending changes. Independent calls cannot read uncommitted changes. SQL statements and key/value writes share a transaction when SQL storage is declared. HTTP actions and changes already committed by other services are outside that transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).

@@ -15,7 +15,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use berm_lang::{Caller, Result, Schema, event, key, tool};
+use berm_lang::{Caller, Result, Schema, event, key, store, tool};
 
 berm_lang::declare_service!(fixture);
 
@@ -502,3 +502,28 @@ pub fn fromaccounts() -> Result<String> {
 }
 
 mod workflows;
+
+#[derive(Schema)]
+pub struct StoredText {
+    pub text: Option<String>,
+    pub bytes: Option<Vec<u8>>,
+}
+
+/// Stored text
+#[tool]
+pub fn stored_text(
+    key: String,
+    text: Option<String>,
+    bytes: Option<Vec<u8>>,
+) -> Result<StoredText> {
+    if let Some(text) = text {
+        store::set_str(&key, &text)?;
+    }
+    if let Some(bytes) = bytes {
+        berm_lang::set(&key, &bytes)?;
+    }
+    Ok(StoredText {
+        text: store::get_str(&key)?,
+        bytes: berm_lang::get(&key)?,
+    })
+}
