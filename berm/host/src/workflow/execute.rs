@@ -626,10 +626,12 @@ impl<E: Env> Host<E> {
                             "workflow builder exceeded its declared call bound"
                         );
                         let binding = &run.accepted.bindings[&node.id];
+                        let input_schema = schema::Validator::try_from(&call.input)?;
+                        let binding_schema = schema::Validator::try_from(&binding.input)?;
                         let mut calls = Vec::with_capacity(inputs.len());
                         for input in inputs {
-                            schema::validate(&call.input, &input)?;
-                            schema::validate(&binding.input, &input)?;
+                            input_schema.validate(&input)?;
+                            binding_schema.validate(&input)?;
                             let operation_key = input
                                 .get(PreparedCall::IDEMPOTENCY_KEY)
                                 .and_then(Value::as_str)
@@ -718,6 +720,7 @@ impl<E: Env> Host<E> {
         let Kind::Step { mode, call } = &node.kind else {
             bail!("call checkpoint belongs to a non-step")
         };
+        let output_schema = schema::Validator::try_from(&call.output)?;
         for (index, prepared) in calls.iter().enumerate() {
             if matches!(checkpoint.items[index].state, State::Succeeded { .. }) {
                 continue;
@@ -889,7 +892,7 @@ impl<E: Env> Host<E> {
                 Ok((Output::Done(text), _)) => match serde_json::from_str(&text)
                     .map_err(anyhow::Error::from)
                     .and_then(|value| {
-                        schema::validate(&call.output, &value)?;
+                        output_schema.validate(&value)?;
                         Ok(value)
                     }) {
                     Ok(value) => State::Succeeded { value },

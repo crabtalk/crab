@@ -22,6 +22,8 @@ Tool responses carry `host::DENIED` (`berm-denied: 1`) when the tool refused its
 `Output::Failed` is the service's own report and arrives with the same `200` a
 result does: the call was fine and the tool said no.
 
+`schema::Validator::try_from(&schema)` compiles a reusable validator; `validate(&value)` checks each input with the same error format as the one-shot `schema::validate`. References are resolved without HTTP or filesystem retrieval. Run `cargo run --release -p berm-api --example validation` to compare repeated compilation with reuse.
+
 ## Workflow contracts
 
 `workflow::graph` defines v1 entry records, typed call schemas, symbolic targets, dependencies, guards, and once/optional/each/branch/output shapes. `Entry::digest` hashes compact JSON with recursively sorted object keys; declaration and item order remain significant. `Source` pairs this graph identity with the complete service image digest. Unknown contract versions are refused.

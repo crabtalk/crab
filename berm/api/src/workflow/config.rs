@@ -125,21 +125,21 @@ impl Config {
 impl Spec {
     pub fn check(&self) -> Result<()> {
         self.config.check()?;
-        schema::compile(&self.entry.graph.input)?;
-        schema::compile(&self.entry.graph.output)?;
+        schema::Validator::try_from(&self.entry.graph.input)?;
+        schema::Validator::try_from(&self.entry.graph.output)?;
         for node in &self.entry.graph.nodes {
             match &node.kind {
                 Kind::Step { call, .. } => {
-                    schema::compile(&call.input)?;
-                    schema::compile(&call.output)?;
+                    schema::Validator::try_from(&call.input)?;
+                    schema::Validator::try_from(&call.output)?;
                     for case in &call.cases {
-                        schema::compile(&case.schema)?;
+                        schema::Validator::try_from(&case.schema)?;
                     }
                 }
                 Kind::Branch { cases } => {
                     ensure!(!cases.is_empty(), "a branch needs at least one case");
                     for case in cases {
-                        schema::compile(&case.schema)?;
+                        schema::Validator::try_from(&case.schema)?;
                     }
                 }
                 Kind::Output => {}
