@@ -111,6 +111,16 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         )
         .await?;
     assert_eq!(status, StatusCode::ACCEPTED);
+    for (header, expected) in [
+        (None, Value::Null),
+        (Some(r#"{"id":"alice"}"#), json!("alice")),
+    ] {
+        let result = client.call("status", json!({}), header).await?;
+        let value = result.get("structuredContent").cloned().unwrap_or_else(|| {
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap()
+        });
+        assert_eq!(value, json!({"kind":"local","caller":expected}));
+    }
 
     let (_, _, listed) = client
         .post(
@@ -119,8 +129,13 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         )
         .await?;
     let advertised = listed["result"]["tools"].as_array().unwrap();
-    assert_eq!(advertised.len(), 10);
-    for (name, read_only) in [("services", true), ("query", true), ("call", false)] {
+    assert_eq!(advertised.len(), 11);
+    for (name, read_only) in [
+        ("status", true),
+        ("services", true),
+        ("query", true),
+        ("call", false),
+    ] {
         let tool = advertised.iter().find(|tool| tool["name"] == name).unwrap();
         assert_eq!(tool["annotations"]["readOnlyHint"], read_only);
         assert_eq!(tool["annotations"]["destructiveHint"], !read_only);

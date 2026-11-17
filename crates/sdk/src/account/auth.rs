@@ -1,6 +1,7 @@
 //! `/auth` — signing in, the sessions it mints, and the provider accounts
 //! it signs in with.
 
+use crate::account::key::{KeyStatus, Scope};
 use serde::{Deserialize, Serialize};
 
 /// Which front-end surface started the sign-in: where the callback redirects,
@@ -59,4 +60,32 @@ pub struct Connection {
 pub struct LinkResponse {
     /// Provider consent URL the FE should navigate the browser to.
     pub redirect_url: String,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", schema(as = AuthStatus))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Status {
+    ApiKey {
+        key: KeyStatus,
+    },
+    Session {
+        account: String,
+        client: Client,
+        expires_at: i64,
+    },
+    Local {
+        caller: Option<String>,
+    },
+}
+
+impl Status {
+    pub fn allows(&self, scope: Scope) -> bool {
+        match self {
+            Self::ApiKey { key } => key.scope.iter().any(|granted| granted.allows(scope)),
+            Self::Session { .. } => true,
+            Self::Local { .. } => false,
+        }
+    }
 }

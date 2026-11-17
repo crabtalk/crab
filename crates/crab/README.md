@@ -61,7 +61,7 @@ The build embeds `[schedules]` in the image. Every deploy applies those schedule
 
 `crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: services reach it through `crab up` on the `default` context, which starts it in the background when nothing answers. `crab up [dir]` selects the service in that directory, or all Cargo workspace services beneath it with a `crab.toml`. The directory defaults to `.`; `-p <name>`, repeatable, selects services by name anywhere in the workspace instead. `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
-`crab --context default status` probes the local host at `/meta/health`.
+`crab --context default status` probes the local host at `/meta/health`. On Cloud, `crab status` also reads the current credential through `GET /auth/status`: its type and expiry, and for keys, their account, permissions, daily budget and spend, and priced-service grants. This needs no management scope; the selected account stays separate from the credential’s account. Plan details appear when usage access permits them.
 
 ## Contexts
 
@@ -167,6 +167,8 @@ steps:
 Service code calls a running deployment with `berm_lang::call("owner/service", tool, args)` without a `calls` declaration. Cross-account targets must be public and accept service callers; priced calls charge the calling service's account. `crab idl owner/service` writes `idls/service.json`, retaining its owner for generated calls.
 
 Before deployment or image publication, measure the built WebAssembly tool on the local host with the largest supported workloads, add headroom, and check every key against the destination's ceilings. Default ceilings are 100,000 µs CPU (100 ms), 1,000,000 rows read, 1,000,000 written and 128 MiB memory. Rebuild and retest under the chosen budget. Native tests and image builds do not establish that it fits; CLI call meters include nested calls. See [Sizing a budget](https://crabtalk.ai/docs/guides/budgets#size-a-budget-before-deployment).
+
+`status({})` reads the current credential and access on Cloud without `keys:read`; on the local MCP endpoint it reports the unverified caller, or no caller.
 
 `inspect(service)` on the local MCP endpoint returns the service definition, including its README and input schemas, and a `prices` map in USD micros (empty locally). Use `services` or `search`, then `inspect`, then `query` for tools marked query or `call` for other tools. Resource reads expose the README. Stopped services and services with no accessible tools or workflows are unavailable through inspection and resources.
 

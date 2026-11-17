@@ -80,6 +80,8 @@ A `#[workflow]` impl compiles typed step, branch and output signatures into a gr
 
 ## Signing in, paying and secrets
 
+`crab status --json` reports the selected host and account separately from the authenticated credential. Keys include their permissions, expiry, priced-service grants and daily budget and spend. It requires no management scope. MCP `status({})` returns the same credential view for its own connection; CLI and MCP may use different credentials.
+
 The person you act for is not at your machine: never open a browser or wait on a prompt for something only they can do.
 
 - Sign in with `crab login --device`: it prints a link and a code, then waits until the person approves or declines, up to 30 minutes. Send them the link, or the code to enter at `crabtalk.ai/device`; they review the connection name, account, permissions and daily budget before approving a dedicated key. Manage it under Settings → API keys; it does not grant personal-session access. Plain `crab login` opens a browser on your machine, which they cannot reach.

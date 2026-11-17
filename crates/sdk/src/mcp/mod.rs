@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 pub mod workflow;
 
+pub const STATUS: &str = "status";
 pub const SEARCH: &str = "search";
 pub const INSPECT: &str = "inspect";
 pub const CALL: &str = "call";
@@ -23,13 +24,14 @@ const SCHEME: &str = "crab://";
 pub const REQUEST_SCHEME: &str = "crab-request://";
 pub const REQUEST_TEMPLATE: &str = "crab-request://{code}";
 
-pub const INSTRUCTIONS: &str = "Use `services` for your account's and organizations' services, or `search` for public services. \
+pub const INSTRUCTIONS: &str = "Use `status` to inspect your current credential and access. Use `services` for your account's and organizations' services, or `search` for public services. \
     Use `inspect` on a service address to read its README, input schemas and prices before calling. \
     Run a tool marked query with `query`; use `call` for other tools and respect client confirmations. \
     Both take service, tool and input. Paid Cloud calls require the key's service grant and budget. \
     Relay operations use this same path. Use `workflow_inspect` to discover workflow graphs and quotes, \
     `workflow_run` to admit a run, and `workflow_status` to poll it. Continuation is explicit through `workflow_continue`; `workflow_cancel` cannot undo accepted effects.";
 
+pub const STATUS_DESCRIPTION: &str = "Read the current credential type, account and access. API keys report their permissions, expiry, priced-service grants and daily budget and spend. Requires no account-wide key permission. Local caller identities are unverified.";
 pub const SEARCH_DESCRIPTION: &str = "Find public services and tools by text; local hosts search running services. Returns service addresses, descriptions and tool names and titles, without input schemas. Inspect a result before calling it.";
 pub const SERVICES_DESCRIPTION: &str = "List the connected account's and organizations' services, or services on a local host. Inspect a service to read its tools, input schemas and prices.";
 pub const INSPECT_DESCRIPTION: &str = "Read one service's README, tools, input schemas and prices in USD micros. Supply an address returned by services or search, or an address the user supplied.";
@@ -40,6 +42,7 @@ pub const TEMPLATE_DESCRIPTION: &str =
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
+    Status,
     Search,
     Services,
     Inspect,
@@ -48,7 +51,8 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
+        Self::Status,
         Self::Search,
         Self::Services,
         Self::Inspect,
@@ -57,6 +61,7 @@ impl Action {
     ];
     pub fn name(self) -> &'static str {
         match self {
+            Self::Status => STATUS,
             Self::Search => SEARCH,
             Self::Services => SERVICES,
             Self::Inspect => INSPECT,
@@ -66,6 +71,7 @@ impl Action {
     }
     pub fn description(self) -> &'static str {
         match self {
+            Self::Status => STATUS_DESCRIPTION,
             Self::Search => SEARCH_DESCRIPTION,
             Self::Services => SERVICES_DESCRIPTION,
             Self::Inspect => INSPECT_DESCRIPTION,
@@ -79,7 +85,7 @@ impl Action {
     pub fn schema(self) -> Map<String, Value> {
         match self {
             Self::Search => search_schema(),
-            Self::Services => object(json!({"type":"object", "properties":{}})),
+            Self::Status | Self::Services => object(json!({"type":"object", "properties":{}})),
             Self::Inspect => inspect_schema(),
             Self::Query | Self::Call => call_schema(),
         }

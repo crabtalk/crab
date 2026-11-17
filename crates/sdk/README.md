@@ -81,3 +81,5 @@ Service usage includes an optional `database` snapshot with `used`, `limit` and 
 Billing entries distinguish tool and workflow sales with `price::Kind`. Workflow settlement separates owner and unpriced runs from held, released and settled customer prices. A successful run has one settled customer charge across all attempts.
 
 `Earned::net` reports profit after all attributed costs. `Earned::payable` excludes costs already charged to the owning account; payout calculations use this balance before transfer fees.
+
+`Client::auth_status` reads `GET /auth/status` for the current credential without a management scope. Its `account::auth::Status` distinguishes API keys, sessions and local callers; API keys include their account, permissions, expiry, daily budget and spend, and priced-service grants. The MCP `status` tool returns the same credential view.

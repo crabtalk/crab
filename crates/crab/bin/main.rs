@@ -71,7 +71,7 @@ enum Command {
         #[arg(long, default_value_t = 600)]
         timeout: u64,
     },
-    /// Where `crab` is talking, as whom, and on which plan.
+    /// Where `crab` connects, its credential access, and the account plan.
     Status,
     /// Run the local host: deploy services to it and serve their tools over
     /// HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`.

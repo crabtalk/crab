@@ -3,8 +3,9 @@
 use crate::host::Node;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts};
 use berm_api::{Output, Service, host::Caller};
-use crabtalk_sdk::mcp::{
-    self, Action, Found, Inspection, Tool as FoundTool, workflow::Action as WorkflowAction,
+use crabtalk_sdk::{
+    account::auth::Status,
+    mcp::{self, Action, Found, Inspection, Tool as FoundTool, workflow::Action as WorkflowAction},
 };
 use rmcp::{
     ErrorData as McpError, ServerHandler,
@@ -176,6 +177,14 @@ impl ServerHandler for Mcp {
         let action = Action::try_from(request.name.as_ref())
             .map_err(|error| McpError::invalid_params(error, None))?;
         match action {
+            Action::Status => {
+                return Ok(CallToolResult::structured(
+                    serde_json::to_value(Status::Local {
+                        caller: caller.map(|caller| caller.id.clone()),
+                    })
+                    .map_err(|error| McpError::internal_error(error.to_string(), None))?,
+                ));
+            }
             Action::Services => {
                 let names: Vec<_> = self
                     .node

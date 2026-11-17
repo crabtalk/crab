@@ -9,7 +9,7 @@ Use deployed CrabTalk services through the connected MCP tools. For service deve
 
 ## Connected services
 
-Reuse the existing CrabTalk account connection. Hosted and local MCP use the same fixed tools: `services`, `search`, `inspect`, `query` and `call`, plus the workflow tools.
+Reuse the existing CrabTalk account connection. Hosted and local MCP use the same fixed tools: `status`, `services`, `search`, `inspect`, `query` and `call`, plus the workflow tools. Use `status({})` to inspect the connected credential’s access; it requires no account-wide key permission.
 
 1. Use `services` for the connected account's and organizations' services. Use `search` to find another account's public service by text. Discovery returns names and titles; it carries no tool schemas.
 2. Call `inspect({service})` with the exact address supplied by the user or returned by discovery. Read the README, tool input schemas, query flags and prices. `crab://owner/name` provides the README.
