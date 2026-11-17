@@ -4,12 +4,11 @@ use webpage::page::Page;
 
 /// Check page SEO
 ///
-/// Inspect server-returned HTML for basic SEO findings and their evidence.
-/// Checks page metadata, canonical links, h1 headings, image alt attributes
-/// and robots directives. It does not measure rankings or render JavaScript.
+/// Inspect returned HTML and headers for SEO and social preview findings.
+/// Does not render JavaScript, fetch linked resources or verify indexing.
 #[tool(
     catalog = "web.seo",
-    budget(cpu = 50000, read = 1, written = 1, memory = 8)
+    budget(cpu = 50000, read = 1, written = 1, memory = 23)
 )]
 pub fn check(
     /// Absolute HTTP or HTTPS URL, without embedded credentials.

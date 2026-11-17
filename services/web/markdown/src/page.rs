@@ -4,7 +4,7 @@ use berm_lang::{
 };
 use html5ever::{driver, ns, tendril::TendrilSink};
 use lol_html::{HtmlRewriter, Settings, element};
-use scraper::{ElementRef, Html, HtmlTreeSink, Node, Selector};
+use scraper::{ElementRef, Html, HtmlTreeSink, Selector};
 use std::collections::BTreeSet;
 use url::Url;
 
@@ -106,24 +106,33 @@ impl Page {
             .filter(|title| !title.is_empty())
     }
 
-    pub fn meta(&self, name: &str) -> Option<&str> {
+    pub fn metas<'a>(&'a self, name: &str) -> impl Iterator<Item = ElementRef<'a>> + use<'a> {
+        let name = name.to_owned();
         self.document
-            .select(&Selector::parse("meta").expect("static selector"))
+            .tree
+            .nodes()
+            .filter_map(ElementRef::wrap)
             .filter(|element| {
+                element.value().name() == "meta" && element.value().name.ns == ns!(html)
+            })
+            .filter(move |element| {
                 ["name", "property"].iter().any(|key| {
                     element
                         .value()
                         .attr(key)
-                        .is_some_and(|value| value.eq_ignore_ascii_case(name))
+                        .is_some_and(|value| value.eq_ignore_ascii_case(&name))
                 })
             })
-            .find_map(|element| {
-                element
-                    .value()
-                    .attr("content")
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-            })
+    }
+
+    pub fn meta(&self, name: &str) -> Option<&str> {
+        self.metas(name).find_map(|element| {
+            element
+                .value()
+                .attr("content")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
     }
 }
 
@@ -192,7 +201,7 @@ impl TryFrom<(Url, Response)> for Page {
             remaining = &remaining[end..];
             seen = Self::check_complexity(&parser.tokenizer.sink.sink.0.borrow(), seen)?;
         }
-        let mut document = parser.finish();
+        let document = parser.finish();
         Self::check_complexity(&document, 0)?;
         let base = document
             .select(&Selector::parse("base[href]").expect("static selector"))
@@ -200,29 +209,6 @@ impl TryFrom<(Url, Response)> for Page {
             .and_then(|element| url.join(element.value().attr("href")?).ok())
             .filter(|base| matches!(base.scheme(), "http" | "https"))
             .unwrap_or_else(|| url.clone());
-        let linked: Vec<_> = document
-            .select(&Selector::parse("[href], [src]").expect("static selector"))
-            .map(|element| element.id())
-            .collect();
-        for id in linked {
-            let mut node = document.tree.get_mut(id).expect("selected element");
-            if let Node::Element(element) = node.value() {
-                element.attrs.retain_mut(|(name, value)| {
-                    if !matches!(name.local.as_ref(), "href" | "src") {
-                        return true;
-                    }
-                    match base.join(value) {
-                        Ok(target)
-                            if matches!(target.scheme(), "http" | "https" | "mailto" | "tel") =>
-                        {
-                            *value = target.as_str().into();
-                            true
-                        }
-                        _ => false,
-                    }
-                });
-            }
-        }
         Ok(Self {
             url,
             base,

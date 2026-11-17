@@ -19,6 +19,9 @@ tools = []
 [dependencies]
 berm-lang.workspace = true
 scraper.workspace = true
+http-link.workspace = true
+language-tags.workspace = true
+url.workspace = true
 webpage.workspace = true
 
 [dev-dependencies]

@@ -44,12 +44,29 @@ def main():
         "near-attributes": START + attribute_tag * 93 + END,
         "total-attributes": START + attribute_tag * ((MAX_BYTES - len(START) - len(END)) // len(attribute_tag)) + END,
     })
-    for name, body in bodies.items():
+    seo_start = "<!doctype html><html lang='en'><head><title>Fixture</title><meta name='description' content='Fixture'>"
+    seo_end = "</head><body><h1>Fixture</h1></body></html>"
+    graph_start = '<script type="application/ld+json">{"@graph":['
+    graph_end = ']}</script>'
+    graph_unit = '{"@type":"Article"}'
+    graph_count = (MAX_BYTES - len(seo_start + seo_end + graph_start + graph_end) + 1) // (len(graph_unit) + 1)
+    seo_metadata = {
+        "max-json-graph": graph_start + ",".join([graph_unit] * graph_count) + graph_end,
+        "json-ld-blocks": '<script type="application/ld+json">{"@type":"Article"}</script>' * 2000,
+        "canonical-evidence": "".join(f"<link rel=canonical href='https://fixture.example/p/{index}'>" for index in range(1000)),
+        "hreflang-evidence": "<link rel=alternate hreflang=en href='https://fixture.example/en'>" * 1500,
+        "social-evidence": "<meta property='og:image' content='https://fixture.example/image.png'>" * 1500,
+        "robots-evidence": "<meta name=robots content=noindex>" * 500,
+        "description-evidence": "<meta name=description content=Description>" * 1500,
+    }
+    seo_bodies = {name: seo_start + metadata + seo_end for name, metadata in seo_metadata.items()}
+    for name, body in (bodies | seo_bodies).items():
         (output / f"{name}.html").write_text(body)
     rejected = {"dense-elements", "relative-links", "headings", "malformed-tables", "scripts", "nested", "many-attributes", "total-attributes"}
     for service in ("seo", "markdown"):
         cases = []
-        for name in [*bodies, "network-wait"]:
+        selected = bodies | seo_bodies if service == "seo" else bodies
+        for name in [*selected, "network-wait"]:
             response = {"method": "GET", "url": URL, "status": 200,
                         "headers": {"content-type": "text/html"},
                         "body_file": f"{'ordinary' if name == 'network-wait' else name}.html"}

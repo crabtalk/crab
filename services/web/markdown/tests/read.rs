@@ -234,3 +234,34 @@ fn svg_titles_do_not_supply_the_page_title() {
     .unwrap();
     assert_eq!(page.title(), None);
 }
+
+#[test]
+fn markdown_resolves_and_sanitizes_links_without_mutating_page_evidence() {
+    use scraper::Selector;
+    use webpage::reading::Reading;
+
+    let page = Page::try_from((
+        "https://example.com/page".parse().unwrap(),
+        response(200, &[("content-type", "text/html")], br#"<head><base href='/guide/'></head><body><main><a href='next'>Next</a><a href='javascript:bad'>Unsafe</a><a href='mailto:a@example.com'>Email</a><img src='photo.png' alt='Photo'><img src='data:bad' alt='Unsafe image'></main></body>"#),
+    )).unwrap();
+    let original = page.document.html();
+    assert_eq!(
+        page.document
+            .select(&Selector::parse("a").unwrap())
+            .next()
+            .unwrap()
+            .value()
+            .attr("href"),
+        Some("next")
+    );
+    let read = Reading::try_from(&page).unwrap();
+    assert!(read.markdown.contains("https://example.com/guide/next"));
+    assert!(
+        read.markdown
+            .contains("https://example.com/guide/photo.png")
+    );
+    assert!(read.markdown.contains("mailto:a@example.com"));
+    assert!(!read.markdown.contains("javascript:"));
+    assert!(!read.markdown.contains("data:bad"));
+    assert_eq!(page.document.html(), original);
+}

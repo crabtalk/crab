@@ -1,6 +1,7 @@
 use crate::page::Page;
 use berm_lang::{Result, Schema};
 use htmd::HtmlToMarkdown;
+use lol_html::{Settings, element};
 use scraper::Selector;
 
 const MAX_MARKDOWN: usize = 128 * 1024;
@@ -28,6 +29,28 @@ impl TryFrom<&Page> for Reading {
                     .map(|element| (element.value().name().to_owned(), element.html()))
             })
             .ok_or("The page has no readable HTML body")?;
+        let content = lol_html::rewrite_str(
+            &content,
+            Settings::new().append_element_content_handler(element!("[href], [src]", |element| {
+                for name in ["href", "src"] {
+                    if let Some(value) = element.get_attribute(name) {
+                        match page.base.join(&value) {
+                            Ok(target)
+                                if matches!(
+                                    target.scheme(),
+                                    "http" | "https" | "mailto" | "tel"
+                                ) =>
+                            {
+                                element.set_attribute(name, target.as_str())?;
+                            }
+                            _ => element.remove_attribute(name),
+                        }
+                    }
+                }
+                Ok(())
+            })),
+        )
+        .map_err(|error| format!("Cannot resolve page links: {error}"))?;
         let converter = HtmlToMarkdown::builder()
             .skip_tags(vec![
                 "script", "style", "noscript", "nav", "footer", "aside", "form", "template", "head",
