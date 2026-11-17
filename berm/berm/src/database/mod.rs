@@ -32,11 +32,14 @@ use std::{
 };
 use tokio::sync::{Mutex, oneshot};
 
+mod export;
 mod lock;
 mod query;
 
+pub const STATE_SCHEMA: &str =
+    "CREATE TABLE IF NOT EXISTS _berm_state (key TEXT PRIMARY KEY, value BLOB NOT NULL);";
+
 const SCHEMA: &str = "
-    CREATE TABLE IF NOT EXISTS _berm_state (key TEXT PRIMARY KEY, value BLOB NOT NULL);
     DROP TABLE IF EXISTS _berm_outbox;
     CREATE TABLE IF NOT EXISTS _berm_migrations (
         kit TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, sql TEXT NOT NULL,
@@ -270,6 +273,7 @@ impl Database {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
+        conn.execute_batch(STATE_SCHEMA)?;
         conn.execute_batch(SCHEMA)?;
         let keyed: bool = conn.query_row(
             "SELECT COUNT(*) > 0 FROM pragma_table_info('_berm_migrations') WHERE name = 'kit'",

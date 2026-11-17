@@ -42,8 +42,9 @@ pub struct DeployRequest {
     pub size: Option<u64>,
     /// The SHA-256, in hex, of a seed uploaded through
     /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
-    /// database starts as, held to the image's migrations. Refused when the
-    /// service has a database.
+    /// data starts from. SQL seeds must match the image's migrations; services
+    /// without SQL accept only exported key-value state. Refused for an
+    /// existing service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
     /// Install it stopped: it takes no calls and fires no wakes until

@@ -51,6 +51,8 @@ template = true
 
 For services exporting workflows, `crab workflow inspect owner/service.workflow` resolves the graph and quote without execution; `crab workflow run` starts a retained run, and `status`, `continue` and `cancel` manage it. See [workflow commands](crates/crab/README.md#workflow-runs).
 
+`crab export owner/service` downloads a consistent SQLite snapshot of the service’s SQL and key-value data as `service.sqlite`; `-o PATH` chooses a file. Local contexts support `crab export service`. Workflow runs and checkpoints are excluded. An export can seed a new Cloud deployment of the same service.
+
 ## Explore
 
 - [Documentation](https://crabtalk.ai/docs) — guides for writing and deploying services.

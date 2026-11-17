@@ -75,6 +75,10 @@ impl Denied {
         }
     }
 
+    pub(crate) const DATA_UNAVAILABLE: &str = "E0079";
+    pub(crate) const SEEDED: &str = "E0080";
+    pub(crate) const SEED_SIZE: &str = "E0081";
+
     pub(crate) const SERVICE_CALLERS: &'static str = "E0049";
 
     pub(crate) const PAUSED: &'static str = "E0018";

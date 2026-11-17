@@ -41,7 +41,7 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
     println!("purchased credit  {}", format::usd(credit.micros as f64));
     if let Some(until) = credit.recovery_until {
         println!(
-            "hosting paused    data kept until {}; verify if eligible, upgrade or export before deletion",
+            "hosting paused    data kept until {}; verify if eligible, upgrade or use `crab export OWNER/NAME` or Download in service Settings before deletion; excludes workflow runs and checkpoints",
             format::date(until)
         );
     }

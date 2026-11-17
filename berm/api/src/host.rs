@@ -4,6 +4,9 @@ use crate::{Logged, Meter, Output};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, net::IpAddr};
 
+pub const EXPORT: &str = "/export";
+pub const SQLITE: &str = "application/vnd.sqlite3";
+
 /// Header carrying a tool call's [`Meter`], summed over every
 /// service the call reached, as JSON.
 pub const METER: &str = "berm-meter";

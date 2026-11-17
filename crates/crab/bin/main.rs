@@ -89,6 +89,12 @@ enum Command {
     New { name: String },
     /// List deployed services.
     Ls,
+    /// Download a service's SQL and key-value data as a SQLite file.
+    Export {
+        name: String,
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
     /// Build the service in a directory and print the path of its image.
     Build {
         #[arg(default_value = ".")]
@@ -670,6 +676,7 @@ fn run() -> Result<ExitCode> {
         Command::Context(ContextCommand::Rm { name }) => cmd::context::rm(name)?,
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
+        Command::Export { name, out } => cmd::export::run(&client()?, name, out.as_deref())?,
         Command::Build { dir } => cmd::build::run(dir)?,
         Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
         Command::Deploy(deploy) => deploy.run(
