@@ -1,5 +1,5 @@
 [package]
-name = "crab-upstash"
+name = "crabkit-upstash"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,11 +10,6 @@ readme = "README.md"
 
 [lib]
 name = "upstash"
-crate-type = ["cdylib", "rlib"]
-
-[features]
-default = ["tools"]
-tools = []
 
 [dependencies]
 berm-lang.workspace = true

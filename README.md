@@ -43,11 +43,12 @@ crab deploy
 A repo can declare its published address in `crab.toml`, without a separate name:
 
 ```toml
-image = "connect/tinyfish"
+[image]
+name = "connect/tinyfish"
 template = true
 ```
 
-`crab push` builds and publishes to that address, using the Cargo version and checking publication permissions. `crab deploy` consumes that release under your selected account without building. `crab deploy --build` deploys local source. An image is optional for building; a standalone file selects a release with `image = "connect/tinyfish:1.2.3"`.
+`crab push` builds and publishes to that address, using the Cargo version and checking publication permissions. `crab deploy` consumes that release under your selected account without building. `crab deploy --build` deploys local source. An image is optional for building; a standalone file selects a release with `[image] name = "connect/tinyfish:1.2.3"`.
 
 For services exporting workflows, `crab workflow inspect owner/service.workflow` resolves the graph and quote without execution; `crab workflow run` starts a retained run, and `status`, `continue` and `cancel` manage it. See [workflow commands](crates/crab/README.md#workflow-runs).
 

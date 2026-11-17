@@ -449,35 +449,11 @@ impl Database {
         on(&self.jobs, move |conn| {
             let tx = conn.transaction()?;
             let mut ran = Vec::new();
-            for Sequence {
-                kit,
-                formerly,
-                migrations,
-            } in &sequences
-            {
+            for Sequence { kit, migrations } in &sequences {
                 let named = |name: &str| match kit.as_str() {
                     "" => name.to_owned(),
                     kit => format!("{kit}/{name}"),
                 };
-                let kept = |key: &str| -> Result<bool> {
-                    Ok(tx.query_row(
-                        "SELECT EXISTS (SELECT 1 FROM _berm_migrations WHERE kit = ?1)",
-                        [key],
-                        |row| row.get(0),
-                    )?)
-                };
-                for former in formerly {
-                    if !kept(former)? {
-                        continue;
-                    }
-                    if kept(kit)? {
-                        bail!("kit {kit}'s applied migrations are kept under {kit} and {former}");
-                    }
-                    tx.execute(
-                        "UPDATE _berm_migrations SET kit = ?1 WHERE kit = ?2",
-                        (kit, former),
-                    )?;
-                }
                 let applied: Vec<(String, String)> = tx
                     .prepare(
                         "SELECT name, sql FROM _berm_migrations WHERE kit = ?1 ORDER BY rowid",

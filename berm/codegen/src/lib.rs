@@ -106,7 +106,7 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// reply, written as JSON, and `()` replies nothing. Metadata is declared on
 /// `#[tool]`; access defaults to public. The first doc line is its title and
 /// the remaining lines are its description. `query` marks a tool read-only;
-/// `cron`, `stripe` and `webhook` identify internal host-triggered tools.
+/// `cron` and `webhook` identify internal host-triggered tools.
 ///
 /// `request` marks a read-only review builder for a host's service-request flow.
 /// Its implementation returns `berm_lang::abi::requests::Review<T>`; a supporting

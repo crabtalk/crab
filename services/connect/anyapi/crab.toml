@@ -1,13 +1,12 @@
-image = "connect/anyapi"
-logo = "https://crabtalk.ai/logos/templates/anyapi-v1.svg"
-template = true
 buffer = 8388608
-
-[http]
-fetch = ["api.getanyapi.com"]
 
 [credentials.anyapi]
 title = "AnyAPI API key"
 guide = "Create an API key at https://getanyapi.com. Calls consume your AnyAPI wallet balance; provider costs vary by operation and selected source."
 hosts = ["api.getanyapi.com"]
 secrets = [{ name = "ANYAPI_API_KEY", label = "API key" }]
+
+[image]
+name = "connect/anyapi"
+logo = "https://crabtalk.ai/logos/templates/anyapi-v1.svg"
+template = true

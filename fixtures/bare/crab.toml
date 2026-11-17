@@ -1,2 +1,4 @@
-image = "fixtures/bare"
-deploy = false
+
+
+[image]
+name = "fixtures/bare"

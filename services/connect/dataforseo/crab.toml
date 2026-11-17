@@ -1,13 +1,12 @@
-image = "connect/dataforseo"
-logo = "https://crabtalk.ai/logos/templates/dataforseo-v1.png"
-template = true
 buffer = 8388608
-
-[http]
-fetch = ["api.dataforseo.com"]
 
 [credentials.dataforseo]
 title = "DataForSEO API credentials"
 guide = "Use the Base64-encoded API login:API password from https://app.dataforseo.com/api-access as the Basic authentication token. Requests consume your DataForSEO balance."
 hosts = ["api.dataforseo.com"]
 secrets = [{ name = "DATAFORSEO_AUTH_TOKEN", label = "Base64 API login:API password" }]
+
+[image]
+name = "connect/dataforseo"
+logo = "https://crabtalk.ai/logos/templates/dataforseo-v1.png"
+template = true

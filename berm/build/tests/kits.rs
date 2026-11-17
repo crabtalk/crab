@@ -36,7 +36,11 @@ fn service(root: &Path, dependencies: &str, dev: &str) {
         ),
     );
     write(root, "service/src/lib.rs", "");
-    write(root, "service/crab.toml", "image = \"fixtures/service\"\n");
+    write(
+        root,
+        "service/crab.toml",
+        "[image]\nname = \"fixtures/service\"\n",
+    );
 }
 
 /// A `crab.toml` a kit may not have, so taking the crate for a kit fails the
@@ -53,9 +57,17 @@ fn a_kit_at_two_versions_is_refused() {
         "",
     );
     package(root, "kit1", "kit", "0.1.0", "");
-    write(root, "kit1/crab.toml", "secrets = [\"one\"]\n");
+    write(
+        root,
+        "kit1/crab.toml",
+        "[credentials.one]\ntitle = \"Key\"\nhosts = [\"api.example.com\"]\nsecrets = [{ name = \"ONE\", label = \"Key\" }]\n",
+    );
     package(root, "kit2", "kit", "0.2.0", "");
-    write(root, "kit2/crab.toml", "secrets = [\"two\"]\n");
+    write(
+        root,
+        "kit2/crab.toml",
+        "[credentials.two]\ntitle = \"Key\"\nhosts = [\"api.example.com\"]\nsecrets = [{ name = \"TWO\", label = \"Key\" }]\n",
+    );
     package(
         root,
         "other",
@@ -108,7 +120,11 @@ fn a_service_without_a_cdylib_is_refused() {
     let root = TempDir::new().unwrap();
     let root = root.path();
     package(root, "service", "service", "0.1.0", "");
-    write(root, "service/crab.toml", "image = \"fixtures/service\"\n");
+    write(
+        root,
+        "service/crab.toml",
+        "[image]\nname = \"fixtures/service\"\n",
+    );
     // Its own workspace, apart from the one the test runs in.
     let manifest = root.join("service/Cargo.toml");
     let text = fs::read_to_string(&manifest).unwrap();
@@ -142,7 +158,7 @@ fn tooled(root: &Path, name: &str, dependencies: &str) {
     write(
         root,
         &format!("{name}/crab.toml"),
-        &format!("image = \"fixtures/{name}\"\n"),
+        &format!("[image]\nname = \"fixtures/{name}\"\n"),
     );
 }
 
@@ -180,9 +196,17 @@ fn each_service_is_credited_only_the_kits_its_own_features_link() {
         "kita = { path = \"../kita\", optional = true }\nkitb = { path = \"../kitb\", optional = true }\n\n[features]\na = [\"dep:kita\"]\nb = [\"dep:kitb\"]",
     );
     package(root, "kita", "kita", "0.1.0", "");
-    write(root, "kita/crab.toml", "secrets = [\"a\"]\n");
+    write(
+        root,
+        "kita/crab.toml",
+        "[credentials.a]\ntitle = \"Key\"\nhosts = [\"api.example.com\"]\nsecrets = [{ name = \"A\", label = \"Key\" }]\n",
+    );
     package(root, "kitb", "kitb", "0.1.0", "");
-    write(root, "kitb/crab.toml", "secrets = [\"b\"]\n");
+    write(
+        root,
+        "kitb/crab.toml",
+        "[credentials.b]\ntitle = \"Key\"\nhosts = [\"api.example.com\"]\nsecrets = [{ name = \"B\", label = \"Key\" }]\n",
+    );
 
     assert_eq!(kits(&root.join("a")), ["kita"]);
     assert_eq!(kits(&root.join("b")), ["kitb"]);
@@ -201,10 +225,17 @@ fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
     );
     tooled(root, "app", "provider = { path = \"../provider\" }");
     package(root, "provider", "provider", "0.1.0", "");
+    write(root, "provider/src/lib.rs", "");
+    let cargo = root.join("provider/Cargo.toml");
+    fs::write(
+        &cargo,
+        fs::read_to_string(&cargo).unwrap() + "\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n",
+    )
+    .unwrap();
     write(
         root,
         "provider/crab.toml",
-        "image = \"fixtures/provider\"\nlogo = \"https://example.com/provider.svg\"\npublic = true\n",
+        "[image]\nname = \"fixtures/provider\"\nlogo = \"https://example.com/provider.svg\"\npublic = true\n",
     );
 
     let built = berm_build::build(&root.join("app"), None).unwrap();
@@ -215,7 +246,7 @@ fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
     write(
         root,
         "app/crab.toml",
-        "image = \"fixtures/app\"\nlogo = \"https://example.com/app.svg\"\npublic = true\n",
+        "[image]\nname = \"fixtures/app\"\nlogo = \"https://example.com/app.svg\"\npublic = true\n",
     );
     let built = berm_build::build(&root.join("app"), None).unwrap();
     let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();
@@ -224,4 +255,61 @@ fn builds_keep_the_services_logo_without_inheriting_dependency_logos() {
         manifest.logo.unwrap().as_str(),
         "https://example.com/app.svg"
     );
+}
+
+#[test]
+fn schedules_require_matching_cron_marks_and_no_tool_input() {
+    let root = TempDir::new().unwrap();
+    let root = root.path();
+    tooled(root, "clock", "");
+    let cargo = root.join("clock/Cargo.toml");
+    fs::write(
+        &cargo,
+        fs::read_to_string(&cargo).unwrap() + "\n[workspace]\n",
+    )
+    .unwrap();
+    for (schedule, expected) in [
+        (
+            "[schedules]\nmissing = \"* * * * *\"\n",
+            "names missing tool or workflow missing",
+        ),
+        (
+            "[schedules]\nrun = \"* * * * *\"\n",
+            "which is not a cron tool",
+        ),
+    ] {
+        write(root, "clock/crab.toml", schedule);
+        let error = berm_build::build(&root.join("clock"), None).unwrap_err();
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+    }
+    let record = format!(
+        r#"{{"tool":{{"name":"run","description":"d","parameters":{{"type":"object"}},"cron":true,"access":"internal"}},"abi_version":{ABI_VERSION},"crate":"clock"}}"#
+    );
+    write(
+        root,
+        "clock/src/lib.rs",
+        &format!(
+            "#[used]\n#[unsafe(link_section = \".berm.abi\")]\nstatic RECORD: [u8; {}] = *br#\"{record}\"#;\n#[unsafe(no_mangle)]\npub extern \"C\" fn berm_tool_run() {{}}\n",
+            record.len()
+        ),
+    );
+    for (schedule, expected) in [
+        ("", "needs a schedule in [schedules]"),
+        (
+            "[schedules]\nrun = { cron = \"* * * * *\", input = {} }\n",
+            "takes no input",
+        ),
+    ] {
+        write(root, "clock/crab.toml", schedule);
+        let error = berm_build::build(&root.join("clock"), None).unwrap_err();
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+    }
+    write(
+        root,
+        "clock/crab.toml",
+        "[schedules]\nrun = \"* * * * *\"\n",
+    );
+    let built = berm_build::build(&root.join("clock"), None).unwrap();
+    let manifest = Manifest::try_from(fs::read(built).unwrap().as_slice()).unwrap();
+    assert_eq!(manifest.crons["run"], "* * * * *");
 }

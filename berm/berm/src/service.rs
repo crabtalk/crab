@@ -137,9 +137,6 @@ impl Service {
         if tools.is_empty() && manifest.workflows.is_empty() {
             bail!("service exports no tools or workflows");
         }
-        if manifest.tools.iter().filter(|tool| tool.stripe).count() > 1 {
-            bail!("service declares more than one stripe tool");
-        }
 
         for (name, tool) in &tools {
             if let Some(key) = tool.budget.past(&engine.most) {
@@ -183,13 +180,7 @@ impl Service {
             if tool.cron && tool.public {
                 bail!("tool {:?} is a cron tool, and cannot be public", tool.name);
             }
-            if tool.stripe && tool.public {
-                bail!(
-                    "tool {:?} is a stripe tool, and cannot be public",
-                    tool.name
-                );
-            }
-            if tool.webhook && tool.public {
+            if tool.webhook.is_some() && tool.public {
                 bail!(
                     "tool {:?} is a webhook tool, and cannot be public",
                     tool.name

@@ -1,10 +1,5 @@
-image = "connect/github"
-logo = "https://crabtalk.ai/logos/templates/github-v1.svg"
-template = true
-buffer = 1048576
-
 [http]
-fetch = ["api.github.com", "github.com"]
+fetch = ["github.com"]
 
 [credentials.github_api]
 title = "GitHub access token"
@@ -12,3 +7,8 @@ guide = "Create a fine-grained token at https://github.com/settings/personal-acc
 optional = true
 hosts = ["api.github.com"]
 secrets = [{ name = "GITHUB_TOKEN", label = "Access token" }]
+
+[image]
+name = "connect/github"
+logo = "https://crabtalk.ai/logos/templates/github-v1.svg"
+template = true

@@ -25,10 +25,6 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let github = manifest("crab-github");
     assert_eq!(github.tools.len(), 11);
     assert!(github.deps.credentials["github_api"].optional);
-    let upstash = manifest("crab-upstash");
-    assert_eq!(upstash.tools.len(), 8);
-    assert!(upstash.deps.vars.contains_key("UPSTASH_REDIS_REST_URL"));
-    assert!(!upstash.deps.credentials["upstash_redis"].optional);
     let posthog = manifest("crab-posthog");
     assert_eq!(posthog.tools.len(), 4);
     assert_eq!(posthog.deps.vars["POSTHOG_REGION"].default, "us");
@@ -60,6 +56,11 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     assert!(linked.deps.secrets.iter().any(|s| s == "RESEND_API_KEY"));
     assert!(linked.deps.secrets.iter().any(|s| s == "GITHUB_TOKEN"));
     assert!(linked.deps.vars.is_empty());
+    assert_eq!(
+        linked.deps.credentials["upstash_redis"].hosts,
+        ["your-database.upstash.io"]
+    );
+    assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-upstash"));
     assert!(linked.kits.iter().any(|kit| kit.name == "crab-agent-memory"
         && kit.id.as_deref() == Some("1fdf32203e0e4003a68c5d766daad03b")));
     for credential in ["upstash_redis", "posthog_project", "posthog_private"] {

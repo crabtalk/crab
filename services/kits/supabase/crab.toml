@@ -1,1 +1,4 @@
-secrets = ["SUPABASE_KEY"]
+[credentials.supabase]
+title = "Supabase project key"
+guide = "Create a project key in your Supabase project settings. A publishable or anon key follows Row Level Security; a secret or service_role key bypasses it."
+secrets = [{ name = "SUPABASE_KEY", label = "API key" }]

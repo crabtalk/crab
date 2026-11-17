@@ -1,10 +1,10 @@
-image = "connect/osv"
-public = true
-logo = "https://crabtalk.ai/logos/templates/osv-v1.png"
-template = true
-buffer = 1048576
 [database]
 size = "1MiB"
 
 [http]
 fetch = ["api.osv.dev"]
+
+[image]
+name = "connect/osv"
+logo = "https://crabtalk.ai/logos/templates/osv-v1.png"
+template = true

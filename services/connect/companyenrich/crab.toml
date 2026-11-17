@@ -1,13 +1,12 @@
-image = "connect/companyenrich"
-logo = "https://crabtalk.ai/logos/templates/companyenrich-v1.png"
-template = true
 buffer = 8388608
-
-[http]
-fetch = ["api.companyenrich.com"]
 
 [credentials.companyenrich]
 title = "CompanyEnrich API key"
 guide = "Create an API key at https://companyenrich.com/dashboard. Enrichment, search results and background jobs consume credits; email enrichment is beta."
 hosts = ["api.companyenrich.com"]
 secrets = [{ name = "COMPANYENRICH_API_KEY", label = "API key" }]
+
+[image]
+name = "connect/companyenrich"
+logo = "https://crabtalk.ai/logos/templates/companyenrich-v1.png"
+template = true

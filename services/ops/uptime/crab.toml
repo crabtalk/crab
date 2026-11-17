@@ -1,7 +1,4 @@
-image = "ops/uptime"
 id = "fcdebd754bbf495a8d4ca14af5d76ecf"
-public = false
-template = true
 buffer = 262144
 
 [database]
@@ -11,5 +8,10 @@ size = "64MiB"
 [http]
 fetch = ["*"]
 
-[crons]
+[schedules]
 tick = "* * * * *"
+
+[image]
+name = "ops/uptime"
+public = false
+template = true

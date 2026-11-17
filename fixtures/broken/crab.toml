@@ -1,5 +1,5 @@
-image = "fixtures/broken"
-deploy = false
-
 [database]
 migrations = "migrations"
+
+[image]
+name = "fixtures/broken"

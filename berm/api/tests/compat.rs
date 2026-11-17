@@ -153,7 +153,7 @@ fn runtime_secret_resource_capability_requires_upgrade_review() {
     next.deps.secret_resources = true;
     assert!(old.upgrade_requires_review(&next));
     let mut combined = old.deps.clone();
-    combined.merge(&next.deps).unwrap();
+    combined.merge(&next.deps, &Default::default()).unwrap();
     assert!(combined.secret_resources);
     assert!(!combined.is_empty());
 }
@@ -175,4 +175,18 @@ fn compiled_price_changes_require_explicit_upgrade_review() {
     assert!(old.upgrade_requires_review(&priced));
     assert!(priced.upgrade_requires_review(&old));
     assert!(old.breaks(&priced).is_empty());
+}
+
+#[test]
+fn webhook_scheme_changes_require_review() {
+    let mut old = manifest(json!({}), json!({}));
+    old.tools[0].public = false;
+    old.tools[0].webhook = Some(berm_api::webhook::Scheme::Standard);
+    let mut next = old.clone();
+    next.tools[0].webhook = Some(berm_api::webhook::Scheme::Stripe);
+    assert!(old.upgrade_requires_review(&next));
+    assert_eq!(
+        old.breaks(&next)[0].reason,
+        "webhook signature scheme changed"
+    );
 }

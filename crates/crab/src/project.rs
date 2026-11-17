@@ -23,7 +23,7 @@ pub fn selected(names: &[String]) -> Result<Vec<String>> {
     if !names.is_empty() {
         return Ok(names.to_vec());
     }
-    let selected = Selection::read(Path::new("."), &[], false, false)?;
+    let selected = Selection::read(Path::new("."), &[], false)?;
     let names = selected
         .services
         .iter()
@@ -80,7 +80,7 @@ impl Service {
             .project
             .image
             .as_ref()
-            .and_then(|image| image.version.as_ref())
+            .and_then(|image| image.name.version.as_ref())
         {
             return Ok(version.to_string());
         }
@@ -105,7 +105,7 @@ impl Service {
             .project
             .image
             .as_ref()
-            .and_then(|image| image.version.as_ref())
+            .and_then(|image| image.name.version.as_ref())
             && pinned.to_string() != version
         {
             bail!("image version {pinned} differs from Cargo package version {version}");
@@ -117,30 +117,23 @@ impl Service {
 pub struct Selection {
     pub project: Option<String>,
     pub services: Vec<Service>,
-    pub skipped: Vec<String>,
 }
 
 impl Selection {
-    pub fn read(
-        dir: &Path,
-        named: &[String],
-        building: bool,
-        include_disabled: bool,
-    ) -> Result<Self> {
+    pub fn read(dir: &Path, named: &[String], building: bool) -> Result<Self> {
         if named.is_empty() && dir.join(FILE).is_file() {
             let service = Service::read(dir)?;
             if !building && service.project.image.is_some() {
                 return Ok(Self {
                     project: None,
                     services: vec![service],
-                    skipped: Vec::new(),
                 });
             }
             if service.package.is_none() {
                 bail!("a source build needs Cargo.toml in {}", dir.display());
             }
         }
-        let workspace = Workspace::read(dir, named, include_disabled)?;
+        let workspace = Workspace::read(dir, named)?;
         let project = workspace
             .root
             .file_name()
@@ -155,7 +148,6 @@ impl Selection {
         Ok(Self {
             project: Some(project),
             services,
-            skipped: workspace.skipped,
         })
     }
 }

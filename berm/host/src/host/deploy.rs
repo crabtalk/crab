@@ -362,9 +362,6 @@ impl<E: Env> Host<E> {
         ))
     }
 
-    /// The service `service` runs, none when it runs none or one this host
-    /// cannot read, such as one built against another ABI. Read under its
-    /// deploy lock.
     async fn seedable(&self, service: &str) -> Result<(), Denied> {
         let (scope, name) = host::split(service);
         if service::row(&self.store, scope, name).await?.is_some()
@@ -378,6 +375,9 @@ impl<E: Env> Host<E> {
         Ok(())
     }
 
+    /// The service `service` runs, none when it runs none or one this host
+    /// cannot read, such as one built against another ABI. Read under its
+    /// deploy lock.
     async fn current(&self, service: &str) -> Result<Option<Arc<Service>>, Denied> {
         let (scope, name) = host::split(service);
         let Some(row) = service::row(&self.store, scope, name).await? else {

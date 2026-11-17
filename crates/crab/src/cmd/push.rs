@@ -32,7 +32,7 @@ impl Push {
         if client.owner.is_none() {
             bail!("template publication requires a Cloud context");
         }
-        let selection = project::Selection::read(&self.dir, &self.packages, true, true)?;
+        let selection = project::Selection::read(&self.dir, &self.packages, true)?;
         if selection.services.is_empty() {
             bail!("no service at or below {}", self.dir.display());
         }
@@ -41,12 +41,12 @@ impl Push {
         for service in &selection.services {
             let image = service.project.image.as_ref().with_context(|| {
                 format!(
-                    "{}: publication requires image = \"owner/service\"",
+                    "{}: publication requires [image] name = \"owner/service\"",
                     service.dir.display()
                 )
             })?;
-            if !addresses.insert(image.address()) {
-                bail!("more than one selected service publishes to {image}");
+            if !addresses.insert(image.name.address()) {
+                bail!("more than one selected service publishes to {}", image.name);
             }
             service.source_version()?;
         }
@@ -61,22 +61,22 @@ impl Push {
                 fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
             let reference = deployment::reference(
                 client,
-                &image.address(),
-                &image.address(),
+                &image.name.address(),
+                &image.name.address(),
                 self.registry.as_deref().or(context_registry),
                 bytes,
             )?;
             let request = DeployRequest {
                 reference,
-                template: Some(service.project.template),
+                template: Some(image.template),
                 release_notes: self.notes.clone(),
                 publish_only: true,
                 ..DeployRequest::default()
             };
             groups
-                .entry(image.owner.clone())
+                .entry(image.name.owner.clone())
                 .or_default()
-                .insert(image.name.clone(), request);
+                .insert(image.name.name.clone(), request);
         }
         for (owner, services) in groups {
             if !yes {

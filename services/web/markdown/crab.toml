@@ -1,10 +1,10 @@
-image = "web/markdown"
-public = true
-template = false
-buffer = 1048576
-
 [database]
 size = "1MiB"
 
 [http]
 fetch = ["*"]
+
+[image]
+name = "web/markdown"
+public = true
+template = false

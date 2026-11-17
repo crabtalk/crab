@@ -31,7 +31,6 @@ default-members = [
     "services/connect/posthog",
     "services/connect/resend",
     "services/connect/tinyfish",
-    "services/connect/upstash",
     "services/agents/*",
     "services/ops/*",
     "services/web/*",
@@ -76,7 +75,6 @@ memory = { package = "crab-agent-memory", path = "services/agents/memory", versi
 osv = { package = "crab-osv", path = "services/connect/osv", version = "0.1.7", default-features = false }
 posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.7", default-features = false }
 resend = { package = "crab-resend", path = "services/connect/resend", version = "0.1.7", default-features = false }
-upstash = { package = "crab-upstash", path = "services/connect/upstash", version = "0.1.7", default-features = false }
 webpage = { package = "crab-webpage", path = "services/web/markdown", version = "0.1.7", default-features = false }
 
 # kits
@@ -86,6 +84,8 @@ lake = { package = "crabkit-lake", path = "services/kits/lake", version = "0.1.7
 neon = { package = "crabkit-neon", path = "services/kits/neon", version = "0.1.7" }
 stripe = { package = "crabkit-stripe", path = "services/kits/stripe", version = "0.1.7" }
 supabase = { package = "crabkit-supabase", path = "services/kits/supabase", version = "0.1.7" }
+
+upstash = { package = "crabkit-upstash", path = "services/kits/upstash", version = "0.1.7" }
 
 # crates-io
 jsonschema = { version = "0.61", default-features = false }

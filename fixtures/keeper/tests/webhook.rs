@@ -51,7 +51,7 @@ async fn a_tool_that_stops_taking_webhooks_breaks_the_service() -> Result<()> {
     let host = deployed().await?;
     let manifest = &host.host.get("keeper").expect("deployed").manifest;
     let mut next = manifest.clone();
-    next.tools.iter_mut().for_each(|tool| tool.webhook = false);
+    next.tools.iter_mut().for_each(|tool| tool.webhook = None);
     let breaks = manifest.breaks(&next);
     assert_eq!(breaks.len(), 1);
     assert_eq!(breaks[0].reason, "no longer takes webhooks");

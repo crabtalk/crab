@@ -38,7 +38,7 @@ impl TryFrom<&ToolSpec> for Source {
             "event names use 1–128 ASCII letters, digits, dots, underscores or hyphens"
         );
         ensure!(
-            tool.query && !tool.cron && !tool.stripe && !tool.webhook,
+            tool.query && !tool.cron && tool.webhook.is_none(),
             "an event source must be a read-only tool without another host hook"
         );
         let mut input = tool.parameters.clone();

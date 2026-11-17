@@ -49,7 +49,7 @@ pub fn directory(dir: &Path, packages: &[String], json: bool) -> Result<()> {
     let dir = dir
         .canonicalize()
         .context("cannot resolve the service directory")?;
-    let selection = project::Selection::read(&dir, packages, true, true)?;
+    let selection = project::Selection::read(&dir, packages, true)?;
     anyhow::ensure!(
         !selection.services.is_empty(),
         "no service in this directory"
@@ -224,16 +224,17 @@ fn tools<'a>(
                 }
                 Some(access) => access.to_string(),
             };
-            let marks: Vec<&str> = [
+            let mut marks: Vec<String> = [
                 (tool.query, "query"),
                 (tool.cron, "cron"),
-                (tool.stripe, "stripe"),
-                (tool.webhook, "webhook"),
                 (tool.deprecated, "deprecated"),
             ]
             .into_iter()
-            .filter_map(|(set, mark)| set.then_some(mark))
+            .filter_map(|(set, mark)| set.then_some(mark.to_owned()))
             .collect();
+            if let Some(scheme) = tool.webhook {
+                marks.push(format!("webhook={scheme}"));
+            }
             let price = terms
                 .tools
                 .get(&tool.name)

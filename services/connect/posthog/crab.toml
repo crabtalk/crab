@@ -1,14 +1,6 @@
-image = "connect/posthog"
-logo = "https://crabtalk.ai/logos/templates/posthog-v1.svg"
-template = true
-buffer = 1048576
-
 [vars]
 POSTHOG_REGION = { default = "us", description = "PostHog Cloud region: us or eu" }
 POSTHOG_PROJECT_ID = { description = "Numeric project ID for analytics queries; not needed for capture or flags" }
-
-[http]
-fetch = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]
 
 [credentials.posthog_project]
 title = "PostHog project token"
@@ -23,3 +15,8 @@ guide = "Create a personal API key in PostHog with query:read and access to your
 optional = true
 hosts = ["us.posthog.com", "eu.posthog.com"]
 secrets = [{ name = "POSTHOG_PERSONAL_API_KEY", label = "Personal API key" }]
+
+[image]
+name = "connect/posthog"
+logo = "https://crabtalk.ai/logos/templates/posthog-v1.svg"
+template = true

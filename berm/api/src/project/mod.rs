@@ -1,6 +1,9 @@
 //! A service's or a kit's project file, [`FILE`], beside its `Cargo.toml`.
 
-use crate::{Credential, DEFAULT_BUFFER, Deps, Http, Var, host, logo::Logo, reference::Reference};
+use crate::{
+    DEFAULT_BUFFER, Deps, Http, Kit, Var, host, logo::Logo, project::credential::Declaration,
+    reference::Reference,
+};
 use anyhow::{Context, Result, bail};
 use bytesize::ByteSize;
 use regex::Regex;
@@ -11,11 +14,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod credential;
+
 /// What the project file is called.
 pub const FILE: &str = "crab.toml";
 
 /// A service image's declarations. A library declares only `id`,
-/// `formerly`, `secrets`, `[credentials]`, `[http]` and
+/// `[credentials]`, `[http]` and
 /// `[database] migrations`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -24,37 +29,16 @@ pub struct Project {
     /// stateful service declares one alongside its deployment name.
     #[serde(default)]
     pub id: Option<String>,
-    /// What the kit's applied migrations were kept under before `id`: the
-    /// package names it had.
     #[serde(default)]
-    pub formerly: Vec<String>,
+    pub image: Option<Image>,
     #[serde(default)]
-    pub image: Option<Reference>,
-    #[serde(default)]
-    pub logo: Option<Logo>,
-    #[serde(default)]
-    pub public: bool,
-    #[serde(default)]
-    pub template: bool,
-    /// Whether the service is deployed: `false` keeps it out of a
-    /// workspace's deploys, and refuses deploying it.
-    #[serde(default = "deployed")]
-    pub deploy: bool,
-    /// Each cron tool's expression, five fields in UTC, such as
-    /// `"*/5 * * * *"`. Absent, no cron tool is scheduled.
-    #[serde(default)]
-    pub crons: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    pub workflows: BTreeMap<String, Workflow>,
-    /// Secrets it names in `{secret:NAME}` that are in no credential.
-    #[serde(default)]
-    pub secrets: Vec<String>,
+    pub schedules: BTreeMap<String, Schedule>,
     #[serde(default)]
     pub secret_resources: bool,
     /// Secrets it names in `{secret:NAME}`, grouped by what a person sets up
     /// to get them, by id.
     #[serde(default)]
-    pub credentials: BTreeMap<String, Credential>,
+    pub credentials: BTreeMap<String, Declaration>,
     /// The most bytes a call's arguments, and a tool's result, may hold;
     /// [`DEFAULT_BUFFER`] when absent.
     #[serde(default)]
@@ -91,8 +75,45 @@ pub struct Workflow {
     pub schedule: Option<crate::workflow::config::Schedule>,
 }
 
-fn deployed() -> bool {
-    true
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Image {
+    pub name: Reference,
+    #[serde(default)]
+    pub logo: Option<Logo>,
+    #[serde(default)]
+    pub public: bool,
+    #[serde(default)]
+    pub template: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Schedule {
+    Cron(String),
+    Config(ScheduleConfig),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScheduleConfig {
+    pub cron: String,
+    pub input: Option<serde_json::Value>,
+}
+
+impl Schedule {
+    pub fn cron(&self) -> &str {
+        match self {
+            Self::Cron(cron) => cron,
+            Self::Config(config) => &config.cron,
+        }
+    }
+    pub fn input(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Cron(_) => None,
+            Self::Config(config) => config.input.as_ref(),
+        }
+    }
 }
 
 impl Project {
@@ -101,8 +122,12 @@ impl Project {
         let text = fs::read_to_string(path).with_context(|| format!("no {}", path.display()))?;
         let project: Self =
             toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
-        let mut seen: Vec<&str> = project.secrets.iter().map(String::as_str).collect();
-        for secret in project.credentials.values().flat_map(|c| &c.secrets) {
+        let mut seen: Vec<&str> = Vec::new();
+        for secret in project
+            .credentials
+            .values()
+            .flat_map(|c| c.secrets.iter().flatten())
+        {
             if seen.contains(&secret.name.as_str()) {
                 bail!(
                     "{} declares the secret {} twice",
@@ -136,7 +161,7 @@ impl Project {
             }
         }
         for (id, credential) in &project.credentials {
-            for secret in &credential.secrets {
+            for secret in credential.secrets.iter().flatten() {
                 if let Some(pattern) = &secret.pattern
                     && let Err(e) = Regex::new(pattern)
                 {
@@ -147,14 +172,32 @@ impl Project {
                     );
                 }
             }
-            if let Err(why) = Credential::check_hosts(&credential.hosts) {
+            if let Err(why) =
+                crate::Credential::check_hosts(credential.hosts.as_deref().unwrap_or_default())
+            {
                 bail!("{}: credentials.{id}: {why}", path.display());
             }
         }
-        for workflow in project.workflows.values() {
-            if let Some(schedule) = &workflow.schedule {
-                crate::schedule::parse(&schedule.cron)?;
+        if project
+            .image
+            .as_ref()
+            .is_some_and(|image| image.public && image.template)
+        {
+            bail!(
+                "`public` can't be set on a template: every copy would be callable by every account."
+            );
+        }
+        for (id, credential) in &project.credentials {
+            for host in credential.hosts.iter().flatten() {
+                if project.http.fetch.contains(host) {
+                    bail!(
+                        "`{host}` is already allowed by credential `{id}`; remove it from `[http] fetch`."
+                    );
+                }
             }
+        }
+        for schedule in project.schedules.values() {
+            crate::schedule::parse(schedule.cron())?;
         }
         project.deps().check_secret_declarations()?;
         Ok(project)
@@ -163,41 +206,72 @@ impl Project {
     pub fn instance<'a>(&'a self, package: &'a str) -> &'a str {
         self.image
             .as_ref()
-            .map_or(package, |image| image.name.as_str())
+            .map_or(package, |image| image.name.name.as_str())
     }
 
     pub fn check_service(&self) -> Result<()> {
-        if self.id.is_some() || !self.formerly.is_empty() {
+        if self.id.is_some() {
             self.check_dependency()?;
         }
         Ok(())
     }
 
-    pub fn check_deploy(&self) -> Result<()> {
-        if !self.deploy {
-            bail!("{FILE} says deploy = false");
-        }
-        Ok(())
-    }
-
     pub fn deps(&self) -> Deps {
+        let mut http = self.http.clone();
+        for host in self
+            .credentials
+            .values()
+            .flat_map(|credential| credential.hosts.iter().flatten())
+        {
+            if !http.fetch.contains(host) {
+                http.fetch.push(host.clone());
+            }
+        }
+        let credentials: BTreeMap<_, _> = self
+            .credentials
+            .iter()
+            .filter(|(_, credential)| !credential.hosts_only())
+            .map(|(id, credential)| (id.clone(), credential.to_owned().into()))
+            .collect();
         Deps {
-            http: self.http.clone(),
+            http,
             secret_resources: self.secret_resources,
-            secrets: self
-                .secrets
-                .iter()
-                .chain(
-                    self.credentials
-                        .values()
-                        .flat_map(|credential| &credential.secrets)
-                        .map(|secret| &secret.name),
-                )
-                .cloned()
+            secrets: credentials
+                .values()
+                .flat_map(|credential: &crate::Credential| {
+                    credential.secrets.iter().map(|secret| secret.name.clone())
+                })
                 .collect(),
-            credentials: self.credentials.clone(),
+            credentials,
             vars: self.vars.clone(),
         }
+    }
+
+    pub fn credential_hosts(&self) -> BTreeMap<String, Vec<String>> {
+        self.credentials
+            .iter()
+            .filter(|(_, credential)| credential.hosts_only())
+            .map(|(id, credential)| (id.clone(), credential.hosts.clone().unwrap_or_default()))
+            .collect()
+    }
+
+    pub fn check_credentials(&self, kits: &[Kit]) -> Result<()> {
+        for (id, declaration) in &self.credentials {
+            if let Some(kit) = kits
+                .iter()
+                .find(|kit| kit.deps.credentials.contains_key(id))
+            {
+                if !declaration.hosts_only() {
+                    bail!(
+                        "credential `{id}` is declared by kit `{}`; set only `hosts`.",
+                        kit.name
+                    );
+                }
+            } else if declaration.title.is_none() || declaration.secrets.is_none() {
+                bail!("credential `{id}` has no title or secrets, and no linked kit declares it.");
+            }
+        }
+        Ok(())
     }
 
     /// The most bytes a call's arguments, and a tool's result, may hold.
@@ -209,12 +283,7 @@ impl Project {
     pub fn check_kit(&self) -> Result<()> {
         let service_only = [
             ("image", self.image.is_some()),
-            ("logo", self.logo.is_some()),
-            ("public", self.public),
-            ("template", self.template),
-            ("deploy", !self.deploy),
-            ("crons", self.crons.is_some()),
-            ("workflows", !self.workflows.is_empty()),
+            ("schedules", !self.schedules.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("vars", !self.vars.is_empty()),
             ("database.size", self.database.size.is_some()),
@@ -227,7 +296,7 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit declares only id, formerly, secrets, [credentials], [http] and [database] migrations, not {}",
+                "a kit declares only id, [credentials], [http] and [database] migrations, not {}",
                 declared.join(", ")
             );
         }
@@ -239,9 +308,6 @@ impl Project {
         match &self.id {
             None if self.database.migrations.is_some() => {
                 bail!("a kit keeping tables declares its id")
-            }
-            None if !self.formerly.is_empty() => {
-                bail!("a kit declaring formerly declares its id")
             }
             Some(id)
                 if id.len() != 32

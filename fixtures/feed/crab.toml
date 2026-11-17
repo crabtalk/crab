@@ -1,8 +1,8 @@
-image = "fixtures/feed"
-deploy = false
-
 [http]
 fetch = ["127.0.0.1"]
 
-[crons]
+[schedules]
 tick = "* * * * *"
+
+[image]
+name = "fixtures/feed"

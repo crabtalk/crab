@@ -60,12 +60,9 @@ impl Deploy {
             let (name, request) = self.template_request(client, from, self.version.as_deref())?;
             return deployment::submit(client, BTreeMap::from([(name, request)]), copy_values, yes);
         }
-        let selection = project::Selection::read(&self.dir, &self.packages, self.build, false)?;
+        let selection = project::Selection::read(&self.dir, &self.packages, self.build)?;
         if selection.services.is_empty() {
             bail!("no service at or below {}", self.dir.display());
-        }
-        for name in &selection.skipped {
-            eprintln!("skipped   {name}: deploy = false");
         }
         if client.base == dev::url("")
             && selection
@@ -81,7 +78,6 @@ impl Deploy {
             if !names.insert(name) {
                 bail!("more than one selected service deploys as {name}");
             }
-            service.project.check_deploy()?;
         }
         let mut services = BTreeMap::new();
         for service in selection.services {
@@ -89,7 +85,7 @@ impl Deploy {
             let mut request = if !self.build
                 && let Some(image) = &service.project.image
             {
-                let from = image.address();
+                let from = image.name.address();
                 let version = match &self.version {
                     Some(version) => version.clone(),
                     None => service.version()?,
@@ -109,7 +105,7 @@ impl Deploy {
                         .project
                         .image
                         .as_ref()
-                        .map_or_else(|| name.clone(), |image| image.address()),
+                        .map_or_else(|| name.clone(), |image| image.name.address()),
                     self.registry.as_deref().or(context_registry),
                     bytes,
                 )?;

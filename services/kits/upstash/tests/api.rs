@@ -4,8 +4,6 @@ use berm_lang::{
     test,
 };
 use upstash::api::Redis;
-#[cfg(feature = "tools")]
-use upstash::tools;
 
 const URL: &str = "https://example.upstash.io";
 fn db() -> Redis {
@@ -153,20 +151,4 @@ fn malformed_success_responses_are_errors() {
     }
     respond("/pipeline", json!([]));
     assert!(db().pipeline(&[command(&["GET", "k"])]).is_err());
-}
-
-#[cfg(feature = "tools")]
-#[test]
-fn tool_uses_deployment_endpoint_and_preserves_batch_results() {
-    test::var("UPSTASH_REDIS_REST_URL", URL);
-    respond("/pipeline", json!([{"result":null},{"result":1}]));
-    let output = test::call(
-        tools::berm_tool_pipeline,
-        br#"{"commands":[["GET","k"],["INCR","n"]]}"#,
-    )
-    .unwrap();
-    assert_eq!(
-        serde_json::from_slice::<Value>(&output).unwrap(),
-        json!([{"value":null},{"value":1}])
-    );
 }

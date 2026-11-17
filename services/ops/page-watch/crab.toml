@@ -1,7 +1,7 @@
-image = "ops/page-watch"
-public = false
-template = false
-buffer = 1048576
-
 [database]
 size = "16MiB"
+
+[image]
+name = "ops/page-watch"
+public = false
+template = false

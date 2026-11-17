@@ -13,13 +13,13 @@ crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features =
 
 The library is also the crate `crabkit-lake` on its own.
 
-The library's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the library. The hosts a source fetches from differ per source, so the service declares them under `[http] fetch` in its own `crab.toml`, beside the tick's expression in `[crons]`:
+The library's `crab.toml` declares `berm.get`, `berm.set` and its migrations, which give the service `berm.sql`; they reach the service's manifest when the service links the library. The hosts a source fetches from differ per source, so the service declares them under `[http] fetch` in its own `crab.toml`, beside the tick's expression in `[schedules]`:
 
 ```toml
 [http]
 fetch = ["example.com"]
 
-[crons]
+[schedules]
 tick = "*/5 * * * *"
 ```
 

@@ -1,2 +1,5 @@
-image = "fixtures/site"
-deploy = false
+[schedules]
+tick = "* * * * *"
+
+[image]
+name = "fixtures/site"

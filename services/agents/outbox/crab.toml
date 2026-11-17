@@ -1,3 +1,5 @@
-image = "agents/outbox"
-template = true
 buffer = 131072
+
+[image]
+name = "agents/outbox"
+template = true

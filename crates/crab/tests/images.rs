@@ -16,7 +16,7 @@ use std::{
 use tokio::task::JoinHandle;
 
 const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const MANIFEST: &str = "image = \"alice/weather:1.2.3\"\n";
+const MANIFEST: &str = "[image]\nname = \"alice/weather:1.2.3\"\n";
 
 #[derive(Parser)]
 struct DeployCommand {
@@ -128,7 +128,7 @@ impl Drop for Registry {
 async fn a_manifest_alone_deploys_an_exact_template_without_cargo() {
     let registry = Registry::new(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = true\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n")).unwrap();
+    fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = false\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n")).unwrap();
     registry.deploy(dir.path(), &[], true).await.unwrap();
     let request = registry.sent(Method::PUT, "/services/bob/weather");
     assert_eq!(request["reference"], DIGEST);
@@ -287,7 +287,7 @@ async fn a_repo_uses_its_inherited_cargo_version_without_building() {
         "[package]\nname = \"source-weather\"\nversion.workspace = true\n",
     )
     .unwrap();
-    fs::write(dir.join("crab.toml"), "image = \"alice/weather\"\n").unwrap();
+    fs::write(dir.join("crab.toml"), "[image]\nname = \"alice/weather\"\n").unwrap();
     registry.deploy(&dir, &[], true).await.unwrap();
     registry.sent(
         Method::GET,
@@ -300,7 +300,11 @@ async fn a_repo_uses_its_inherited_cargo_version_without_building() {
 async fn a_standalone_image_requires_a_version() {
     let registry = Registry::new(StatusCode::OK).await;
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), "image = \"alice/weather\"\n").unwrap();
+    fs::write(
+        dir.path().join("crab.toml"),
+        "[image]\nname = \"alice/weather\"\n",
+    )
+    .unwrap();
     let error = registry.deploy(dir.path(), &[], true).await.unwrap_err();
     assert!(error.to_string().contains("exact :version"), "{error:#}");
     assert!(registry.requests.lock().unwrap().is_empty());

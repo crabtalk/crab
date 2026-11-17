@@ -1,2 +1,5 @@
-image = "fixtures/linked-services"
-deploy = false
+[credentials.upstash_redis]
+hosts = ["your-database.upstash.io"]
+
+[image]
+name = "fixtures/linked-services"

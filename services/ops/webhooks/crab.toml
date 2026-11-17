@@ -1,17 +1,15 @@
-image = "ops/webhooks"
 id = "0d154f8e873f4082bf93ff0583e7d185"
-public = false
-template = true
 buffer = 262144
 
 [database]
 migrations = "migrations"
 size = "64MiB"
 
-[credentials.webhook]
-title = "Webhook signing secret"
-secrets = [{ name = "WEBHOOK_SECRET", label = "Signing secret" }]
-guide = "Use a Standard Webhooks signing secret shared with your sender. Cloud verifies webhook-id, webhook-timestamp and webhook-signature before receive runs. The JSON body must contain source, id and payload. A sender using another signature scheme needs an adapter."
 
-[crons]
+[schedules]
 prune = "0 3 * * *"
+
+[image]
+name = "ops/webhooks"
+public = false
+template = true

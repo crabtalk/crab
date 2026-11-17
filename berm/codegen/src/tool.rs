@@ -19,10 +19,8 @@ pub(crate) struct Options {
     declaration: crate::declaration::Declaration,
     /// `cron`.
     cron: bool,
-    /// `stripe`.
-    stripe: bool,
     /// `webhook`.
-    webhook: bool,
+    webhook: Option<berm_api::webhook::Scheme>,
     events: Option<String>,
     request: bool,
 }
@@ -43,11 +41,30 @@ impl Options {
             self.query = true;
             return Ok(());
         }
+        if meta.path.is_ident("webhook") {
+            if self.webhook.is_some() {
+                return Err(meta.error("duplicate `webhook` option"));
+            }
+            self.webhook = Some(if meta.input.peek(syn::Token![=]) {
+                let value = meta.value()?.parse::<syn::LitStr>()?;
+                match value.value().as_str() {
+                    "stripe" => berm_api::webhook::Scheme::Stripe,
+                    "standard" => berm_api::webhook::Scheme::Standard,
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            value,
+                            "webhook scheme must be `standard` or `stripe`",
+                        ));
+                    }
+                }
+            } else {
+                berm_api::webhook::Scheme::Standard
+            });
+            return Ok(());
+        }
         let flag = match &meta.path {
             path if path.is_ident("query") => &mut self.query,
             path if path.is_ident("cron") => &mut self.cron,
-            path if path.is_ident("stripe") => &mut self.stripe,
-            path if path.is_ident("webhook") => &mut self.webhook,
             _ => return self.declaration.parse(meta, false),
         };
         *flag = true;
@@ -147,8 +164,7 @@ impl Tool {
         let ident = &function.sig.ident;
         if [
             options.cron,
-            options.stripe,
-            options.webhook,
+            options.webhook.is_some(),
             options.events.is_some(),
             options.request,
         ]
@@ -159,7 +175,7 @@ impl Tool {
         {
             return Err(syn::Error::new_spanned(
                 ident,
-                "a tool is at most one of `cron`, `stripe`, `webhook`, `events` and `request`",
+                "a tool is at most one of `cron`, `webhook`, `events` and `request`",
             ));
         }
         if options.cron && !params.is_empty() {
@@ -169,7 +185,7 @@ impl Tool {
             ));
         }
 
-        if options.cron || options.stripe || options.webhook {
+        if options.cron || options.webhook.is_some() {
             options
                 .declaration
                 .0
@@ -181,12 +197,9 @@ impl Tool {
         validation.insert("title".into(), serde_json::json!(title));
         validation.insert("description".into(), serde_json::json!(description));
         validation.insert("parameters".into(), serde_json::json!({"type":"object"}));
-        for (key, set) in [
-            ("cron", options.cron),
-            ("stripe", options.stripe),
-            ("webhook", options.webhook),
-        ] {
-            validation.insert(key.into(), serde_json::json!(set));
+        validation.insert("cron".into(), serde_json::json!(options.cron));
+        if let Some(scheme) = options.webhook {
+            validation.insert("webhook".into(), serde_json::json!(scheme));
         }
         let declaration: berm_api::ToolRecord =
             serde_json::from_value(serde_json::Value::Object(validation))
@@ -263,12 +276,13 @@ impl Tool {
             (options.request, "request"),
             (self.deprecated, "deprecated"),
             (options.cron, "cron"),
-            (options.stripe, "stripe"),
-            (options.webhook, "webhook"),
         ] {
             if set {
                 out.text(&format!(r#","{key}":true"#));
             }
+        }
+        if let Some(scheme) = options.webhook {
+            out.text(&format!(r#","webhook":{}"#, serde_json::json!(scheme)));
         }
         out.text(&format!(
             r#"}},"abi_version":{ABI_VERSION},"crate":{}}}"#,

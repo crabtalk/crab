@@ -1,1 +1,4 @@
-secrets = ["NEON_PASSWORD"]
+[credentials.neon]
+title = "Neon database password"
+guide = "Use the database password from the connection details in your Neon project dashboard."
+secrets = [{ name = "NEON_PASSWORD", label = "Password" }]

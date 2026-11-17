@@ -1,13 +1,12 @@
-image = "connect/pdl"
-logo = "https://crabtalk.ai/logos/templates/pdl-v1.ico"
-template = true
 buffer = 8388608
-
-[http]
-fetch = ["api.peopledatalabs.com"]
 
 [credentials.pdl]
 title = "People Data Labs API key"
 guide = "Create an API key at https://dashboard.peopledatalabs.com. Enrichment consumes credits per match; search consumes credits per returned record."
 hosts = ["api.peopledatalabs.com"]
 secrets = [{ name = "PDL_API_KEY", label = "API key" }]
+
+[image]
+name = "connect/pdl"
+logo = "https://crabtalk.ai/logos/templates/pdl-v1.ico"
+template = true

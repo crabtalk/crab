@@ -8,15 +8,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use compat::{Break, Surface};
+pub use credential::{Credential, CredentialSecret};
 pub use http::{Http, Reach};
 pub use image::Image;
 pub use manifest::{
-    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration, Sequence,
-    ServiceRecord, ToolRecord, Var,
+    Database, Deps, EventSpec, Kit, Manifest, Migration, Sequence, ServiceRecord, ToolRecord, Var,
 };
 
 pub mod address;
 mod compat;
+pub mod credential;
 pub mod digest;
 pub mod events;
 pub mod host;
@@ -31,13 +32,14 @@ pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;
 pub mod text;
+pub mod webhook;
 pub mod workflow;
 
 pub const DEFAULT_WORKFLOW_MAX_COST: u64 = 100_000;
 pub const DEFAULT_WORKFLOW_CHECKPOINT_BYTES: u64 = 8 << 20;
 
 /// The default argument and result buffer size in bytes.
-pub const DEFAULT_BUFFER: usize = 16 * 1024;
+pub const DEFAULT_BUFFER: usize = 1024 * 1024;
 
 /// One log a service emitted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -342,15 +344,9 @@ pub struct ToolSpec {
     /// Called by its host on the manifest's schedule. A cron tool is not public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cron: bool,
-    /// Called by its host with each Stripe event its daemon takes for the
-    /// service, the event as the argument object. Not public; a service has
-    /// at most one.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub stripe: bool,
-    /// Called by its host with each webhook its daemon verified for this
-    /// tool, the body as the argument object. Not public.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub webhook: bool,
+    /// Called with a body verified using this tool's signature scheme.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<webhook::Scheme>,
 }
 
 impl ToolSpec {
@@ -373,6 +369,13 @@ impl ToolSpec {
 
     pub fn check_declaration(&self) -> anyhow::Result<()> {
         let tool = self;
+        if tool.webhook.is_some() {
+            anyhow::ensure!(
+                Self::signing_secret(&tool.name).len() <= 64,
+                "webhook tool {} has a signing secret name past 64 characters",
+                tool.name
+            );
+        }
         anyhow::ensure!(
             tool.examples.len() <= Self::EXAMPLES,
             "a tool has at most {} example tasks",

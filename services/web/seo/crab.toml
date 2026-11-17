@@ -1,7 +1,7 @@
-image = "web/seo"
-public = true
-template = false
-buffer = 1048576
-
 [database]
 size = "1MiB"
+
+[image]
+name = "web/seo"
+public = true
+template = false

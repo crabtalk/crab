@@ -1,13 +1,12 @@
-image = "connect/firecrawl"
-logo = "https://crabtalk.ai/logos/templates/firecrawl-v1.png"
-template = true
 buffer = 8388608
-
-[http]
-fetch = ["api.firecrawl.dev"]
 
 [credentials.firecrawl]
 title = "Firecrawl API key"
 guide = "Create an API key at https://firecrawl.dev. Scraped pages and search results consume your Firecrawl credits."
 hosts = ["api.firecrawl.dev"]
 secrets = [{ name = "FIRECRAWL_API_KEY", label = "API key" }]
+
+[image]
+name = "connect/firecrawl"
+logo = "https://crabtalk.ai/logos/templates/firecrawl-v1.png"
+template = true

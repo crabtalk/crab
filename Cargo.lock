@@ -504,8 +504,8 @@ dependencies = [
  "crab-github",
  "crab-posthog",
  "crab-resend",
- "crab-upstash",
  "crabkit-auth",
+ "crabkit-upstash",
 ]
 
 [[package]]
@@ -1227,14 +1227,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-upstash"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
- "url",
-]
-
-[[package]]
 name = "crab-uptime"
 version = "0.1.7"
 dependencies = [
@@ -1334,6 +1326,14 @@ name = "crabkit-supabase"
 version = "0.1.7"
 dependencies = [
  "berm-lang",
+]
+
+[[package]]
+name = "crabkit-upstash"
+version = "0.1.7"
+dependencies = [
+ "berm-lang",
+ "url",
 ]
 
 [[package]]

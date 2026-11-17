@@ -587,26 +587,6 @@ impl<E: Env> Host<E> {
         })
     }
 
-    /// Call `service`'s `#[tool(stripe)]` tool with `event`, a Stripe event as its
-    /// daemon took it.
-    pub async fn stripe(&self, service: &str, event: Vec<u8>) -> Result<(), Denied> {
-        let deployed = self.deployed(service)?;
-        let Some(tool) = deployed
-            .manifest
-            .tools
-            .iter()
-            .find(|spec| spec.stripe)
-            .map(|spec| spec.name.clone())
-        else {
-            return Err(deny(
-                StatusCode::NOT_FOUND,
-                "the service has no stripe tool",
-            ));
-        };
-        self.deliver(service, deployed, tool, Source::Stripe, event)
-            .await
-    }
-
     /// Call `service`'s `#[tool(webhook)]` tool `tool` with `event`, a webhook's
     /// body as its daemon verified it.
     pub async fn webhook(&self, service: &str, tool: &str, event: Vec<u8>) -> Result<(), Denied> {
@@ -615,7 +595,7 @@ impl<E: Env> Host<E> {
             .manifest
             .tools
             .iter()
-            .any(|spec| spec.webhook && spec.name == tool)
+            .any(|spec| spec.webhook.is_some() && spec.name == tool)
         {
             return Err(deny(
                 StatusCode::NOT_FOUND,

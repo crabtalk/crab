@@ -26,5 +26,5 @@ size = "64MiB"
 # When its host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC. A tool left out is not called until its owners set one on the
 # host.
-# [crons]
+# [schedules]
 # tick = "*/5 * * * *"

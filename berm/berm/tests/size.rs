@@ -10,7 +10,6 @@ use std::path::PathBuf;
 fn own(name: &str, sql: &str) -> Sequence {
     Sequence {
         kit: String::new(),
-        formerly: Vec::new(),
         migrations: vec![Migration {
             name: name.to_owned(),
             sql: sql.to_owned(),

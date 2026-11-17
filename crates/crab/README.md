@@ -20,21 +20,14 @@ crab rm example
 
 ## crab.toml
 
-Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Missing or empty lists allow none; linked libraries contribute their destinations.
+Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Credential hosts join `fetch`; list only other direct destinations under `[http] fetch`. Missing or empty lists add no hosts; linked libraries contribute their destinations.
 
 `crab build` builds the package in the directory it is given, `.` by default, and prints the path of its finished image, `berm/<crate>.wasm` under cargo's target directory. `crab deploy` uses the published `image` declared in `crab.toml`, or builds source when no image is declared. `crab deploy --build` explicitly builds local source. An instance uses the service component of the image address, or the Cargo package name without an image. `crab new` writes one, beside a library crate built as a `cdylib`. It includes `echo`, `remember` and `recall`; the latter two share a persistent message across callers and restarts. Tool-specific tests are added by the developer; the [development guide](https://crabtalk.ai/docs/development/complete-service) has an example.
 
 ```toml
-# Optional published address; Cargo supplies the source version.
-image = "alice/example"
-public = true
-template = true
-logo = "https://example.com/logo.svg"
-
-
 # When the host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC.
-[crons]
+[schedules]
 tick = "*/5 * * * *"
 
 # Settings each deployed copy holds its own value of, read through
@@ -47,6 +40,11 @@ keywords = { default = "rust, wasm", description = "Words to watch" }
 size = "2GiB"
 # A SQLite database, relative to this file, a service on Cloud starts from on its first deploy.
 seed = "seed.sqlite"
+
+[image]
+name = "alice/example"
+template = true
+logo = "https://example.com/logo.svg"
 ```
 
 `logo` is optional and must be an absolute HTTPS URL. Builds, deployments and publication reject invalid values without fetching the image. The URL belongs to the service image and is retained by template copies; linked libraries do not contribute a logo.
@@ -55,13 +53,13 @@ Tools declare access, price, catalog and `budget(...)` on `#[tool]`. Access defa
 
 The build embeds `[database] size` as the image's default reservation. New deployments use it when no size is supplied; redeployments keep their existing reservation unless explicitly resized. Images built without a default use 1 GiB.
 
-The build embeds `[crons]` in the image. Every deploy applies those schedules; an omitted tool has no schedule. Build a new image to change them; published-image copies use their selected release's schedules. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's SQL and key-value data start from it. SQL seeds must hold to the image's migrations: those recorded as applied are the image's first, unchanged. Services without SQL accept a seed containing only exported key-value state. An existing service takes no seed, and the local host takes none.
+The build embeds `[schedules]` in the image. Every deploy applies those schedules; an omitted tool has no schedule. Build a new image to change them; published-image copies use their selected release's schedules. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab deploy` uploads a copy of `seed` and the service's SQL and key-value data start from it. SQL seeds must hold to the image's migrations: those recorded as applied are the image's first, unchanged. Services without SQL accept a seed containing only exported key-value state. An existing service takes no seed, and the local host takes none.
 
 `berm_lang::var("keywords")` answers the value the deployed copy holds, or the var's `default` while it holds none, from the call after one is set; a var `[vars]` does not declare is refused. A service declares at most 32, each name letters, digits and `_`, each value at most 4096 bytes. `crab var ls NAME` lists a service's vars with their values, `crab var set NAME VAR VALUE` sets one, and `crab var unset NAME VAR` returns it to its default. A deploy's request sets the values it names and keeps the rest; a deploy whose `[vars]` drops a var drops its value. Linked libraries do not contribute variable declarations; declare the settings your deployment needs itself.
 
 ## Developing
 
-`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: services reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy [dir]` selects the service in that directory, or all Cargo workspace services beneath it whose `crab.toml` does not say `deploy = false`. The directory defaults to `.`; `-p <name>`, repeatable, selects services by name anywhere in the workspace instead. `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
+`crab dev` runs the local host on `127.0.0.1:7777`, its root `~/.crab/host`, in the foreground until Ctrl-C; `-d`/`--detach` starts it in the background, writing to `host.log` under its root. It is one per machine and knows nothing of directories: services reach it through `crab deploy` on the `default` context, which starts it in the background when nothing answers. `crab deploy [dir]` selects the service in that directory, or all Cargo workspace services beneath it with a `crab.toml`. The directory defaults to `.`; `-p <name>`, repeatable, selects services by name anywhere in the workspace instead. `crab start` and `crab stop` serve and stop services, named or the same set, keeping what they committed, and `crab ls` shows which run. `crab rm` with no name removes the same set. `crab dev status` prints its pid, root and start, and `crab dev stop` stops it.
 
 `crab --context default status` probes the local host at `/meta/health`.
 
@@ -76,7 +74,7 @@ crab context ls
 crab context use default
 ```
 
-A service's manifest declares its secrets and their destinations. `crab secret ls NAME` lists names and hosts, never values. `crab secret fill NAME`, run by a person at a terminal, shows each credential's guide and fixed manifest hosts, then provisions or replaces the values they enter. On Cloud it requires a signed-in owner; API keys cannot provision or revoke secrets. `crab secret request NAME` prints a link where an owner supplies unset credentials; `--credential ID` requests one again for rotation. `--copy KEY=VALUE` supplies provider setup values such as a callback URL. For direct provisioning, `printf %s "$VALUE" | crab secret put NAME SECRET` provisions or replaces a declared secret; `crab secret rm NAME SECRET` revokes one. Outbound credentials need `hosts` in `[credentials]`; a bare secret has no outbound destinations. Changing manifest destinations requires fresh provisioning. Saved values are never returned, including fields with `masked = false`.
+A service's manifest declares its secrets and their destinations. `crab secret ls NAME` lists names and hosts, never values. `crab secret fill NAME`, run by a person at a terminal, shows each credential's guide and fixed manifest hosts, then provisions or replaces the values they enter. On Cloud it requires a signed-in owner; API keys cannot provision or revoke secrets. `crab secret request NAME` prints a link where an owner supplies unset credentials; `--credential ID` requests one again for rotation. `--copy KEY=VALUE` supplies provider setup values such as a callback URL. For direct provisioning, `printf %s "$VALUE" | crab secret put NAME SECRET` provisions or replaces a declared secret; `crab secret rm NAME SECRET` revokes one. Outbound credentials need `hosts` in `[credentials]`; a hostless credential has no outbound destinations. Changing manifest destinations requires fresh provisioning. Saved values are never returned, including fields with `masked = false`.
 
 Runtime secret resources belong to the account and have stable opaque IDs. A service using them declares `secret_resources = true` and its HTTP permissions. On Cloud, `crab secret resource request SERVICE "Research Bot" --host api.example.com` prints a secure provisioning link and the future secret ID. An owner supplies the value and approves the service grant there; `--id ID` rotates an existing resource through the same flow. At a person's terminal, `crab secret resource create NAME` and `rotate ID` read the value from stdin. `resource ls` shows metadata, `resource grant ID SERVICE --host HOST` grants a service in the same account access, `resource revoke ID SERVICE` removes that grant, and `resource rm ID` deletes the secret and all grants. Cloud writes require a signed-in session; API keys can propose secure requests. Use `{secret:ID}` in outgoing headers or bodies. Grants never expand HTTP permissions, and secret values are never returned. Resource creation, rotation and grants do not redeploy the service.
 
@@ -197,13 +195,13 @@ Template versions are immutable: changing an image requires a new package versio
 
 Deploy history retains the current image and two previous successful images; older records remain without their uploaded image. Existing template copies retain their own images, independently of the publisher’s releases.
 
-`public` is embedded in the image and determines visibility for every deployment and template copy; `template` controls whether `crab push` publishes or withdraws the image. Both default to `false`. `crab push` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment, but includes services marked `deploy = false`. For example, `crab push services/connect` selects only that catalog; running `crab push` inside it selects the same services. No catalog-level `crab.toml` is needed.
+`[image] public` sets a deployment’s initial visibility; `[image] template` controls whether `crab push` publishes or withdraws the image. Both default to `false` and cannot be enabled together. Template copies start private; their owners can change visibility after deploying. `crab push` publishes or withdraws a template without running an instance, using the same approval flow as deployment. It uses the same directory and `-p` selection as deployment. For example, `crab push services/connect` selects only that catalog; running `crab push` inside it selects the same services. No catalog-level `crab.toml` is needed.
 
 Images upload to the selected host by default. `crab context add local http://localhost:7777 --registry localhost:5001` selects an OCI registry for that context; `crab deploy --registry localhost:5001` overrides it for one command. OCI paths use `<registry>/<owner>/<service>:<Cargo version>` when `image` is declared, or the Cargo package name without it. Deployments pin the OCI artifact digest.
 
-`image = "connect/tinyfish"` is the publication and pull address; the old `name` key is unsupported. `crab push` requires an image, builds local source and targets its account. The server requires account ownership; an API key must be bound to that account and grant `deployments:write`. The selected context account never replaces the publication address. Mixed-account publication groups are handled separately.
+`[image] name = "connect/tinyfish"` is the publication and pull address; the old `name` key is unsupported. `crab push` requires an image, builds local source and targets its account. The server requires account ownership; an API key must be bound to that account and grant `deployments:write`. The selected context account never replaces the publication address. Mixed-account publication groups are handled separately.
 
-`crab deploy` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `image = "connect/tinyfish:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
+`crab deploy` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `[image] name = "connect/tinyfish:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
 
 Published-image deployment creates an unpublished instance under the selected account with visibility from its image, using the image's service component as its name. Existing names are refused. It uses the published declarations and ignores local seed and publication settings. Missing or yanked releases fail without a source-build fallback. `--build` selects local source, and is required for local development of an image-addressed service. Source builds do not publish templates.
 

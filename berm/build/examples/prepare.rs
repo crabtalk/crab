@@ -23,7 +23,6 @@ const PACKAGES: &[&str] = &[
     "berm-openapi",
     "crab-resend",
     "crab-github",
-    "crab-upstash",
     "crab-posthog",
     "crab-osv",
     "berm-linked-services",

@@ -49,7 +49,7 @@ pub fn plan() -> Result<Option<String>> {
 /// Webhook
 ///
 /// Keeps the subscription a Stripe event names as Stripe answers it now.
-#[tool(stripe, access = "internal")]
+#[tool(webhook = "stripe", access = "internal")]
 pub fn webhook(
     /// What the event is about.
     data: Data,

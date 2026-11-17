@@ -1,5 +1,5 @@
-image = "fixtures/keeper"
-deploy = false
-
 [database]
 migrations = "migrations"
+
+[image]
+name = "fixtures/keeper"

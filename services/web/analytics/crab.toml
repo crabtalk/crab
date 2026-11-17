@@ -1,12 +1,14 @@
-image = "web/analytics"
 id = "bc3917c09124402fa0444a8b7a5adba1"
-public = false
-template = true
 buffer = 262144
 
 [database]
 migrations = "migrations"
 size = "128MiB"
 
-[crons]
+[schedules]
 prune = "0 * * * *"
+
+[image]
+name = "web/analytics"
+public = false
+template = true

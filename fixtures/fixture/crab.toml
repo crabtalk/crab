@@ -1,12 +1,10 @@
 secret_resources = true
-image = "fixtures/fixture"
-deploy = false
 
 [vars]
 greeting = { default = "hello", description = "What greet answers" }
 
 [http]
-fetch = ["127.0.0.1"]
+
 proxy = ["127.0.0.1"]
 
 [credentials.fixture]
@@ -21,6 +19,10 @@ optional = true
 secrets = [{ name = "spare" }]
 
 [credentials.hostless]
+hosts = ["other.example.com"]
 title = "Hostless token"
 optional = true
 secrets = [{ name = "hostless" }]
+
+[image]
+name = "fixtures/fixture"

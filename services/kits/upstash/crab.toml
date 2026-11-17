@@ -1,0 +1,5 @@
+[credentials.upstash_redis]
+title = "Upstash Redis database"
+guide = "Copy the REST token from your database at https://console.upstash.com. Grant it only to your database’s exact host. A read-only token supports reads; writes require the standard token."
+secrets = [{ name = "UPSTASH_REDIS_REST_TOKEN", label = "REST token" }]
+
