@@ -288,3 +288,65 @@ fn a_successful_null_value_is_not_a_skipped_dependency() {
     };
     assert_eq!(value, false);
 }
+
+struct Priced;
+/// Priced
+#[workflow]
+impl Priced {
+    #[step(each, max = 5, price = 2_000)]
+    fn ask(input: &Query) -> Vec<Add> {
+        (0..input.count).map(|value| Add { value }).collect()
+    }
+    #[step]
+    fn first(input: &Query) -> Add {
+        Add { value: input.count }
+    }
+    #[step(each, max = 3, price = 500)]
+    fn pages(first: &u64) -> Vec<Add> {
+        (0..*first).map(|value| Add { value }).collect()
+    }
+    #[branch]
+    fn route(input: &Query) -> Route {
+        if input.enabled {
+            Route::Changed(Changed { count: input.count })
+        } else {
+            Route::Same(Same { count: input.count })
+        }
+    }
+    #[step(price = 1_000)]
+    fn notify(route: &Changed) -> Add {
+        Add { value: route.count }
+    }
+    #[output]
+    fn report(ask: &[u64], pages: &[u64], notify: Option<&u64>) -> u64 {
+        ask.iter().chain(pages).sum::<u64>() + notify.copied().unwrap_or(0)
+    }
+}
+
+#[test]
+fn step_prices_are_recorded_and_known_from_the_input_or_bounded() {
+    let record: Value = serde_json::from_slice(Priced::WORKFLOW).unwrap();
+    let entry: Entry = serde_json::from_value(record["workflow"].clone()).unwrap();
+    entry.graph.check(100).unwrap();
+    let priced: Vec<_> = entry
+        .graph
+        .nodes
+        .iter()
+        .filter_map(|node| match node.kind {
+            Kind::Step {
+                price: Some(price), ..
+            } => Some((node.id.as_str(), price, entry.graph.exact(node))),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        priced,
+        [
+            ("ask", 2_000, true),
+            ("pages", 500, false),
+            ("notify", 1_000, true)
+        ]
+    );
+    let first = &entry.graph.nodes[1];
+    assert!(matches!(first.kind, Kind::Step { price: None, .. }));
+}

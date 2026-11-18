@@ -1,5 +1,9 @@
 //! How `crab` writes numbers for a person to read.
 
+use berm_api::{
+    Manifest,
+    workflow::graph::{Graph, Kind, Mode, Node},
+};
 use crabtalk_sdk::system::meta;
 use serde_json::Value;
 
@@ -94,4 +98,39 @@ pub fn schema(schema: &Value) -> String {
         Some(kind) => schema["title"].as_str().unwrap_or(kind).to_owned(),
         None => "any".to_owned(),
     }
+}
+
+/// A priced step's price and how its count is known: `$0.002 per item, up to
+/// 100, bounded by a step's result`.
+pub fn step_price(graph: &Graph, node: &Node, price: u64) -> String {
+    let Kind::Step { mode, .. } = &node.kind else {
+        return usd(price as f64);
+    };
+    let known = if graph.exact(node) {
+        "exact from the input"
+    } else {
+        "bounded by a step's result"
+    };
+    match mode {
+        Mode::Each { max } => format!("{} per item, up to {max}, {known}", usd(price as f64)),
+        Mode::Once | Mode::Optional => format!("{} per run, {known}", usd(price as f64)),
+    }
+}
+
+/// Each priced step of `manifest`'s workflows, as `workflow.step: price`.
+pub fn step_prices(manifest: &Manifest) -> impl Iterator<Item = String> + '_ {
+    manifest.workflows.iter().flat_map(|spec| {
+        let graph = &spec.entry.graph;
+        graph.nodes.iter().filter_map(move |node| match &node.kind {
+            Kind::Step {
+                price: Some(price), ..
+            } => Some(format!(
+                "{}.{}: {}",
+                spec.entry.name,
+                node.id,
+                step_price(graph, node, *price)
+            )),
+            _ => None,
+        })
+    })
 }

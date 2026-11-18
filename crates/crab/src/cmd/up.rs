@@ -1,5 +1,6 @@
-use crate::{cmd::dev, deployment, project, runtime};
+use crate::{cmd::dev, deployment, format, project, runtime};
 use anyhow::{Context, Result, bail};
+use berm_api::Manifest;
 use clap::Args;
 use crabtalk_sdk::{
     client::Client,
@@ -52,6 +53,11 @@ impl Up {
             let built = berm_build::build(&service.dir, None)?;
             let bytes =
                 fs::read(&built).with_context(|| format!("cannot read {}", built.display()))?;
+            let manifest = Manifest::try_from(bytes.as_slice())
+                .with_context(|| format!("{} is not a valid service image", built.display()))?;
+            for line in format::step_prices(&manifest) {
+                eprintln!("{name}: {line}");
+            }
             let reference = deployment::send(client, &name, bytes)?;
             let seed = match &service.project.database.seed {
                 Some(_) if client.owner.is_none() => {

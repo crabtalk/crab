@@ -58,8 +58,17 @@ pub struct Node {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Kind {
-    Step { call: Call, mode: Mode },
-    Branch { cases: Vec<Case> },
+    Step {
+        call: Call,
+        mode: Mode,
+        /// USD micros the caller pays per item of an `each` step, or per run of
+        /// any other step.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        price: Option<u64>,
+    },
+    Branch {
+        cases: Vec<Case>,
+    },
     Output,
 }
 
@@ -145,6 +154,31 @@ pub enum Selection {
 }
 
 impl Graph {
+    /// Whether a step's item count, and whether it runs, follow from the input
+    /// alone: its builder and guards read only the input and branches that do.
+    /// Controls are pure, so such a step's list is known before the run.
+    pub fn exact(&self, node: &Node) -> bool {
+        matches!(node.kind, Kind::Step { .. }) && self.reads_input_only(node)
+    }
+
+    fn reads_input_only(&self, node: &Node) -> bool {
+        let control = |id: &str| {
+            self.nodes
+                .iter()
+                .find(|other| other.id == id)
+                .is_some_and(|other| {
+                    matches!(other.kind, Kind::Branch { .. }) && self.reads_input_only(other)
+                })
+        };
+        node.dependencies
+            .iter()
+            .all(|dependency| match &dependency.source {
+                Producer::Input => true,
+                Producer::Node { id } => control(id),
+            })
+            && node.guards.iter().all(|guard| control(&guard.producer))
+    }
+
     pub fn check(&self, max_each: u32) -> Result<()> {
         let mut dependencies = Vec::new();
         for (index, node) in self.nodes.iter().enumerate() {
@@ -177,6 +211,7 @@ impl Graph {
                         Kind::Step {
                             call,
                             mode: Mode::Once | Mode::Optional,
+                            ..
                         } => &call.cases,
                         Kind::Branch { cases } => cases,
                         _ => bail!("{} selects a case of a producer without cases", node.id),

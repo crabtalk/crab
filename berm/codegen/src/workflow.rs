@@ -22,6 +22,8 @@ struct Node {
     method: ImplItemFn,
     name: String,
     kind: Kind,
+    /// USD micros per item of a step, or per run of a single step.
+    price: Option<u64>,
     result: Type,
     fallible: bool,
     parameters: Vec<Parameter>,
@@ -261,6 +263,9 @@ impl Workflow {
                         Kind::Each { max, .. } => format!(r#"{{"kind":"each","max":{max}}}"#),
                         _ => unreachable!(),
                     });
+                    if let Some(price) = node.price {
+                        out.text(&format!(r#","price":{price}"#));
+                    }
                 }
                 Kind::Branch => {
                     out.text(r#","kind":"branch","cases":"#);
@@ -438,6 +443,7 @@ impl Node {
             .unwrap_or(declared)
             .clone();
         concrete(&result)?;
+        let mut price = None;
         let kind = if attribute.path().is_ident("step") {
             let mut each = false;
             let mut maximum = None;
@@ -453,8 +459,17 @@ impl Node {
                                 .base10_parse::<u32>()?,
                         );
                         Ok(())
+                    } else if meta.path.is_ident("price") && price.is_none() {
+                        price = Some(
+                            meta.value()?
+                                .parse::<syn::LitInt>()?
+                                .base10_parse::<u64>()?,
+                        );
+                        Ok(())
                     } else {
-                        Err(meta.error("expected each and one max = positive integer"))
+                        Err(meta.error(
+                            "expected each, one max = positive integer and one price = USD micros",
+                        ))
                     }
                 })?;
             }
@@ -547,6 +562,7 @@ impl Node {
             method: method.clone(),
             name,
             kind,
+            price,
             result,
             fallible,
             parameters,

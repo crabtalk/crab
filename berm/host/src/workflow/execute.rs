@@ -619,7 +619,7 @@ impl<E: Env> Host<E> {
             };
             let prepared = (|| -> Result<()> {
                 match (&node.kind, result) {
-                    (Kind::Step { call, mode }, ControlOutput::Calls { inputs }) => {
+                    (Kind::Step { call, mode, .. }, ControlOutput::Calls { inputs }) => {
                         ensure!(
                             inputs.len() <= mode.maximum() as usize
                                 && (matches!(mode, Mode::Each { .. }) || inputs.len() == 1),
@@ -717,7 +717,7 @@ impl<E: Env> Host<E> {
         let Some(Prepared::Calls { calls }) = checkpoint.prepared.clone() else {
             return Ok(());
         };
-        let Kind::Step { mode, call } = &node.kind else {
+        let Kind::Step { mode, call, .. } = &node.kind else {
             bail!("call checkpoint belongs to a non-step")
         };
         let output_schema = schema::Validator::try_from(&call.output)?;

@@ -129,7 +129,20 @@ impl Spec {
         schema::Validator::try_from(&self.entry.graph.output)?;
         for node in &self.entry.graph.nodes {
             match &node.kind {
-                Kind::Step { call, .. } => {
+                Kind::Step { call, price, .. } => {
+                    if let Some(price) = price {
+                        ensure!(
+                            *price >= ToolSpec::MIN_PRICE,
+                            "a priced step costs at least {} USD micros",
+                            ToolSpec::MIN_PRICE
+                        );
+                        ensure!(
+                            self.config
+                                .access
+                                .is_some_and(|access| access != Access::Internal),
+                            "a workflow with a priced step needs caller access"
+                        );
+                    }
                     schema::Validator::try_from(&call.input)?;
                     schema::Validator::try_from(&call.output)?;
                     for case in &call.cases {

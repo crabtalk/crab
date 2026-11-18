@@ -1,4 +1,4 @@
-use crate::{cmd::pull, deployment, runtime};
+use crate::{cmd::pull, deployment, format, runtime};
 use anyhow::{Context, Result, bail};
 use berm_api::reference::Reference;
 use clap::Args;
@@ -118,6 +118,9 @@ impl Deploy {
                     tool.name,
                     tool.price.unwrap_or_default()
                 );
+            }
+            for line in format::step_prices(&effective) {
+                eprintln!("  {line}");
             }
         } else {
             eprintln!("{address}:{}", effective.version);

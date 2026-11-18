@@ -150,3 +150,49 @@ fn spend_authorization_is_carried_but_never_debugged_and_failure_http_is_complet
         expected
     );
 }
+
+#[test]
+fn a_priced_step_needs_caller_access_and_the_least_price() {
+    use berm_api::{
+        Access,
+        workflow::config::{Config, Spec},
+    };
+    let mut entry: Entry =
+        serde_json::from_str(include_str!("fixtures/workflow-entry-v1.json")).unwrap();
+    let Kind::Step { price, .. } = &mut entry.graph.nodes[0].kind else {
+        panic!("the fixture starts with a step")
+    };
+    *price = Some(2_000);
+    let mut spec = Spec {
+        entry,
+        config: Config::default(),
+    };
+    spec.check().unwrap();
+    let round: Entry = serde_json::from_value(serde_json::to_value(&spec.entry).unwrap()).unwrap();
+    assert_eq!(round, spec.entry);
+    spec.config.access = Some(Access::Internal);
+    assert!(
+        spec.check()
+            .unwrap_err()
+            .to_string()
+            .contains("caller access")
+    );
+    spec.config.access = None;
+    assert!(
+        spec.check()
+            .unwrap_err()
+            .to_string()
+            .contains("caller access")
+    );
+    spec.config.access = Some(Access::Public);
+    let Kind::Step { price, .. } = &mut spec.entry.graph.nodes[0].kind else {
+        unreachable!()
+    };
+    *price = Some(99);
+    assert!(
+        spec.check()
+            .unwrap_err()
+            .to_string()
+            .contains("at least 100")
+    );
+}

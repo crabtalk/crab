@@ -286,7 +286,7 @@ pub fn show_inspection(inspection: &Inspection, mut output: impl Write) -> Resul
             .collect::<Vec<_>>()
             .join(", ");
         match &node.kind {
-            Kind::Step { call, mode } => {
+            Kind::Step { call, mode, price } => {
                 let target = match &call.target {
                     Target::Local { tool } => format!("self.{tool}"),
                     Target::Service { service, tool, .. } => format!("{service}.{tool}"),
@@ -297,6 +297,13 @@ pub fn show_inspection(inspection: &Inspection, mut output: impl Write) -> Resul
                     node.id,
                     mode.maximum()
                 )?;
+                if let Some(price) = price {
+                    writeln!(
+                        output,
+                        "    price: {}",
+                        format::step_price(&definition.entry.graph, node, *price)
+                    )?;
+                }
                 if let Some(terms) = &inspection.accounting {
                     if let Some(binding) = terms.execution.bindings.get(&node.id) {
                         writeln!(
