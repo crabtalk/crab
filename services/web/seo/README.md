@@ -19,11 +19,23 @@ Returns the final URL, title, descriptions, canonical declarations and targets, 
 - Robots evidence retains the HTML or header source and crawler scope. Recognized meta names are `robots`, `googlebot`, `googlebot-news` and `bingbot`; X-Robots-Tag crawler names are retained. Noindex findings name their scope; they do not assert that every crawler is blocked.
 - Hreflang checks inspect HTML head alternates for supported language, script and region codes, absolute HTTP/HTTPS targets and conflicting URLs for one language. `x-default` is accepted. Identical repeated targets are not conflicts.
 
+`ai_access` reads whether AI crawlers can reach and read a site:
+
+```sh
+crab call owner/seo ai_access '{"site":"https://example.com/"}'
+```
+
+- Each of GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended and CCBot is `allowed`, `blocked` or `unspecified` for the root page's path, with the `robots.txt` group that applied: the crawler's own, else `*`. Rules are read as RFC 9309 reads them: the longest matching pattern wins, `allow` wins a tie, and `*` and a final `$` match. `unspecified` means no group names the crawler and there is no `*` group, or `robots.txt` did not answer 2xx.
+- `/llms.txt`: its status, the H1 it opens with, its Markdown link count, and which of its first ten links did not answer 2xx.
+- Characters of visible text and script elements in the root page's HTML response; a page with under 200 characters that runs scripts is reported as needing JavaScript for its content.
+- Whether the root page answers at its URL with `.md` appended (`index.html.md` for a path ending in `/`), and whether it answers `Accept: text/markdown` with Markdown.
+- The root page's `check` report.
+
 Informational findings identify things to review; an absent canonical or multiple h1 headings are not automatically errors. Title and description lengths are not pass/fail rules.
 
 ## Limits
 
-Inspects the returned UTF-8 HTML and response headers. It does not render JavaScript, crawl the site, fetch robots.txt or linked resources, check rankings or verify indexing. Canonical and hreflang targets are not fetched, and hreflang reciprocity is not checked. HTTP-header and sitemap hreflang annotations are not inspected. JSON-LD contexts are not fetched.
+Inspects the returned UTF-8 HTML and response headers. `ai_access` reads `robots.txt` and `llms.txt` at the root page's origin without following their redirects, up to 512 KiB each, and checks only the root page's path. It does not render JavaScript, crawl the site, fetch robots.txt or linked resources, check rankings or verify indexing. Canonical and hreflang targets are not fetched, and hreflang reciprocity is not checked. HTTP-header and sitemap hreflang annotations are not inspected. JSON-LD contexts are not fetched.
 
 Accepts at most 12,000 DOM nodes, 12,000 start tags, 12,000 total attributes, depth 128 and 128 attributes per element. Fetches at most 512 KiB of HTML with up to three redirects and a ten-second timeout per request. Unsupported content types and unsuccessful HTTP responses fail explicitly. Reports include at most twenty h1 texts and twenty missing-alt image samples beside their full counts; metadata reports over 256 KiB fail explicitly. Image sample positions are one-based among all img elements; JSON-LD block positions are one-based among matching scripts. Other evidence lists are complete within the report limit.
 
