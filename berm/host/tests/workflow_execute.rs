@@ -682,10 +682,9 @@ async fn cancellation_drains_one_email_and_fences_the_next_dispatch() -> Result<
         State::Succeeded { .. }
     ));
     assert!(result.attempts[0].meter.calls > 0);
-    assert_eq!(
-        host.host.workflows.pending_completions(10).await?[0].status,
-        Status::Cancelled
-    );
+    let completion = &host.host.workflows.pending_completions(10).await?[0];
+    assert_eq!(completion.status, Status::Cancelled);
+    assert_eq!(completion.succeeded.get("messages"), Some(&1));
     Ok(())
 }
 

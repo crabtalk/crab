@@ -21,6 +21,11 @@ pub struct Inspection {
     pub source: Source,
     pub quote: String,
     pub task_price: Option<u64>,
+    /// The most a successful run costs the caller in USD micros: the task
+    /// price plus each priced step's price times its most items. Absent where
+    /// runs are not charged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_price: Option<u64>,
     pub deadline_ms: u64,
     pub retention_ms: u64,
 }

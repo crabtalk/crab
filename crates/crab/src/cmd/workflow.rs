@@ -216,13 +216,19 @@ pub fn show_inspection(inspection: &Inspection, mut output: impl Write) -> Resul
     if let Some(title) = &definition.title {
         writeln!(output, "  {title}")?;
     }
-    match definition.task_price {
-        Some(price) => writeln!(
+    match (definition.task_price, definition.max_price) {
+        (base, Some(most)) if most > base.unwrap_or(0) => writeln!(
+            output,
+            "  price: {} to {} (successful result only, by the priced steps' items)",
+            format::usd(base.unwrap_or(0) as f64),
+            format::usd(most as f64)
+        )?,
+        (Some(price), _) => writeln!(
             output,
             "  fixed task price: {} (successful result only)",
             format::usd(price as f64)
         )?,
-        None => writeln!(output, "  fixed task price: none")?,
+        (None, _) => writeln!(output, "  fixed task price: none")?,
     }
     writeln!(
         output,

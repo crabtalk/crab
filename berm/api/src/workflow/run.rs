@@ -67,6 +67,10 @@ pub struct Completion {
     pub service: String,
     pub attempt: String,
     pub status: Status,
+    /// Items that succeeded, by node ID: an `each` step's succeeded items, or
+    /// 1 for any other node that succeeded. Nodes with none are left out.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub succeeded: BTreeMap<String, u32>,
 }
 
 impl TryFrom<&Run> for Completion {
@@ -91,6 +95,18 @@ impl TryFrom<&Run> for Completion {
             service: run.service.clone(),
             attempt: attempt.id.clone(),
             status: run.status,
+            succeeded: run
+                .checkpoints
+                .iter()
+                .filter_map(|(node, checkpoint)| {
+                    let succeeded = |state: &State| matches!(state, State::Succeeded { .. });
+                    let count = match checkpoint.items.as_slice() {
+                        [] => u32::from(succeeded(&checkpoint.state)),
+                        items => items.iter().filter(|item| succeeded(&item.state)).count() as u32,
+                    };
+                    (count > 0).then(|| (node.clone(), count))
+                })
+                .collect(),
         })
     }
 }

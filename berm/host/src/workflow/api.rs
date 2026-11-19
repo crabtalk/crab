@@ -62,6 +62,7 @@ impl<E: Env> Host<E> {
             source: offer.source,
             quote,
             task_price: offer.spec.config.price.map(|_| 0),
+            max_price: None,
             deadline_ms: offer.deadline_ms,
             retention_ms: offer.spec.config.retain.as_millis().try_into()?,
         })
@@ -104,6 +105,7 @@ impl<E: Env> Host<E> {
                 source: execution.source.clone(),
                 quote: execution.source.graph.clone(),
                 task_price: spec.config.price.map(|_| 0),
+                max_price: None,
                 deadline_ms: self
                     .workflows
                     .get(id)
