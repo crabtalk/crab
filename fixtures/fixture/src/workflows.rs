@@ -131,6 +131,56 @@ impl WorkflowFlow {
     }
 }
 
+struct WorkflowPriced;
+/// Workflow Priced
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
+impl WorkflowPriced {
+    #[branch]
+    fn choose(input: &FlowInput) -> Route {
+        if input.take {
+            Route::Yes(Proceed {
+                fail_at: input.fail_at,
+            })
+        } else {
+            Route::No(Stop {})
+        }
+    }
+    #[step(price = 500)]
+    fn optional(choose: &Proceed) -> WorkflowItemCall {
+        WorkflowItemCall {
+            index: 99,
+            fail_at: choose.fail_at,
+        }
+    }
+    #[step(each, max = 3, price = 200)]
+    fn items(input: &FlowInput) -> Vec<WorkflowItemCall> {
+        (0..input.count)
+            .map(|index| WorkflowItemCall {
+                index,
+                fail_at: input.fail_at,
+            })
+            .collect()
+    }
+    #[step]
+    fn left(input: &FlowInput) -> crate::SpinCall {
+        let _ = input;
+        crate::SpinCall { rounds: 3 }
+    }
+    #[step(each, max = 3, price = 100)]
+    fn later(left: &u64) -> Vec<WorkflowItemCall> {
+        (0..*left as u32)
+            .map(|index| WorkflowItemCall {
+                index,
+                fail_at: None,
+            })
+            .collect()
+    }
+    #[output]
+    fn done(optional: Option<&u32>, items: &[u32], later: &[u32]) -> u32 {
+        optional.copied().unwrap_or(0) + items.iter().sum::<u32>() + later.iter().sum::<u32>()
+    }
+}
+
 struct WorkflowExternal;
 /// Workflow External
 #[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]

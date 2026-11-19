@@ -17,7 +17,7 @@ use berm_api::{
     schema,
     workflow::{
         Offer, Version,
-        graph::{Entry, Kind, Mode, Node, Producer, Selection, Source, Target},
+        graph::{Entry, Kind, Mode, Node, Producer, Source, Target},
         run::{
             Accepted, Binding, Checkpoint, Failure, Item, Prepared, PreparedCall, Run, State,
             Status, Trigger,
@@ -541,20 +541,11 @@ impl<E: Env> Host<E> {
             }
         }
         for guard in &node.guards {
-            let checkpoint = &run.checkpoints[&guard.producer];
-            let selected = match &guard.selection {
-                Selection::Present => matches!(checkpoint.state, State::Succeeded { .. }),
-                Selection::Case { name } => match &checkpoint.state {
-                    State::Succeeded { value } => {
-                        value.as_str() == Some(name)
-                            || value.as_object().is_some_and(|fields| {
-                                fields.len() == 1 && fields.contains_key(name)
-                            })
-                    }
-                    _ => false,
-                },
+            let value = match &run.checkpoints[&guard.producer].state {
+                State::Succeeded { value } => Some(value),
+                _ => None,
             };
-            if !selected {
+            if !guard.selection.selects(value) {
                 return Ok(true);
             }
         }

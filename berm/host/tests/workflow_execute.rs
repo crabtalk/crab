@@ -730,3 +730,53 @@ async fn continuation_reuses_branch_and_items_with_the_original_image() -> Resul
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn a_quote_counts_input_only_priced_steps_and_leaves_the_rest_bounded() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/flow", &image).await?;
+    let quote = host
+        .host
+        .quote_workflow(
+            "owner/flow",
+            "workflow_priced",
+            json!({"count": 2, "take": true}),
+        )
+        .await?;
+    assert_eq!(
+        quote.steps,
+        [("items".to_owned(), 2), ("optional".to_owned(), 1)].into()
+    );
+    assert_eq!(
+        quote.branches,
+        [("choose".to_owned(), "yes".to_owned())].into()
+    );
+    assert!(quote.meter.cpu > 0);
+    let graph = &host
+        .host
+        .workflow_offer("owner/flow", "workflow_priced")?
+        .spec
+        .entry
+        .graph;
+    assert_eq!(graph.price_range(0, &quote.steps), (900, 1200));
+    let skipped = host
+        .host
+        .quote_workflow(
+            "owner/flow",
+            "workflow_priced",
+            json!({"count": 0, "take": false}),
+        )
+        .await?;
+    assert_eq!(
+        skipped.steps,
+        [("items".to_owned(), 0), ("optional".to_owned(), 0)].into()
+    );
+    assert!(
+        host.host
+            .quote_workflow("owner/flow", "workflow_priced", json!({"count": "two"}))
+            .await
+            .is_err()
+    );
+    Ok(())
+}

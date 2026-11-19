@@ -6,6 +6,7 @@ use anyhow::{Result, bail, ensure};
 use berm_abi::workflow as validation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,21 +154,39 @@ pub enum Selection {
     Case { name: String },
 }
 
+impl Selection {
+    /// Whether a producer's succeeded `value` meets this selection; `None` for
+    /// a producer that did not succeed. A branch's value is `{case: payload}`.
+    pub fn selects(&self, value: Option<&Value>) -> bool {
+        match (self, value) {
+            (Self::Present, value) => value.is_some(),
+            (Self::Case { name }, Some(value)) => {
+                value.as_str() == Some(name)
+                    || value
+                        .as_object()
+                        .is_some_and(|fields| fields.len() == 1 && fields.contains_key(name))
+            }
+            (Self::Case { .. }, None) => false,
+        }
+    }
+}
+
 impl Graph {
     /// Whether a step's item count, and whether it runs, follow from the input
-    /// alone: its builder and guards read only the input and branches that do.
-    /// Controls are pure, so such a step's list is known before the run.
+    /// alone. Controls are pure, so such a step's list is known before the run.
     pub fn exact(&self, node: &Node) -> bool {
-        matches!(node.kind, Kind::Step { .. }) && self.reads_input_only(node)
+        matches!(node.kind, Kind::Step { .. }) && self.settled_by_input(node)
     }
 
-    fn reads_input_only(&self, node: &Node) -> bool {
+    /// Whether a node's control and guards read only the input and branches
+    /// that do.
+    pub fn settled_by_input(&self, node: &Node) -> bool {
         let control = |id: &str| {
             self.nodes
                 .iter()
                 .find(|other| other.id == id)
                 .is_some_and(|other| {
-                    matches!(other.kind, Kind::Branch { .. }) && self.reads_input_only(other)
+                    matches!(other.kind, Kind::Branch { .. }) && self.settled_by_input(other)
                 })
         };
         node.dependencies
@@ -177,6 +196,30 @@ impl Graph {
                 Producer::Node { id } => control(id),
             })
             && node.guards.iter().all(|guard| control(&guard.producer))
+    }
+
+    /// The least and most a successful run charges the caller in USD micros:
+    /// `base`, plus each priced step's price times its count in `exact`, or
+    /// times 0 to its `max` for a step `exact` does not name.
+    pub fn price_range(&self, base: u64, exact: &BTreeMap<String, u32>) -> (u64, u64) {
+        let (mut least, mut most) = (base, base);
+        for node in &self.nodes {
+            if let Kind::Step {
+                price: Some(price),
+                mode,
+                ..
+            } = node.kind
+            {
+                match exact.get(&node.id) {
+                    Some(count) => {
+                        least += price * u64::from(*count);
+                        most += price * u64::from(*count);
+                    }
+                    None => most += price * u64::from(mode.maximum()),
+                }
+            }
+        }
+        (least, most)
     }
 
     pub fn check(&self, max_each: u32) -> Result<()> {
