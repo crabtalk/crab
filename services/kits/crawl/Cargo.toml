@@ -13,4 +13,4 @@ categories = ["wasm", "web-programming"]
 berm-lang.workspace = true
 html.workspace = true
 url.workspace = true
-xmlparser.workspace = true
+sitemap.workspace = true

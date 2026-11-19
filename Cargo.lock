@@ -1198,12 +1198,21 @@ name = "crab-seo"
 version = "0.1.7"
 dependencies = [
  "berm-lang",
+ "crab-sitemap",
  "crab-webpage",
  "http-link",
  "language-tags",
  "scraper",
  "serde_json",
  "url",
+]
+
+[[package]]
+name = "crab-sitemap"
+version = "0.1.7"
+dependencies = [
+ "crab-html",
+ "xmlparser",
 ]
 
 [[package]]
@@ -1286,8 +1295,8 @@ version = "0.1.7"
 dependencies = [
  "berm-lang",
  "crab-html",
+ "crab-sitemap",
  "url",
- "xmlparser",
 ]
 
 [[package]]

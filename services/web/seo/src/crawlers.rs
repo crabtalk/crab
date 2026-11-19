@@ -43,13 +43,15 @@ struct Group {
 /// A parsed `robots.txt`.
 pub struct Robots {
     groups: Vec<Group>,
+    pub(crate) sitemaps: Vec<String>,
 }
 
 impl From<&str> for Robots {
     fn from(text: &str) -> Self {
         let mut groups: Vec<Group> = Vec::new();
         let mut open = false;
-        for line in text.lines() {
+        let mut sitemaps = Vec::new();
+        for line in text.trim_start_matches('\u{feff}').lines() {
             let line = line.split('#').next().unwrap_or_default().trim();
             let Some((key, value)) = line.split_once(':') else {
                 continue;
@@ -76,10 +78,11 @@ impl From<&str> for Robots {
                         group.rules.push((rule == "allow", value.to_owned()));
                     }
                 }
+                "sitemap" if !value.is_empty() => sitemaps.push(value.to_owned()),
                 _ => {}
             }
         }
-        Self { groups }
+        Self { groups, sitemaps }
     }
 }
 

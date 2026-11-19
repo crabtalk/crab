@@ -64,6 +64,7 @@ berm-lang = { path = "berm/lang", version = "0.1.7" }
 
 # html
 html = { package = "crab-html", path = "crates/html", version = "0.1.7" }
+sitemap = { package = "crab-sitemap", path = "crates/sitemap", version = "0.1.7" }
 
 # fixtures
 berm-kit = { path = "fixtures/kit" }

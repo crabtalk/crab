@@ -1,6 +1,6 @@
-# SEO check
+# SEO
 
-Inspect one public page for technical SEO and social preview findings. Returns observed metadata and specific findings without a ranking score. Calls need no upstream API key and retain no history.
+Inspect a public page for technical SEO, check whether AI crawlers can read a site, or audit a site and compare findings over time. These operations need no provider key.
 
 ## Call
 
@@ -33,9 +33,23 @@ crab call owner/seo ai_access '{"site":"https://example.com/"}'
 
 Informational findings identify things to review; an absent canonical or multiple h1 headings are not automatically errors. Title and description lengths are not pass/fail rules.
 
+## Site audit
+
+```sh
+crab workflow run owner/seo.audit '{"site":"https://example.com/docs/"}' --yes
+```
+
+`audit` reads `robots.txt` and the same-origin sitemap or sitemap index. Pass the site's root URL for the whole site or a path to narrow it. The workflow samples up to 100 listed URLs and reports sitemap entries blocked by robots rules before fetching them.
+
+The report includes page metadata findings, duplicate titles and descriptions, same-origin canonicals returning a redirect or error, broken internal links, and reachable HTML pages missing from a complete sitemap. It checks up to eight distinct internal links per page and probes up to 100 additional targets across the audit. Discovery reads up to eight sitemap files of 256 KiB each and up to 1,000 distinct URLs. The report marks incomplete discovery, sampling and truncation.
+
+A manual run compares findings with the previous audit for the starting account and site. Verified app-user histories are scoped to the user. It reports new findings first and reports fixed findings when the sample can be compared. Audits with incomplete evidence preserve the previous baseline.
+
+The workflow charges 100 USD micros ($0.0001) per page step that reports an audit result, on a successful run. The quote is bounded by 100 pages. A sitemap entry skipped by robots rules runs no page step.
+
 ## Limits
 
-Inspects the returned UTF-8 HTML and response headers. `ai_access` reads `robots.txt` and `llms.txt` at the root page's origin without following their redirects, up to 512 KiB each, and checks only the root page's path. It does not render JavaScript, crawl the site, fetch robots.txt or linked resources, check rankings or verify indexing. Canonical and hreflang targets are not fetched, and hreflang reciprocity is not checked. HTTP-header and sitemap hreflang annotations are not inspected. JSON-LD contexts are not fetched.
+The page checks inspect the returned UTF-8 HTML and response headers. `ai_access` reads `robots.txt` and `llms.txt` at the root page's origin without following their redirects, up to 512 KiB each, and checks the root path. The checks use static HTTP responses. Use `audit` to check same-origin canonical and internal link targets. Hreflang reciprocity, HTTP-header and sitemap hreflang annotations, and remote JSON-LD contexts are outside the page checks.
 
 Accepts at most 12,000 DOM nodes, 12,000 start tags, 12,000 total attributes, depth 128 and 128 attributes per element. Fetches at most 512 KiB of HTML with up to three redirects and a ten-second timeout per request. Unsupported content types and unsuccessful HTTP responses fail explicitly. Reports include at most twenty h1 texts and twenty missing-alt image samples beside their full counts; metadata reports over 256 KiB fail explicitly. Image sample positions are one-based among all img elements; JSON-LD block positions are one-based among matching scripts. Other evidence lists are complete within the report limit.
 

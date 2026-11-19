@@ -1,4 +1,6 @@
 pub mod access;
+#[cfg(feature = "tools")]
+mod audit;
 pub mod canonical;
 pub mod crawlers;
 pub mod hreflang;

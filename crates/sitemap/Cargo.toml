@@ -1,0 +1,12 @@
+[package]
+name = "crab-sitemap"
+version.workspace = true
+description = "Read Sitemap XML files and sitemap indexes."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+html.workspace = true
+xmlparser.workspace = true

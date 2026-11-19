@@ -38,7 +38,7 @@ pub enum Level {
     Warning,
 }
 
-#[derive(Debug, PartialEq, Eq, Schema)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Schema)]
 pub enum Code {
     MissingTitle,
     MultipleTitles,

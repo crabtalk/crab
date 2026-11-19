@@ -1,5 +1,6 @@
 [database]
-size = "1MiB"
+migrations = "migrations"
+size = "64MiB"
 
 [image]
 name = "web/seo"

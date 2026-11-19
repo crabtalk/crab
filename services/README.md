@@ -6,7 +6,7 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 
 - [Connect](connect/README.md): third-party API integrations.
 - [Agents](agents/README.md): shared agent memory, identities and conversations.
-- [Web](web/README.md): SEO checks, webpage-to-Markdown extraction and website analytics.
+- [Web](web/README.md): SEO checks and audits, webpage-to-Markdown extraction and website analytics.
 - [Ops](ops/README.md): uptime and webhook inboxes.
 
 The catalog directories are `connect`, `agents`, `web` and `ops`. Each service's `image` address selects its publication account; for example, `image = "connect/tinyfish"` publishes to `connect/tinyfish`. A context supplies the server and credentials, which must authorize publication there.

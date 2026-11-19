@@ -19,7 +19,6 @@ mod fetch;
 mod page;
 mod robots;
 mod site;
-mod sitemap;
 pub mod store;
 
 /// Bytes a tick stores before it reads and fetches no more.

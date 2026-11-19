@@ -1,5 +1,9 @@
 //! A sitemap or a sitemap index, as sitemaps.org writes them.
 
+#![no_std]
+
+extern crate alloc;
+
 use alloc::{string::String, vec::Vec};
 use xmlparser::{ElementEnd, Token, Tokenizer};
 
@@ -10,6 +14,8 @@ pub struct Sitemap {
     pub sitemaps: Vec<String>,
     /// Each URL a urlset lists, with its `lastmod` as written.
     pub urls: Vec<(String, Option<String>)>,
+    /// Whether a complete sitemap document was read.
+    pub complete: bool,
 }
 
 impl Sitemap {
@@ -26,10 +32,21 @@ impl Sitemap {
         let mut open = "";
         // How deep the element open is, and the depth of the entry's.
         let (mut depth, mut within) = (0, 0);
-        for token in Tokenizer::from(xml).flatten() {
+        let mut root = None;
+        let mut names = Vec::new();
+        let mut valid = true;
+        for token in Tokenizer::from(xml) {
+            let Ok(token) = token else {
+                sitemap.complete = false;
+                break;
+            };
             match token {
-                Token::ElementStart { local, .. } => {
+                Token::ElementStart { prefix, local, .. } => {
                     open = local.as_str();
+                    names.push((prefix.as_str(), open));
+                    if depth == 0 {
+                        root = Some(open);
+                    }
                     depth += 1;
                     let child = entry.is_some() && depth == within + 1;
                     match open {
@@ -56,11 +73,22 @@ impl Sitemap {
                 }
                 Token::ElementEnd { end, .. } => {
                     let closed = match end {
-                        ElementEnd::Close(_, local) => local.as_str(),
-                        ElementEnd::Empty => open,
+                        ElementEnd::Close(prefix, local) => {
+                            valid &= names.pop() == Some((prefix.as_str(), local.as_str()));
+                            local.as_str()
+                        }
+                        ElementEnd::Empty => {
+                            names.pop();
+                            open
+                        }
                         ElementEnd::Open => continue,
                     };
                     depth -= 1;
+                    if depth == 0 {
+                        sitemap.complete = valid
+                            && root == Some(closed)
+                            && matches!(closed, "urlset" | "sitemapindex");
+                    }
                     match closed {
                         "loc" | "lastmod" => reading = None,
                         "sitemap" | "url" => {
