@@ -77,6 +77,8 @@ The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per
 
 `berm_lang::key::id()` returns the API key ID authenticated by the host, or `None` when no key was supplied. It persists across nested calls and never contains a token. `caller()` still identifies the immediate caller; `user()` identifies the verified end user.
 
+`workflow::run()?` gives a step tool the run and attempt IDs, its node and item index, and the manual caller or scheduled occurrence. Ordinary tools and calls made by the step tool receive `None`. `service()?` reads the deployment address and image digest, `deadline()` reads the milliseconds remaining in the chain, and `call_id()?` reads the call record ID (with the span for nested calls) or the process-local ID of an unrecorded call. These calls are available to tools. Workflow controls can read their inputs.
+
 `#[tool(events = "message.created")]` marks a read-only history source. It takes `cursor: Option<String>` alongside its filters and returns `berm_lang::abi::events::Page<T>`, where `T: Schema` is the event payload. Declare its caller access on `#[tool]`; each read runs under that authorization.
 
 With no cursor, return an empty page at the current head. With a cursor, return committed events strictly after it, in order. Every event carries a stable `id`, its own resume `cursor`, creation time `at` in epoch milliseconds, and typed `data`. The page cursor equals its last event's cursor; an empty page preserves or advances the checkpoint. Cursors must survive restarts. Report expired history as an error. Persist history in the same transaction as the application change. Diagnostic `emit` logs remain available after failed calls and cannot serve this contract.

@@ -82,6 +82,11 @@ pub struct Callsite {
     pub budget: Budget,
     pub control: bool,
     pub workflow: Option<SpendContext>,
+    /// The workflow run this invocation is a step of: set on a step's own
+    /// invocation, not on the calls it makes.
+    pub run: Option<Arc<abi::workflow::Run>>,
+    /// Its service's image digest.
+    pub digest: Arc<str>,
     /// What this service's manifest declares it reaches for.
     pub deps: Arc<Deps>,
     /// Who made this call: whoever the embedder named at the chain's first
@@ -106,6 +111,8 @@ pub struct Callsite {
     pub query: bool,
     /// Which chain this is, unique within the process.
     pub chain: u64,
+    /// The host's call record for this chain, when there is one.
+    pub record: Option<u64>,
     /// This invocation's number in the chain on this runtime: 0 for the first,
     /// then each in the order it began.
     pub span: u32,

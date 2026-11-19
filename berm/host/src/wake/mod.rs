@@ -162,6 +162,7 @@ impl<E: Env> Host<E> {
                     retained_until: None,
                     replay: None,
                     accepted: None,
+                    run: None,
                     workflow: None,
                     operation: None,
                     caller: None,

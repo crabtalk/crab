@@ -535,9 +535,15 @@ impl<E: Env> Host<E> {
                 args,
                 meters.clone(),
             );
+            let outcome = async {
+                match link.run {
+                    Some(run) => berm::workflow::step(run, invoke).await,
+                    None => invoke.await,
+                }
+            };
             let outcome = match link.workflow {
-                Some(context) => berm::workflow::scope(context, invoke).await,
-                None => invoke.await,
+                Some(context) => berm::workflow::scope(context, outcome).await,
+                None => outcome.await,
             };
             let used = meters.take();
             launched = used.values().any(|used| used.calls > 0);

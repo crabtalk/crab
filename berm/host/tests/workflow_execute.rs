@@ -199,6 +199,7 @@ async fn changed_dependency_is_refused_before_tool_dispatch() -> Result<()> {
         workflow: None,
         operation: None,
         accepted: Some(run.accepted.bindings["ask"].clone()),
+        run: None,
         caller: Some("owner/flow".into()),
         from: "owner/flow".into(),
         key: None,
@@ -778,5 +779,135 @@ async fn a_quote_counts_input_only_priced_steps_and_leaves_the_rest_bounded() ->
             .await
             .is_err()
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn step_tools_see_their_manual_or_scheduled_run_context() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/flow", &image).await?;
+    let standalone = host
+        .call_json("owner/flow", "call_context", json!({}))
+        .await?;
+    assert_eq!(standalone["run"], Value::Null);
+    let deployed = host.host.get("owner/flow").unwrap();
+    assert_eq!(standalone["address"], "owner/flow");
+    assert_eq!(standalone["digest"], deployed.digest);
+    assert!(standalone["deadline"].as_u64().unwrap() > 0);
+
+    for (trigger, expected) in [
+        (
+            trigger(),
+            json!({
+                "kind":"manual","account":"caller","key":"key-1",
+                "user":{"issuer":"verified","subject":"reader"}
+            }),
+        ),
+        (
+            Trigger::Schedule {
+                key: "occurrence".into(),
+                at: 60_000,
+            },
+            json!({"kind":"schedule","at":60_000}),
+        ),
+    ] {
+        let run =
+            host.host
+                .prepare_workflow("owner/flow", "workflow_context", json!(2), trigger)?;
+        host.host
+            .workflows
+            .insert(
+                run.clone(),
+                image.clone(),
+                StorageGrant {
+                    scope: "owner".into(),
+                    bytes: u64::MAX,
+                },
+            )
+            .await?;
+        let complete = host.host.execute_workflow(&run.id).await?;
+        assert_eq!(complete.status, Status::Succeeded, "{:?}", complete.error);
+        let items = complete.result.unwrap();
+        let items = items.as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        for (index, item) in items.iter().enumerate() {
+            assert_eq!(
+                item["run"],
+                json!({
+                    "run": run.id,
+                    "workflow": run.workflow,
+                    "attempt": complete.attempts[0].id,
+                    "node": "read",
+                    "item": index,
+                    "trigger": expected,
+                })
+            );
+            assert_eq!(item["address"], standalone["address"]);
+            assert_eq!(item["digest"], standalone["digest"]);
+            assert!(item["deadline"].as_u64().unwrap() > 0);
+            let id = item["id"].as_str().unwrap().strip_prefix("local:").unwrap();
+            let (chain, span) = id.split_once('.').unwrap();
+            assert!(chain.parse::<u64>()? > 0);
+            assert_eq!(span, "0");
+        }
+        assert_ne!(items[0]["id"], items[1]["id"]);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn replay_answers_the_original_context_readings() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    host.deploy("owner/flow", &fixture::image("berm-fixture")?)
+        .await?;
+    let service = host.host.get("owner/flow").unwrap();
+    let recorder = berm::tape::Recorder::default();
+    let args = br#"{"fail":true}"#;
+    let original = service
+        .call_as(
+            None,
+            None,
+            None,
+            berm::Client::default(),
+            "call_context",
+            args.to_vec(),
+            Arc::default(),
+            berm::chain::next(),
+            berm::tape::Taping::Record(recorder.clone()),
+        )
+        .await?;
+    let tape = recorder.tape();
+    assert!(tape.complete);
+    assert_eq!(
+        tape.entries
+            .iter()
+            .map(|entry| entry.syscall.as_str())
+            .collect::<Vec<_>>(),
+        [
+            berm::abi::SERVICE,
+            berm::abi::WORKFLOW_RUN,
+            berm::abi::DEADLINE,
+            berm::abi::CALL_ID
+        ]
+    );
+    let replay = service
+        .call_as(
+            None,
+            None,
+            None,
+            berm::Client::default(),
+            "call_context",
+            args.to_vec(),
+            Arc::default(),
+            berm::chain::next(),
+            berm::tape::Taping::Replay {
+                tape,
+                through: vec![],
+            },
+        )
+        .await?;
+    assert!(matches!(original.result, Output::Failed(_)));
+    assert_eq!(replay.result, original.result);
     Ok(())
 }

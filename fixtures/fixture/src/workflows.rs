@@ -280,3 +280,39 @@ impl WorkflowMail {
         messages.to_vec()
     }
 }
+
+/// Read call context
+///
+/// Can fail with the same context so the host keeps a replay tape.
+#[tool]
+fn call_context(fail: Option<bool>) -> Result<berm_lang::serde_json::Value> {
+    let service = berm_lang::service()?;
+    let context = berm_lang::serde_json::json!({
+        "run": berm_lang::workflow::run()?,
+        "address": service.address,
+        "digest": service.digest,
+        "deadline": berm_lang::deadline(),
+        "id": berm_lang::call_id()?,
+    });
+    if fail == Some(true) {
+        return Err(berm_lang::json::to(&context)?.into());
+    }
+    Ok(context)
+}
+
+struct WorkflowContext;
+/// Read the run context from a step
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
+impl WorkflowContext {
+    #[step(each, max = 2)]
+    fn read(input: &u32) -> Vec<CallContextCall> {
+        (0..*input)
+            .map(|_| CallContextCall { fail: None })
+            .collect()
+    }
+
+    #[output]
+    fn done(read: &[berm_lang::serde_json::Value]) -> Vec<berm_lang::serde_json::Value> {
+        read.to_vec()
+    }
+}

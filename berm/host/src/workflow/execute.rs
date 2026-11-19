@@ -8,7 +8,10 @@ use anyhow::{Context, Result, bail, ensure};
 use axum::http::StatusCode;
 use berm::{
     Caller, Client, Link as InvocationLink, MemoryLimit, Meters, Refused, Service,
-    abi::workflow::{ControlInput, ControlOutput, ControlValue},
+    abi::workflow::{
+        ControlInput, ControlOutput, ControlValue, Run as StepRun, Trigger as StepTrigger,
+        User as StepUser,
+    },
     control, workflow,
 };
 use berm_api::{
@@ -772,6 +775,24 @@ impl<E: Env> Host<E> {
                     issuer: user.issuer.clone(),
                     subject: user.subject.clone(),
                 });
+            let context = StepRun {
+                run: run.id.clone(),
+                workflow: run.workflow.clone(),
+                attempt: execution.claim.attempt.clone(),
+                node: node.id.clone(),
+                item: checkpoint.items[index].index,
+                trigger: match &run.trigger {
+                    Trigger::Manual { caller } => StepTrigger::Manual {
+                        account: caller.id.clone(),
+                        key: caller.key.clone(),
+                        user: caller.user.as_ref().map(|user| StepUser {
+                            issuer: user.issuer.clone(),
+                            subject: user.subject.clone(),
+                        }),
+                    },
+                    Trigger::Schedule { at, .. } => StepTrigger::Schedule { at: *at },
+                },
+            };
             let args = serde_json::to_vec(&prepared.input)?;
             let local = target.is_some();
             let replay = checkpoint.items[index]
@@ -797,9 +818,11 @@ impl<E: Env> Host<E> {
                         Arc::from(binding.service.as_str()),
                     ]),
                 };
-                let outcome = target
-                    .link(link, call.target.tool(), args, meters.clone())
-                    .await;
+                let outcome = workflow::step(
+                    context,
+                    target.link(link, call.target.tool(), args, meters.clone()),
+                )
+                .await;
                 match outcome {
                     Ok(outcome) => self
                         .commit_outcome(outcome)
@@ -817,6 +840,7 @@ impl<E: Env> Host<E> {
                         .last()
                         .map(|dispatch| dispatch.id.clone()),
                     accepted: Some(binding.clone()),
+                    run: Some(context),
                     caller: Some(run.service.clone()),
                     from: run.service.clone(),
                     key: identity.and_then(|caller| caller.key.clone()),

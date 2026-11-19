@@ -17,7 +17,7 @@ let outcome = berm.call(None, "example", "echo", br#"{"query":"hi"}"#.to_vec()).
 
 The linked Wasm imports identify the host calls a service needs. A host refuses deployment when it cannot serve an imported call.
 
-berm serves `berm.call`, which resolves a name against the set berm already holds, and the reads of a call's own context: `berm.caller`, `berm.user`, `berm.client`, `berm.client.ip`, `berm.now`, `berm.trace` and `berm.deny`.
+berm serves `berm.call`, which resolves a name against the set berm already holds, and the reads of a call's own context: `berm.caller`, `berm.user`, `berm.client`, `berm.client.ip`, `berm.workflow.run`, `berm.service`, `berm.deadline`, `berm.call.id`, `berm.now`, `berm.trace` and `berm.deny`.
 
 `berm.client` returns the daily opaque key; `berm.client.ip` returns the outside IP. Both follow the call chain.
 

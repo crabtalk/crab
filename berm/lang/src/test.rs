@@ -71,7 +71,12 @@ pub fn answer(service: &str, tool: &str, result: Result<&[u8], CallError>) {
     });
 }
 
-/// Drop every answer [`answer`], response [`respond`] and var [`var`]
+/// Arrange the workflow context returned by [`crate::workflow::run`].
+pub fn run(run: Option<crate::workflow::Run>) {
+    sys::with(|host| host.run = run);
+}
+
+/// Drop workflow context and every answer [`answer`], response [`respond`] and var [`var`]
 /// arranged, and every request [`fetched`] recorded.
 pub fn forget() {
     sys::with(|host| {
@@ -79,6 +84,7 @@ pub fn forget() {
         host.responses.clear();
         host.fetched.clear();
         host.vars.clear();
+        host.run = None;
     });
 }
 

@@ -218,6 +218,22 @@ macro_rules! host_calls {
             /// Fill `(ptr, len)` with bytes from the operating system's secure random
             /// source. `(ptr, len) -> 0`
             RANDOM = "berm.random";
+
+            /// The workflow run this invocation is a step of. `(ptr, len) -> staged length`,
+            /// ignored. The reply is a [`workflow::Run`] as JSON, or nothing outside a run.
+            WORKFLOW_RUN = "berm.workflow.run";
+
+            /// This deployment. `(ptr, len) -> staged length`, ignored. The reply is its
+            /// address and its image's digest.
+            SERVICE = "berm.service";
+
+            /// Milliseconds left before the host stops this chain. `(0, 0) -> millis`
+            DEADLINE = "berm.deadline";
+
+            /// The host call record ID, with a `.span` suffix for nested calls.
+            /// For unrecorded calls it is `local:chain.span`, scoped to the process.
+            /// `(ptr, len) -> staged length`, ignored. The reply is one field.
+            CALL_ID = "berm.call.id";
         }
     };
 }

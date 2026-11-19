@@ -268,6 +268,9 @@ pub struct Link {
     pub replay: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accepted: Option<crate::workflow::run::Binding>,
+    /// The dispatch's guest context, present only on a workflow's direct link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<berm_abi::workflow::Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<crate::workflow::spend::Context>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

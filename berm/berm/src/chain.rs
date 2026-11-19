@@ -11,3 +11,28 @@ static CHAINS: AtomicU64 = AtomicU64::new(0);
 pub fn next() -> u64 {
     CHAINS.fetch_add(1, Ordering::Relaxed) + 1
 }
+
+/// A runtime chain number and the host's call record, when it has one.
+pub struct Id {
+    pub(crate) number: u64,
+    pub(crate) record: Option<u64>,
+}
+
+impl Id {
+    /// Start a new chain whose first call has a host record.
+    pub fn recorded(call: u64) -> Self {
+        Self {
+            number: next(),
+            record: Some(call),
+        }
+    }
+}
+
+impl From<u64> for Id {
+    fn from(number: u64) -> Self {
+        Self {
+            number,
+            record: None,
+        }
+    }
+}

@@ -430,3 +430,26 @@ async fn refused_invocation_scope_prevents_writes() -> Result<()> {
     assert!(state["note"].is_null());
     Ok(())
 }
+
+#[tokio::test]
+async fn guest_call_id_matches_the_host_record() -> Result<()> {
+    let host = fixture().await?;
+    let (_, output) = host
+        .host
+        .call(
+            FIXTURE,
+            Some(&caller()),
+            "call_context",
+            b"{}".to_vec(),
+            false,
+        )
+        .await?;
+    let Output::Done(context) = output else {
+        panic!("{output:?}")
+    };
+    let context: serde_json::Value = serde_json::from_str(&context)?;
+    let (calls, _) = host.host.calls(FIXTURE, page()).await?;
+    assert_eq!(calls.len(), 1);
+    assert_eq!(context["id"], calls[0].id.to_string());
+    Ok(())
+}

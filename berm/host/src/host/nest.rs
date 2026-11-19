@@ -79,7 +79,7 @@ pub(crate) fn calls<E: Env>(
             let host = host.clone();
             Arc::new(move |at: &Callsite, tool: &str, used: Meter, ran: Ran| {
                 let host = host.upgrade();
-                let call = host.as_ref().and_then(|host| host.logs.run(at.chain));
+                let call = at.record;
                 if let (Some(host), Some(call), Some(parent)) = (&host, call, at.parent) {
                     host.calls.nested(
                         call,
@@ -122,6 +122,7 @@ pub(crate) fn calls<E: Env>(
                     retained_until: None,
                     replay: None,
                     accepted: None,
+                    run: None,
                     workflow: at.workflow.clone(),
                     operation: at
                         .workflow
