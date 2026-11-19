@@ -38,7 +38,9 @@ impl<E: Env> Host<E> {
             .iter()
             .find(|spec| spec.entry.name == workflow)
             .ok_or_else(|| deny(StatusCode::NOT_FOUND, "no such workflow"))?;
-        schema::validate(&spec.entry.graph.input, &input)?;
+        schema::validate(&spec.entry.graph.input, &input).map_err(|error| -> anyhow::Error {
+            deny(StatusCode::UNPROCESSABLE_ENTITY, error.to_string()).into()
+        })?;
         let graph = &spec.entry.graph;
         let deadline = Instant::now() + self.deadline.min(Duration::from_secs(60));
         let meters = Arc::new(Meters::default());

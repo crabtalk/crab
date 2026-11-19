@@ -1,4 +1,9 @@
-use crate::{Denied, api::serve::Named, env::Env, host::Host};
+use crate::{
+    Denied,
+    api::serve::{Named, WorkflowName},
+    env::Env,
+    host::Host,
+};
 use axum::{
     Extension, Json, Router,
     extract::{Path, Request, State},
@@ -42,7 +47,7 @@ async fn inspect<E: Env>(
 async fn quote<E: Env>(
     State(host): State<Host<E>>,
     Extension(Named(service)): Extension<Named>,
-    Path(workflow): Path<String>,
+    Path(WorkflowName { workflow }): Path<WorkflowName>,
     Json(input): Json<serde_json::Value>,
 ) -> Result<Json<Quote>, Denied> {
     Ok(Json(host.quote_workflow(&service, &workflow, input).await?))

@@ -394,9 +394,10 @@ async fn workflow_binding<E: Env>(
     Ok(Json(host.workflow_binding(&service, &tool)?))
 }
 
+/// A workflow's name from a route nested under any service path.
 #[derive(Deserialize)]
-struct WorkflowName {
-    workflow: String,
+pub(crate) struct WorkflowName {
+    pub(crate) workflow: String,
 }
 
 async fn export<E: Env>(
