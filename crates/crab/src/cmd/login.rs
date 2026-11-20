@@ -89,19 +89,21 @@ fn device(name: &str, host: &str) -> Result<()> {
 
 /// Keep `token` as context `name` on `host`, and use it from now on.
 fn keep(name: &str, host: &str, token: String, account: Option<PublicAccount>) -> Result<()> {
-    let who = match account {
-        Some(account) => account.handle.unwrap_or(account.id),
+    let (id, handle) = match account {
+        Some(account) => (account.id, account.handle),
         None => {
             let me = runtime::wait(Client::new(host).token(&token).me())?;
-            me.user.handle.unwrap_or(me.user.id)
+            (me.user.id, me.user.handle)
         }
     };
+    let who = handle.unwrap_or_else(|| id.clone());
     let mut contexts = Contexts::load()?;
     contexts.contexts.insert(
         name.to_owned(),
         Context {
             host: host.to_owned(),
             token: Some(token),
+            account_id: Some(id),
             owner: Some(Owner::User(who.clone())),
         },
     );

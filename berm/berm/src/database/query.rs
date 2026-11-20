@@ -76,6 +76,7 @@ pub(crate) fn guard(conn: &Connection) -> Result<()> {
 /// wrote, and the CPU time the thread running it spent, in microseconds.
 pub struct Answer {
     pub json: String,
+    pub readonly: bool,
     pub read: u64,
     pub written: u64,
     pub cpu: u64,
@@ -101,7 +102,8 @@ pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> 
         if prepared.expanded_sql().is_none() {
             bail!("there is no statement to run");
         }
-        if read_only && !prepared.readonly() {
+        let readonly = prepared.readonly();
+        if read_only && !readonly {
             return Err(Refused("a query cannot write".to_owned()).into());
         }
         let mut out = Vec::new();
@@ -137,6 +139,7 @@ pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> 
         write!(out, r#"],"read":{read},"written":{written}}}"#)?;
         Ok(Answer {
             json: String::from_utf8(out)?,
+            readonly,
             read,
             written,
             cpu: cpu::now().saturating_sub(start) / 1_000,

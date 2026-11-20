@@ -34,6 +34,7 @@ pub mod secret;
 pub mod start;
 pub mod status;
 pub mod stop;
+pub mod storage;
 pub mod sunset;
 pub mod update;
 pub mod usage;

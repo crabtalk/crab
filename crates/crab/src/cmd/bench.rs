@@ -341,6 +341,7 @@ impl Report {
             host.deploy(
                 &manifest.name,
                 Deploy {
+                    storage_id: None,
                     reference: digest.clone(),
                     digest,
                     force: true,
@@ -515,7 +516,7 @@ pub fn run(cloud: &Client, bench: &Bench, json: bool) -> Result<ExitCode> {
         bench.runs,
         bench.live_http,
         &metering,
-        project.database.size(),
+        project.storage.size(),
     ))?;
     report.rates_source = source.to_owned();
     if json {

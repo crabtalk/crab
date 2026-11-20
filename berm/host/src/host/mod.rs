@@ -15,9 +15,10 @@ use crate::{
         usage::{self, Counts},
     },
     state::{
-        self, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql, stop::Stops,
-        store::Store,
+        self, caller, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql,
+        stop::Stops, store::Store,
     },
+    storage::Repository,
     wake,
     workflow::{Eligibility, Ledger},
 };
@@ -91,7 +92,7 @@ pub struct Inner<E: Env> {
     /// Runs not yet written.
     pub(crate) calls: calls::Pending,
     /// Logs not yet written.
-    pub(crate) logs: logs::Pending,
+    pub(crate) logs: Arc<logs::Pending>,
     /// Meters not yet written.
     pub(crate) meters: Pending,
     /// Held by a flush.
@@ -103,6 +104,7 @@ pub struct Inner<E: Env> {
     pub databases: Arc<Databases>,
     /// Where a chain's changes are committed.
     pub(crate) commits: Commits,
+    caller_storage: Arc<caller::Storage>,
     /// Where the services this host does not run live.
     pub(crate) routes: Routes,
     /// The scopes held.
@@ -185,14 +187,22 @@ impl<E: Env> Host<E> {
             deadline: config.deadline,
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
-        let commits = Commits::new(store.clone(), databases.clone());
+
         let ran = calls::Pending::new(
             now.clone(),
             calls::newest(&store).await?,
             Table::Calls.last(&store).await?,
         );
         let used = Counts::new(now.clone(), Table::Usage.last(&store).await?);
-        let emitted = logs::Pending::new(now.clone(), Table::Logs.last(&store).await?);
+        let emitted = Arc::new(logs::Pending::new(
+            now.clone(),
+            Table::Logs.last(&store).await?,
+        ));
+        let caller_storage = Arc::new(caller::Storage::new(
+            config.databases.join("callers"),
+            emitted.clone(),
+        ));
+        let commits = Commits::new(store.clone(), databases.clone(), caller_storage.clone());
         let metered = Pending::new(now.clone(), Table::Meters.last(&store).await?);
         let chains = (config.instances / (config.depth + 1)).max(1);
         let pools = Arc::new(Pools::new(config.held));
@@ -207,6 +217,7 @@ impl<E: Env> Host<E> {
                 syscalls.push(fetch::syscall(host, proxy, Door::ProxyAll));
             }
             syscalls.extend(state::syscalls(host));
+            syscalls.extend(caller::syscalls());
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
             syscalls.push(secrets::syscall(host));
@@ -240,6 +251,7 @@ impl<E: Env> Host<E> {
                 landing: sync::Mutex::default(),
                 databases,
                 commits,
+                caller_storage,
                 routes,
                 holds,
                 stops,
@@ -252,6 +264,15 @@ impl<E: Env> Host<E> {
                 now,
             }
         })))
+    }
+
+    /// Set the repository before serving calls.
+    pub fn caller_repository(&self, repository: Arc<dyn Repository>) {
+        self.caller_storage
+            .repository
+            .set(repository)
+            .ok()
+            .expect("caller repository is already set");
     }
 
     /// Restore deployment metadata, fire due wakes and write counted uses.
@@ -328,6 +349,7 @@ impl<E: Env> Host<E> {
         let restored = task::spawn_blocking(move || berm.restore(&key, &image, row.code_bytes))
             .await
             .context("restoring a deployment panicked")??;
+        let _ = restored.storage_id.set(row.storage_id);
         if row.code_bytes.is_none() {
             service::footprint(&self.store, &row.scope, &row.name, restored.bytes).await?;
         }

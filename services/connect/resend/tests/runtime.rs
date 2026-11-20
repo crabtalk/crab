@@ -18,6 +18,7 @@ async fn requests_send_only_as_the_owner_and_retries_keep_the_provider_key() -> 
         r#"{"message":"Try later"}"#,
     );
     let mut caller = Caller {
+        account: None,
         id: "alice".into(),
         key: Some("assistant-key".into()),
         app: None,

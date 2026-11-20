@@ -97,6 +97,7 @@ impl<E: Env> Host<E> {
             let before = service::row(&self.store, scope, name)
                 .await?
                 .map(|row| Deploy {
+                    storage_id: None,
                     reference: row.reference,
                     digest: row.digest,
                     force: true,

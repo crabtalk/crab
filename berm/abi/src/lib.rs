@@ -141,6 +141,15 @@ macro_rules! host_calls {
             /// reply is JSON: `{"columns": [..], "rows": [[..]], "read": n, "written": n}`.
             SQL = "berm.sql";
 
+            /// Run one SQL statement against the verified caller's storage.
+            CALLER_SQL = "berm.caller.sql";
+
+            /// Read a key in the verified caller's storage.
+            CALLER_GET = "berm.caller.get";
+
+            /// Write a key in the verified caller's storage.
+            CALLER_SET = "berm.caller.set";
+
             /// Read one var of this service's `[vars]`. `(ptr, len) -> staged length`
             ///
             /// The request's one field is the var's name; the reply is the value this

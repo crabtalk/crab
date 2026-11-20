@@ -18,10 +18,13 @@
 # keywords = { default = "rust, wasm", description = "Words to watch" }
 
 # Storage reservation.
-[database]
+[storage]
 size = "64MiB"
 # A directory of `*.sql` migrations, applied in name order.
 # migrations = "migrations"
+
+# [storage.caller]
+# migrations = "caller"
 
 # When its host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC. A tool left out is not called until its owners set one on the

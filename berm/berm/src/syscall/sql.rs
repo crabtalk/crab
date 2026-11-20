@@ -19,14 +19,14 @@ pub struct Statement {
 /// Serve `berm.sql` against `exec`, handed the callsite and the statement and
 /// answering the reply's JSON. A statement under a `query` ([`Callsite::query`])
 /// may only read.
-pub fn services<E, Ran>(exec: E) -> Syscall
+pub fn services<E, Ran>(name: &'static str, exec: E) -> Syscall
 where
     E: Fn(Callsite, Statement) -> Ran + Send + Sync + 'static,
     Ran: Future<Output = Result<String>> + Send + 'static,
 {
     let exec = Arc::new(exec);
     Syscall {
-        name: abi::SQL.to_owned(),
+        name: name.to_owned(),
         call: Arc::new(move |at: Callsite, request: Vec<u8>| {
             let exec = exec.clone();
             Box::pin(async move {

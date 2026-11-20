@@ -9,6 +9,9 @@ impl Scope for Entered {
             if let Some(admitted) = &mut self.admitted {
                 admitted.complete().await?;
             }
+            if let Some(caller) = &self.caller {
+                caller.complete()?;
+            }
             Ok(())
         })
     }
@@ -25,10 +28,14 @@ impl Scope for Entered {
             let Entered {
                 commits,
                 held,
+                caller,
                 admitted,
                 first,
             } = *self;
             let took = held.took().map(str::to_owned);
+            if let Some(caller) = caller {
+                caller.commit().await?;
+            }
             held.commit().await?;
             let changes = if first {
                 commits.commit(Changes::default(), took).await?;

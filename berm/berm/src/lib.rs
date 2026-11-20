@@ -133,6 +133,8 @@ pub struct Callsite {
     /// Its service's database, once [`Callsite::database`] resolved it.
     #[cfg(feature = "sqlite")]
     pub(crate) database: Arc<database::Kept>,
+    #[cfg(feature = "sqlite")]
+    pub caller_database: Arc<std::sync::OnceLock<Arc<database::CallerDatabase>>>,
 }
 
 impl Callsite {

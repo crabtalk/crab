@@ -1,5 +1,5 @@
 //! This service's SQLite storage, declared in `crab.toml` with
-//! `[database] migrations = "migrations"`.
+//! `[storage] migrations = "migrations"`.
 
 use crate::{
     abi::wire,
@@ -20,8 +20,16 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 /// let found = berm_lang::sql("SELECT title FROM items WHERE id = ?", "[42]")?;
 /// ```
 pub fn sql(statement: &str, params: &str) -> Result<String, CallError> {
+    execute(sys::SQL, statement, params)
+}
+
+pub(crate) fn execute(
+    syscall: fn(usize, usize) -> u64,
+    statement: &str,
+    params: &str,
+) -> Result<String, CallError> {
     let reply = host::call(
-        sys::SQL,
+        syscall,
         &wire::request(&[statement.as_bytes(), params.as_bytes()]),
     )?;
     String::from_utf8(reply)
@@ -44,6 +52,14 @@ pub fn rows<T: DeserializeOwned>(
     statement: &str,
     params: &impl Serialize,
 ) -> Result<Vec<T>, CallError> {
-    let answer: Answer<T> = json::from(&sql(statement, &json::to(params)?)?)?;
+    query(sys::SQL, statement, params)
+}
+
+pub(crate) fn query<T: DeserializeOwned>(
+    syscall: fn(usize, usize) -> u64,
+    statement: &str,
+    params: &impl Serialize,
+) -> Result<Vec<T>, CallError> {
+    let answer: Answer<T> = json::from(&execute(syscall, statement, &json::to(params)?)?)?;
     Ok(answer.rows)
 }

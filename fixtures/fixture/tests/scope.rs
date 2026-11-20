@@ -29,6 +29,7 @@ async fn a_scope_lists_each_service_s_calls_newest_first() -> Result<()> {
         host.deploy(service, &image).await?;
     }
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: None,
@@ -80,6 +81,7 @@ async fn a_search_finds_the_calls_whose_logs_hold_its_text() -> Result<()> {
     host.deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: None,
@@ -136,6 +138,7 @@ async fn a_scope_counts_its_calls_by_time_and_by_facet() -> Result<()> {
         host.deploy(service, &image).await?;
     }
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: None,

@@ -216,6 +216,7 @@ async fn committed_events_are_targeted_deduplicated_and_resumable() -> Result<()
     let c = host.register("alice", "Other").await?;
     let conversation = host.conversation(&[&a, &b, &c]).await?;
     let caller = Caller {
+        account: None,
         id: "alice".into(),
         app: None,
         user: None,
@@ -289,6 +290,7 @@ async fn committed_events_are_targeted_deduplicated_and_resumable() -> Result<()
         .await?;
     assert!(empty.events.is_empty());
     let bob = Caller {
+        account: None,
         id: "bob".into(),
         ..caller.clone()
     };

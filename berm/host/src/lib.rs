@@ -42,6 +42,7 @@ mod host;
 mod images;
 mod record;
 mod state;
+pub mod storage;
 #[cfg(feature = "test")]
 pub mod test;
 mod wake;

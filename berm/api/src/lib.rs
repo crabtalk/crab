@@ -31,6 +31,7 @@ pub mod schedule;
 pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;
+pub mod storage;
 pub mod text;
 pub mod webhook;
 pub mod workflow;

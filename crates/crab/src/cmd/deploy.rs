@@ -138,6 +138,7 @@ impl Deploy {
         };
         let request = DeployRequest {
             reference,
+            size: client.owner.is_none().then_some(effective.database_size),
             overrides,
             auto_upgrade: self.auto_upgrade.then_some(true),
             force: self.force,

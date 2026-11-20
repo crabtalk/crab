@@ -120,6 +120,7 @@ async fn outside_calls_use_the_host_supplied_address() -> Result<()> {
     host.deploy("acct/fixture", &fixture::image("berm-fixture")?)
         .await?;
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: None,

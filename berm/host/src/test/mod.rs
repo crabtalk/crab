@@ -292,6 +292,7 @@ impl TestHost {
             members.push((
                 (*service).to_owned(),
                 Deploy {
+                    storage_id: None,
                     reference,
                     digest,
                     force: false,
@@ -334,6 +335,7 @@ impl TestHost {
             members.push((
                 (*service).to_owned(),
                 Deploy {
+                    storage_id: None,
                     reference: format!("test/{service}"),
                     digest,
                     force: false,
@@ -372,6 +374,7 @@ impl TestHost {
             .deploy(
                 service,
                 Deploy {
+                    storage_id: None,
                     reference,
                     digest,
                     force: true,

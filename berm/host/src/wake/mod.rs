@@ -159,6 +159,7 @@ impl<E: Env> Host<E> {
                     bail!("no service named {:?} is deployed", wake.service);
                 };
                 let link = Link {
+                    scheduled: true,
                     retained_until: None,
                     replay: None,
                     accepted: None,

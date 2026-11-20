@@ -21,6 +21,7 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use berm_api::{Sequence, host::DatabaseUsage};
+pub use caller::CallerDatabase;
 pub use lock::Held;
 pub use query::Answer;
 use rusqlite::{Connection, OptionalExtension};
@@ -37,6 +38,7 @@ use std::{
 };
 use tokio::sync::{Mutex, oneshot};
 
+mod caller;
 mod export;
 mod lock;
 mod query;

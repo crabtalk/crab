@@ -85,8 +85,19 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         logo: project.image.as_ref().and_then(|image| image.logo.clone()),
         buffer: project.buffer(),
         deps: project.deps(),
-        database: migrations(service.manifest_path.dir(), &project)?,
-        database_size: project.database.size(),
+        database: project
+            .storage
+            .migrations
+            .as_deref()
+            .map(|dir| migrations(&service.manifest_path.dir().join(dir)))
+            .transpose()?,
+        caller_storage: project
+            .storage
+            .caller
+            .as_ref()
+            .map(|caller| migrations(&service.manifest_path.dir().join(&caller.migrations)))
+            .transpose()?,
+        database_size: project.storage.size(),
         workflows: Default::default(),
         crons: Default::default(),
         credential_hosts: project.credential_hosts(),
@@ -128,6 +139,12 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
     let bare = Image(&bare).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;
     let declared = Manifest::try_from(bare.as_slice())
         .with_context(|| format!("{} is not a service", service.name))?;
+    if project.storage.size.is_none()
+        && project.storage.seed.is_none()
+        && declared.accepts_database_size(0)
+    {
+        record.database_size = 0;
+    }
     for (name, schedule) in &project.schedules {
         if let Some(tool) = declared.tools.iter().find(|tool| tool.name == *name) {
             if !tool.cron {
@@ -228,7 +245,12 @@ fn kits(artifacts: &[Artifact], service: &ManifestPath, guest: &Path) -> Result<
             }
             .with_context(|| format!("the kit {name}"))?;
             Ok(Kit {
-                database: migrations(artifact.manifest_path.dir(), &project)?,
+                database: project
+                    .storage
+                    .migrations
+                    .as_deref()
+                    .map(|dir| migrations(&artifact.manifest_path.dir().join(dir)))
+                    .transpose()?,
                 deps: project.deps(),
                 id: project.id.clone(),
                 name,
@@ -238,16 +260,11 @@ fn kits(artifacts: &[Artifact], service: &ManifestPath, guest: &Path) -> Result<
         .collect()
 }
 
-/// The `*.sql` files in the directory `[database] migrations` names, relative
-/// to `dir`, by name.
-fn migrations(dir: &Path, project: &Project) -> Result<Option<Database>> {
-    let Some(migrations) = &project.database.migrations else {
-        return Ok(None);
-    };
-    let path = dir.join(migrations);
+/// Read the migrations in `path` in filename order.
+fn migrations(path: &Path) -> Result<Database> {
     let unreadable = |e| anyhow::Error::new(e).context(format!("cannot read {}", path.display()));
     let mut read = Vec::new();
-    for entry in fs::read_dir(&path).map_err(unreadable)? {
+    for entry in fs::read_dir(path).map_err(unreadable)? {
         let file = entry.map_err(unreadable)?.path();
         if file.extension().is_none_or(|extension| extension != "sql") {
             continue;
@@ -262,5 +279,5 @@ fn migrations(dir: &Path, project: &Project) -> Result<Option<Database>> {
         read.push(Migration { name, sql });
     }
     read.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(Some(Database { migrations: read }))
+    Ok(Database { migrations: read })
 }

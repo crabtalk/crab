@@ -48,6 +48,7 @@ pub struct Service {
     pub bytes: u64,
     /// Read from the image at load, without running anything.
     pub manifest: Manifest,
+    pub storage_id: std::sync::OnceLock<String>,
     /// The manifest's deps, as every invocation's [`Callsite`] carries them.
     deps: Arc<Deps>,
     /// Tool metadata, independent of executable residency.
@@ -208,6 +209,7 @@ impl Service {
             issuer: (calls.named)(&name).into(),
             name,
             digest: digest::hex(image),
+            storage_id: Default::default(),
             image: source,
             reserve: engine.reserve.clone(),
             bytes,
@@ -313,6 +315,7 @@ impl Service {
             imports: _,
             buffer: _,
             database: _,
+            caller_storage: _,
             database_size: _,
             kits: _,
             deps,
@@ -635,6 +638,8 @@ impl Service {
             own: Arc::new(Own::new(budget.read, budget.written)),
             #[cfg(feature = "sqlite")]
             database: Arc::default(),
+            #[cfg(feature = "sqlite")]
+            caller_database: Arc::default(),
         };
         at.meter(Meter {
             runs: u64::from(depth == 1 && !control),

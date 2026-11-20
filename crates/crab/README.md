@@ -36,7 +36,7 @@ tick = "*/5 * * * *"
 keywords = { default = "rust, wasm", description = "Words to watch" }
 
 # What the service's database may hold: 1GiB when unset, from 64KiB to 10GiB.
-[database]
+[storage]
 size = "2GiB"
 # A SQLite database, relative to this file, a service on Cloud starts from on its first deploy.
 seed = "seed.sqlite"
@@ -51,7 +51,9 @@ logo = "https://example.com/logo.svg"
 
 Tools declare access, price, catalog and `budget(...)` on `#[tool]`. Access defaults to `"public"`; `"anonymous"`, `"accounts"`, `"services"` and `"internal"` select other callers. Price is in USD micros, at least 100 when set. The title is the first doc-comment line, at most 60 characters and without a final period; the remaining comment is the description. Every declaration, including price, is compiled into the image. `crab.toml` refuses `[tools]`.
 
-The build embeds `[database] size` as the image's default reservation. New deployments use it when no size is supplied; redeployments keep their existing reservation unless explicitly resized. Images built without a default use 1 GiB.
+The build embeds `[storage] size` as the image's default reservation. New deployments use it when no size is supplied; redeployments keep their existing reservation unless explicitly resized. The default is 1 GiB for shared storage and zero for a service using caller storage alone.
+
+Declare caller storage with `[storage.caller]` and its migration directory. Service code uses `berm_lang::caller_storage` to read and write data scoped to the verified caller. On Cloud, the billed account's plan bounds the bytes held. Use `crab storage` to list your files and `crab callers NAME` to see caller metadata for a service you operate.
 
 The build embeds `[schedules]` in the image. Every deploy applies those schedules; an omitted tool has no schedule. Build a new image to change them; published-image copies use their selected release's schedules. A write that would take the database past `size` fails, and a deploy is refused while the database holds more than its `size`. On a service's first deploy to Cloud, `crab up` uploads a copy of `seed` and the service's SQL and key-value data start from it. SQL seeds must hold to the image's migrations: those recorded as applied are the image's first, unchanged. Services without SQL accept a seed containing only exported key-value state. An existing service takes no seed, and the local host takes none.
 

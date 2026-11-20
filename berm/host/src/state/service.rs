@@ -24,6 +24,7 @@ pub(crate) struct Row {
     /// The project it was last deployed in.
     pub project: Option<String>,
     pub code_bytes: Option<u64>,
+    pub storage_id: String,
 }
 
 impl Row {
@@ -38,7 +39,7 @@ pub(crate) async fn all(store: &Store) -> Result<Vec<Row>> {
     store
         .read(|conn| {
             let mut statement = conn.prepare(
-                "SELECT scope, name, reference, digest, size, project, code_bytes FROM services",
+                "SELECT scope, name, reference, digest, size, project, code_bytes, storage_id FROM services",
             )?;
             let rows = statement.query_map([], |row| {
                 Ok(Row {
@@ -49,6 +50,7 @@ pub(crate) async fn all(store: &Store) -> Result<Vec<Row>> {
                     size: row.get::<_, i64>(4)? as u64,
                     project: row.get(5)?,
                     code_bytes: row.get::<_, Option<i64>>(6)?.map(|bytes| bytes as u64),
+                    storage_id: row.get(7)?,
                 })
             })?;
             rows.collect()
@@ -62,7 +64,7 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
     store
         .read(move |conn| {
             conn.query_row(
-                "SELECT scope, name, reference, digest, size, project, code_bytes FROM services
+                "SELECT scope, name, reference, digest, size, project, code_bytes, storage_id FROM services
                   WHERE scope = ?1 AND name = ?2",
                 params![scope, name],
                 |row| {
@@ -74,6 +76,7 @@ pub(crate) async fn row(store: &Store, scope: &str, name: &str) -> Result<Option
                         size: row.get::<_, i64>(4)? as u64,
                         project: row.get(5)?,
                         code_bytes: row.get::<_, Option<i64>>(6)?.map(|bytes| bytes as u64),
+                    storage_id: row.get(7)?,
                     })
                 },
             )
@@ -88,7 +91,7 @@ pub(crate) async fn scoped(store: &Store, scope: &str) -> Result<HashMap<String,
     store
         .read(move |conn| {
             conn.prepare(
-                "SELECT scope, name, reference, digest, size, project, code_bytes FROM services WHERE scope = ?1",
+                "SELECT scope, name, reference, digest, size, project, code_bytes, storage_id FROM services WHERE scope = ?1",
             )?
             .query_map(params![scope], |row| {
                 Ok((
@@ -101,6 +104,7 @@ pub(crate) async fn scoped(store: &Store, scope: &str) -> Result<HashMap<String,
                         size: row.get::<_, i64>(4)? as u64,
                         project: row.get(5)?,
                     code_bytes: row.get::<_, Option<i64>>(6)?.map(|bytes| bytes as u64),
+                    storage_id: row.get(7)?,
                     },
                 ))
             })?
@@ -139,6 +143,7 @@ pub(crate) async fn install(
     version: &str,
     size: u64,
     code_bytes: u64,
+    storage_id: &str,
     deprecated: Vec<String>,
     cron_tools: Vec<String>,
     crons: BTreeMap<String, String>,
@@ -150,11 +155,11 @@ pub(crate) async fn install(
     now: i64,
     seed: Option<PathBuf>,
 ) -> Result<()> {
-    let row = [scope, name, reference, digest, version].map(str::to_owned);
+    let row = [scope, name, reference, digest, version, storage_id].map(str::to_owned);
     let declared = declare(&cron_tools, &crons, now)?;
     store
         .run(move |conn| {
-            let [scope, name, reference, digest, version] = row;
+            let [scope, name, reference, digest, version, storage_id] = row;
             if let Some(seed) = &seed {
                 conn.execute("ATTACH DATABASE ?1 AS export_seed", [seed.to_string_lossy().as_ref()])?;
             }
@@ -162,12 +167,13 @@ pub(crate) async fn install(
                 let tx = conn.transaction()?;
                 tx.execute(
                     "INSERT INTO services
-                         (scope, name, reference, digest, version, size, stopped, project, code_bytes)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                         (scope, name, reference, digest, version, size, stopped, project, code_bytes, storage_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                      ON CONFLICT (scope, name) DO UPDATE
                         SET reference = excluded.reference, digest = excluded.digest,
                             version = excluded.version, size = excluded.size,
                             stopped = excluded.stopped, code_bytes = excluded.code_bytes,
+                            storage_id = excluded.storage_id,
                             project = COALESCE(excluded.project, services.project),
                             updated_at = unixepoch()",
                     params![
@@ -179,7 +185,8 @@ pub(crate) async fn install(
                         size as i64,
                         stopped,
                         project,
-                        code_bytes as i64
+                        code_bytes as i64,
+                        storage_id
                     ],
                 )?;
                 deprecate(&tx, &scope, &name, &deprecated, now)?;

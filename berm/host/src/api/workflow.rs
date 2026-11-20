@@ -60,6 +60,7 @@ async fn start<E: Env>(
     Json(request): Json<Start>,
 ) -> Result<(StatusCode, Json<Record>), Denied> {
     let caller = caller.map(|Extension(caller)| caller).unwrap_or(Caller {
+        account: None,
         id: String::new(),
         key: None,
         app: None,

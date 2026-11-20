@@ -20,11 +20,7 @@ impl Client {
     /// Stream the service's seed-compatible SQLite data export.
     pub async fn export(&self, name: &str) -> Result<reqwest::Response, Error> {
         let path = format!("{}{}", self.path_of(name), host::EXPORT);
-        let response = self.send(self.at(Method::GET, &path)).await?;
-        if response.status().is_success() {
-            return Ok(response);
-        }
-        Err(Error::refusal(response.status(), response.text().await?))
+        self.stream(self.at(Method::GET, &path)).await
     }
 
     /// Every service the account runs.

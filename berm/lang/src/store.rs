@@ -1,5 +1,5 @@
 //! Persistent values scoped to a service, shared by all its callers.
-//! Caller isolation requires caller-scoped keys.
+//! For values scoped to a caller, see [`crate::caller_storage`].
 
 use crate::{
     abi::wire,
@@ -16,7 +16,14 @@ use alloc::{string::String, vec::Vec};
 /// let seen = berm_lang::get("last-run")?.unwrap_or_default();
 /// ```
 pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
-    let reply = host::call(sys::GET, &wire::request(&[key.as_bytes()]))?;
+    read(sys::GET, key)
+}
+
+pub(crate) fn read(
+    syscall: fn(usize, usize) -> u64,
+    key: &str,
+) -> Result<Option<Vec<u8>>, CallError> {
+    let reply = host::call(syscall, &wire::request(&[key.as_bytes()]))?;
     // One field is a value, a stored empty one included; none is an absent key.
     let Ok(fields) = wire::fields(&reply) else {
         return Err(CallError::Failed(String::from(
@@ -30,7 +37,15 @@ pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
 /// The change commits only when the tool call succeeds with `Ok`. A call that
 /// returns `Err`, traps or exceeds its deadline discards its pending changes.
 pub fn set(key: &str, value: &[u8]) -> Result<(), CallError> {
-    host::call(sys::SET, &wire::request(&[key.as_bytes(), value]))?;
+    write(sys::SET, key, value)
+}
+
+pub(crate) fn write(
+    syscall: fn(usize, usize) -> u64,
+    key: &str,
+    value: &[u8],
+) -> Result<(), CallError> {
+    host::call(syscall, &wire::request(&[key.as_bytes(), value]))?;
     Ok(())
 }
 

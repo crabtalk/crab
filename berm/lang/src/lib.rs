@@ -67,6 +67,7 @@ pub use serde;
 pub use serde_json;
 
 mod call;
+pub mod caller_storage;
 #[doc(hidden)]
 pub mod dispatch;
 mod emit;

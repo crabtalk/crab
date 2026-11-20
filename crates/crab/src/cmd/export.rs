@@ -1,7 +1,10 @@
 use crate::runtime;
 use anyhow::{Context, Result};
 use crabtalk_sdk::client::Client;
-use std::path::{Path, PathBuf};
+use std::{
+    future::Future,
+    path::{Path, PathBuf},
+};
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 
@@ -10,7 +13,13 @@ pub fn run(client: &Client, name: &str, out: Option<&Path>) -> Result<()> {
         "{}.sqlite",
         name.rsplit('/').next().unwrap_or(name)
     ));
-    let path = out.unwrap_or(&default);
+    save(client.export(name), out.unwrap_or(&default))
+}
+
+pub(crate) fn save(
+    response: impl Future<Output = Result<reqwest::Response, crabtalk_sdk::client::Error>>,
+    path: &Path,
+) -> Result<()> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -18,7 +27,7 @@ pub fn run(client: &Client, name: &str, out: Option<&Path>) -> Result<()> {
     let temporary =
         NamedTempFile::new_in(parent).with_context(|| format!("creating {}", path.display()))?;
     runtime::wait(async {
-        let mut response = client.export(name).await?;
+        let mut response = response.await?;
         let mut file = tokio::fs::File::from_std(temporary.reopen()?);
         while let Some(chunk) = response.chunk().await? {
             file.write_all(&chunk).await?;

@@ -4,7 +4,7 @@ id = "115a99982fc0ce031c0a94fad9aa47a0"
 [http]
 fetch = ["openidconnect.googleapis.com"]
 
-[database]
+[storage]
 migrations = "migrations"
 
 [credentials.github]

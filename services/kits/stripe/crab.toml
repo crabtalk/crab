@@ -1,7 +1,7 @@
 # What its applied migrations are kept under in a database; never changes.
 id = "ae651d8d51157671ad3e1299f0654a9d"
 
-[database]
+[storage]
 migrations = "migrations"
 
 [credentials.stripe]

@@ -31,6 +31,9 @@ pub const MAX_DATABASE_SIZE: u64 = 10 << 30;
 /// Who called from outside, as the daemon hands them to the host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Caller {
+    /// The account billed for the call, when it differs from `id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     /// The account calling, or for an app's call, the account owning the app.
     pub id: String,
     /// The authenticated API key ID; never its token.
@@ -51,6 +54,10 @@ pub struct Caller {
 }
 
 impl Caller {
+    pub fn account(&self) -> &str {
+        self.account.as_deref().unwrap_or(&self.id)
+    }
+
     pub fn client_ip(&self) -> Option<IpAddr> {
         self.client.as_deref()?.parse().ok()
     }
@@ -62,7 +69,7 @@ impl Caller {
 }
 
 /// An end user, as an app's identity provider named them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct User {
     pub issuer: String,
     pub subject: String,
@@ -71,6 +78,8 @@ pub struct User {
 /// A deploy: the image `digest` names, published as `reference`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deploy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_id: Option<String>,
     pub reference: String,
     pub digest: String,
     /// Deploy even when it breaks what callers used.
@@ -262,6 +271,8 @@ pub struct Route {
 /// the chain it runs as.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub scheduled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retained_until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

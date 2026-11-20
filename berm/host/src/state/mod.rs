@@ -8,6 +8,7 @@ use crate::{
 use berm::{Callsite, Syscall, syscall};
 use std::sync::Weak;
 
+pub(crate) mod caller;
 pub(crate) mod commit;
 pub(crate) mod hold;
 pub(crate) mod pool;

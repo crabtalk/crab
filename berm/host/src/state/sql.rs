@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::bail;
 use berm::{
-    Callsite, Meter, Syscall,
+    Callsite, Meter, Syscall, abi,
     syscall::sql::{self, Statement},
 };
 use std::sync::Weak;
@@ -14,7 +14,7 @@ use std::sync::Weak;
 /// `berm.sql` for `host`'s services: a query chain reads, any other writes.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     let host = host.clone();
-    sql::services(move |at: Callsite, statement: Statement| {
+    sql::services(abi::SQL, move |at: Callsite, statement: Statement| {
         let kept = host::alive(&host).map(|host| at.database(|| host.kept(&at.service)));
         async move {
             let Some(database) = kept? else {

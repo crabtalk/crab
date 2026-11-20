@@ -1,7 +1,11 @@
+use crate::{context::Contexts, runtime};
 use anyhow::{Result, ensure};
 use berm_api::host::{Caller, User};
 use clap::Args;
-use crabtalk_sdk::client::{self, Client};
+use crabtalk_sdk::{
+    account::auth::Status,
+    client::{self, Client},
+};
 
 #[derive(Args)]
 pub struct Identity {
@@ -31,7 +35,38 @@ impl Identity {
             );
             return Ok(None);
         }
+        let account = if self.caller.is_some() {
+            None
+        } else {
+            let contexts = Contexts::load()?;
+            let signed_in = contexts
+                .current
+                .as_ref()
+                .and_then(|name| contexts.contexts.get(name))
+                .filter(|context| context.token.is_some() && context.owner.is_some())
+                .or_else(|| {
+                    contexts
+                        .contexts
+                        .get("cloud")
+                        .filter(|context| context.token.is_some())
+                });
+            Some(
+                signed_in
+                    .and_then(|context| {
+                        if let Some(id) = &context.account_id {
+                            return Some(id.clone());
+                        }
+                        match runtime::wait(Client::from(context.clone()).auth_status()).ok()? {
+                            Status::Session { account, .. } => Some(account),
+                            Status::ApiKey { key } => Some(key.owner_id),
+                            Status::Local { .. } => None,
+                        }
+                    })
+                    .unwrap_or_default(),
+            )
+        };
         Ok((!self.anonymous).then(|| Caller {
+            account,
             id: self
                 .caller
                 .clone()
