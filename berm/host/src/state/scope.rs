@@ -10,7 +10,7 @@ impl Scope for Entered {
                 admitted.complete().await?;
             }
             if let Some(caller) = &self.caller {
-                caller.complete()?;
+                caller.complete().await?;
             }
             Ok(())
         })

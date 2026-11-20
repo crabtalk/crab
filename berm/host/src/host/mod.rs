@@ -18,7 +18,6 @@ use crate::{
         self, caller, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql,
         stop::Stops, store::Store,
     },
-    storage::Repository,
     wake,
     workflow::{Eligibility, Ledger},
 };
@@ -104,14 +103,14 @@ pub struct Inner<E: Env> {
     pub databases: Arc<Databases>,
     /// Where a chain's changes are committed.
     pub(crate) commits: Commits,
-    caller_storage: Arc<caller::Storage>,
+    pub(crate) caller_storage: Arc<caller::Storage>,
     /// Where the services this host does not run live.
     pub(crate) routes: Routes,
     /// The scopes held.
     pub(crate) holds: Holds,
     /// The services stopped.
     pub(crate) stops: Stops,
-    pub(crate) peers: E::Peers,
+    pub(crate) peers: Arc<E::Peers>,
     pub(crate) images: E::Images,
     pub(crate) secrets: E::Secrets,
     /// [`Edges::layers`] around the host's own service.
@@ -198,9 +197,13 @@ impl<E: Env> Host<E> {
             now.clone(),
             Table::Logs.last(&store).await?,
         ));
+        let peers = Arc::new(peers);
         let caller_storage = Arc::new(caller::Storage::new(
-            config.databases.join("callers"),
+            databases.clone(),
+            store.clone(),
             emitted.clone(),
+            now.clone(),
+            peers.clone(),
         ));
         let commits = Commits::new(store.clone(), databases.clone(), caller_storage.clone());
         let metered = Pending::new(now.clone(), Table::Meters.last(&store).await?);
@@ -217,7 +220,7 @@ impl<E: Env> Host<E> {
                 syscalls.push(fetch::syscall(host, proxy, Door::ProxyAll));
             }
             syscalls.extend(state::syscalls(host));
-            syscalls.extend(caller::syscalls());
+            syscalls.extend(caller::call::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
             syscalls.push(secrets::syscall(host));
@@ -264,15 +267,6 @@ impl<E: Env> Host<E> {
                 now,
             }
         })))
-    }
-
-    /// Set the repository before serving calls.
-    pub fn caller_repository(&self, repository: Arc<dyn Repository>) {
-        self.caller_storage
-            .repository
-            .set(repository)
-            .ok()
-            .expect("caller repository is already set");
     }
 
     /// Restore deployment metadata, fire due wakes and write counted uses.
@@ -399,6 +393,20 @@ impl<E: Env> Host<E> {
                 tracing::warn!(peer, "handing over service usage failed: {e:#}");
             }
         }
+        let reports = self.caller_storage.pending().await?;
+        for batch in reports.chunks(128) {
+            let reports = batch
+                .iter()
+                .map(|pending| pending.report.clone())
+                .collect::<Vec<_>>();
+            match self.peers.caller_usage(&reports).await {
+                Ok(grants) => self.caller_storage.reported(batch, grants).await?,
+                Err(error) => {
+                    tracing::warn!(%error, "reporting caller storage usage failed");
+                    break;
+                }
+            }
+        }
         for service in self.berm.list() {
             self.sample(&service.name).await?;
         }
@@ -430,8 +438,8 @@ impl<E: Env> Host<E> {
             .collect()
     }
 
-    /// Stop running `service` and drop what it committed, its database, its
-    /// wake and its usage. `false` when it was not deployed.
+    /// Remove the service and its shared state. Its caller files remain
+    /// available for caller export and deletion.
     pub async fn remove(&self, service: &str) -> Result<bool> {
         let lock = self
             .deploying
@@ -444,6 +452,9 @@ impl<E: Env> Host<E> {
         self.workflows.invalidate(service).await?;
         self.berm.remove(service);
         self.databases.remove(service)?;
+        if let Some(row) = service::row(&self.store, scope, name).await? {
+            self.caller_storage.retain(&row.storage_id).await?;
+        }
         let removed = service::remove(&self.store, scope, name).await?;
         self.stops.mark(service, false);
         Ok(removed)

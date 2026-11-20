@@ -101,6 +101,13 @@ pub struct Held {
 }
 
 impl Held {
+    pub async fn write(database: &Arc<Database>, at: &crate::Callsite) -> Result<Self> {
+        Ok(Self {
+            writing: Some(database.write(at.chain, at.deadline).await?),
+            marked: Vec::new(),
+        })
+    }
+
     /// The service whose writer the invocation took, if it took one.
     pub fn took(&self) -> Option<&str> {
         self.writing.as_ref().map(|writing| &*writing.database.name)

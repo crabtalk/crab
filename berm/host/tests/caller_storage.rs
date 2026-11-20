@@ -94,16 +94,15 @@ async fn files_are_isolated_migrate_lazily_and_survive_service_removal() -> Resu
     let deployed = host.deploy("counter", &initial).await?;
     let alice = identity("alice");
     let bob = identity("bob");
-    let root = host
-        .host
-        .databases
-        .path("sample")
-        .parent()
-        .unwrap()
-        .join("callers")
-        .join(berm_api::digest::hex(
-            deployed.storage_id.get().unwrap().as_bytes(),
-        ));
+    let id = deployed.storage_id.get().unwrap();
+    let root = host.host.databases.root().join("callers").join(id);
+    let retained = host.host.databases.root().join("retained").join(id);
+    let key = storage::Identity {
+        account: "alice".into(),
+        user: None,
+    }
+    .digest();
+    let filename = format!("{key}.sqlite");
     assert_eq!(count(&host, &alice, "read").await?, 0);
     assert!(!root.exists());
     let error = host
@@ -127,7 +126,7 @@ async fn files_are_isolated_migrate_lazily_and_survive_service_removal() -> Resu
     assert_eq!(one.min(two), 1);
     assert_eq!(one.max(two), 2);
     assert_eq!(count(&host, &bob, "read").await?, 0);
-    assert_eq!(std::fs::read_dir(&root)?.count(), 1);
+    assert!(root.join(&filename).is_file());
 
     host.deploy("counter", &image(Some("not a migration"))?)
         .await?;
@@ -144,9 +143,10 @@ async fn files_are_isolated_migrate_lazily_and_survive_service_removal() -> Resu
     assert_eq!(count(&host, &alice, "read").await?, 12);
     assert_eq!(count(&host, &alice, "read").await?, 12);
     host.host.remove("counter").await?;
-    assert_eq!(std::fs::read_dir(&root)?.count(), 1);
+    assert!(!root.exists());
+    assert!(retained.join(&filename).is_file());
     host.deploy("counter", &initial).await?;
     assert_eq!(count(&host, &alice, "read").await?, 0);
-    assert_eq!(std::fs::read_dir(&root)?.count(), 1);
+    assert!(retained.join(&filename).is_file());
     Ok(())
 }

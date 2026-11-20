@@ -460,7 +460,7 @@ impl TestHost {
 
     /// Write the calls and logs held in memory, as the host's timer does.
     pub async fn flush(&self) -> Result<()> {
-        self.host.flush().await
+        flush(&self.host).await
     }
 
     /// While held, a flush that wrote what it took keeps it in memory too.
@@ -611,3 +611,7 @@ type Grant = (String, String, String);
 /// A clock that stands where the test set it.
 #[derive(Clone)]
 pub struct Manual(Arc<AtomicU64>);
+
+pub async fn flush<E: crate::env::Env>(host: &Host<E>) -> Result<()> {
+    host.flush().await
+}

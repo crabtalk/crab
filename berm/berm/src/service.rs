@@ -638,8 +638,6 @@ impl Service {
             own: Arc::new(Own::new(budget.read, budget.written)),
             #[cfg(feature = "sqlite")]
             database: Arc::default(),
-            #[cfg(feature = "sqlite")]
-            caller_database: Arc::default(),
         };
         at.meter(Meter {
             runs: u64::from(depth == 1 && !control),

@@ -82,6 +82,13 @@ pub struct Answer {
     pub cpu: u64,
 }
 
+pub(crate) fn readonly(conn: &Connection, sql: &str) -> Result<bool> {
+    GUEST.set(true);
+    let result = conn.prepare_cached(sql).map(|stmt| stmt.readonly());
+    GUEST.set(false);
+    Ok(result?)
+}
+
 /// Run one of the service's statements.
 pub(crate) fn run(conn: &Connection, statement: &Statement, read_only: bool) -> Result<Answer> {
     let params: Vec<serde_json::Value> =

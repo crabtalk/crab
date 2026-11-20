@@ -6,7 +6,7 @@
 use crate::{
     host,
     state::{
-        caller::{self, Session, Storage},
+        caller::{self, Storage, call::Session},
         service,
         store::Store,
     },

@@ -420,6 +420,10 @@ async fn export<E: Env>(
     Extension(Named(service)): Extension<Named>,
 ) -> Result<Response, Denied> {
     let file = host.export(&service).await?;
+    sqlite_file(file, service.rsplit('/').next().unwrap_or(&service))
+}
+
+pub(crate) fn sqlite_file(file: tempfile::NamedTempFile, name: &str) -> Result<Response, Denied> {
     let length = file
         .as_file()
         .metadata()
@@ -439,10 +443,7 @@ async fn export<E: Env>(
             chunk.truncate(read);
             Ok(Some((chunk, (reader, file))))
         });
-    let filename = format!(
-        "attachment; filename=\"{}.sqlite\"",
-        service.rsplit('/').next().unwrap_or(&service)
-    );
+    let filename = format!("attachment; filename=\"{name}.sqlite\"");
     let disposition = HeaderValue::from_str(&filename)
         .map_err(|error| crate::deny(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
     Ok((

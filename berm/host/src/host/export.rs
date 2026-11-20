@@ -4,12 +4,20 @@ use crate::{
     host::{self, Host},
     state::service,
 };
-use axum::http::StatusCode;
+use axum::{http::StatusCode, response::Response};
 use berm::database;
 use rusqlite::{Connection, params};
 use tempfile::NamedTempFile;
 
 impl<E: Env> Host<E> {
+    pub async fn export_caller(&self, id: &str) -> Result<Response, Denied> {
+        crate::api::serve::sqlite_file(self.caller_storage.export(id).await?, id)
+    }
+
+    pub async fn delete_caller(&self, id: &str) -> Result<(), Denied> {
+        Ok(self.caller_storage.delete(id).await?)
+    }
+
     pub async fn export(&self, service: &str) -> Result<NamedTempFile, Denied> {
         let lock = self
             .deploying

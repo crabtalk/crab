@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::{future::Future, sync::Arc, time::Instant};
 
 /// One statement, as the host is handed it.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Statement {
     pub sql: String,
     pub deadline: Instant,

@@ -156,7 +156,15 @@ impl Writer {
         conn.busy_timeout(Duration::from_secs(5))?;
         if let Some(limit) = limit {
             let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
-            conn.pragma_update(None, "max_page_count", i64::try_from(limit / page as u64)?)?;
+            let pages = i64::try_from(limit / page as u64)?;
+            if pages == 0 {
+                return Err(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_FULL),
+                    None,
+                )
+                .into());
+            }
+            conn.pragma_update(None, "max_page_count", pages)?;
         }
         query::guard(&conn)?;
         Ok(conn)
@@ -172,7 +180,7 @@ impl Writer {
                 .as_ref()
                 .is_some_and(Connection::is_autocommit);
         drop(state);
-        if idle {
+        if idle && self.path != Path::new(":memory:") {
             self.cache.retain(self);
         }
     }

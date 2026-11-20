@@ -42,7 +42,6 @@ mod host;
 mod images;
 mod record;
 mod state;
-pub mod storage;
 #[cfg(feature = "test")]
 pub mod test;
 mod wake;
@@ -58,7 +57,7 @@ pub fn deny(status: StatusCode, message: impl Into<String>) -> Denied {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Denied {
     pub status: StatusCode,
     pub failure: Option<Failure>,
