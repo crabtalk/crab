@@ -15,4 +15,3 @@ resend.workspace = true
 github.workspace = true
 upstash.workspace = true
 posthog.workspace = true
-memory.workspace = true

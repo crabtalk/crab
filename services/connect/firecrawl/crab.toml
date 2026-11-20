@@ -9,4 +9,4 @@ secrets = [{ name = "FIRECRAWL_API_KEY", label = "API key" }]
 [image]
 name = "connect/firecrawl"
 logo = "https://crabtalk.ai/logos/templates/firecrawl-v1.png"
-deploy = true
+publish = false

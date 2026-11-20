@@ -9,4 +9,4 @@ secrets = [{ name = "LITESCRAPE_API_KEY", label = "API key" }]
 [image]
 name = "connect/litescrape"
 logo = "https://crabtalk.ai/logos/templates/litescrape-v1.svg"
-deploy = true
+publish = false

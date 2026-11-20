@@ -3,7 +3,7 @@
 ```toml
 [dependencies]
 seo = { package = "crab-seo", git = "https://github.com/crabtalk/crab", tag = "v0.1.4", default-features = false }
-webpage = { package = "crab-webpage", git = "https://github.com/crabtalk/crab", tag = "v0.1.4", default-features = false }
+webpage = { package = "crabkit-webpage", git = "https://github.com/crabtalk/crab", tag = "v0.1.4" }
 ```
 
 ```rust,ignore

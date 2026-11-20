@@ -181,7 +181,7 @@ A call that failed, trapped included, keeps its tool, arguments, caller and the 
 ## Benchmarking
 
 ```sh
-crab bench services/web/markdown read --cases cases.jsonl --runs 10
+crab bench services/web/seo check --cases cases.jsonl --runs 10
 ```
 
 `bench DIRECTORY TOOL` builds and runs JSON Lines workloads on a temporary local host. Cases supply argument objects and HTTP responses, including headers, body files and optional response delays. Each case starts with a fresh migrated database; repetitions share its state. `--live-http` sends real requests instead of fixtures. The command uploads nothing.

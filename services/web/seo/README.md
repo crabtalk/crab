@@ -4,10 +4,10 @@ Inspect a public page for technical SEO, check whether AI crawlers can read a si
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/seo` with an accessible running deployment:
+With Crab signed in to Cloud, call CrabTalk's deployment, `crabtalk/seo`:
 
 ```sh
-crab call owner/seo check '{"url":"https://example.com"}'
+crab call crabtalk/seo check '{"url":"https://example.com"}'
 ```
 
 Returns the final URL, title, descriptions, canonical declarations and targets, HTML language, h1 headings, image counts and missing-alt samples, scoped robots directives, JSON-LD blocks, social metadata, hreflang declarations and findings. You can also call it through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp).
@@ -22,7 +22,7 @@ Returns the final URL, title, descriptions, canonical declarations and targets, 
 `ai_access` reads whether AI crawlers can reach and read a site:
 
 ```sh
-crab call owner/seo ai_access '{"site":"https://example.com/"}'
+crab call crabtalk/seo ai_access '{"site":"https://example.com/"}'
 ```
 
 - Each of GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended and CCBot is `allowed`, `blocked` or `unspecified` for the root page's path, with the `robots.txt` group that applied: the crawler's own, else `*`. Rules are read as RFC 9309 reads them: the longest matching pattern wins, `allow` wins a tie, and `*` and a final `$` match. `unspecified` means no group names the crawler and there is no `*` group, or `robots.txt` did not answer 2xx.
@@ -36,7 +36,7 @@ Informational findings identify things to review; an absent canonical or multipl
 ## Site audit
 
 ```sh
-crab workflow run owner/seo.audit '{"site":"https://example.com/docs/"}' --yes
+crab workflow run crabtalk/seo.audit '{"site":"https://example.com/docs/"}' --yes
 ```
 
 `audit` reads `robots.txt` and the same-origin sitemap or sitemap index. Pass the site's root URL for the whole site or a path to narrow it. The workflow samples up to 100 listed URLs and reports sitemap entries blocked by robots rules before fetching them.

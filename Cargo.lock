@@ -501,7 +501,6 @@ name = "berm-linked-services"
 version = "0.1.7"
 dependencies = [
  "berm-lang",
- "crab-agent-memory",
  "crab-github",
  "crab-posthog",
  "crab-resend",
@@ -990,33 +989,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-agent-memory"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "crab-agent-outbox"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "crab-resend",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "crab-agent-relay"
 version = "0.1.7"
 dependencies = [
@@ -1027,21 +999,6 @@ dependencies = [
  "berm-host",
  "berm-lang",
  "berm-rusqlite",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "crab-analytics"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
  "serde_json",
  "tokio",
  "url",
@@ -1154,21 +1111,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-page-watch"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "crab-webpage",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "crab-pdl"
 version = "0.1.7"
 dependencies = [
@@ -1189,7 +1131,13 @@ dependencies = [
 name = "crab-resend"
 version = "0.1.7"
 dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
  "berm-lang",
+ "serde_json",
+ "tokio",
  "url",
 ]
 
@@ -1199,7 +1147,7 @@ version = "0.1.7"
 dependencies = [
  "berm-lang",
  "crab-sitemap",
- "crab-webpage",
+ "crabkit-webpage",
  "http-link",
  "language-tags",
  "scraper",
@@ -1228,46 +1176,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-uptime"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "crab-webhook-inbox"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "crab-webpage"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
- "htmd",
- "html5ever 0.39.0",
- "lol_html",
- "scraper",
- "serde_json",
- "url",
-]
-
-[[package]]
 name = "crabkit"
 version = "0.1.7"
 dependencies = [
@@ -1277,6 +1185,7 @@ dependencies = [
  "crabkit-neon",
  "crabkit-stripe",
  "crabkit-supabase",
+ "crabkit-webpage",
 ]
 
 [[package]]
@@ -1334,6 +1243,19 @@ name = "crabkit-upstash"
 version = "0.1.7"
 dependencies = [
  "berm-lang",
+ "url",
+]
+
+[[package]]
+name = "crabkit-webpage"
+version = "0.1.7"
+dependencies = [
+ "berm-lang",
+ "htmd",
+ "html5ever 0.39.0",
+ "lol_html",
+ "scraper",
+ "serde_json",
  "url",
 ]
 

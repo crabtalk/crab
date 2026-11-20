@@ -85,6 +85,15 @@ pub struct Image {
     pub public: bool,
     #[serde(default)]
     pub deploy: bool,
+    /// Whether `crab push` publishes it to `name`.
+    #[serde(default = "Image::publish")]
+    pub publish: bool,
+}
+
+impl Image {
+    fn publish() -> bool {
+        true
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -122,6 +131,15 @@ impl Project {
         let text = fs::read_to_string(path).with_context(|| format!("no {}", path.display()))?;
         let project: Self =
             toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
+        if let Some(image) = &project.image
+            && image.deploy
+            && !image.publish
+        {
+            bail!(
+                "{}: image.deploy needs a published image; remove it or image.publish",
+                path.display()
+            );
+        }
         let mut seen: Vec<&str> = Vec::new();
         for secret in project
             .credentials

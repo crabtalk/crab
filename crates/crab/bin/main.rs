@@ -39,7 +39,10 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Sign in to Cloud in the browser, and use it from now on.
+    /// Sign in to Cloud and keep the credential as a context.
+    ///
+    /// Prints a link and waits until the person approves it in their browser;
+    /// an agent runs it and sends them the link.
     Login {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
@@ -47,8 +50,9 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
-        /// Request a dedicated agent key through browser approval at `/device`.
-        /// Also used when no browser opens here.
+        /// Ask the person for a dedicated key instead, approved at the printed
+        /// `/device` link. Use it when they are not at this machine. Org and
+        /// account changes need a personal session, which this key is not.
         #[arg(long, conflicts_with = "github")]
         device: bool,
         /// The context to keep the credential as.

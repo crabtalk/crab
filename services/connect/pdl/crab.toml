@@ -9,4 +9,4 @@ secrets = [{ name = "PDL_API_KEY", label = "API key" }]
 [image]
 name = "connect/pdl"
 logo = "https://crabtalk.ai/logos/templates/pdl-v1.ico"
-deploy = true
+publish = false

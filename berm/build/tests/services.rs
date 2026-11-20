@@ -9,7 +9,7 @@ fn manifest(package: &str) -> Manifest {
 #[test]
 fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let resend = manifest("crab-resend");
-    assert_eq!(resend.tools.len(), 3);
+    assert_eq!(resend.tools.len(), 5);
     let send = resend
         .tools
         .iter()
@@ -39,10 +39,6 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let osv = manifest("crab-osv");
     assert_eq!(osv.tools.len(), 3);
     assert!(osv.deps.secrets.is_empty());
-    let memory = manifest("crab-agent-memory");
-    assert_eq!(memory.tools.len(), 4);
-    assert!(memory.keeps_database());
-    assert_eq!(memory.database_size, 64 << 20);
     assert_eq!(manifest("crab-agent-relay").database_size, 64 << 20);
     let linked = manifest("berm-linked-services");
     assert_eq!(
@@ -61,8 +57,8 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
         ["your-database.upstash.io"]
     );
     assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-upstash"));
-    assert!(linked.kits.iter().any(|kit| kit.name == "crab-agent-memory"
-        && kit.id.as_deref() == Some("1fdf32203e0e4003a68c5d766daad03b")));
+    assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-auth"
+        && kit.id.as_deref() == Some("115a99982fc0ce031c0a94fad9aa47a0")));
     for credential in ["upstash_redis", "posthog_project", "posthog_private"] {
         assert!(linked.deps.credentials.contains_key(credential));
     }
@@ -98,7 +94,7 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
 fn first_party_tools_have_registered_catalog_jobs_in_the_built_image() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services");
     let catalog = crabtalk_sdk::catalog::Catalog::listed();
-    for group in ["agents", "web", "ops"] {
+    for group in ["agents", "web"] {
         for entry in std::fs::read_dir(root.join(group)).unwrap() {
             let dir = entry.unwrap().path();
             if !dir.join("crab.toml").is_file() {

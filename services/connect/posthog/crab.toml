@@ -19,4 +19,4 @@ secrets = [{ name = "POSTHOG_PERSONAL_API_KEY", label = "Personal API key" }]
 [image]
 name = "connect/posthog"
 logo = "https://crabtalk.ai/logos/templates/posthog-v1.svg"
-deploy = true
+publish = false

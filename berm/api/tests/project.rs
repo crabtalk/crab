@@ -112,6 +112,16 @@ fn image_publication_and_logos_use_one_table() {
             .contains("image")
     );
 }
+#[test]
+fn an_unpublished_image_cannot_be_deployed_by_others() {
+    assert!(private_image().image.unwrap().publish);
+    let image = read("[image]\nname = \"fixtures/app\"\npublic = true\npublish = false")
+        .unwrap()
+        .image
+        .unwrap();
+    assert!(image.public && !image.publish);
+    assert!(read("[image]\nname = \"fixtures/app\"\ndeploy = true\npublish = false").is_err());
+}
 fn private_image() -> Project {
     read("[image]\nname = \"fixtures/app\"").unwrap()
 }

@@ -1,5 +1,0 @@
-buffer = 131072
-
-[image]
-name = "agents/outbox"
-deploy = true

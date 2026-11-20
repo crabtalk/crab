@@ -9,4 +9,4 @@ secrets = [{ name = "COMPANYENRICH_API_KEY", label = "API key" }]
 [image]
 name = "connect/companyenrich"
 logo = "https://crabtalk.ai/logos/templates/companyenrich-v1.png"
-deploy = true
+publish = false

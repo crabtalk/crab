@@ -20,12 +20,21 @@ impl Push {
             bail!("no service at or below {}", self.dir.display());
         }
         let mut names = BTreeSet::new();
+        let mut pushed = false;
         for service in selection.services {
             let image = service
                 .project
                 .image
                 .as_ref()
                 .context("pushing requires an [image] name")?;
+            if !image.publish {
+                if !self.packages.is_empty() {
+                    bail!("{} sets image.publish = false", image.name.address());
+                }
+                eprintln!("skipping {}: image.publish = false", image.name.address());
+                continue;
+            }
+            pushed = true;
             let address = image.name.address();
             if !names.insert(address.clone()) {
                 bail!("more than one service publishes {address}");
@@ -47,6 +56,9 @@ impl Push {
             }
             runtime::wait(client.publish_image(&address, &berm_api::digest::prefixed(&sha256)))?;
             println!("{address}:{} ({sha256})", service.source_version()?);
+        }
+        if !pushed {
+            bail!("no service at or below {} publishes", self.dir.display());
         }
         Ok(())
     }

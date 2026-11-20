@@ -16,6 +16,18 @@ Returns an email ID. Acceptance does not confirm delivery; call `retrieve` with 
 
 On a callable deployment, you can also open a tool on this page to call it, or connect your agent through [CrabTalk MCP](https://crabtalk.ai/docs/guides/mcp). Calls use this deployment’s provider credentials.
 
+## Review before sending
+
+`review` prepares a plain-text email for an account owner's browser review and returns a review link; it does not send. On a host supporting [service requests](https://crabtalk.ai/docs/guides/service-requests):
+
+```sh
+crab call you/resend review '{"input":{"from":"Reports <hello@your-verified-domain.com>","to":["reader@example.com"],"subject":"Your report","text":"The report is ready."}}'
+```
+
+Open the link, check the sender, recipients, subject and text, then approve or decline. Approval runs `send_approved`, which only an account owner's request page can invoke; API keys are refused. A review takes one to five recipients, a subject of up to 200 bytes, and text of up to 4000 bytes and 100 lines.
+
+Poll the returned code with `crab request CODE --wait`. A completed request holds Resend's email ID. Every attempt of a request sends with the same idempotency key, so a retry within 24 hours does not send twice. Requests are bound to the reviewed image and action price; a change needs a new review.
+
 ## Deploy your own
 
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:

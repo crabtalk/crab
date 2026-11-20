@@ -9,4 +9,4 @@ size = "64MiB"
 [image]
 name = "agents/relay"
 public = false
-deploy = true
+publish = false

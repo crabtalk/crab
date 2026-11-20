@@ -9,4 +9,4 @@ secrets = [{ name = "CONTEXT_DEV_API_KEY", label = "API key" }]
 [image]
 name = "connect/contextdev"
 logo = "https://crabtalk.ai/logos/templates/contextdev-v1.png"
-deploy = true
+publish = false

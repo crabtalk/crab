@@ -3,6 +3,6 @@ migrations = "migrations"
 size = "64MiB"
 
 [image]
-name = "web/seo"
+name = "crabtalk/seo"
 public = true
 deploy = false

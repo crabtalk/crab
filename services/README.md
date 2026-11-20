@@ -5,19 +5,18 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 ## Catalogs
 
 - [Connect](connect/README.md): third-party API integrations.
-- [Agents](agents/README.md): shared agent memory, identities and conversations.
-- [Web](web/README.md): SEO checks and audits, webpage-to-Markdown extraction and website analytics.
-- [Ops](ops/README.md): uptime and webhook inboxes.
+- [Agents](agents/README.md): agent identities and conversations.
+- [Web](web/README.md): SEO checks and audits.
 
-The catalog directories are `connect`, `agents`, `web` and `ops`. Each service's `image` address selects its publication account; for example, `image = "connect/tinyfish"` publishes to `connect/tinyfish`. A context supplies the server and credentials, which must authorize publication there.
+The catalog directories are `connect`, `agents` and `web`. CrabTalk publishes its services under the `crabtalk` account; `crabtalk/seo` is the only one published. The others set `publish = false` and are deployed from source. A context supplies the server and credentials, which must authorize publication to the `[image]` address.
 
-Call an accessible running deployment or deploy a published image as a private copy. Catalog membership does not make a deployment public. `web/seo` and `web/markdown` are configured as public services whose images cannot be deployed by other accounts. Each service documents its setup and state ownership.
+Call an accessible running deployment or deploy a published image as a private copy. Catalog membership does not make a deployment public. `crabtalk/seo` is a public service whose image cannot be deployed by other accounts. Each service documents its setup and state ownership.
 
 Tools declare their discovery classification with `catalog` in `crab.toml`. See the [Service catalog guide](https://crabtalk.ai/docs/guides/catalog) for categories, platform prefixes and job names.
 
 Library-only packages live under [services/kits](kits/) and are listed in [crabkit](../crates/crabkit/README.md).
 
-`crab build` operates on one service directory. `crab deploy [dir]` and `crab push [dir]` also accept a catalog directory, selecting only its descendant services; the directory defaults to `.`. For example, run `crab push services/connect` from the repository root or `crab push` inside `services/connect`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
+`crab build` operates on one service directory. `crab deploy [dir]` and `crab push [dir]` also accept a catalog directory, selecting only its descendant services, and `crab push` skips those that set `publish = false`; the directory defaults to `.`. For example, run `crab push services/connect` from the repository root or `crab push` inside `services/connect`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
 
 To reuse a deployable service as a library, pin it to the same release tag as `berm-lang` and set `default-features = false`. This disables its standalone `tools` exports. Call the Rust functions from your own tools. `berm-build` inherits the dependency's credentials, host permissions and migrations, while its deployment name, logo, tool access, cron settings, variables and database sizing stay with its own deployment. A dependency keeping migrations needs a stable migration ID.
 
@@ -34,7 +33,7 @@ crab login
 crab up --build
 ```
 
-Choose a service directory from a catalog, such as `services/connect/github` or `services/ops/uptime`. `crab up --build` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
+Choose a service directory from a catalog, such as `services/connect/github` or `services/web/seo`. `crab up --build` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
 
 For local development, start the host with `crab dev -d`, use `crab --context default deploy --build` in the selected service directory, set local credentials with `crab --context default secret fill github`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crabtalk.ai/docs/guides/local).
 

@@ -145,3 +145,38 @@ fn cloud_settings_are_refused_locally_before_any_network_or_build() {
         assert!(error.to_string().contains("apply only on Cloud"), "{error}");
     }
 }
+
+#[test]
+fn push_skips_unpublished_services_and_refuses_naming_one() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nname = \"weather\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("lib.rs"), "").unwrap();
+    std::fs::write(
+        dir.path().join("crab.toml"),
+        "[image]\nname = \"alice/weather\"\npublish = false\n",
+    )
+    .unwrap();
+    let client = Client::new("http://127.0.0.1:9".to_owned()).owner(Owner::User("alice".into()));
+    let push = |packages: &[&str]| {
+        let mut args = vec!["push".to_owned(), dir.path().display().to_string()];
+        for package in packages {
+            args.extend(["-p".to_owned(), (*package).to_owned()]);
+        }
+        PushCommand::try_parse_from(args)
+            .unwrap()
+            .push
+            .run(&client)
+            .unwrap_err()
+            .to_string()
+    };
+    assert!(push(&[]).contains("publishes"), "{}", push(&[]));
+    assert!(
+        push(&["weather"]).contains("image.publish = false"),
+        "{}",
+        push(&["weather"])
+    );
+}

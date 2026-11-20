@@ -9,4 +9,4 @@ secrets = [{ name = "TINYFISH_API_KEY", label = "API key" }]
 [image]
 name = "connect/tinyfish"
 logo = "https://crabtalk.ai/logos/templates/tinyfish-v1.svg"
-deploy = true
+publish = false

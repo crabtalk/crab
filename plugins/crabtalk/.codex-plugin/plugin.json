@@ -39,28 +39,22 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Task discovery without execution. Requires an authorized CrabTalk MCP connection and the hosted per-operation tool interface. The public web/markdown deployment was verified during preparation; no upstream provider API key is required.",
-              "prompt": "Find a CrabTalk service that reads public web pages as Markdown. Show its available tool and any per-call price, but do not run it.",
+              "description": "Task discovery without execution. Requires an authorized CrabTalk MCP connection and the hosted per-operation tool interface. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
+              "prompt": "Find a CrabTalk service that checks a web page's technical SEO. Show its available tool and any per-call price, but do not run it.",
               "tools_triggered": "None; inspect the advertised MCP tool list without invoking an operation.",
-              "expected_behavior": "Identify the advertised read operation for web/markdown from its description and schema, using the exact name returned by tools/list (normally <account-id>.markdown.read). Explain its declared per-call price. Do not invoke an operation or claim a webpage was read."
+              "expected_behavior": "Identify the advertised check operation for crabtalk/seo from its description and schema, using the exact name returned by tools/list (normally <account-id>.seo.check). Explain its declared per-call price. Do not invoke an operation or claim a page was checked."
             },
             {
-              "description": "Inspect an exact deployed service before calling it. Requires an authorized CrabTalk MCP connection. The public web/markdown and web/seo deployments were verified during preparation; no upstream provider API key is required.",
-              "prompt": "What arguments does web/markdown need to read a page, what does it return, and what are its limits? Do not read a page yet.",
-              "tools_triggered": "None; read the MCP documentation resource crab://web/markdown.",
-              "expected_behavior": "Inspect the advertised web/markdown read tool schema and read crab://web/markdown for documented limits. Explain the required URL string and returned final URL, selected region and Markdown, with title and description when available. Describe only the documented HTML-only, no-JavaScript and size/timeout limits. Do not invoke the read operation."
+              "description": "Inspect an exact deployed service before calling it. Requires an authorized CrabTalk MCP connection. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
+              "prompt": "What arguments does crabtalk/seo need to check a page, what does it return, and what are its limits? Do not check a page yet.",
+              "tools_triggered": "None; read the MCP documentation resource crab://crabtalk/seo.",
+              "expected_behavior": "Inspect the advertised crabtalk/seo check tool schema and read crab://crabtalk/seo for documented limits. Explain the required URL string and the returned metadata, headings, image-alt counts and robots directives. Describe only the documented HTML-only, no-JavaScript and size/timeout limits. Do not invoke the check operation."
             },
             {
-              "description": "Execute a webpage-reading tool with a public fixture. Requires an authorized CrabTalk MCP connection. The public web/markdown and web/seo deployments were verified during preparation; no upstream provider API key is required.",
-              "prompt": "Read https://example.com/ using CrabTalk and tell me the page title and its main content.",
-              "tools_triggered": "The advertised operation for web/markdown.read (normally <account-id>.markdown.read).",
-              "expected_behavior": "Select the advertised web/markdown read operation and invoke its exact listed tool name with {\"url\":\"https://example.com/\"} directly as arguments. Do not use a generic executor or wrap these arguments in service/tool/input fields. Report the returned title and summarize the returned Markdown, which should identify Example Domain. Do not fabricate a result if the call fails."
-            },
-            {
-              "description": "Execute a different service and interpret its structured result. Requires an authorized CrabTalk MCP connection. The public web/markdown and web/seo deployments were verified during preparation; no upstream provider API key is required.",
+              "description": "Execute a service and interpret its structured result. Requires an authorized CrabTalk MCP connection. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
               "prompt": "Check the basic technical SEO of https://example.com/ with CrabTalk. Tell me what it actually checked and any findings; do not give me a search-ranking score.",
-              "tools_triggered": "The advertised operation for web/seo.check (normally <account-id>.seo.check).",
-              "expected_behavior": "Select the advertised web/seo check operation and invoke its exact listed tool name with {\"url\":\"https://example.com/\"} directly as arguments. Explain findings supported by the returned metadata, h1 headings, image-alt counts and robots directives. Do not claim JavaScript rendering, crawling, indexing verification or ranking measurement."
+              "tools_triggered": "The advertised operation for crabtalk/seo.check (normally <account-id>.seo.check).",
+              "expected_behavior": "Select the advertised crabtalk/seo check operation and invoke its exact listed tool name with {\"url\":\"https://example.com/\"} directly as arguments. Explain findings supported by the returned metadata, h1 headings, image-alt counts and robots directives. Do not claim JavaScript rendering, crawling, indexing verification or ranking measurement."
             },
             {
               "description": "Handle an empty discovery result. Use the deliberately nonexistent service marker crabtalk-review-unlisted-7fc8a402.",
@@ -80,7 +74,7 @@
             },
             {
               "description": "The submitted native MCP interface does not provide service deployment administration. Explain that this connection cannot redeploy code; do not misuse an operation as an administrative endpoint or claim a deployment occurred.",
-              "prompt": "Using only this CrabTalk plugin connection, overwrite the source of web/markdown and redeploy it. Do not use a terminal or any other tools."
+              "prompt": "Using only this CrabTalk plugin connection, overwrite the source of crabtalk/seo and redeploy it. Do not use a terminal or any other tools."
             }
           ]
         }
