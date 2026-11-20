@@ -1,5 +1,6 @@
 use crate::{
     audit::{
+        check::CheckRange,
         discovery::{allowed, request, web_url, within},
         run::Run,
     },
@@ -81,6 +82,7 @@ pub(crate) struct Report {
 #[serde(crate = "berm_lang::serde")]
 struct Analysis {
     report: Report,
+    cursor: Option<String>,
     unresolved: Vec<Finding>,
 }
 
@@ -127,12 +129,13 @@ type PageRow = (
     Option<String>,
 );
 
-fn pages(site: &str, run: &Run) -> Result<BTreeMap<String, Page>> {
+fn pages(site: &str, run: &Run, checked: &[CheckRange]) -> Result<BTreeMap<String, Page>> {
     let mut pages = BTreeMap::new();
     let mut after = String::new();
     loop {
         let batch = caller_storage::rows::<PageRow>(
-            "SELECT url, blocked, status, problem, redirect, checked_run IS ?2, scanned_run IS ?2,
+            "SELECT url, blocked, status, problem, redirect,
+                    url NOT IN (SELECT url FROM unlisted_pages WHERE site = ?1), scanned_run IS ?2,
                     hash IS NOT NULL AND hash IS scan_hash AND NOT blocked,
                     scan ->> '$.metadata.title', scan ->> '$.metadata.description',
                     scan ->> '$.metadata.canonical', scan -> '$.metadata.findings'
@@ -146,7 +149,7 @@ fn pages(site: &str, run: &Run) -> Result<BTreeMap<String, Page>> {
             status,
             problem,
             redirect,
-            checked,
+            listed,
             audited,
             scan_current,
             title,
@@ -168,6 +171,7 @@ fn pages(site: &str, run: &Run) -> Result<BTreeMap<String, Page>> {
                 .and_then(|url| Url::parse(&url).ok().and_then(web_url))
                 .map(Into::into);
             after.clone_from(&url);
+            let checked = listed != 0 && checked.iter().any(|range| range.contains(&url));
             pages.insert(
                 url,
                 Page {
@@ -175,7 +179,7 @@ fn pages(site: &str, run: &Run) -> Result<BTreeMap<String, Page>> {
                     status,
                     problem,
                     redirect,
-                    checked: checked != 0,
+                    checked,
                     audited: audited != 0,
                     scan_current: scan_current != 0,
                     title,
@@ -387,7 +391,11 @@ impl Analysis {
     access = "internal",
     budget(cpu = 100000, read = 1000000, written = 4, memory = 128)
 )]
-pub(crate) fn audit_analyze(site: String) -> Result<AuditSaveCall> {
+pub(crate) fn audit_analyze(
+    site: String,
+    checked: Vec<CheckRange>,
+    cursor: Option<String>,
+) -> Result<AuditSaveCall> {
     let run = Run::owns(&site)?;
     let target = Url::parse(&site).map_err(|_| "Invalid audited site")?;
     let (robots, sitemap_complete) = caller_storage::rows::<(Option<String>, u8)>(
@@ -398,7 +406,7 @@ pub(crate) fn audit_analyze(site: String) -> Result<AuditSaveCall> {
     .ok_or("The audit run is missing")?;
     let robots = robots.as_deref().map(Robots::from);
     let sitemap_complete = sitemap_complete != 0;
-    let pages = pages(&site, &run)?;
+    let pages = pages(&site, &run, &checked)?;
     let links = links(&site)?;
     let previous: Option<(Report, Vec<Finding>)> = caller_storage::rows::<(String, String)>(
         "SELECT report, unresolved FROM reports WHERE site = ?1",
@@ -554,8 +562,8 @@ pub(crate) fn audit_analyze(site: String) -> Result<AuditSaveCall> {
     let (listed, pending) = caller_storage::rows::<(usize, usize)>(
         "SELECT count(*), count(CASE WHEN NOT blocked AND status = 200
                                      AND checked_fields IS NOT NULL THEN 1 END)
-         FROM pages WHERE site = ?1 AND listed_run = ?2",
-        &(&site, &run.id),
+         FROM pages WHERE site = ?1 AND url NOT IN (SELECT url FROM unlisted_pages WHERE site = ?1)",
+        &(&site,),
     )?
     .pop()
     .ok_or("Could not count sitemap pages")?;
@@ -574,6 +582,7 @@ pub(crate) fn audit_analyze(site: String) -> Result<AuditSaveCall> {
             unverified_targets,
             findings_truncated,
         },
+        cursor,
         unresolved: Vec::new(),
     };
     analysis.compare(previous.as_ref(), &pages, &targets)?;
@@ -617,11 +626,17 @@ pub(crate) fn audit_save(site: String, idempotency_key: String) -> Result<Report
     )?
     .pop()
     .ok_or("This audit no longer holds the site")?;
-    let Analysis { report, unresolved } = serde_json::from_str(&analysis)?;
+    let Analysis {
+        report,
+        cursor,
+        unresolved,
+    } = serde_json::from_str(&analysis)?;
     caller_storage::rows::<()>(
-        "INSERT INTO reports (site, run, report, unresolved, saved_at) VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO reports (site, run, report, unresolved, saved_at, cursor)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?7)
          ON CONFLICT (site) DO UPDATE SET run = excluded.run, report = excluded.report,
              unresolved = excluded.unresolved, saved_at = excluded.saved_at,
+             cursor = coalesce(excluded.cursor, reports.cursor),
              receipts = (
                  SELECT json_group_object(key, json(value)) FROM (
                      SELECT key, value FROM json_each(reports.receipts) WHERE value ->> '$.at' >= ?6
@@ -637,6 +652,7 @@ pub(crate) fn audit_save(site: String, idempotency_key: String) -> Result<Report
             serde_json::to_string(&unresolved)?,
             now,
             cutoff,
+            cursor,
         ),
     )?;
     caller_storage::rows::<()>(

@@ -2,9 +2,12 @@ use crate::{
     audit::{AGENT, MAX_CHECKED, MAX_URL_BYTES, run::Run},
     crawlers::{Robots, Rule},
 };
-use berm_lang::{Result, Schema, caller_storage, http, serde_json, tool};
+use berm_lang::{Result, Schema, caller_storage, http, tool};
 use sitemap::Sitemap;
-use std::collections::{BTreeSet, VecDeque};
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    ops::Bound::{Excluded, Included, Unbounded},
+};
 use url::{Position, Url};
 
 const MAX_SITEMAPS: usize = 8;
@@ -93,6 +96,7 @@ pub(crate) fn audit_discover(site: String) -> Result<CheckPlan> {
     }
 
     let mut visited = BTreeSet::new();
+    let mut listed = BTreeMap::new();
     let mut complete = robots.is_some();
     while let Some(given) = queue.pop_front() {
         let Some(url) = target
@@ -124,48 +128,87 @@ pub(crate) fn audit_discover(site: String) -> Result<CheckPlan> {
         let sitemap = Sitemap::parse(&text);
         complete &= sitemap.complete;
         queue.extend(sitemap.sitemaps);
-        for batch in sitemap.urls.chunks(LISTING_BATCH) {
-            let mut urls = Vec::new();
-            for (given, _) in batch {
-                let Some(url) = Url::parse(given).ok().and_then(web_url) else {
-                    complete = false;
-                    continue;
-                };
-                if within(&target, &url) {
-                    urls.push((url.to_string(), robots.is_some() && !allowed(&rules, &url)));
-                }
+        for (given, _) in &sitemap.urls {
+            let Some(url) = Url::parse(given).ok().and_then(web_url) else {
+                complete = false;
+                continue;
+            };
+            if within(&target, &url) {
+                listed.insert(url.to_string(), robots.is_some() && !allowed(&rules, &url));
             }
-            caller_storage::rows::<()>(
-                "INSERT INTO pages (site, url, listed_run, blocked)
-                 SELECT ?1, value ->> 0, ?2, value ->> 1 FROM json_each(?3) WHERE true
-                 ON CONFLICT (site, url) DO UPDATE
-                 SET listed_run = excluded.listed_run, blocked = excluded.blocked",
-                &(&site, &run.id, serde_json::to_string(&urls)?),
-            )?;
         }
     }
-    if complete {
-        caller_storage::rows::<()>(
-            "DELETE FROM pages WHERE site = ?1 AND listed_run <> ?2",
-            &(&site, &run.id),
-        )?;
-    }
-    caller_storage::rows::<()>(
-        "UPDATE runs SET robots = ?2, sitemap_complete = ?3 WHERE site = ?1",
-        &(&site, robots.as_ref(), complete),
-    )?;
 
     let urls = if robots.is_some() {
-        caller_storage::rows::<(String,)>(
-            "SELECT url FROM pages WHERE site = ?1 AND listed_run = ?2
-             ORDER BY checked_at, url LIMIT ?3",
-            &(&site, &run.id, MAX_CHECKED),
+        let cursor = caller_storage::rows::<(Option<String>,)>(
+            "SELECT cursor FROM reports WHERE site = ?1",
+            &(&site,),
         )?
-        .into_iter()
-        .map(|(url,)| url)
-        .collect()
+        .pop()
+        .and_then(|(cursor,)| cursor)
+        .unwrap_or_default();
+        listed
+            .range::<str, _>((Excluded(cursor.as_str()), Unbounded))
+            .chain(listed.range::<str, _>((Unbounded, Included(cursor.as_str()))))
+            .take(MAX_CHECKED)
+            .map(|(url, _)| url.clone())
+            .collect()
     } else {
         Vec::new()
     };
+    caller_storage::rows::<()>(
+        "UPDATE runs SET robots = ?2, sitemap_complete = ?3, unlisted = NULL
+         WHERE site = ?1 AND run = ?4",
+        &(&site, robots.as_ref(), complete, &run.id),
+    )?;
+    reconcile(&site, listed, complete)?;
     Ok(CheckPlan { site, urls })
+}
+
+fn reconcile(site: &str, mut listed: BTreeMap<String, bool>, complete: bool) -> Result<()> {
+    let mut after = String::new();
+    let mut updates = Vec::new();
+    loop {
+        let rows = caller_storage::rows::<(String, u8)>(
+            "SELECT url, blocked FROM pages WHERE site = ?1 AND url > ?2 ORDER BY url LIMIT ?3",
+            &(site, &after, LISTING_BATCH),
+        )?;
+        let done = rows.len() < LISTING_BATCH;
+        let mut missing = Vec::new();
+        for (url, blocked) in rows {
+            after.clone_from(&url);
+            match listed.remove(&url) {
+                Some(value) if value != (blocked != 0) => updates.push((url, value)),
+                Some(_) => {}
+                None => missing.push(url),
+            }
+        }
+        if !missing.is_empty() {
+            if complete {
+                caller_storage::rows::<()>(
+                    "DELETE FROM pages WHERE site = ?1 AND url IN (SELECT value FROM json_each(?2))",
+                    &(site, &missing),
+                )?;
+            } else {
+                caller_storage::rows::<()>(
+                    "UPDATE runs SET unlisted = json_insert(coalesce(unlisted, '[]'), '$[#]', json(?2))
+                     WHERE site = ?1",
+                    &(site, &missing),
+                )?;
+            }
+        }
+        if done {
+            break;
+        }
+    }
+    updates.extend(listed);
+    for batch in updates.chunks(LISTING_BATCH) {
+        caller_storage::rows::<()>(
+            "INSERT INTO pages (site, url, blocked)
+             SELECT ?1, value ->> 0, value ->> 1 FROM json_each(?2) WHERE true
+             ON CONFLICT (site, url) DO UPDATE SET blocked = excluded.blocked",
+            &(site, batch),
+        )?;
+    }
+    Ok(())
 }

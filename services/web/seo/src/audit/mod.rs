@@ -1,7 +1,7 @@
 use crate::audit::{
-    check::AuditCheckCall,
+    check::{AuditCheckCall, CheckRange},
     discovery::{AuditDiscoverCall, CheckPlan},
-    page::{AuditPageCall, AuditSelectCall, Selection},
+    page::{AuditBatchCall, AuditSelectCall, Selection},
     report::{AuditAnalyzeCall, AuditSaveCall, Report},
     run::AuditStartCall,
 };
@@ -13,7 +13,8 @@ mod page;
 mod report;
 mod run;
 
-const MAX_PAGES: usize = 100;
+const MAX_PAGES: usize = 1_000;
+const AUDIT_BATCH: usize = 10;
 const MAX_CHECKED: usize = 1_000;
 const CHECK_BATCH: usize = 40;
 const MAX_URL_BYTES: usize = 512;
@@ -25,7 +26,7 @@ pub(crate) struct Input {
     site: String,
     /// Sitemap URLs known to have changed. Pending URLs in this list go first.
     pages: Option<Vec<String>>,
-    /// Maximum pages to audit. Defaults to 100 and is capped at 100.
+    /// Maximum pages to audit. Defaults to 1,000 and is capped at 1,000.
     max: Option<usize>,
 }
 
@@ -76,22 +77,40 @@ impl Audit {
     }
 
     #[step(each, max = 100, price = 100)]
-    fn audit(select: &Selection) -> Vec<AuditPageCall> {
+    fn audit(select: &Selection) -> Vec<AuditBatchCall> {
         select
             .urls
-            .iter()
-            .map(|url| AuditPageCall {
+            .chunks(AUDIT_BATCH)
+            .map(|urls| AuditBatchCall {
                 site: select.site.clone(),
-                url: url.clone(),
+                urls: urls.to_vec(),
             })
             .collect()
     }
 
     #[step]
-    fn analyze(select: &Selection, audit: &[bool]) -> AuditAnalyzeCall {
+    fn analyze(discover: &CheckPlan, check: &[bool], audit: &[bool]) -> AuditAnalyzeCall {
         let _ = audit;
+        let mut checked = Vec::new();
+        let mut cursor = None;
+        let mut contiguous = true;
+        for (urls, &completed) in discover.urls.chunks(CHECK_BATCH).zip(check) {
+            contiguous &= completed;
+            if completed {
+                let last = urls.last().expect("nonempty check batch").clone();
+                if contiguous {
+                    cursor = Some(last.clone());
+                }
+                checked.push(CheckRange {
+                    first: urls[0].clone(),
+                    last,
+                });
+            }
+        }
         AuditAnalyzeCall {
-            site: select.site.clone(),
+            site: discover.site.clone(),
+            checked,
+            cursor,
         }
     }
 

@@ -16,13 +16,31 @@ The workloads include normal pages, accepted boundary inputs, structural and siz
 Run the local fixture from the repository root.
 
 ```sh
-cargo nextest run --manifest-path services/web/seo/tests/runtime/Cargo.toml --no-capture
+cargo nextest run --manifest-path services/web/seo/tests/runtime/Cargo.toml --no-capture -E 'test(=thousand_page_fixture)'
 ```
 
-The runtime fixture uses the built Wasm service, caller SQLite storage, and 1,000 HTML pages with 24 internal links per page. It reports the serialized scan bytes, the SQLite pages occupied by the `pages` table, and the caller database's logical file size. A repeat audit with simulated 100 ms conditional responses reports elapsed workflow time and the check steps' metered CPU, rows, and peak linear memory. To reuse an image, set `BERM_TEST_IMAGE_CRAB_SEO` to the image from `crab build services/web/seo`.
+The fixture builds the Wasm service and uses caller SQLite storage and 1,000 HTML pages with 24 internal links each. It first establishes a baseline, then runs an unchanged audit with 304 responses and a changed audit with 200 HTML responses and revised titles, descriptions and headings. Both measured runs simulate 100 ms per page response. To reuse a built image, set `BERM_TEST_IMAGE_CRAB_SEO` to the image from `crab build services/web/seo`.
 
-With 100 ms responses, the 25 check batches completed the conditional workflow in 4.60 seconds. They used 91,044 µs of guest CPU in total. The highest measurements in one batch were 4,141 µs of guest CPU, 121 rows read, 80 rows written and 1,900,544 bytes of linear memory.
+Measured on arm64 macOS on 2026-11-21. Workflow totals come from the attempt meter and include eight workflow control invocations. Elapsed time includes admitting and executing the workflow.
 
-A diagnostic build used the same HTTP batches inside one check invocation. With higher diagnostic limits it checked all 1,000 pages in 3.22 seconds of workflow time and used 64,177 µs of guest CPU, 3,001 row reads, 2,000 row writes and 1,966,080 bytes of linear memory. The time was within the 60-second chain limit. The reads and writes exceeded the deployed per-step limits of 2,000 and 100.
+| 1,000 checked pages | Priced batches | Rows read | Rows written | Guest CPU (µs) | Invocations | Elapsed (s) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Nothing changed | 0 | 35,311 | 5 | 112,824 | 38 | 4.241 |
+| Every page changed | 100 | 146,386 | 2,005 | 421,400 | 138 | 9.135 |
 
-The 1,000 scans occupied 1,594,340 bytes of JSON. The `pages` table occupied 2,052,096 bytes and the caller database occupied 4,726,784 bytes, including indexes, audit reports and free pages.
+### Tool dispatches
+
+| Run | Step | Rows read | Rows written | Guest CPU (µs) | Invocations |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Unchanged | Check | 2,025 | 0 | 39,567 | 25 |
+| Unchanged | Analyze | 30,273 | 1 | 56,161 | 1 |
+| Unchanged | Save | 3 | 2 | 4,060 | 1 |
+| All changed | Check | 3,025 | 1,000 | 314,094 | 25 |
+| All changed | Select | 105,979 | 0 | 564 | 1 |
+| All changed | Audit | 6,100 | 1,000 | 35,892 | 100 |
+| All changed | Analyze | 30,273 | 1 | 54,466 | 1 |
+| All changed | Save | 4 | 2 | 3,884 | 1 |
+
+The unchanged run wrote zero page rows. Its five writes cover creating, updating and deleting the run row, plus saving the report and cursor together. The changed run wrote ten scan rows per priced batch on average, in addition to the check's 1,000 observation writes.
+
+After the baseline, the 1,000 scans occupied 1,594,340 bytes of JSON. The `pages` table occupied 2,052,096 bytes and the caller database occupied 2,543,616 bytes, including indexes, the report and free pages.

@@ -4,12 +4,13 @@ use berm_api::{
     Meter,
     host::Caller,
     storage::Identity,
-    workflow::run::{Run, Status, Trigger},
+    workflow::run::{Prepared, Run, Status, Trigger},
 };
 use berm_host::{test::TestHost, workflow::StorageGrant};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -155,16 +156,40 @@ fn database(host: &TestHost, account: &str) -> Result<PathBuf> {
     anyhow::bail!("fixture caller database missing")
 }
 
-fn paid_urls(run: &Run) -> Vec<&str> {
-    let Some(berm_api::workflow::run::Prepared::Calls { calls }) =
-        &run.checkpoints["audit"].prepared
-    else {
+fn batch_urls<'a>(run: &'a Run, step: &str) -> Vec<Vec<&'a str>> {
+    let Some(Prepared::Calls { calls }) = &run.checkpoints[step].prepared else {
         return Vec::new();
     };
     calls
         .iter()
-        .map(|call| call.input["url"].as_str().unwrap())
+        .map(|call| {
+            call.input["urls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|url| url.as_str().unwrap())
+                .collect()
+        })
         .collect()
+}
+
+fn paid_urls(run: &Run) -> Vec<&str> {
+    batch_urls(run, "audit").into_iter().flatten().collect()
+}
+
+fn assert_batch_price(host: &TestHost, run: &Run, batches: u32) {
+    let service = host.host.get(SERVICE).unwrap();
+    let workflow = &service.manifest.workflows[0];
+    assert_eq!(run.checkpoints["audit"].items.len(), batches as usize);
+    assert_eq!(batch_urls(run, "audit").len(), batches as usize);
+    let base = workflow.config.price.unwrap_or_default();
+    assert_eq!(
+        workflow.entry.graph.price_range(base, &BTreeMap::new()),
+        (0, 10_000)
+    );
+    let exact = BTreeMap::from([("audit".into(), batches)]);
+    let cost = u64::from(batches) * 100;
+    assert_eq!(workflow.entry.graph.price_range(base, &exact), (cost, cost));
 }
 
 #[tokio::test]
@@ -288,7 +313,20 @@ async fn incremental_reports_and_priority() -> Result<()> {
     );
     let unchanged = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     assert_eq!(report(&unchanged)["audited"], 0);
-    assert!(paid_urls(&unchanged).is_empty());
+    assert_batch_price(&host, &unchanged, 0);
+    assert_eq!(unchanged.checkpoints["check"].meter.written, 0);
+
+    respond(
+        &host,
+        &a,
+        200,
+        html("Duplicate", &format!("{a_body}<img alt='new evidence'>")),
+        Duration::ZERO,
+    );
+    let one_changed = run(&host, ACCOUNT, json!({"site": SITE})).await?;
+    assert_eq!(report(&one_changed)["audited"], 1);
+    assert_eq!(batch_urls(&one_changed, "audit"), [[a.as_str()]]);
+    assert_batch_price(&host, &one_changed, 1);
 
     respond(
         &host,
@@ -355,6 +393,18 @@ async fn incremental_reports_and_priority() -> Result<()> {
         200,
         "User-agent: CrabTalkSEO\nDisallow: /blocked",
     );
+
+    host.arrange(
+        "GET",
+        &format!("{SITE}sitemap.xml"),
+        200,
+        format!("<urlset><url><loc>{a}</loc></url><url><loc>{redirect}</loc></url><url><loc>invalid</loc></url></urlset>"),
+    );
+    let partial = run(&host, ACCOUNT, json!({"site": SITE})).await?;
+    assert_eq!(report(&partial)["sitemap_complete"], false);
+    assert_eq!(report(&partial)["listed"], 2);
+    assert_eq!(report(&partial)["checked"], 2);
+    assert!(paid_urls(&partial).is_empty());
 
     sitemap(&host, listings.into_iter().filter(|url| url != &c));
     let removed = run(&host, ACCOUNT, json!({"site": SITE, "max": 0})).await?;
@@ -451,6 +501,72 @@ async fn retry_save_returns_the_original_comparison() -> Result<()> {
 }
 
 #[tokio::test]
+async fn check_cursor_resumes_and_wraps() -> Result<()> {
+    let host = host().await?;
+    let prefix = format!("{SITE}page-");
+    let urls: Vec<_> = (0..1_003)
+        .map(|index| format!("{prefix}{index:04}"))
+        .collect();
+    sitemap(&host, urls.iter().rev().cloned());
+    host.arrange("GET", &format!("{SITE}robots.txt"), 404, "");
+    let body = html("Cursor fixture", "");
+    for url in &urls {
+        respond(&host, url, 200, body.clone(), Duration::ZERO);
+    }
+
+    let first_window = &urls[..1_000];
+    let wrapped_window: Vec<_> = urls[1_000..].iter().chain(&urls[..997]).cloned().collect();
+    let mut request_offset = host.fetched().len();
+    for (index, window) in [first_window, &wrapped_window].into_iter().enumerate() {
+        let completed = run(&host, ACCOUNT, json!({"site": SITE, "max": 0})).await?;
+        let report = report(&completed);
+        assert_eq!(report["listed"], 1_003);
+        assert_eq!(report["checked"], 1_000);
+
+        let expected: Vec<_> = window.iter().map(String::as_str).collect();
+        let planned: Vec<_> = batch_urls(&completed, "check")
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(planned, expected, "check order in run {}", index + 1);
+
+        let requests = host.fetched();
+        let mut fetched: Vec<_> = requests[request_offset..]
+            .iter()
+            .map(|request| request.url.as_str())
+            .filter(|url| url.starts_with(&prefix))
+            .collect();
+        request_offset = requests.len();
+        fetched.sort_unstable();
+        let mut sorted_expected = expected;
+        sorted_expected.sort_unstable();
+        assert_eq!(
+            fetched,
+            sorted_expected,
+            "page requests in run {}",
+            index + 1
+        );
+
+        let conn = Connection::open_with_flags(
+            database(&host, ACCOUNT)?,
+            OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let cursor: String = conn.query_row(
+            "SELECT cursor FROM reports WHERE site = ?1",
+            [SITE],
+            |row| row.get(0),
+        )?;
+        assert_eq!(
+            &cursor,
+            window.last().unwrap(),
+            "saved cursor in run {}",
+            index + 1
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn thousand_page_fixture() -> Result<()> {
     let host = host().await?;
     let urls: Vec<_> = (0..1_000)
@@ -458,28 +574,32 @@ async fn thousand_page_fixture() -> Result<()> {
         .collect();
     sitemap(&host, urls.iter().cloned());
     host.arrange("GET", &format!("{SITE}robots.txt"), 404, "");
-    for (index, url) in urls.iter().enumerate() {
-        let links: String = (1..=24)
-            .map(|offset| format!("<a href='{}'>Next</a>", urls[(index + offset) % urls.len()]))
-            .collect();
+    let links: Vec<String> = (0..urls.len())
+        .map(|index| {
+            (1..=24)
+                .map(|offset| format!("<a href='{}'>Next</a>", urls[(index + offset) % urls.len()]))
+                .collect()
+        })
+        .collect();
+    for (index, (url, links)) in urls.iter().zip(&links).enumerate() {
         respond(
             &host,
             url,
             200,
-            html(&format!("Guide {index}"), &links),
+            html(&format!("Guide {index}"), links),
             Duration::ZERO,
         );
     }
     let first = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     assert_eq!(report(&first)["checked"], 1_000);
-    assert_eq!(report(&first)["audited"], 100);
-    for url in &urls {
-        respond(&host, url, 304, String::new(), Duration::ZERO);
-    }
-    for pending in (0..9).rev().map(|n| n * 100) {
-        let completed = run(&host, ACCOUNT, json!({"site": SITE})).await?;
-        assert_eq!(report(&completed)["pending"], pending);
-    }
+    assert_eq!(report(&first)["audited"], 1_000);
+    assert_eq!(report(&first)["pending"], 0);
+    assert_batch_price(&host, &first, 100);
+    assert!(
+        batch_urls(&first, "audit")
+            .iter()
+            .all(|batch| batch.len() == 10)
+    );
 
     let path = database(&host, ACCOUNT)?;
     let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
@@ -509,35 +629,76 @@ async fn thousand_page_fixture() -> Result<()> {
     let elapsed = begin.elapsed();
     assert_eq!(report(&conditional)["checked"], 1_000);
     assert_eq!(report(&conditional)["audited"], 0);
-    let check = &conditional.checkpoints["check"];
-    let mut total = Meter::default();
-    let mut peak = Meter::default();
-    for item in &check.items {
-        let meter = &item.dispatches[0].meter;
-        total += *meter;
-        peak.cpu = peak.cpu.max(meter.cpu);
-        peak.read = peak.read.max(meter.read);
-        peak.written = peak.written.max(meter.written);
-        peak.memory = peak.memory.max(meter.memory);
-    }
-    println!(
-        "conditional count=1000 batches={} workflow_ms={} cpu_total_us={} cpu_peak_us={} peak_read={} peak_written={} peak_memory_bytes={}",
-        check.items.len(),
-        elapsed.as_millis(),
-        total.cpu,
-        peak.cpu,
-        peak.read,
-        peak.written,
-        peak.memory
-    );
-    assert!(elapsed < Duration::from_secs(60));
+    assert_batch_price(&host, &conditional, 0);
+    assert_eq!(conditional.checkpoints["check"].meter.written, 0);
+    assert_eq!(conditional.checkpoints["discover"].meter.written, 1);
+    print_meters("unchanged", &conditional, elapsed);
 
+    for (index, (url, links)) in urls.iter().zip(&links).enumerate() {
+        respond(
+            &host,
+            url,
+            200,
+            html(&format!("Revised guide {index}"), links),
+            Duration::from_millis(100),
+        );
+    }
+    let begin = Instant::now();
+    let changed = run(&host, ACCOUNT, json!({"site": SITE, "max": 1_001})).await?;
+    let elapsed = begin.elapsed();
+    assert_eq!(report(&changed)["checked"], 1_000);
+    assert_eq!(report(&changed)["audited"], 1_000);
+    assert_eq!(report(&changed)["pending"], 0);
+    assert_batch_price(&host, &changed, 100);
+    assert!(
+        batch_urls(&changed, "audit")
+            .iter()
+            .all(|batch| batch.len() == 10)
+    );
+    print_meters("all_changed", &changed, elapsed);
+
+    for url in &urls {
+        respond(&host, url, 304, String::new(), Duration::ZERO);
+    }
     let extra = format!("{SITE}zz-last");
     sitemap(&host, urls.iter().cloned().chain([extra.clone()]));
     respond(&host, &extra, 200, html("Extra", ""), Duration::ZERO);
-    let rotated = run(&host, ACCOUNT, json!({"site": SITE, "max": 101})).await?;
+    let rotated = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     assert_eq!(report(&rotated)["listed"], 1_001);
     assert_eq!(report(&rotated)["checked"], 1_000);
     assert_eq!(paid_urls(&rotated), [&extra]);
+    let actual: Vec<_> = batch_urls(&rotated, "check")
+        .into_iter()
+        .flatten()
+        .collect();
+    let expected: Vec<_> = std::iter::once(extra.as_str())
+        .chain(urls[..999].iter().map(String::as_str))
+        .collect();
+    assert_eq!(actual, expected);
+    let cursor: String = conn.query_row("SELECT cursor FROM reports", [], |row| row.get(0))?;
+    assert_eq!(cursor, urls[998]);
     Ok(())
+}
+
+fn print_meters(scenario: &str, run: &Run, elapsed: Duration) {
+    let total = run.attempts.last().unwrap().meter;
+    println!(
+        "{scenario} workflow_ms={} invocations={} cpu_us={} rows_read={} rows_written={}",
+        elapsed.as_millis(),
+        total.calls,
+        total.cpu,
+        total.read,
+        total.written
+    );
+    for (step, checkpoint) in &run.checkpoints {
+        let mut total = Meter::default();
+        for dispatch in checkpoint.items.iter().flat_map(|item| &item.dispatches) {
+            total += dispatch.meter;
+        }
+        println!(
+            "{scenario} {step} invocations={} cpu_us={} rows_read={} rows_written={}",
+            total.calls, total.cpu, total.read, total.written
+        );
+    }
+    assert!(elapsed < Duration::from_secs(60));
 }

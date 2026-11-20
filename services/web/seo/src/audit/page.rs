@@ -117,7 +117,7 @@ pub(crate) struct Selection {
     budget(cpu = 100000, read = 1000000, written = 4, memory = 32)
 )]
 pub(crate) fn audit_select(site: String, pages: Vec<String>, max: usize) -> Result<Selection> {
-    let run = Run::owns(&site)?;
+    Run::owns(&site)?;
     let target = Url::parse(&site).map_err(|_| "Invalid audited site")?;
     let max = max.min(MAX_PAGES);
     let mut seen = BTreeSet::new();
@@ -129,18 +129,18 @@ pub(crate) fn audit_select(site: String, pages: Vec<String>, max: usize) -> Resu
         .collect();
     let urls = caller_storage::rows::<(String,)>(
         "WITH hints AS (
-            SELECT value AS url, key AS position FROM json_each(?3)
+            SELECT value AS url, key AS position FROM json_each(?2)
          ), pending AS MATERIALIZED (
             SELECT p.url, p.scan_hash, p.scanned_at, hints.position
             FROM pages p LEFT JOIN hints USING (url)
-            WHERE p.site = ?1 AND p.listed_run = ?2 AND NOT p.blocked
+            WHERE p.site = ?1 AND p.url NOT IN (SELECT url FROM unlisted_pages WHERE site = ?1) AND NOT p.blocked
                 AND p.status = 200 AND p.checked_fields IS NOT NULL
                 AND (SELECT robots IS NOT NULL FROM runs WHERE site = ?1)
          ), incoming AS MATERIALIZED (
             SELECT link.value AS url, count(*) AS links
             FROM pages p, json_each(coalesce(p.checked_fields, p.scan), '$.links') link
             JOIN pending target ON target.url = link.value AND target.scan_hash IS NOT NULL
-            WHERE p.site = ?1 AND p.listed_run = ?2 AND NOT p.blocked AND p.status = 200
+            WHERE p.site = ?1 AND p.url NOT IN (SELECT url FROM unlisted_pages WHERE site = ?1) AND NOT p.blocked AND p.status = 200
             GROUP BY link.value
          )
          SELECT p.url FROM pending p LEFT JOIN incoming i USING (url)
@@ -148,8 +148,8 @@ pub(crate) fn audit_select(site: String, pages: Vec<String>, max: usize) -> Resu
            CASE WHEN p.position IS NOT NULL THEN 0 WHEN p.scan_hash IS NULL THEN 1
                 WHEN i.links IS NOT NULL THEN 2 ELSE 3 END,
            p.position, i.links DESC, p.scanned_at, p.url
-         LIMIT ?4",
-        &(&site, &run.id, serde_json::to_string(&pages)?, max),
+         LIMIT ?3",
+        &(&site, &pages, max),
     )?
     .into_iter()
     .map(|(url,)| url)
@@ -157,29 +157,30 @@ pub(crate) fn audit_select(site: String, pages: Vec<String>, max: usize) -> Resu
     Ok(Selection { site, urls })
 }
 
-/// Audit a pending HTML page
+/// Audit a batch of pending HTML pages
 #[tool(
     access = "internal",
-    budget(cpu = 50000, read = 16, written = 4, memory = 16)
+    budget(cpu = 50000, read = 128, written = 16, memory = 16)
 )]
-pub(crate) fn audit_page(site: String, url: String) -> Result<bool> {
+pub(crate) fn audit_batch(site: String, urls: Vec<String>) -> Result<bool> {
     let run = Run::owns(&site)?;
     let changed = caller_storage::rows::<(String,)>(
         "UPDATE pages SET scan = checked_fields, scan_hash = hash,
              scanned_at = ?4, scanned_run = ?3, checked_fields = NULL
-         WHERE site = ?1 AND url = ?2 AND NOT blocked AND status = 200
-             AND checked_fields IS NOT NULL
+         WHERE site = ?1 AND url IN (SELECT value FROM json_each(?2)) AND NOT blocked
+             AND status = 200 AND checked_fields IS NOT NULL
          RETURNING url",
-        &(&site, &url, &run.id, now()),
+        &(&site, &urls, &run.id, now()),
     )?;
-    if changed.is_empty()
-        && caller_storage::rows::<(String,)>(
-            "SELECT url FROM pages WHERE site = ?1 AND url = ?2 AND scanned_run = ?3",
-            &(&site, &url, &run.id),
-        )?
-        .is_empty()
-    {
-        return Err("This page has no pending HTML check".into());
+    if changed.len() != urls.len() {
+        let applied = caller_storage::rows::<(usize,)>(
+            "SELECT count(*) FROM pages WHERE site = ?1 AND scanned_run = ?3
+                 AND url IN (SELECT value FROM json_each(?2))",
+            &(&site, &urls, &run.id),
+        )?;
+        if applied != [(urls.len(),)] {
+            return Err("This page has no pending HTML check".into());
+        }
     }
     Ok(true)
 }
