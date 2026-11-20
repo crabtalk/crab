@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt, time::Duration};
+use std::{collections::BTreeMap, fmt, time::Duration};
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,6 +55,8 @@ pub struct Public {
     pub title: Option<String>,
     pub access: Access,
     pub price: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_range: Option<(u64, u64)>,
 }
 
 impl Schedule {
@@ -174,6 +176,11 @@ impl Spec {
                 .access
                 .filter(|access| *access != Access::Internal)?,
             price: self.config.price,
+            price_range: Some(
+                self.entry
+                    .graph
+                    .price_range(self.config.price.unwrap_or(0), &BTreeMap::new()),
+            ),
         })
     }
 }

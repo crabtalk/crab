@@ -8,6 +8,8 @@ use webpage::page::Page;
 /// Does not render JavaScript, fetch linked resources or verify indexing.
 #[tool(
     catalog = "web.seo",
+    example = "check https://example.com for technical SEO issues and list what to fix first",
+    example = "check whether the title, description and social preview on my landing page are set",
     budget(cpu = 50000, read = 1, written = 1, memory = 23)
 )]
 pub fn check(
@@ -24,6 +26,8 @@ pub fn check(
 /// Markdown copy. Does not render JavaScript or crawl the site.
 #[tool(
     catalog = "web.seo",
+    example = "check whether AI crawlers like GPTBot and ClaudeBot can read https://example.com",
+    example = "tell me if my site publishes llms.txt and Markdown pages for AI",
     budget(cpu = 90000, read = 1, written = 1, memory = 32)
 )]
 pub fn ai_access(

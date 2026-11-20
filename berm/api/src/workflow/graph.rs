@@ -201,6 +201,7 @@ impl Graph {
     /// The least and most a successful run charges the caller in USD micros:
     /// `base`, plus each priced step's price times its count in `exact`, or
     /// times 0 to its `max` for a step `exact` does not name.
+    /// Totals beyond the representable range saturate at `u64::MAX`.
     pub fn price_range(&self, base: u64, exact: &BTreeMap<String, u32>) -> (u64, u64) {
         let (mut least, mut most) = (base, base);
         for node in &self.nodes {
@@ -212,10 +213,13 @@ impl Graph {
             {
                 match exact.get(&node.id) {
                     Some(count) => {
-                        least += price * u64::from(*count);
-                        most += price * u64::from(*count);
+                        let total = price.saturating_mul(u64::from(*count));
+                        least = least.saturating_add(total);
+                        most = most.saturating_add(total);
                     }
-                    None => most += price * u64::from(mode.maximum()),
+                    None => {
+                        most = most.saturating_add(price.saturating_mul(u64::from(mode.maximum())));
+                    }
                 }
             }
         }

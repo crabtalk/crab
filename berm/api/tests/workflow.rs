@@ -1,10 +1,12 @@
 use berm_api::workflow::{
     Policy, Version,
+    config::{Config, Public, Spec},
     graph::{Entry, Kind, Mode, Producer},
     run::{Failure, Prepared, Run, State},
     spend::Context,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 #[test]
 fn v1_entry_and_complete_run_round_trip() {
@@ -90,6 +92,53 @@ fn policy_defaults_and_symbolic_call_bounds_are_explicit() {
             .max_each,
         3
     );
+}
+
+#[test]
+fn public_workflow_prices_include_the_worst_case_step_fees() {
+    let entry = serde_json::from_str(include_str!("fixtures/workflow-entry-v1.json")).unwrap();
+    let mut spec = Spec {
+        entry,
+        config: Config::default(),
+    };
+    assert_eq!(spec.public().unwrap().price_range, Some((0, 0)));
+
+    spec.config.price = Some(1_000);
+    assert_eq!(spec.public().unwrap().price_range, Some((1_000, 1_000)));
+
+    let Kind::Step { price, mode, .. } = &mut spec.entry.graph.nodes[0].kind else {
+        unreachable!()
+    };
+    *price = Some(100);
+    *mode = Mode::Each { max: 100 };
+    let listing = spec.public().unwrap();
+    let mut wire = serde_json::to_value(&listing).unwrap();
+    assert_eq!(wire["price"], 1_000);
+    assert_eq!(wire["price_range"], json!([1_000, 11_000]));
+    assert_eq!(
+        serde_json::from_value::<Public>(wire.clone()).unwrap(),
+        listing
+    );
+
+    wire.as_object_mut().unwrap().remove("price_range");
+    let legacy = serde_json::from_value::<Public>(wire).unwrap();
+    assert_eq!(legacy.price, Some(1_000));
+    assert_eq!(legacy.price_range, None);
+}
+
+#[test]
+fn workflow_price_bounds_saturate_instead_of_wrapping() {
+    let mut entry: Entry =
+        serde_json::from_str(include_str!("fixtures/workflow-entry-v1.json")).unwrap();
+    let step = &mut entry.graph.nodes[0];
+    let Kind::Step { price, mode, .. } = &mut step.kind else {
+        unreachable!()
+    };
+    *price = Some(u64::MAX);
+    *mode = Mode::Each { max: 2 };
+    let exact = BTreeMap::from([(step.id.clone(), 1)]);
+    assert_eq!(entry.graph.price_range(1, &BTreeMap::new()), (1, u64::MAX));
+    assert_eq!(entry.graph.price_range(1, &exact), (u64::MAX, u64::MAX));
 }
 
 #[test]
