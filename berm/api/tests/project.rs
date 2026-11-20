@@ -1,204 +1,95 @@
-//! `crab.toml`: credentials parsed, folded into `deps`, and a secret declared
-//! twice refused; `[tools]` read and checked.
-
-use berm_api::{Access, project::Project};
+use berm_api::{DEFAULT_BUFFER, project::Project};
 use std::fs;
-
-fn read(toml: &str) -> anyhow::Result<Project> {
+fn read(text: &str) -> anyhow::Result<Project> {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("crab.toml");
-    fs::write(&path, toml).unwrap();
+    fs::write(&path, text).unwrap();
     Project::read(&path)
 }
-
 const GITHUB: &str = r#"
-image = "fixtures/app"
-secrets = ["OPENAI_KEY"]
-
 [credentials.github]
 title = "GitHub OAuth app"
 guide = "Create one."
 copy = { callback = "Authorization callback URL" }
+hosts = ["api.github.com"]
 secrets = [
     { name = "GITHUB_CLIENT_ID", label = "Client ID", masked = false, pattern = '^Ov23li' },
     { name = "GITHUB_CLIENT_SECRET", label = "Client secret" },
 ]
 "#;
-
 #[test]
-fn a_credentials_secrets_join_the_declared_secrets() {
+fn credential_hosts_and_secrets_join_dependencies() {
     let deps = read(GITHUB).unwrap().deps();
-    assert_eq!(
-        deps.secrets,
-        ["OPENAI_KEY", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]
-    );
-    let github = &deps.credentials["github"];
-    assert_eq!(github.copy["callback"], "Authorization callback URL");
-    assert!(!github.secrets[0].masked);
-    assert!(github.secrets[1].masked);
-    assert_eq!(github.secrets[0].pattern.as_deref(), Some("^Ov23li"));
+    assert_eq!(deps.secrets, ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]);
+    assert_eq!(deps.http.fetch, ["api.github.com"]);
+    let credential = &deps.credentials["github"];
+    assert_eq!(credential.copy["callback"], "Authorization callback URL");
+    assert!(!credential.secrets[0].masked);
+    assert!(credential.secrets[1].masked);
+    assert_eq!(credential.secrets[0].pattern.as_deref(), Some("^Ov23li"));
 }
-
 #[test]
-fn a_secret_declared_twice_is_refused() {
-    let twice = GITHUB.replace(r#"["OPENAI_KEY"]"#, r#"["GITHUB_CLIENT_ID"]"#);
-    let error = read(&twice).unwrap_err();
+fn duplicate_secrets_and_invalid_patterns_are_refused() {
+    assert!(read(&GITHUB.replace("GITHUB_CLIENT_SECRET", "GITHUB_CLIENT_ID")).is_err());
+    assert!(read(&GITHUB.replace("masked = false", "masekd = false")).is_err());
+    assert!(read(&GITHUB.replace("^Ov23li", "^(Ov23li")).is_err());
+}
+#[test]
+fn credential_fetch_duplicates_compare_exact_strings() {
+    let error = read(&format!("{GITHUB}\n[http]\nfetch = [\"api.github.com\"]")).unwrap_err();
     assert!(
-        error.to_string().contains("GITHUB_CLIENT_ID twice"),
-        "{error}"
+        format!("{error:#}").contains("`api.github.com` is already allowed by credential `github`")
     );
-}
-
-#[test]
-fn an_unknown_key_in_a_credential_is_refused() {
-    let typo = GITHUB.replace("masked = false", "masekd = false");
-    assert!(read(&typo).is_err());
-}
-
-#[test]
-fn the_auth_kits_credentials_parse() {
-    let kit = concat!(env!("CARGO_MANIFEST_DIR"), "/../../services/kits/auth");
-    let project = Project::read(&std::path::Path::new(kit).join("crab.toml")).unwrap();
-    project.check_kit().unwrap();
-    let deps = project.deps();
-    assert_eq!(deps.credential_of("GOOGLE_CLIENT_SECRET"), Some("google"));
-    assert_eq!(deps.secrets.len(), 4);
-}
-
-#[test]
-fn a_services_tools_are_read_and_a_kits_are_refused() {
-    let service = read(
-        "image = \"fixtures/app\"\n\n[tools.search]\naccess = \"services\"\ntitle = \"Search\"\nprice = 2_000\ncatalog = \"web.search\"\n",
-    )
-    .unwrap();
-    let search = &service.tools["search"];
-    assert_eq!(search.access, Some(Access::Services));
-    assert_eq!(search.price, Some(2_000));
-    assert_eq!(
-        service.records().unwrap()["search"].catalog.as_deref(),
-        Some("web.search")
-    );
-    let kit = read("[tools.search]\naccess = \"public\"\n").unwrap();
-    assert!(kit.check_kit().unwrap_err().to_string().contains("tools"));
-}
-
-#[test]
-fn a_price_or_catalog_on_an_internal_tool_is_refused() {
-    for key in ["price = 2_000", "catalog = \"web.search\""] {
-        let error = read(&format!(
-            "image = \"fixtures/app\"\n[tools.search]\n{key}\n"
-        ))
-        .unwrap_err();
-        assert!(error.to_string().contains("internal tool"), "{error}");
-    }
-}
-
-#[test]
-fn a_title_past_sixty_characters_or_one_line_is_refused() {
-    let long = "x".repeat(61);
-    for title in [long.as_str(), "two\\nlines"] {
-        let error = read(&format!(
-            "image = \"fixtures/app\"\n[tools.search]\ntitle = \"{title}\"\n"
-        ))
-        .unwrap_err();
-        assert!(error.to_string().contains("one line"), "{error}");
-    }
-    read(&format!(
-        "image = \"fixtures/app\"\n[tools.search]\ntitle = \"{}\"\n",
-        "é".repeat(60)
+    let project = read(&format!(
+        "{GITHUB}\n[http]\nfetch = [\"*.github.com\"]\nproxy = [\"api.github.com\"]"
     ))
     .unwrap();
-}
-
-#[test]
-fn an_unknown_access_or_key_is_refused() {
-    assert!(read("image = \"fixtures/app\"\n[tools.search]\naccess = \"everyone\"\n").is_err());
-    assert!(read("image = \"fixtures/app\"\n[tools.search]\nprices = 1\n").is_err());
-}
-
-#[test]
-fn a_pattern_that_is_not_a_regular_expression_is_refused() {
-    let broken = GITHUB.replace("pattern = '^Ov23li'", "pattern = '^(Ov23li'");
-    let error = read(&broken).unwrap_err();
-    assert!(
-        error.to_string().contains("not a regular expression"),
-        "{error}"
-    );
-}
-
-#[test]
-fn a_budget_key_of_zero_or_unknown_is_refused() {
-    let budget = |set: &str| {
-        read(&format!(
-            "image = \"fixtures/app\"\n[tools.search]\nbudget = {{ {set} }}\n"
-        ))
-    };
-    let error = budget("cpu = 5_000, written = 0").unwrap_err();
-    assert!(
-        error.to_string().contains("budget.written is at least 1"),
-        "{error}"
-    );
-    assert!(budget("rows = 10").is_err());
-    let read = budget("written = 100, memory = 16").unwrap();
-    let limits = read.tools["search"].budget.unwrap();
     assert_eq!(
-        (limits.written, limits.memory, limits.cpu),
-        (Some(100), Some(16), None)
+        project.deps().http.fetch,
+        ["*.github.com", "api.github.com"]
     );
+    assert_eq!(project.deps().http.proxy, ["api.github.com"]);
 }
-
 #[test]
-fn linked_services_validate_migration_identity_without_rejecting_deployment_settings() {
-    let service =
-        read("image = \"fixtures/github\"\n[tools.repository]\naccess = \"public\"\n[vars]\nlimit = {}\n")
-            .unwrap();
-    service.check_dependency().unwrap();
-    assert_eq!(service.tools.len(), 1);
-    let missing = read("[database]\nmigrations = \"migrations\"\n").unwrap();
-    assert!(missing.check_dependency().is_err());
-}
-
-#[test]
-fn stateful_services_can_deploy_and_link_with_a_stable_migration_identity() {
-    let service = read(
-        r#"image = "fixtures/watch"
-id = "732e70b4fd594e91a94da0f60f50a948"
-[database]
-migrations = "migrations"
-"#,
-    )
-    .unwrap();
-    assert_eq!(service.instance("package"), "watch");
-    service.check_dependency().unwrap();
-    assert!(
-        read(
-            r#"image = "fixtures/watch"
-id = "invalid"
-"#
-        )
-        .unwrap()
-        .check_service()
-        .is_err()
-    );
-}
-
-#[test]
-fn publication_is_opt_in_and_independent() {
-    let private = read(r#"image = "fixtures/app""#).unwrap();
-    assert!(!private.public && !private.template);
-    for (public, template) in [(false, true), (true, false), (true, true)] {
-        let project = read(&format!(
-            "image = \"fixtures/app\"\npublic = {public}\ntemplate = {template}\n"
-        ))
-        .unwrap();
-        assert_eq!((project.public, project.template), (public, template));
+fn retired_project_keys_are_refused_without_a_compatibility_path() {
+    for text in [
+        "image = \"fixtures/app\"",
+        "logo = \"https://example.com/logo.svg\"",
+        "public = true",
+        "deploy = true",
+        "deploy = false",
+        "formerly = []",
+        "secrets = []",
+        "[crons]",
+        "[workflows.flow.schedule]\ncron = \"0 8 * * *\"\ninput = {}",
+        "[tools.search]\naccess = \"public\"",
+        "name = \"old\"",
+        "calls = []",
+        "[syscalls]",
+        "[http]\nftech = []",
+    ] {
+        assert!(read(text).is_err(), "accepted {text}");
     }
 }
-
 #[test]
-fn logos_are_optional_and_require_absolute_https_urls() {
-    assert!(read("image = \"fixtures/app\"\n").unwrap().logo.is_none());
-    let logo = read("image = \"fixtures/app\"\nlogo = \"https://example.com/logo.svg\"\n")
+fn image_publication_and_logos_use_one_table() {
+    assert!(read("").unwrap().image.is_none());
+    let private = read("[image]\nname = \"fixtures/app\"").unwrap();
+    let image = private.image.unwrap();
+    assert!(!image.public && !image.deploy);
+    for (public, deploy) in [(true, false), (false, true), (true, true)] {
+        let image = read(&format!(
+            "[image]\nname = \"fixtures/app\"\npublic = {public}\ndeploy = {deploy}"
+        ))
+        .unwrap()
+        .image
+        .unwrap();
+        assert_eq!((image.public, image.deploy), (public, deploy));
+    }
+    assert!(read("[image]\nname = \"fixtures/app\"\ntemplate = true").is_err());
+    let logo = read("[image]\nname = \"fixtures/app\"\nlogo = \"https://example.com/logo.svg\"")
+        .unwrap()
+        .image
         .unwrap()
         .logo
         .unwrap();
@@ -211,85 +102,122 @@ fn logos_are_optional_and_require_absolute_https_urls() {
         "data:image/png;base64,AA==",
         "",
     ] {
-        let error = read(&format!("image = \"fixtures/app\"\nlogo = {url:?}\n")).unwrap_err();
-        assert!(format!("{error:#}").contains("logo must be an absolute HTTPS URL"));
+        assert!(read(&format!("[image]\nname = \"fixtures/app\"\nlogo = {url:?}")).is_err());
     }
-}
-
-#[test]
-fn library_only_packages_do_not_declare_logos() {
-    let project = read("logo = \"https://example.com/logo.svg\"\n").unwrap();
     assert!(
-        project
+        private_image()
             .check_kit()
             .unwrap_err()
             .to_string()
-            .contains("logo")
+            .contains("image")
     );
 }
-
 #[test]
-fn http_settings_replace_syscall_declarations() {
+fn an_unpublished_image_cannot_be_deployed_by_others() {
+    assert!(private_image().image.unwrap().publish);
+    let image = read("[image]\nname = \"fixtures/app\"\npublic = true\npublish = false")
+        .unwrap()
+        .image
+        .unwrap();
+    assert!(image.public && !image.publish);
+    assert!(read("[image]\nname = \"fixtures/app\"\ndeploy = true\npublish = false").is_err());
+}
+fn private_image() -> Project {
+    read("[image]\nname = \"fixtures/app\"").unwrap()
+}
+#[test]
+fn migration_identity_and_instance_names_are_stable() {
+    let service=read("id = \"732e70b4fd594e91a94da0f60f50a948\"\n[database]\nmigrations = \"migrations\"\n[image]\nname = \"fixtures/watch\"").unwrap();
+    assert_eq!(service.instance("package"), "watch");
+    service.check_dependency().unwrap();
+    assert!(read("id = \"invalid\"").unwrap().check_service().is_err());
+    assert!(
+        read("[database]\nmigrations = \"migrations\"")
+            .unwrap()
+            .check_dependency()
+            .is_err()
+    );
+    assert_eq!(read("").unwrap().instance("package"), "package");
+}
+#[test]
+fn smaller_buffers_and_explicit_credential_hosts_remain_valid() {
+    let project=read("buffer = 1024\n[credentials.manual]\ntitle = \"API token\"\nhosts = [\"api.example.com\"]\nsecrets = [{name = \"API_KEY\"}]").unwrap();
+    project.check_credentials(&[]).unwrap();
+    assert_eq!(project.deps().http.fetch, ["api.example.com"]);
+    assert_eq!(project.buffer(), 1024);
+    assert_eq!(read("").unwrap().buffer(), DEFAULT_BUFFER);
+    assert_eq!(DEFAULT_BUFFER, 1 << 20);
+}
+#[test]
+fn schedules_parse_both_forms_and_reject_unknown_keys_and_invalid_crons() {
     let project = read(
-        r#"image = "fixtures/http"
-[http]
-fetch = ["api.example"]
-proxy = ["*.example"]
-"#,
+        "[schedules]\ntick = \"*/5 * * * *\"\nflow = {cron = \"0 8 * * *\", input = {x = 1}} ",
     )
     .unwrap();
-    assert_eq!(project.deps().http.fetch, ["api.example"]);
-    assert_eq!(project.deps().http.proxy, ["*.example"]);
-    assert!(
-        read(
-            r#"image = "fixtures/old"
-[syscalls]
-"berm.vouch" = []
-"#
-        )
-        .is_err()
-    );
-    assert!(
-        read(
-            r#"image = "fixtures/typo"
-[http]
-ftech = []
-"#
-        )
-        .is_err()
-    );
-    assert!(
-        read(r#"image = "fixtures/plain""#)
-            .unwrap()
-            .deps()
-            .http
-            .is_empty()
-    );
+    assert_eq!(project.schedules["tick"].cron(), "*/5 * * * *");
+    assert_eq!(project.schedules["flow"].input().unwrap()["x"], 1);
+    for text in [
+        "[schedules]\ntick = \"bad\"",
+        "[schedules]\ntick = {cron = \"* * * * *\", typo = true}",
+    ] {
+        assert!(read(text).is_err());
+    }
 }
-
 #[test]
-fn builds_need_no_image_and_the_old_name_key_is_rejected() {
-    let project = read("").unwrap();
-    assert!(project.image.is_none());
-    assert_eq!(project.instance("local-package"), "local-package");
-    assert!(read("name = \"old-name\"").is_err());
-    let project = read("image = \"connect/tinyfish\"").unwrap();
-    assert_eq!(project.instance("crab-tinyfish"), "tinyfish");
-}
-
-#[test]
-fn service_call_destinations_are_not_manifest_declarations() {
-    let error = read("calls = [\"alice/weather\"]").unwrap_err();
-    assert!(format!("{error:#}").contains("calls"), "{error:#}");
-}
-
-#[test]
-fn tool_idempotency_windows_are_target_owned_and_positive() {
-    let project = read("[tools.send]\nidempotency = \"24h\"\n").unwrap();
+fn auth_credential_hosts_are_callable_without_changing_secret_destinations() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/kits/auth/crab.toml");
+    let project = Project::read(&path).unwrap();
+    project.check_kit().unwrap();
+    let deps = project.deps();
+    assert_eq!(deps.credential_of("GOOGLE_CLIENT_SECRET"), Some("google"));
+    assert!(deps.http.fetch.contains(&"github.com".into()));
     assert_eq!(
-        project.records().unwrap()["send"].idempotency_ms,
-        Some(86_400_000)
+        deps.secret_hosts("GOOGLE_CLIENT_SECRET"),
+        ["oauth2.googleapis.com"]
     );
-    assert!(read("[tools.send]\nidempotency = \"0s\"\n").is_err());
-    assert!(read("[tools.send]\nidempotency = \"1ns\"\n").is_err());
+}
+
+#[test]
+fn every_explicit_metadata_field_counts_as_an_override_even_at_its_default() {
+    use berm_api::Kit;
+    let kit_project =
+        read("[credentials.supabase]\ntitle = \"Supabase\"\nsecrets = [{name = \"SUPABASE_KEY\"}]")
+            .unwrap();
+    let kit = Kit {
+        name: "supabase-kit".into(),
+        id: None,
+        version: "1.0.0".into(),
+        deps: kit_project.deps(),
+        database: None,
+    };
+    let binding = "[credentials.supabase]\nhosts = [\"project.supabase.co\"]\n";
+    read(binding)
+        .unwrap()
+        .check_credentials(std::slice::from_ref(&kit))
+        .unwrap();
+    for field in [
+        "title = \"\"",
+        "guide = \"\"",
+        "copy = {}",
+        "optional = false",
+        "secrets = []",
+    ] {
+        let project = read(&format!("{binding}{field}\n")).unwrap();
+        let error = project
+            .check_credentials(std::slice::from_ref(&kit))
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "credential `supabase` is declared by kit `supabase-kit`; set only `hosts`."
+        );
+    }
+    let error = read(binding).unwrap().check_credentials(&[]).unwrap_err();
+    assert!(error.to_string().contains("no linked kit declares it"));
+    assert!(
+        read(&format!(
+            "{binding}\n[http]\nfetch = [\"project.supabase.co\"]"
+        ))
+        .is_err()
+    );
 }

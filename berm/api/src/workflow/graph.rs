@@ -6,12 +6,15 @@ use anyhow::{Result, bail, ensure};
 use berm_abi::workflow as validation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub version: Version,
     pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
     pub graph: Graph,
 }
 
@@ -56,8 +59,17 @@ pub struct Node {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Kind {
-    Step { call: Call, mode: Mode },
-    Branch { cases: Vec<Case> },
+    Step {
+        call: Call,
+        mode: Mode,
+        /// USD micros the caller pays per item of an `each` step, or per run of
+        /// any other step.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        price: Option<u64>,
+    },
+    Branch {
+        cases: Vec<Case>,
+    },
     Output,
 }
 
@@ -142,7 +154,78 @@ pub enum Selection {
     Case { name: String },
 }
 
+impl Selection {
+    /// Whether a producer's succeeded `value` meets this selection; `None` for
+    /// a producer that did not succeed. A branch's value is `{case: payload}`.
+    pub fn selects(&self, value: Option<&Value>) -> bool {
+        match (self, value) {
+            (Self::Present, value) => value.is_some(),
+            (Self::Case { name }, Some(value)) => {
+                value.as_str() == Some(name)
+                    || value
+                        .as_object()
+                        .is_some_and(|fields| fields.len() == 1 && fields.contains_key(name))
+            }
+            (Self::Case { .. }, None) => false,
+        }
+    }
+}
+
 impl Graph {
+    /// Whether a step's item count, and whether it runs, follow from the input
+    /// alone. Controls are pure, so such a step's list is known before the run.
+    pub fn exact(&self, node: &Node) -> bool {
+        matches!(node.kind, Kind::Step { .. }) && self.settled_by_input(node)
+    }
+
+    /// Whether a node's control and guards read only the input and branches
+    /// that do.
+    pub fn settled_by_input(&self, node: &Node) -> bool {
+        let control = |id: &str| {
+            self.nodes
+                .iter()
+                .find(|other| other.id == id)
+                .is_some_and(|other| {
+                    matches!(other.kind, Kind::Branch { .. }) && self.settled_by_input(other)
+                })
+        };
+        node.dependencies
+            .iter()
+            .all(|dependency| match &dependency.source {
+                Producer::Input => true,
+                Producer::Node { id } => control(id),
+            })
+            && node.guards.iter().all(|guard| control(&guard.producer))
+    }
+
+    /// The least and most a successful run charges the caller in USD micros:
+    /// `base`, plus each priced step's price times its count in `exact`, or
+    /// times 0 to its `max` for a step `exact` does not name.
+    /// Totals beyond the representable range saturate at `u64::MAX`.
+    pub fn price_range(&self, base: u64, exact: &BTreeMap<String, u32>) -> (u64, u64) {
+        let (mut least, mut most) = (base, base);
+        for node in &self.nodes {
+            if let Kind::Step {
+                price: Some(price),
+                mode,
+                ..
+            } = node.kind
+            {
+                match exact.get(&node.id) {
+                    Some(count) => {
+                        let total = price.saturating_mul(u64::from(*count));
+                        least = least.saturating_add(total);
+                        most = most.saturating_add(total);
+                    }
+                    None => {
+                        most = most.saturating_add(price.saturating_mul(u64::from(mode.maximum())));
+                    }
+                }
+            }
+        }
+        (least, most)
+    }
+
     pub fn check(&self, max_each: u32) -> Result<()> {
         let mut dependencies = Vec::new();
         for (index, node) in self.nodes.iter().enumerate() {
@@ -175,6 +258,7 @@ impl Graph {
                         Kind::Step {
                             call,
                             mode: Mode::Once | Mode::Optional,
+                            ..
                         } => &call.cases,
                         Kind::Branch { cases } => cases,
                         _ => bail!("{} selects a case of a producer without cases", node.id),

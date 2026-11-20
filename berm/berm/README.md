@@ -17,7 +17,7 @@ let outcome = berm.call(None, "example", "echo", br#"{"query":"hi"}"#.to_vec()).
 
 The linked Wasm imports identify the host calls a service needs. A host refuses deployment when it cannot serve an imported call.
 
-berm serves `berm.call`, which resolves a name against the set berm already holds, and the reads of a call's own context: `berm.caller`, `berm.user`, `berm.client`, `berm.client.ip`, `berm.now`, `berm.trace` and `berm.deny`.
+berm serves `berm.call`, which resolves a name against the set berm already holds, and the reads of a call's own context: `berm.caller`, `berm.user`, `berm.client`, `berm.client.ip`, `berm.workflow.run`, `berm.service`, `berm.deadline`, `berm.call.id`, `berm.now`, `berm.trace` and `berm.deny`.
 
 `berm.client` returns the daily opaque key; `berm.client.ip` returns the outside IP. Both follow the call chain.
 
@@ -26,6 +26,8 @@ The embedder registers host capabilities as `Syscall`s. Known ABI calls with no 
 ## What an invocation runs under
 
 A guest cannot decline how far a chain of services may nest, the depth `Calls` is built with, or how long one may run, `bound/watchdog.rs`.
+
+The SQLite execution backend interrupts SQL statements at the invocation deadline, including statements that have not produced a result row. An interrupted writing invocation rolls back its transaction.
 
 `Manifest::try_from(bytes)` reads what an image claims to be without compiling or running it.
 

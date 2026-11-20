@@ -27,13 +27,17 @@ pub fn with_wasm(wasm: &[u8], config: Value) -> Vec<u8> {
     with_record(wasm, record, config)
 }
 
-pub fn with_record(wasm: &[u8], record: Value, config: Value) -> Vec<u8> {
+pub fn with_record(wasm: &[u8], mut record: Value, mut config: Value) -> Vec<u8> {
+    let schedule = config
+        .as_object_mut()
+        .and_then(|config| config.remove("schedule"));
+    record["config"] = config;
     let image = Image(wasm)
         .with_section(berm_abi::ABI_SECTION, &serde_json::to_vec(&record).unwrap())
         .unwrap();
     let service = json!({
         "name":"workflow-only","buffer":16384,
-        "workflows":{"identity":config}
+        "workflows": schedule.map(|schedule| json!({"identity":{"schedule":schedule}})).unwrap_or_else(|| json!({}))
     });
     Image(&image)
         .with_section(

@@ -14,11 +14,15 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["tools"]
-tools = []
+tools = ["dep:sitemap"]
 
 [dependencies]
 berm-lang.workspace = true
+sitemap = { workspace = true, optional = true }
 scraper.workspace = true
+http-link.workspace = true
+language-tags.workspace = true
+url.workspace = true
 webpage.workspace = true
 
 [dev-dependencies]

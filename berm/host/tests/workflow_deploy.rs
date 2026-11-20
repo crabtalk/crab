@@ -20,7 +20,8 @@ async fn workflow_only_services_deploy_with_public_and_owner_metadata() -> Resul
     assert!(public["workflows"][0].get("config").is_none());
     let owner = host.host.runtime("identity").await?;
     assert_eq!(owner.workflows[0].config.max_cost, 2000);
-    let internal = workflow::image(json!({"max_cost":2000,"checkpoint_bytes":4096}));
+    let internal =
+        workflow::image(json!({"access":"internal","max_cost":2000,"checkpoint_bytes":4096}));
     host.deploy("internal", &internal).await?;
     assert!(host.host.idl("internal")?.workflows.is_empty());
     assert_eq!(host.host.runtime("internal").await?.workflows.len(), 1);

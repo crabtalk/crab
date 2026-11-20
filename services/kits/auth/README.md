@@ -22,26 +22,19 @@ use alloc::string::String;
 use berm_lang::{Result, tool};
 use crabkit::auth::{Account, Identity, Session};
 
-/// Signs in with a GitHub authorization code.
-#[tool]
+/// Signs in with a GitHub authorization code
+#[tool(access = "anonymous")]
 pub fn sign_in(code: String, redirect: String) -> Result<Session> {
     Identity::github(&code, &redirect)?.sign_in()
 }
 
-/// The account a session is signed in to.
-#[tool(query)]
+/// The account a session is signed in to
+#[tool(query, access = "anonymous")]
 pub fn account(session: String) -> Result<Account> {
     Account::load(Account::session(&session)?)
 }
 ```
 
-```toml
-[tools.sign_in]
-access = "anonymous"
-
-[tools.account]
-access = "anonymous"
-```
 
 GitHub code exchange and profile requests use the [GitHub service](https://github.com/crabtalk/crab/blob/main/services/connect/github/README.md) as a library. Auth maps that profile to an identity and manages account linking and sessions. Its OAuth app credentials are distinct from the optional repository API token.
 

@@ -56,12 +56,12 @@ impl Document {
         let mut types = Types::default();
         let mut needs_scalar = false;
         let (mut functions, mut tools, mut names) = (Vec::new(), Vec::new(), BTreeSet::new());
-        for (name, selector) in &config.operations {
+        for (name, selector, attrs) in &config.operations {
             if !names.insert(name.to_string()) {
                 return Err(syn::Error::new(name.span(), "duplicate operation name"));
             }
             let generated = self
-                .operation(config, name, &selector.value(), &mut types)
+                .operation(config, name, &selector.value(), attrs, &mut types)
                 .map_err(|e| {
                     syn::Error::new(selector.span(), format!("{}: {e}", selector.value()))
                 })?;
@@ -122,6 +122,7 @@ impl Document {
         config: &Config,
         name: &syn::Ident,
         selector: &str,
+        attrs: &[syn::Attribute],
         types: &mut Types,
     ) -> syn::Result<(TokenStream, TokenStream, bool)> {
         let (method, route) = selector
@@ -388,29 +389,78 @@ impl Document {
             };
         }
         let input = types.object(&input_name, &json!({"type":"object", "properties":properties,"required":required,"additionalProperties":false}))?;
-        let description = operation
-            .summary
-            .as_deref()
-            .filter(|text| !text.trim().is_empty())
-            .or_else(|| {
-                operation
-                    .description
-                    .as_deref()
-                    .filter(|text| !text.trim().is_empty())
+        let title = attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("doc"))
+            .map(|attr| {
+                if let syn::Meta::NameValue(pair) = &attr.meta
+                    && let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(line),
+                        ..
+                    }) = &pair.value
+                {
+                    line.value().trim().to_owned()
+                } else {
+                    String::new()
+                }
             })
-            .unwrap_or(selector);
+            .next()
+            .unwrap_or_default();
+        let title = if title.is_empty() {
+            operation
+                .summary
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .to_owned()
+        } else {
+            title
+        };
+        if config.tools {
+            berm_api::ToolSpec::check_title(&title).map_err(Self::error)?;
+        }
+        let description = operation.description.as_deref().unwrap_or_default();
+        let tool_attrs: Vec<_> = attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("tool"))
+            .map(|attr| match &attr.meta {
+                syn::Meta::Path(_) => Ok(quote!(#[::berm_lang::tool])),
+                syn::Meta::List(list) => {
+                    let tokens = &list.tokens;
+                    Ok(quote!(#[::berm_lang::tool(#tokens)]))
+                }
+                _ => Err(Self::error("expected #[tool] or #[tool(...)]")),
+            })
+            .collect::<syn::Result<_>>()?;
+        if tool_attrs.len() > 1 {
+            return Err(Self::error("an operation has one #[tool] declaration"));
+        }
+        let tool_attr = tool_attrs
+            .first()
+            .cloned()
+            .unwrap_or_else(|| quote!(#[::berm_lang::tool]));
         let client = &config.client;
         let mutable_headers =
             (!headers.is_empty() || operation.request_body.is_some()).then(|| quote!(mut));
         let module = &config.module;
         let output = if config.raw_response {
             quote!(::berm_lang::http::Response)
-        } else {
+        } else if config.response.is_some() {
             quote!(::berm_lang::serde_json::Value)
+        } else {
+            quote!(::alloc::boxed::Box<::berm_lang::RawValue>)
         };
-        let decode = (!config.raw_response).then(|| quote! {
-            let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
-        });
+        let decode = if config.raw_response {
+            None
+        } else if config.response.is_some() {
+            Some(quote! {
+                let response = if response.body.is_empty() { ::berm_lang::serde_json::Value::Null } else { response.read(client.name)? };
+            })
+        } else {
+            Some(quote! {
+                let response = response.read_raw(client.name)?;
+            })
+        };
         let response = config.response.as_ref().map_or_else(
             || quote!(Ok(response)),
             |handler| quote!(#handler(response)),
@@ -434,9 +484,11 @@ impl Document {
             }
         };
         let tool = quote! {
+            #[doc = #title]
+            #[doc = ""]
             #[doc = #description]
-            #[::berm_lang::tool]
-            pub fn #name(input: #module::types::#input) -> ::berm_lang::Result<::berm_lang::serde_json::Value> {
+            #tool_attr
+            pub fn #name(input: #module::types::#input) -> ::berm_lang::Result<#output> {
                 #module::api::#name(&input)
             }
         };

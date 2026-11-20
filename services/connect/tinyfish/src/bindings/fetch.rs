@@ -5,6 +5,8 @@ crab_openapi::service! {
     raw_response: true,
     tools: false,
     operations: {
+        /// Fetch clean page content
+        #[tool(catalog = "web.extract")]
         fetch: "POST /",
     },
 }

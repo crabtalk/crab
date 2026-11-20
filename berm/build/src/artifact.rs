@@ -1,7 +1,10 @@
 //! What `cargo build` reports compiling, one `compiler-artifact` message per
 //! crate, fresh or not.
 
-use crate::{metadata::ManifestPath, toolchain::Toolchain};
+use crate::{
+    metadata::{ManifestPath, Target},
+    toolchain::Toolchain,
+};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
@@ -17,6 +20,7 @@ pub struct Artifact {
     pub package_id: String,
     pub manifest_path: ManifestPath,
     pub filenames: Vec<PathBuf>,
+    pub target: Target,
 }
 
 impl Artifact {

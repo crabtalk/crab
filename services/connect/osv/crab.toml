@@ -1,25 +1,10 @@
-image = "connect/osv"
-public = true
-logo = "https://crabtalk.ai/logos/templates/osv-v1.png"
-template = true
-buffer = 1048576
 [database]
 size = "1MiB"
 
 [http]
 fetch = ["api.osv.dev"]
-[tools.query]
-access = "public"
-title = "Query vulnerabilities"
-catalog = "packages.vulnerabilities"
-budget = { cpu = 100000, memory = 64 }
-[tools.query_batch]
-access = "public"
-title = "Query batch"
-catalog = "packages.vulnerabilities.batch"
-budget = { cpu = 100000, memory = 64 }
-[tools.advisory]
-access = "public"
-title = "Read advisory"
-catalog = "packages.advisory"
-budget = { cpu = 100000, memory = 64 }
+
+[image]
+name = "connect/osv"
+logo = "https://crabtalk.ai/logos/templates/osv-v1.png"
+publish = false

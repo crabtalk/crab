@@ -10,6 +10,7 @@ keywords = ["berm", "wasm", "sandbox", "sqlite", "mcp"]
 categories = ["wasm", "virtualization"]
 
 [dependencies]
+semver.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 anyhow.workspace = true
 axum.workspace = true
@@ -18,6 +19,8 @@ berm-api = { workspace = true, features = ["rusqlite"] }
 berm-abi.workspace = true
 berm-build = { workspace = true, optional = true }
 chrono.workspace = true
+futures-util.workspace = true
+tempfile.workspace = true
 croner.workspace = true
 humantime-serde.workspace = true
 parking_lot.workspace = true
@@ -34,7 +37,6 @@ wasmparser = { workspace = true, optional = true }
 test = ["dep:berm-build", "dep:wasmparser"]
 
 [dev-dependencies]
-tempfile.workspace = true
 wat.workspace = true
 berm-host = { workspace = true, features = ["test"] }
 toml.workspace = true

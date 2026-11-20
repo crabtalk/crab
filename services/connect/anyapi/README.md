@@ -4,7 +4,7 @@ Look up social profiles and companies, search posts and ads, read reviews and ma
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/anyapi` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
+With Crab signed in to Cloud, replace `owner/anyapi` with the address of a running deployment you can access. If only a published image is available, deploy it first.
 
 ```sh
 crab call owner/anyapi linkedin_company '{"input":{"body":{"url":"https://www.linkedin.com/company/stripe"},"query":{"max_cost_usd":"0.05"}}}'
@@ -19,12 +19,12 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
-crab deploy --from owner/anyapi
+crab deploy owner/anyapi
 ```
 
 Set `ANYAPI_API_KEY` through the copy’s credential setup. Requests spend the connected AnyAPI wallet balance; charges vary by operation and selected source.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
+To build a modified version or deploy when no image is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 

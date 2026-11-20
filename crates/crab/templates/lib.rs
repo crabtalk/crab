@@ -7,6 +7,8 @@ extern crate alloc;
 use alloc::string::String;
 use berm_lang::{Result, Schema, tool};
 
+/// Echo a query
+///
 /// Answers its argument back.
 #[tool]
 pub fn echo(
@@ -24,14 +26,18 @@ pub struct Echo {
 
 const MESSAGE: &str = "message";
 
-/// Store a message that survives calls and restarts, shared by all callers.
+/// Store a message
+///
+/// Survives calls and restarts, shared by all callers.
 #[tool]
 pub fn remember(message: String) -> Result<()> {
     berm_lang::set_json(MESSAGE, &message)?;
     Ok(())
 }
 
-/// Read the message saved by remember, or null if none has been saved.
+/// Read a saved message
+///
+/// Returns null if none has been saved.
 #[tool(query)]
 pub fn recall() -> Result<Option<String>> {
     Ok(berm_lang::get_json(MESSAGE)?)

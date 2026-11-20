@@ -63,12 +63,25 @@ pub fn values(schema: &Value) -> Option<Vec<&str>> {
 
 /// Schema validation has no HTTP or filesystem reference retrieval.
 pub fn validate(schema: &Value, input: &Value) -> anyhow::Result<()> {
-    let validator = compile(schema)?;
-    validator
-        .validate(input)
-        .map_err(|error| anyhow::anyhow!("input does not match its schema: {error}"))
+    Validator::try_from(schema)?.validate(input)
 }
 
-pub fn compile(schema: &Value) -> anyhow::Result<jsonschema::Validator> {
-    jsonschema::validator_for(schema).map_err(|error| anyhow::anyhow!("invalid schema: {error}"))
+pub struct Validator(jsonschema::Validator);
+
+impl TryFrom<&Value> for Validator {
+    type Error = anyhow::Error;
+
+    fn try_from(schema: &Value) -> anyhow::Result<Self> {
+        jsonschema::validator_for(schema)
+            .map(Self)
+            .map_err(|error| anyhow::anyhow!("invalid schema: {error}"))
+    }
+}
+
+impl Validator {
+    pub fn validate(&self, input: &Value) -> anyhow::Result<()> {
+        self.0
+            .validate(input)
+            .map_err(|error| anyhow::anyhow!("input does not match its schema: {error}"))
+    }
 }

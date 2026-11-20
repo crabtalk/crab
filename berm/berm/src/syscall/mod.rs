@@ -14,6 +14,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use std::{
     collections::HashMap,
     sync::{Arc, atomic::Ordering},
+    time::Instant,
 };
 use wasmtime::Caller;
 
@@ -193,6 +194,49 @@ fn builtins() -> Table {
     );
 
     table.insert(
+        abi::WORKFLOW_RUN.to_owned(),
+        reading(abi::WORKFLOW_RUN, |at| {
+            let reply = match &at.run {
+                Some(run) => serde_json::to_vec(&**run)?,
+                None => Vec::new(),
+            };
+            Ok(Answer::Done(reply))
+        }),
+    );
+
+    table.insert(
+        abi::SERVICE.to_owned(),
+        reading(abi::SERVICE, |at| {
+            Ok(Answer::Done(abi::wire::request(&[
+                at.service.as_bytes(),
+                at.digest.as_bytes(),
+            ])))
+        }),
+    );
+
+    table.insert(
+        abi::DEADLINE.to_owned(),
+        reading(abi::DEADLINE, |at| {
+            let left = at.deadline.saturating_duration_since(Instant::now());
+            Ok(Answer::Number(
+                u64::try_from(left.as_millis()).unwrap_or(u64::MAX),
+            ))
+        }),
+    );
+
+    table.insert(
+        abi::CALL_ID.to_owned(),
+        reading(abi::CALL_ID, |at| {
+            let id = match (at.record, at.span) {
+                (Some(call), 0) => call.to_string(),
+                (Some(call), span) => format!("{call}.{span}"),
+                (None, span) => format!("local:{}.{}", at.chain, span),
+            };
+            Ok(Answer::Done(abi::wire::request(&[id.as_bytes()])))
+        }),
+    );
+
+    table.insert(
         abi::DENY.to_owned(),
         handler(|guest, _, _| {
             guest.data_mut().denied = true;
@@ -262,22 +306,7 @@ fn builtins() -> Table {
 
     table.insert(
         abi::NOW.to_owned(),
-        handler(|guest, _, _| {
-            let Some(deck) = guest.data().tape.clone() else {
-                return Ok((guest.data().now)());
-            };
-            let replayed = deck.lock().replay(abi::NOW, [0; 32]);
-            match replayed {
-                Some(Ok(Answer::Number(now))) => Ok(now),
-                Some(Ok(_)) => bail!("the tape answered berm.now with no reading"),
-                Some(Err(diverged)) => Err(diverged),
-                None => {
-                    let now = (guest.data().now)();
-                    deck.lock().record(abi::NOW, [0; 32], Answer::Number(now));
-                    Ok(now)
-                }
-            }
-        }),
+        taped_reading(abi::NOW, |guest| Ok(Answer::Number((guest.data().now)()))),
     );
 
     table.insert(
@@ -310,6 +339,39 @@ fn builtins() -> Table {
     );
 
     table
+}
+
+fn reading(name: &'static str, read: fn(&Callsite) -> Result<Answer>) -> Door {
+    taped_reading(name, move |guest| read(&guest.data().at))
+}
+
+fn taped_reading(
+    name: &'static str,
+    read: impl Fn(&Caller<'_, Invocation>) -> Result<Answer> + Send + Sync + 'static,
+) -> Door {
+    handler(move |guest, _, _| {
+        let deck = guest.data().tape.clone();
+        let replayed = deck
+            .as_ref()
+            .and_then(|deck| deck.lock().replay(name, [0; 32]));
+        let answer = match replayed {
+            Some(answer) => answer?,
+            None => {
+                let answer = read(guest)?;
+                if let Some(deck) = deck {
+                    deck.lock().record(name, [0; 32], answer.clone());
+                }
+                answer
+            }
+        };
+        match (name, answer) {
+            (abi::NOW | abi::DEADLINE, Answer::Number(number)) => Ok(number),
+            (abi::NOW | abi::DEADLINE, _) | (_, Answer::Number(_)) => {
+                bail!("the tape answered {name} with the wrong kind of reading")
+            }
+            (_, answer) => Ok(stage(guest, answer.reply())),
+        }
+    })
 }
 
 /// Lower `invocation`'s budget to what `bytes` holds, as [`abi::LIMIT`]

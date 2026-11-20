@@ -14,7 +14,7 @@ crab_openapi::service! {
     spec: "tests/specs/api.json",
     client: crate::CLIENT,
     response: crate::checked,
-    operations: { ping: "GET /ping" },
+    operations: { #[doc = "Ping"] ping: "GET /ping" },
 }
 
 fn checked(response: Value) -> Result<Value> {

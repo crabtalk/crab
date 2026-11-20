@@ -5,7 +5,10 @@ use crate::{
     format, runtime, terminal,
 };
 use anyhow::Result;
-use crabtalk_sdk::client::Client;
+use crabtalk_sdk::{
+    account::{auth::Status as AuthStatus, key::Scope},
+    client::{Client, Error},
+};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -18,6 +21,7 @@ struct Status {
     account: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     plan: Option<String>,
+    credential: AuthStatus,
 }
 
 /// Status of the context `named`, or of the one in use.
@@ -28,12 +32,20 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
         .unwrap_or(context::DEFAULT)
         .to_owned();
     let serving = runtime::wait(client.health()).unwrap_or(false);
-    let (account, plan) = match &client.owner {
-        Some(owner) => {
-            let period = runtime::wait(client.period())?;
-            (Some(owner.name().to_owned()), Some(period))
+    let credential = if client.owner.is_some() {
+        runtime::wait(client.auth_status())?
+    } else {
+        AuthStatus::Local { caller: None }
+    };
+    let account = client.owner.as_ref().map(|owner| owner.name().to_owned());
+    let plan = if client.owner.is_some() && credential.allows(Scope::UsageRead) {
+        match runtime::wait(client.period()) {
+            Ok(period) => Some(period),
+            Err(Error::Api { status: 403, .. }) => None,
+            Err(error) => return Err(error.into()),
         }
-        None => (None, None),
+    } else {
+        None
     };
     let status = Status {
         context,
@@ -41,6 +53,7 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
         serving,
         account,
         plan: plan.as_ref().map(|period| period.plan.clone()),
+        credential,
     };
     if json {
         return terminal::json(&status);
@@ -51,9 +64,11 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
         status.host,
         if serving { "" } else { "  (not answering)" }
     );
+    if let Some(account) = &status.account {
+        println!("account  {account}");
+    }
     match (&status.account, plan) {
-        (Some(account), Some(period)) => {
-            println!("account  {account}");
+        (Some(_), Some(period)) => {
             println!(
                 "plan     {}, {} through {}",
                 period.plan,
@@ -61,7 +76,45 @@ pub fn run(client: &Client, named: Option<&str>, json: bool) -> Result<()> {
                 format::day(i64::from(period.until) - 1)
             );
         }
-        _ => println!("the local host: no account"),
+        (None, _) => println!("the local host: no account"),
+        _ => {}
+    }
+    match &status.credential {
+        AuthStatus::ApiKey { key } => {
+            println!("key      {} ({})", key.id, key.label);
+            println!("key account  {}", key.owner_id);
+            println!(
+                "permissions  {}",
+                key.scope
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!(
+                "budget   {} of {} today, UTC",
+                format::usd(key.spent as f64),
+                format::usd(key.budget as f64)
+            );
+            println!(
+                "expires  {}",
+                key.expires_at
+                    .map(format::date)
+                    .unwrap_or_else(|| "never".to_owned())
+            );
+            for service in &key.services {
+                println!("may call {}", service.service);
+            }
+        }
+        AuthStatus::Session {
+            account,
+            client,
+            expires_at,
+        } => {
+            println!("session  {client}, account {account}");
+            println!("expires  {}", format::date(*expires_at));
+        }
+        AuthStatus::Local { .. } => {}
     }
     Ok(())
 }

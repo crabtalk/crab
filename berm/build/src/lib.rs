@@ -3,7 +3,7 @@
 //! cargo builds the service's `cdylib` for [`TARGET`]. Its `.berm.abi` section
 //! holds what the compiler wrote: a record per `#[tool]` and per `#[event]`.
 //! The build appends a `.berm.service` section, from the service's package and
-//! its `crab.toml`, each `[tools]` table but its `price` included, and a
+//! its `crab.toml`, and a
 //! `.berm.kits` section, from each kit it links: each crate cargo compiled for
 //! [`TARGET`] in that build, other than the service, with a `crab.toml` beside
 //! its `Cargo.toml`. The finished image is written to `<target directory>/berm/<lib name>.wasm`;
@@ -66,7 +66,8 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         );
     }
     let mut record = ServiceRecord {
-        public: project.public,
+        public: project.image.as_ref().is_some_and(|image| image.public),
+        deploy: project.image.as_ref().is_some_and(|image| image.deploy),
         name: service.name.clone(),
         version: service.version.clone(),
         lang: String::new(),
@@ -81,14 +82,14 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
             }
             None => String::new(),
         },
-        logo: project.logo.clone(),
+        logo: project.image.as_ref().and_then(|image| image.logo.clone()),
         buffer: project.buffer(),
         deps: project.deps(),
         database: migrations(service.manifest_path.dir(), &project)?,
         database_size: project.database.size(),
-        tools: project.records()?,
-        workflows: project.workflows.clone(),
-        crons: project.crons.clone().unwrap_or_default(),
+        workflows: Default::default(),
+        crons: Default::default(),
+        credential_hosts: project.credential_hosts(),
     };
 
     let out = metadata.target_directory.join(OUT);
@@ -122,10 +123,55 @@ pub fn build(dir: &Path, package: Option<&str>) -> Result<PathBuf> {
         .map(|(_, version)| version)
         .unwrap_or_default();
 
+    project.check_credentials(&kits)?;
+    let bare = Image(&bytes).with_section(SERVICE_SECTION, &serde_json::to_vec(&record)?)?;
+    let bare = Image(&bare).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;
+    let declared = Manifest::try_from(bare.as_slice())
+        .with_context(|| format!("{} is not a service", service.name))?;
+    for (name, schedule) in &project.schedules {
+        if let Some(tool) = declared.tools.iter().find(|tool| tool.name == *name) {
+            if !tool.cron {
+                bail!("[schedules] names {name}, which is not a cron tool");
+            }
+            if schedule.input().is_some() {
+                bail!("cron tool {name} takes no input");
+            }
+            record
+                .crons
+                .insert(name.clone(), schedule.cron().to_owned());
+        } else if declared
+            .workflows
+            .iter()
+            .any(|workflow| workflow.entry.name == *name)
+        {
+            record.workflows.insert(
+                name.clone(),
+                project::Workflow {
+                    schedule: Some(berm_api::workflow::config::Schedule {
+                        cron: schedule.cron().to_owned(),
+                        input: schedule
+                            .input()
+                            .cloned()
+                            .unwrap_or_else(|| serde_json::json!({})),
+                    }),
+                },
+            );
+        } else {
+            bail!("[schedules] names missing tool or workflow {name}");
+        }
+    }
+    for tool in declared.tools.iter().filter(|tool| tool.cron) {
+        if !record.crons.contains_key(&tool.name) {
+            bail!("cron tool {} needs a schedule in [schedules]", tool.name);
+        }
+    }
     let bytes = Image(&bytes).with_section(SERVICE_SECTION, &serde_json::to_vec(&record)?)?;
     let bytes = Image(&bytes).with_section(KITS_SECTION, &serde_json::to_vec(&kits)?)?;
-    Manifest::try_from(bytes.as_slice())
+    let manifest = Manifest::try_from(bytes.as_slice())
         .with_context(|| format!("{} is not a service", service.name))?;
+    crabtalk_sdk::catalog::Catalog::listed()
+        .check_manifest(&manifest)
+        .map_err(anyhow::Error::msg)?;
 
     let file = built
         .file_name()
@@ -169,14 +215,22 @@ fn kits(artifacts: &[Artifact], service: &ManifestPath, guest: &Path) -> Result<
     kits.into_iter()
         .map(|(artifact, name, version)| {
             let project = Project::read(&artifact.manifest_path.dir().join(project::FILE))?;
-            project
-                .check_dependency()
-                .with_context(|| format!("the kit {name}"))?;
+            project.check_credentials(&[])?;
+            if artifact
+                .target
+                .crate_types
+                .iter()
+                .any(|kind| kind == "cdylib")
+            {
+                project.check_dependency()
+            } else {
+                project.check_kit()
+            }
+            .with_context(|| format!("the kit {name}"))?;
             Ok(Kit {
                 database: migrations(artifact.manifest_path.dir(), &project)?,
                 deps: project.deps(),
                 id: project.id.clone(),
-                formerly: project.formerly.clone(),
                 name,
                 version,
             })

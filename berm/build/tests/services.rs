@@ -9,17 +9,22 @@ fn manifest(package: &str) -> Manifest {
 #[test]
 fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let resend = manifest("crab-resend");
-    assert_eq!(resend.tools.len(), 3);
+    assert_eq!(resend.tools.len(), 5);
+    let send = resend
+        .tools
+        .iter()
+        .find(|tool| tool.name == "send")
+        .unwrap();
+    assert_eq!(send.price, None);
+    assert_eq!(send.title.as_deref(), Some("Send email"));
+    assert_eq!(send.idempotency_ms, Some(86_400_000));
+    assert_eq!(send.catalog, None);
     assert_eq!(resend.buffer, 1048576);
     assert_eq!(resend.deps.secrets, ["RESEND_API_KEY"]);
     assert!(!resend.deps.credentials["resend"].optional);
     let github = manifest("crab-github");
     assert_eq!(github.tools.len(), 11);
     assert!(github.deps.credentials["github_api"].optional);
-    let upstash = manifest("crab-upstash");
-    assert_eq!(upstash.tools.len(), 8);
-    assert!(upstash.deps.vars.contains_key("UPSTASH_REDIS_REST_URL"));
-    assert!(!upstash.deps.credentials["upstash_redis"].optional);
     let posthog = manifest("crab-posthog");
     assert_eq!(posthog.tools.len(), 4);
     assert_eq!(posthog.deps.vars["POSTHOG_REGION"].default, "us");
@@ -34,10 +39,6 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let osv = manifest("crab-osv");
     assert_eq!(osv.tools.len(), 3);
     assert!(osv.deps.secrets.is_empty());
-    let memory = manifest("crab-agent-memory");
-    assert_eq!(memory.tools.len(), 4);
-    assert!(memory.keeps_database());
-    assert_eq!(memory.database_size, 64 << 20);
     assert_eq!(manifest("crab-agent-relay").database_size, 64 << 20);
     let linked = manifest("berm-linked-services");
     assert_eq!(
@@ -51,8 +52,13 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     assert!(linked.deps.secrets.iter().any(|s| s == "RESEND_API_KEY"));
     assert!(linked.deps.secrets.iter().any(|s| s == "GITHUB_TOKEN"));
     assert!(linked.deps.vars.is_empty());
-    assert!(linked.kits.iter().any(|kit| kit.name == "crab-agent-memory"
-        && kit.id.as_deref() == Some("1fdf32203e0e4003a68c5d766daad03b")));
+    assert_eq!(
+        linked.deps.credentials["upstash_redis"].hosts,
+        ["your-database.upstash.io"]
+    );
+    assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-upstash"));
+    assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-auth"
+        && kit.id.as_deref() == Some("115a99982fc0ce031c0a94fad9aa47a0")));
     for credential in ["upstash_redis", "posthog_project", "posthog_private"] {
         assert!(linked.deps.credentials.contains_key(credential));
     }
@@ -82,4 +88,26 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
     let hosts = &linked.deps.http.fetch;
     assert!(hosts.iter().any(|s| s == "api.github.com"));
     assert!(hosts.iter().any(|s| s == "api.resend.com"));
+}
+
+#[test]
+fn first_party_tools_have_registered_catalog_jobs_in_the_built_image() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services");
+    let catalog = crabtalk_sdk::catalog::Catalog::listed();
+    for group in ["agents", "web"] {
+        for entry in std::fs::read_dir(root.join(group)).unwrap() {
+            let dir = entry.unwrap().path();
+            if !dir.join("crab.toml").is_file() {
+                continue;
+            }
+            let image = std::fs::read(berm_build::build(&dir, None).unwrap()).unwrap();
+            let manifest = Manifest::try_from(image.as_slice()).unwrap();
+            for tool in manifest.tools.iter().filter(|tool| tool.public) {
+                let job = tool.catalog.as_deref().unwrap_or_else(|| {
+                    panic!("{}: {} has no catalog job", manifest.name, tool.name)
+                });
+                catalog.check(job).unwrap();
+            }
+        }
+    }
 }

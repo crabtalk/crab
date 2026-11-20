@@ -1,5 +1,5 @@
 use berm_lang::{Result, tool, workflow::Call};
-/// Read a number.
+/// Read a number
 #[tool]
 fn number() -> Result<u64> {
     Ok(1)

@@ -8,21 +8,25 @@ use crate::{
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt, time::Duration};
+use std::{collections::BTreeMap, fmt, time::Duration};
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    #[serde(default)]
+    #[serde(default = "access", deserialize_with = "read_access")]
     pub access: Option<Access>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
+    pub example: Option<String>,
+    #[serde(default)]
     pub price: Option<u64>,
+    #[serde(default = "max_cost")]
     pub max_cost: u64,
     #[serde(default)]
     pub budget: Option<Limits>,
+    #[serde(default = "checkpoint_bytes")]
     pub checkpoint_bytes: u64,
     #[serde(default = "retention", with = "humantime_serde")]
     #[cfg_attr(feature = "utoipa", schema(value_type = String))]
@@ -51,6 +55,8 @@ pub struct Public {
     pub title: Option<String>,
     pub access: Access,
     pub price: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_range: Option<(u64, u64)>,
 }
 
 impl Schedule {
@@ -95,14 +101,10 @@ impl Config {
             "retention must fit a positive millisecond duration"
         );
         if let Some(title) = &self.title {
-            ensure!(
-                title.chars().count() <= ToolSpec::TITLE && !title.contains(['\n', '\r']),
-                "a workflow title is one line of at most {} characters",
-                ToolSpec::TITLE
-            );
+            ToolSpec::check_title(title)?;
         }
         ensure!(
-            self.price.is_none() || self.access.is_some(),
+            self.price.is_none() || self.access.is_some_and(|access| access != Access::Internal),
             "a priced workflow needs caller access"
         );
         if let Some(budget) = self.budget {
@@ -125,21 +127,34 @@ impl Config {
 impl Spec {
     pub fn check(&self) -> Result<()> {
         self.config.check()?;
-        schema::compile(&self.entry.graph.input)?;
-        schema::compile(&self.entry.graph.output)?;
+        schema::Validator::try_from(&self.entry.graph.input)?;
+        schema::Validator::try_from(&self.entry.graph.output)?;
         for node in &self.entry.graph.nodes {
             match &node.kind {
-                Kind::Step { call, .. } => {
-                    schema::compile(&call.input)?;
-                    schema::compile(&call.output)?;
+                Kind::Step { call, price, .. } => {
+                    if let Some(price) = price {
+                        ensure!(
+                            *price >= ToolSpec::MIN_PRICE,
+                            "a priced step costs at least {} USD micros",
+                            ToolSpec::MIN_PRICE
+                        );
+                        ensure!(
+                            self.config
+                                .access
+                                .is_some_and(|access| access != Access::Internal),
+                            "a workflow with a priced step needs caller access"
+                        );
+                    }
+                    schema::Validator::try_from(&call.input)?;
+                    schema::Validator::try_from(&call.output)?;
                     for case in &call.cases {
-                        schema::compile(&case.schema)?;
+                        schema::Validator::try_from(&case.schema)?;
                     }
                 }
                 Kind::Branch { cases } => {
                     ensure!(!cases.is_empty(), "a branch needs at least one case");
                     for case in cases {
-                        schema::compile(&case.schema)?;
+                        schema::Validator::try_from(&case.schema)?;
                     }
                 }
                 Kind::Output => {}
@@ -156,8 +171,16 @@ impl Spec {
         Some(Public {
             entry: self.entry.clone(),
             title: self.config.title.clone(),
-            access: self.config.access?,
+            access: self
+                .config
+                .access
+                .filter(|access| *access != Access::Internal)?,
             price: self.config.price,
+            price_range: Some(
+                self.entry
+                    .graph
+                    .price_range(self.config.price.unwrap_or(0), &BTreeMap::new()),
+            ),
         })
     }
 }
@@ -199,4 +222,35 @@ impl std::error::Error for Invalid {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.0.source()
     }
+}
+
+fn access() -> Option<Access> {
+    Some(Access::Public)
+}
+fn max_cost() -> u64 {
+    crate::DEFAULT_WORKFLOW_MAX_COST
+}
+fn checkpoint_bytes() -> u64 {
+    crate::DEFAULT_WORKFLOW_CHECKPOINT_BYTES
+}
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            access: access(),
+            title: None,
+            example: None,
+            price: None,
+            max_cost: max_cost(),
+            budget: None,
+            checkpoint_bytes: checkpoint_bytes(),
+            retain: retention(),
+            schedule: None,
+        }
+    }
+}
+
+fn read_access<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Access>, D::Error> {
+    Ok(Option::<Access>::deserialize(deserializer)?.filter(|access| *access != Access::Internal))
 }

@@ -22,36 +22,34 @@ use alloc::string::String;
 use berm_lang::{Result, tool};
 use crabkit::stripe::{Data, Session, Subscriber};
 
-/// Opens a Checkout session subscribing the calling user to `plan`.
+/// Open a subscription checkout
+///
+/// Subscribes the calling user to `plan`.
 #[tool]
 pub fn upgrade(plan: String, success: String, cancel: String) -> Result<Session> {
     Subscriber::calling()?.checkout(&plan, &success, &cancel)
 }
 
-/// Keeps the subscription a Stripe event names.
-#[tool(stripe)]
+/// Keeps the subscription a Stripe event names
+#[tool(webhook = "stripe")]
 pub fn webhook(data: Data) -> Result<()> {
     data.keep()
 }
 ```
 
-```toml
-[tools.upgrade]
-access = "public"
-```
 
-The service declares nothing the library already declares: the library's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` under `[http] fetch`, and its migrations, and they reach the service's manifest when the service links the library. Its tables are `stripe_customers` and `stripe_subscriptions`, in the service's database.
+The service declares nothing the library already declares: the library's `crab.toml` declares `STRIPE_SECRET_KEY`, `api.stripe.com` in its credential, and its migrations, and they reach the service's manifest when the service links the library. Its tables are `stripe_customers` and `stripe_subscriptions`, in the service's database.
 
 - `Subscriber::calling()`: the end user the call carries; a call with none is refused. `Subscriber { user }` names another.
 - `subscriber.checkout(plan, success, cancel)`: a Checkout session subscribing the user to the price whose `lookup_key` is `plan`, sending them to `success` once they subscribe and to `cancel` if they leave. Their first checkout makes their Stripe customer. Answers `Session {url}`.
 - `subscriber.portal(back)`: a customer portal session for the user, sending them back to `back`. Refused before their first checkout.
 - `subscriber.plan()`: the `lookup_key` of the price the user's active or trialing subscription is on.
 - `subscriber.customer()`: the user's Stripe `Customer`, once they have checked out.
-- `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A service has one `#[tool(stripe)]` tool, which calls it.
+- `data.keep()`: keeps the subscription a Stripe event names, a subscription's own or a Checkout session's, as Stripe answers it now. A tool marked `#[tool(webhook = "stripe")]` calls it.
 - `Price::find`, `Customer::create`, `customer.checkout`, `customer.portal` and `Subscription::retrieve` are the Stripe API calls these make.
 
 ## Setting it up
 
 1. Create a restricted key with Write on Checkout Sessions, customer portal sessions and Customers, Read on Subscriptions and Prices, and None on everything else. Set it as the secret `STRIPE_SECRET_KEY`.
-2. Add a webhook endpoint at `https://<cloud>/services/<owner>/<service>/stripe` subscribed to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`. Set its signing secret as the secret `STRIPE_WEBHOOK_SECRET`.
+2. Each `#[tool(webhook = "stripe")]` tool adds its own signing credential to setup. Follow its guide to configure `https://api.crabtalk.ai/services/<owner>/<service>/webhooks/<tool>` and provision its signing secret.
 3. Give each price a plan a user can choose a `lookup_key`.

@@ -15,7 +15,7 @@ crab_openapi::service! {
     spec: "tests/specs/v30.json",
     client: crate::CLIENT,
     tools: false,
-    operations: { echo: "POST /echo" },
+    operations: { #[doc = "Echo"] echo: "POST /echo" },
 }
 
 #[test]

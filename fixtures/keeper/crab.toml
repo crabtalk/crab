@@ -1,17 +1,5 @@
-image = "fixtures/keeper"
-deploy = false
-
 [database]
 migrations = "migrations"
 
-[tools.put]
-access = "public"
-
-[tools.count]
-access = "public"
-
-[tools.note]
-access = "public"
-
-[tools.relay]
-access = "public"
+[image]
+name = "fixtures/keeper"

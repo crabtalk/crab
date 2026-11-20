@@ -44,6 +44,7 @@ async fn a_held_scope_takes_no_calls_from_services_or_peers() -> Result<()> {
         retained_until: None,
         replay: None,
         accepted: None,
+        run: None,
         workflow: None,
         operation: None,
         key: None,

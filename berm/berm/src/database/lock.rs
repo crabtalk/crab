@@ -126,6 +126,9 @@ impl Drop for Held {
         for database in &self.marked {
             let name = database.name.clone();
             let _ = database.jobs.send(Box::new(move |conn| {
+                let Ok(conn) = conn else {
+                    return;
+                };
                 let rollback = format!("ROLLBACK TO {SAVEPOINT}; RELEASE {SAVEPOINT}");
                 if let Err(error) = conn.execute_batch(&rollback) {
                     tracing::warn!(%name, %error, "rolling back to the savepoint failed");
@@ -159,6 +162,9 @@ impl Drop for Writing {
         if self.open {
             let name = self.database.name.clone();
             let _ = self.database.jobs.send(Box::new(move |conn| {
+                let Ok(conn) = conn else {
+                    return;
+                };
                 if !conn.is_autocommit()
                     && let Err(error) = conn.execute_batch("ROLLBACK")
                 {
@@ -168,6 +174,8 @@ impl Drop for Writing {
         }
         let _graph = self.database.graph.lock();
         self.database.holder.store(FREE, Ordering::Release);
+        drop(_graph);
+        self.database.jobs.idle();
     }
 }
 

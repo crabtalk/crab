@@ -1,8 +1,8 @@
 //! Fixed prices for tool calls and successful workflow runs.
 
-use berm_api::Manifest;
+use berm_api::ToolSpec;
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::{collections::BTreeMap, fmt, str::FromStr};
 
 /// USD micros charged for one priced operation, at least [`Price::MIN`].
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -12,7 +12,16 @@ pub struct Price(u64);
 
 impl Price {
     /// The smallest price, $0.0001, in USD micros.
-    pub const MIN: u64 = 100;
+    pub const MIN: u64 = berm_api::ToolSpec::MIN_PRICE;
+
+    pub fn tools(tools: &[ToolSpec]) -> Result<BTreeMap<String, Self>, String> {
+        tools
+            .iter()
+            .filter(|tool| tool.public)
+            .filter_map(|tool| tool.price.map(|price| (tool, price)))
+            .map(|(tool, price)| Ok((tool.name.clone(), Self::try_from(price)?)))
+            .collect()
+    }
 }
 
 impl TryFrom<u64> for Price {
@@ -43,26 +52,6 @@ impl fmt::Display for Price {
         let cents = &fraction[..trimmed.len().max(2)];
         write!(f, "${}.{cents}", self.0 / 1_000_000)
     }
-}
-
-/// Refused naming the first of `priced` that is not a public tool of
-/// `manifest`.
-pub fn check<'a>(
-    manifest: &Manifest,
-    priced: impl IntoIterator<Item = &'a String>,
-) -> Result<(), String> {
-    for tool in priced {
-        if !manifest
-            .tools
-            .iter()
-            .any(|spec| spec.public && spec.name == *tool)
-        {
-            return Err(format!(
-                "a price names {tool:?}, which is not a public tool of this image"
-            ));
-        }
-    }
-    Ok(())
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

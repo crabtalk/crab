@@ -4,7 +4,7 @@
 use crate::{Denied, env::Env, host::Host};
 use axum::{
     Extension, Json, Router,
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{AppendHeaders, IntoResponse, Response},
@@ -13,12 +13,13 @@ use axum::{
 use berm_api::{
     Listing, Runtime, Service, Setting, Terms, VarValue,
     host::{
-        CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page, ToolUpdate,
-        Usage, Wakes,
+        self, CallPage, CallStats, Caller, Crons, Live, Memory, Metered, NestedCall, Page,
+        ToolUpdate, Usage, Wakes,
     },
     workflow::{Offer, run::Binding},
 };
 use serde::Deserialize;
+use tokio::io::AsyncReadExt;
 
 /// The service a request is for, as its daemon names it. The daemon puts it in
 /// the request's extensions before [`router`] runs, and the [`Caller`] a call
@@ -45,6 +46,7 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
     Router::new()
         .route("/", get(listing::<E>))
         .route("/idl", get(idl::<E>))
+        .route(host::EXPORT, get(export::<E>))
         .route("/runtime", get(runtime::<E>))
         .route("/terms", get(terms::<E>))
         .route("/workflow-offers/{workflow}", get(workflow_offer::<E>))
@@ -69,7 +71,6 @@ pub fn router<E: Env>(host: Host<E>) -> Router {
         .route("/tools/{tool}/webhook", post(webhook::<E>))
         .route("/vars", get(vars::<E>))
         .route("/vars/{var}", put(var::<E>))
-        .route("/stripe", post(stripe::<E>))
         .with_state(host)
 }
 
@@ -337,17 +338,6 @@ async fn query<E: Env>(
     Ok((called.headers, Json(called.output)).into_response())
 }
 
-/// Hand a Stripe event to the service's `#[tool(stripe)]` tool, the body byte for
-/// byte as Stripe sent it.
-async fn stripe<E: Env>(
-    State(host): State<Host<E>>,
-    Extension(Named(service)): Extension<Named>,
-    event: Bytes,
-) -> Result<StatusCode, Denied> {
-    host.stripe(&service, event.to_vec()).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
 /// Hand a webhook to the service's `#[tool(webhook)]` tool `tool`, the body byte
 /// for byte as it was sent.
 async fn webhook<E: Env>(
@@ -404,7 +394,53 @@ async fn workflow_binding<E: Env>(
     Ok(Json(host.workflow_binding(&service, &tool)?))
 }
 
+/// A workflow's name from a route nested under any service path.
 #[derive(Deserialize)]
-struct WorkflowName {
-    workflow: String,
+pub(crate) struct WorkflowName {
+    pub(crate) workflow: String,
+}
+
+async fn export<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+) -> Result<Response, Denied> {
+    let file = host.export(&service).await?;
+    let length = file
+        .as_file()
+        .metadata()
+        .map_err(|error| crate::deny(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .len();
+    let reader = tokio::fs::File::from_std(
+        file.reopen()
+            .map_err(|error| crate::deny(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?,
+    );
+    let stream =
+        futures_util::stream::try_unfold((reader, file), |(mut reader, file)| async move {
+            let mut chunk = vec![0; 64 * 1024];
+            let read = reader.read(&mut chunk).await?;
+            if read == 0 {
+                return Ok::<_, std::io::Error>(None);
+            }
+            chunk.truncate(read);
+            Ok(Some((chunk, (reader, file))))
+        });
+    let filename = format!(
+        "attachment; filename=\"{}.sqlite\"",
+        service.rsplit('/').next().unwrap_or(&service)
+    );
+    let disposition = HeaderValue::from_str(&filename)
+        .map_err(|error| crate::deny(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static(host::SQLITE)),
+            (header::CONTENT_DISPOSITION, disposition),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, no-store"),
+            ),
+            (header::CONTENT_LENGTH, HeaderValue::from(length)),
+        ],
+        Body::from_stream(stream),
+    )
+        .into_response())
 }

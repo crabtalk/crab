@@ -5,10 +5,10 @@ use crate::{
     Crawler,
     fetch::{self, Get},
     robots::Robots,
-    sitemap::Sitemap,
 };
 use alloc::{collections::VecDeque, format, string::String, vec::Vec};
 use core::mem;
+use sitemap::Sitemap;
 use url::Url;
 
 /// Sitemap files read per site.

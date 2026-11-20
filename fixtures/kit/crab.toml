@@ -1,9 +1,10 @@
 # What its applied migrations are kept under in a database; never changes.
 id = "78455e1073149fe4b90279505a5f3a0c"
-secrets = ["kit"]
 
-[http]
-fetch = ["kit.example.com"]
+[credentials.kit]
+title = "Fixture kit key"
+hosts = ["kit.example.com"]
+secrets = [{ name = "kit" }]
 
 [database]
 migrations = "migrations"

@@ -39,7 +39,10 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Sign in to Cloud in the browser, and use it from now on.
+    /// Sign in to Cloud and keep the credential as a context.
+    ///
+    /// Prints a link and waits until the person approves it in their browser;
+    /// an agent runs it and sends them the link.
     Login {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
@@ -47,8 +50,9 @@ enum Command {
         /// Sign in with GitHub in place of Google.
         #[arg(long)]
         github: bool,
-        /// Request a dedicated agent key through browser approval at `/device`.
-        /// Also used when no browser opens here.
+        /// Ask the person for a dedicated key instead, approved at the printed
+        /// `/device` link. Use it when they are not at this machine. Org and
+        /// account changes need a personal session, which this key is not.
         #[arg(long, conflicts_with = "github")]
         device: bool,
         /// The context to keep the credential as.
@@ -71,7 +75,7 @@ enum Command {
         #[arg(long, default_value_t = 600)]
         timeout: u64,
     },
-    /// Where `crab` is talking, as whom, and on which plan.
+    /// Where `crab` connects, its credential access, and the account plan.
     Status,
     /// Run the local host: deploy services to it and serve their tools over
     /// HTTP and MCP, in the foreground until Ctrl-C or `crab dev stop`.
@@ -89,6 +93,12 @@ enum Command {
     New { name: String },
     /// List deployed services.
     Ls,
+    /// Download a service's SQL and key-value data as a SQLite file.
+    Export {
+        name: String,
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
     /// Build the service in a directory and print the path of its image.
     Build {
         #[arg(default_value = ".")]
@@ -96,15 +106,14 @@ enum Command {
     },
     /// Build and measure local WebAssembly workloads in a temporary host.
     Bench(cmd::bench::Bench),
-    /// Deploy published images, or local source with --build or no image.
-    /// Select the service in a directory, or services beneath it not saying
-    /// `deploy = false`. Published copies require an unused instance name. On
-    /// Cloud a CLI session always waits for browser approval at the printed
-    /// link, even without a terminal. Only an API key with deployments:write
-    /// can skip approval with --yes.
+    /// Build and deploy your own source.
+    Up(cmd::up::Up),
+    /// Deploy an image from Cloud's image registry.
     Deploy(cmd::deploy::Deploy),
-    /// Build and publish or withdraw templates without changing running instances.
+    /// Build and push images to Cloud's image registry.
     Push(cmd::push::Push),
+    /// Download an image into the local host's image store.
+    Pull { image: String },
     /// Serve stopped services again: those named, or those `crab deploy`
     /// would deploy here.
     Start { names: Vec<String> },
@@ -131,9 +140,11 @@ enum Command {
     },
     /// Show a service's README, tools and their arguments.
     Inspect {
-        /// The service: a name on the context's account, or `owner/name` on
-        /// Cloud for another account's public service.
+        /// A service address, or a source directory starting with `.` or `/`.
         name: String,
+        /// Select services in a source workspace.
+        #[arg(short = 'p', long = "package")]
+        packages: Vec<String>,
     },
     /// Write a deployed service's IDL, which `declare_service!` reads.
     Idl {
@@ -546,9 +557,6 @@ enum ContextCommand {
     Add {
         name: String,
         host: String,
-        /// Registry used for image pushes; omitted, upload to the node.
-        #[arg(long)]
-        registry: Option<String>,
         /// A Cloud API key.
         #[arg(long, conflicts_with = "token_stdin")]
         token: Option<String>,
@@ -608,6 +616,14 @@ fn run() -> Result<ExitCode> {
         })
     };
     // The Cloud whose rates price the context's calls.
+    let image_cloud = || {
+        let at = Contexts::load()?.get(args.context.as_deref())?;
+        Ok::<_, anyhow::Error>(if at.owner.is_some() {
+            Client::from(at)
+        } else {
+            at.cloud()
+        })
+    };
     let cloud = || Ok::<_, anyhow::Error>(Contexts::load()?.get(args.context.as_deref())?.cloud());
 
     match &args.command {
@@ -650,7 +666,6 @@ fn run() -> Result<ExitCode> {
         Command::Context(ContextCommand::Add {
             name,
             host,
-            registry,
             token,
             token_stdin,
             user,
@@ -661,34 +676,29 @@ fn run() -> Result<ExitCode> {
             *token_stdin,
             args.org.as_deref(),
             user.as_deref(),
-            registry.as_deref(),
         )?,
         Command::Context(ContextCommand::Use { name }) => cmd::context::use_(name)?,
         Command::Context(ContextCommand::Ls) => cmd::context::ls(json)?,
         Command::Context(ContextCommand::Rm { name }) => cmd::context::rm(name)?,
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
+        Command::Export { name, out } => cmd::export::run(&client()?, name, out.as_deref())?,
         Command::Build { dir } => cmd::build::run(dir)?,
         Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
-        Command::Deploy(deploy) => deploy.run(
-            &client()?,
-            yes,
-            Contexts::load()?
-                .get(args.context.as_deref())?
-                .registry
-                .as_deref(),
-        )?,
-        Command::Push(push) => push.run(
-            &client()?,
-            yes,
-            Contexts::load()?
-                .get(args.context.as_deref())?
-                .registry
-                .as_deref(),
-        )?,
+        Command::Up(up) => up.run(&client()?, yes)?,
+        Command::Deploy(deploy) => deploy.run(&client()?, &image_cloud()?, yes)?,
+        Command::Push(push) => push.run(&client()?)?,
+        Command::Pull { image } => cmd::pull::run(&image_cloud()?, image)?,
         Command::Start { names } => cmd::start::run(&client()?, names)?,
         Command::Stop { names } => cmd::stop::run(&client()?, names)?,
-        Command::Inspect { name } => cmd::inspect::run(&client()?, &cloud()?, name, json)?,
+        Command::Inspect { name, packages } => {
+            if name.starts_with(['.', '/']) {
+                cmd::inspect::directory(std::path::Path::new(name), packages, json)?;
+            } else {
+                anyhow::ensure!(packages.is_empty(), "--package selects a service directory");
+                cmd::inspect::run(&client()?, &cloud()?, name, json)?;
+            }
+        }
         Command::Idl { name, out } => cmd::idl::run(&client()?, name, out)?,
         Command::Rm { names } => cmd::rm::run(&client()?, names, yes)?,
         Command::Logs { name, after } => cmd::logs::run(&client()?, name, *after, json)?,

@@ -1,10 +1,4 @@
-image = "connect/pdl"
-logo = "https://crabtalk.ai/logos/templates/pdl-v1.ico"
-template = true
 buffer = 8388608
-
-[http]
-fetch = ["api.peopledatalabs.com"]
 
 [credentials.pdl]
 title = "People Data Labs API key"
@@ -12,22 +6,7 @@ guide = "Create an API key at https://dashboard.peopledatalabs.com. Enrichment c
 hosts = ["api.peopledatalabs.com"]
 secrets = [{ name = "PDL_API_KEY", label = "API key" }]
 
-[tools.enrich_person]
-access = "public"
-title = "Enrich a person"
-catalog = "person.enrich"
-
-[tools.search_people]
-access = "public"
-title = "Search people"
-catalog = "person.search"
-
-[tools.enrich_company]
-access = "public"
-title = "Enrich a company"
-catalog = "company.enrich"
-
-[tools.search_companies]
-access = "public"
-title = "Search companies"
-catalog = "company.search"
+[image]
+name = "connect/pdl"
+logo = "https://crabtalk.ai/logos/templates/pdl-v1.ico"
+publish = false

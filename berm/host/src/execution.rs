@@ -53,8 +53,6 @@ impl<E: Env> Host<E> {
         taping: Taping,
     ) -> Result<Invoked> {
         let meters = Arc::new(Meters::default());
-        let chain = chain::next();
-        self.logs.started(chain, call);
         let outcome = deployed
             .call_as(
                 caller.map(Into::into),
@@ -64,11 +62,10 @@ impl<E: Env> Host<E> {
                 tool,
                 args,
                 meters.clone(),
-                chain,
+                chain::Id::recorded(call),
                 taping,
             )
             .await;
-        self.logs.ended(chain);
         let nested = self.calls.take_nested(call);
         let meters = meters.take();
         let own = meters

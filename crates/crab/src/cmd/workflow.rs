@@ -6,7 +6,7 @@ use berm_api::{
     workflow::{
         graph::{Kind, Producer, Target},
         run::Status,
-        view::{Continuation, Start},
+        view::{Continuation, Quote, Start},
     },
 };
 use clap::{Args, Subcommand};
@@ -36,6 +36,8 @@ pub enum Command {
     Inspect {
         /// A service and workflow, `owner/service.workflow` on Cloud.
         target: Reference,
+        /// JSON input to quote the run's price for; the range without it.
+        input: Option<String>,
         #[command(flatten)]
         identity: Identity,
     },
@@ -97,17 +99,43 @@ impl FromStr for Reference {
 impl Workflow {
     pub fn run(&self, client: &Client, json: bool, yes: bool) -> Result<ExitCode> {
         let run = match &self.command {
-            Command::Inspect { target, identity } => {
+            Command::Inspect {
+                target,
+                input,
+                identity,
+            } => {
                 let caller = identity.resolve(client)?;
                 let inspection = runtime::wait(client.workflow(
                     &target.service,
                     &target.workflow,
                     caller.as_ref(),
                 ))?;
+                let quote = match input {
+                    Some(input) => {
+                        let input: serde_json::Value =
+                            serde_json::from_str(input).context("input is not JSON")?;
+                        Some(runtime::wait(client.quote_workflow(
+                            &target.service,
+                            &target.workflow,
+                            &input,
+                            caller.as_ref(),
+                        ))?)
+                    }
+                    None => None,
+                };
                 if json {
-                    terminal::json(&inspection)?;
+                    match &quote {
+                        Some(quote) => terminal::json(
+                            &serde_json::json!({"inspection": inspection, "quote": quote}),
+                        )?,
+                        None => terminal::json(&inspection)?,
+                    }
                 } else {
-                    show_inspection(&inspection, io::stdout().lock())?;
+                    let mut output = io::stdout().lock();
+                    show_inspection(&inspection, &mut output)?;
+                    if let Some(quote) = &quote {
+                        show_quote(&inspection, quote, &mut output)?;
+                    }
                 }
                 return Ok(ExitCode::SUCCESS);
             }
@@ -210,19 +238,51 @@ impl Workflow {
     }
 }
 
+/// The price range for one input, and what the input settles.
+pub fn show_quote(inspection: &Inspection, quote: &Quote, mut output: impl Write) -> Result<()> {
+    let definition = &inspection.definition;
+    let (least, most) = definition
+        .entry
+        .graph
+        .price_range(definition.task_price.unwrap_or(0), &quote.steps);
+    if least == most {
+        writeln!(output, "  for this input: {}", format::usd(least as f64))?;
+    } else {
+        writeln!(
+            output,
+            "  for this input: {} to {}",
+            format::usd(least as f64),
+            format::usd(most as f64)
+        )?;
+    }
+    for (node, count) in &quote.steps {
+        writeln!(output, "    {node}: {count} items")?;
+    }
+    for (node, case) in &quote.branches {
+        writeln!(output, "    {node} selects {case}")?;
+    }
+    Ok(())
+}
+
 pub fn show_inspection(inspection: &Inspection, mut output: impl Write) -> Result<()> {
     let definition = &inspection.definition;
     writeln!(output, "{}.{}", definition.service, definition.entry.name)?;
     if let Some(title) = &definition.title {
         writeln!(output, "  {title}")?;
     }
-    match definition.task_price {
-        Some(price) => writeln!(
+    match (definition.task_price, definition.max_price) {
+        (base, Some(most)) if most > base.unwrap_or(0) => writeln!(
+            output,
+            "  price: {} to {} (successful result only, by the priced steps' items)",
+            format::usd(base.unwrap_or(0) as f64),
+            format::usd(most as f64)
+        )?,
+        (Some(price), _) => writeln!(
             output,
             "  fixed task price: {} (successful result only)",
             format::usd(price as f64)
         )?,
-        None => writeln!(output, "  fixed task price: none")?,
+        (None, _) => writeln!(output, "  fixed task price: none")?,
     }
     writeln!(
         output,
@@ -286,7 +346,7 @@ pub fn show_inspection(inspection: &Inspection, mut output: impl Write) -> Resul
             .collect::<Vec<_>>()
             .join(", ");
         match &node.kind {
-            Kind::Step { call, mode } => {
+            Kind::Step { call, mode, price } => {
                 let target = match &call.target {
                     Target::Local { tool } => format!("self.{tool}"),
                     Target::Service { service, tool, .. } => format!("{service}.{tool}"),
@@ -297,6 +357,13 @@ pub fn show_inspection(inspection: &Inspection, mut output: impl Write) -> Resul
                     node.id,
                     mode.maximum()
                 )?;
+                if let Some(price) = price {
+                    writeln!(
+                        output,
+                        "    price: {}",
+                        format::step_price(&definition.entry.graph, node, *price)
+                    )?;
+                }
                 if let Some(terms) = &inspection.accounting {
                     if let Some(binding) = terms.execution.bindings.get(&node.id) {
                         writeln!(

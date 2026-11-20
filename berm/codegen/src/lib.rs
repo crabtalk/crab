@@ -7,6 +7,7 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, Expr, ExprLit, ItemFn, ItemImpl, Lit, parse_macro_input};
 
 mod branch;
+mod declaration;
 mod declare;
 mod record;
 mod schema;
@@ -102,20 +103,10 @@ pub fn hosts(input: TokenStream) -> TokenStream {
 /// Its doc comment is the description the model reads. Its parameters are the
 /// properties of its arguments, each a `Schema` type, and a parameter's doc
 /// comment is its description. It returns `berm_lang::Result<T>`: `T` is its
-/// reply, written as JSON, and `()` replies nothing. It is exported as
-/// `berm_tool_<name>`. Who may call it is `access` in its `[tools]` table of
-/// `crab.toml`, which the build writes into the manifest; without one it is
-/// internal, only called by the host for the service's own wakes, crons,
-/// Stripe events and webhooks. `query` marks it read-only: the host refuses its writes,
-/// logs and wakes. `cron` marks a tool its host calls when the cron
-/// expression its deploy or its owner sets fires; it takes no parameters.
-/// `stripe` marks the one tool its host calls with each Stripe event its
-/// daemon takes for the service, the event object as the argument object.
-/// `webhook` marks a tool its host calls with each webhook its daemon verified
-/// for that tool, the body as the argument object. A tool is at most one of
-/// `cron`, `stripe` and `webhook`, and none of them takes `access`. `#[deprecated]` marks a
-/// tool so in the manifest. An image holding a tool of a package other than
-/// the service's is refused.
+/// reply, written as JSON, and `()` replies nothing. Metadata is declared on
+/// `#[tool]`; access defaults to public. The first doc line is its title and
+/// the remaining lines are its description. `query` marks a tool read-only;
+/// `cron` and `webhook` identify internal host-triggered tools.
 ///
 /// `request` marks a read-only review builder for a host's service-request flow.
 /// Its implementation returns `berm_lang::abi::requests::Review<T>`; a supporting
@@ -177,8 +168,10 @@ pub fn derive_branch(input: TokenStream) -> TokenStream {
 /// Compile a service-owned workflow graph from method signatures.
 #[proc_macro_attribute]
 pub fn workflow(args: TokenStream, item: TokenStream) -> TokenStream {
-    let _ = parse_macro_input!(args as syn::parse::Nothing);
-    workflow::expand(parse_macro_input!(item as ItemImpl))
+    let mut declaration = declaration::Declaration::default();
+    let parser = syn::meta::parser(|meta| declaration.parse(meta, true));
+    parse_macro_input!(args with parser);
+    workflow::expand(declaration, parse_macro_input!(item as ItemImpl))
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

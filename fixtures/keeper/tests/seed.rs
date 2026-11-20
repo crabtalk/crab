@@ -61,7 +61,10 @@ async fn a_service_with_a_database_is_refused_a_seed() -> Result<()> {
         .await
         .err()
         .expect("the seed is refused");
-    assert!(format!("{error:#}").contains("has a database"), "{error:#}");
+    assert!(
+        format!("{error:#}").contains("A seed only starts a new service"),
+        "{error:#}"
+    );
     assert_eq!(count(&host, "keeper").await?, "1");
     Ok(())
 }

@@ -1,6 +1,5 @@
 use berm_api::{
     Manifest,
-    project::Project,
     workflow::config::{Config, Invalid},
 };
 use serde_json::json;
@@ -11,25 +10,12 @@ mod support {
 
 #[test]
 fn workflow_configuration_round_trips_and_defaults_retention() {
-    let source = r#"
-[workflows.identity]
-access = "public"
-title = "Return a value"
-price = 1000
-max_cost = 2000
-budget = { cpu = 1000, read = 0, written = 0, memory = 16 }
-checkpoint_bytes = 4096
-[workflows.identity.schedule]
-cron = "0 8 * * *"
-input = 42
-"#;
-    let project: Project = toml::from_str(source).unwrap();
-    let config = &project.workflows["identity"];
+    let config: Config = serde_json::from_value(json!({"access":"public","title":"Return a value","price":1000,"max_cost":2000,"budget":{"cpu":1000,"read":0,"written":0,"memory":16},"checkpoint_bytes":4096})).unwrap();
     config.check().unwrap();
     assert_eq!(config.retain.as_secs(), 604800);
-    let wire = serde_json::to_value(config).unwrap();
-    assert_eq!(serde_json::from_value::<Config>(wire).unwrap(), *config);
-    let image = support::workflow::image(serde_json::to_value(config).unwrap());
+    let wire = serde_json::to_value(&config).unwrap();
+    assert_eq!(serde_json::from_value::<Config>(wire).unwrap(), config);
+    let image = support::workflow::image(serde_json::to_value(&config).unwrap());
     let manifest = Manifest::try_from(image.as_slice()).unwrap();
     assert!(manifest.tools.is_empty());
     assert_eq!(manifest.workflows.len(), 1);
@@ -106,4 +92,16 @@ fn workflow_error_context_is_not_duplicated() {
         format!("{error:#}"),
         "service check failed: workflow configuration: invalid parameter"
     );
+}
+
+#[test]
+fn workflow_defaults_match_the_host_contract() {
+    let config: Config = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(config.access, Some(berm_api::Access::Public));
+    assert_eq!(config.max_cost, berm_api::DEFAULT_WORKFLOW_MAX_COST);
+    assert_eq!(
+        config.checkpoint_bytes,
+        berm_api::DEFAULT_WORKFLOW_CHECKPOINT_BYTES
+    );
+    assert_eq!(config.retain.as_secs(), 604800);
 }

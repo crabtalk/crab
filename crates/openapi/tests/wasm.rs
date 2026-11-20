@@ -7,6 +7,19 @@ fn generated_service_builds_with_tool_exports_and_imported_schemas() {
     let bytes = fixture::image("berm-openapi").unwrap();
     let manifest = Manifest::try_from(bytes.as_slice()).unwrap();
     assert_eq!(manifest.tools.len(), 4);
+    let ping = manifest
+        .tools
+        .iter()
+        .find(|tool| tool.name == "ping")
+        .unwrap();
+    assert_eq!(
+        ping.examples,
+        [
+            "Check whether the API is reachable",
+            "Verify the API before syncing",
+            "Check API availability"
+        ]
+    );
     let fetch = manifest
         .tools
         .iter()

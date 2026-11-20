@@ -12,19 +12,15 @@ pub struct Workspace {
     pub target: PathBuf,
     /// The directory of each service's `Cargo.toml`.
     pub services: Vec<PathBuf>,
-    /// The names of the services left out for `deploy = false`.
-    pub skipped: Vec<String>,
 }
 
 impl Workspace {
     /// Explicit names select across the Cargo workspace. Otherwise, select
-    /// the service in `dir`, or services beneath it. Directory groups omit
-    /// `deploy = false` unless `include_disabled` is set.
-    pub fn read(dir: &Path, named: &[String], include_disabled: bool) -> Result<Self> {
+    /// the service in `dir`, or services beneath it.
+    pub fn read(dir: &Path, named: &[String]) -> Result<Self> {
         let toolchain = Toolchain::new(dir)?;
         let metadata = Metadata::read(&toolchain, dir)?;
         let mut services = Vec::new();
-        let mut skipped = Vec::new();
         let here = dir
             .canonicalize()
             .with_context(|| format!("cannot resolve {}", dir.display()))?;
@@ -63,13 +59,9 @@ impl Workspace {
                     root: metadata.workspace_root.clone(),
                     target: metadata.target_directory.clone(),
                     services: vec![dir.to_path_buf()],
-                    skipped: Vec::new(),
                 });
             }
-            match project.deploy || include_disabled {
-                true => services.push(dir.to_path_buf()),
-                false => skipped.push(name),
-            }
+            services.push(dir.to_path_buf());
         }
         if let Some(missing) = named.iter().find(|name| !found.contains(name)) {
             bail!(
@@ -81,7 +73,6 @@ impl Workspace {
             root: metadata.workspace_root,
             target: metadata.target_directory,
             services,
-            skipped,
         })
     }
 }

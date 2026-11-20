@@ -12,7 +12,7 @@ extern crate alloc;
 use alloc::string::String;
 use berm_lang::{Result, Schema, tool};
 
-/// Echo the query back.
+/// Echo the query back
 #[tool]
 pub fn echo(
     /// The text to echo back.
@@ -31,19 +31,11 @@ pub struct Echo {
 }
 ```
 
-A function marked `#[tool(...)]`, in any module of the service's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. An `Option<T>` result permits `null`, represented by `anyOf` in its JSON Schema. `#[tool]` takes `query`, `cron`, `stripe`, `webhook` and `events = "name"`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
+A function marked `#[tool(...)]`, in any module of the service's crate, is a tool, and its doc comment is what the model reads when deciding to call it. Its parameters are its arguments — their types, their doc comments, and `Option` for the ones the model may omit — and the `Ok` of its `Result` is its reply. An `Option<T>` result permits `null`, represented by `anyOf` in its JSON Schema. `#[tool]` takes `query`, `cron`, `webhook` and `events = "name"`. `#[derive(Schema)]` gives a type its JSON Schema and its serde impls, in any module or crate.
 
 Enums with payloads use external snake-case tags: `Platform::Grok(Connection { … })` is `{"grok":{…}}`. Payload variants accept one unnamed field or named fields. Enums containing only unit variants remain strings.
 
-**A tool is internal unless its table in `crab.toml` gives it `access`.** Only the host calls an internal tool, for the service's own wakes, crons, Stripe events and webhooks.
-
-```toml
-[tools.echo]
-access = "public"
-title = "Echo a query"
-```
-
-A `public` tool can be called by any account the host authenticates and any service allowed to reach it, with arguments the caller chooses. `anonymous` is public and also takes a call from outside with no caller. `accounts` and `services` are restricted: the first takes callers from outside alone, the second other services alone. `title` is the tool's display name, at most 60 characters on one line. A cron, stripe or webhook tool takes no `access`. `berm_lang::caller()` says who called, as the host set it; a tool that limits its callers checks it.
+A tool defaults to public caller access. Use `#[tool(access = "internal")]` for an internal tool; `anonymous`, `accounts` and `services` select other callers. Cron and webhook handlers are internal. The first doc-comment line is the title, at most 60 characters and without a final period. The remaining comment is its description. Price, catalog, `budget(...)`, idempotency and example tasks are attributes on `#[tool]`; all travel in the built image.
 
 Off the guest's target this is an ordinary library, which is why the `cfg_attr` above is worth copying: tools then run under `cargo nextest run` with no wasm toolchain and no daemon. See `berm_lang::test`.
 
@@ -62,6 +54,7 @@ use berm_lang::workflow;
 
 struct EchoFlow;
 
+/// Echo an input
 #[workflow]
 impl EchoFlow {
     #[step]
@@ -76,15 +69,17 @@ impl EchoFlow {
 }
 ```
 
-This uses the `EchoCall` and `Echo` from the tool above. A step returns a call descriptor, `Option<Call>`, or `Vec<Call>` with `#[step(each, max = N)]` (1–100). A branch returns a `Branch` enum. Any method may return the existing `Result<T>`. Dependencies are immutable references; each results use slices and optional dependencies use `Option<&T>`. String producers can be borrowed as `&str`; output methods returning `()` may omit the return type. Distinct branch payload types select cases. Required dependencies propagate guards; joins across exclusive paths and the final output use optional references. Failed or pending producers never become optional absence.
+This uses the `EchoCall` and `Echo` from the tool above. A step returns a call descriptor, `Option<Call>`, or `Vec<Call>` with `#[step(each, max = N)]` (1–100). `#[step(price = N)]` charges the caller `N` USD micros per item of an `each` step, or per run of any other step, at least 100; its workflow needs caller access. A priced step is exact when its builder and guards read only the input and branches that do, so its count is known before the run, and bounded by `max` otherwise; `crab build`, `crab up`, `crab deploy` and `crab workflow inspect` print which. A branch returns a `Branch` enum. Any method may return the existing `Result<T>`. Dependencies are immutable references; each results use slices and optional dependencies use `Option<&T>`. String producers can be borrowed as `&str`; output methods returning `()` may omit the return type. Distinct branch payload types select cases. Required dependencies propagate guards; joins across exclusive paths and the final output use optional references. Failed or pending producers never become optional absence.
 
-The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per method, and a versioned static record in `.berm.abi`. `EchoFlow::WORKFLOW` exposes that record as JSON bytes. Unused nodes, unknown/forward dependencies, impossible required joins and guarded outputs are compile errors. No method body analysis is performed. Configure each workflow under `[workflows.<name>]` in `crab.toml`, with required `max_cost` and positive `checkpoint_bytes`. Access and title are optional; checkpoint retention defaults to seven days. Build/deploy validates graph records and schedules without running controls. Native hosts prepare and execute accepted graphs through [`berm-host`](../host/README.md).
+The macro emits typed adapters, one `berm_workflow_<workflow>_<node>` export per method, and a versioned static record in `.berm.abi`. `EchoFlow::WORKFLOW` exposes that record as JSON bytes. Unused nodes, unknown/forward dependencies, impossible required joins and guarded outputs are compile errors. No method body analysis is performed. Declare workflow configuration on `#[workflow(...)]`: public access, free task price, host control budgets, `max_cost = 100_000` USD micros, `checkpoint_bytes = 8_388_608` and seven-day retention are the defaults. Only the deployment schedule and its input stay under `[schedules]` in `crab.toml`. Build/deploy validates graph records and schedules without running controls. Native hosts prepare and execute accepted graphs through [`berm-host`](../host/README.md).
 
 ## Durable event sources
 
 `berm_lang::key::id()` returns the API key ID authenticated by the host, or `None` when no key was supplied. It persists across nested calls and never contains a token. `caller()` still identifies the immediate caller; `user()` identifies the verified end user.
 
-`#[tool(events = "message.created")]` marks a read-only history source. It takes `cursor: Option<String>` alongside its filters and returns `berm_lang::abi::events::Page<T>`, where `T: Schema` is the event payload. Give the tool ordinary caller access in `crab.toml`; each read runs under that authorization.
+`workflow::run()?` gives a step tool the run and attempt IDs, its node and item index, and the manual caller or scheduled occurrence. Ordinary tools and calls made by the step tool receive `None`. `service()?` reads the deployment address and image digest, `deadline()` reads the milliseconds remaining in the chain, and `call_id()?` reads the call record ID (with the span for nested calls) or the process-local ID of an unrecorded call. These calls are available to tools. Workflow controls can read their inputs.
+
+`#[tool(events = "message.created")]` marks a read-only history source. It takes `cursor: Option<String>` alongside its filters and returns `berm_lang::abi::events::Page<T>`, where `T: Schema` is the event payload. Declare its caller access on `#[tool]`; each read runs under that authorization.
 
 With no cursor, return an empty page at the current head. With a cursor, return committed events strictly after it, in order. Every event carries a stable `id`, its own resume `cursor`, creation time `at` in epoch milliseconds, and typed `data`. The page cursor equals its last event's cursor; an empty page preserves or advances the checkpoint. Cursors must survive restarts. Report expired history as an error. Persist history in the same transaction as the application change. Diagnostic `emit` logs remain available after failed calls and cannot serve this contract.
 
@@ -112,6 +107,12 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. The owner grants a resource ID to the deployed service for exact hosts. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
 
+## Stored values
+
+Use `store::get_str` and `store::set_str` for UTF-8 text, `get_json` and `set_json` for structured values, and `get` and `set` for bytes. Text is stored without JSON quotes or escapes; `store::get_str` fails with the key name when existing bytes are not UTF-8.
+
+`http::Response::read_raw` consumes a provider's JSON body as `Box<RawValue>` without building a value tree. Empty responses become `null`; invalid JSON fails with the provider's unreadable-response error. Generated OpenAPI operations use it unless they declare a response handler or request the HTTP response itself.
+
 ## Storage transactions
 
 Reads within a tool call see its earlier writes, including pending changes from `set` and `set_json`. Storage changes commit only when the tool succeeds with `Ok`; `Err`, a trap or an exceeded deadline discards its pending changes. Independent calls cannot read uncommitted changes. SQL statements and key/value writes share a transaction when SQL storage is declared. HTTP actions and changes already committed by other services are outside that transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).
@@ -125,3 +126,5 @@ Past its arguments, a service reaches who called, its own state, a database, its
 Apache-2.0
 
 `berm_lang::secret::owner(id, host)` reads ownership metadata for a resource granted to the deployment at that host, never its value. `http::fetch_all_literal_body` sends body bytes unchanged and substitutes secrets only in header values. Use it for user-supplied message content.
+
+Repeat `example = "find recent Rust releases"` on `#[tool]` or an OpenAPI operation entry for up to three example tasks, at most 120 characters each. The built image stores them in `examples`, and `crab inspect` lists them.

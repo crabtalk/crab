@@ -80,6 +80,11 @@ pub fn now() -> u64 {
     sys::NOW(0, 0)
 }
 
+/// Milliseconds remaining before the host stops this chain.
+pub fn deadline() -> u64 {
+    sys::DEADLINE(0, 0)
+}
+
 /// Fill `buffer` with bytes from the host's secure random source.
 pub fn random(buffer: &mut [u8]) {
     sys::RANDOM(buffer.as_mut_ptr() as usize, buffer.len());

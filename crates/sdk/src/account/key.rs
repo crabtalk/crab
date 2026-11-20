@@ -32,6 +32,22 @@ pub struct Key {
     pub request: Option<RequestLink>,
 }
 
+/// The authenticated key's access, read without account-wide key permission.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyStatus {
+    pub id: String,
+    pub owner_id: String,
+    pub label: String,
+    pub scope: Vec<Scope>,
+    pub expires_at: Option<i64>,
+    /// USD micros per UTC day.
+    pub budget: i64,
+    /// USD micros spent today, UTC.
+    pub spent: i64,
+    pub services: Vec<KeyService>,
+}
+
 /// Another account's service, as a key's grant names it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

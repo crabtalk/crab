@@ -8,6 +8,8 @@ use crate::{
 use alloc::string::String;
 use berm_lang::{Result, tool};
 
+/// Repository
+///
 /// Read repository metadata.
 #[tool]
 pub fn repository(
@@ -19,6 +21,8 @@ pub fn repository(
     api::repository(&owner, &repo)
 }
 
+/// Issues
+///
 /// List repository issues, including pull requests. Filter entries with pull_request when only issues are wanted.
 #[tool]
 pub fn issues(
@@ -34,6 +38,8 @@ pub fn issues(
     api::issues(&owner, &repo, state.as_deref(), &page.unwrap_or_default())
 }
 
+/// Issue
+///
 /// Read an issue.
 #[tool]
 pub fn issue(
@@ -47,6 +53,8 @@ pub fn issue(
     api::issue(&owner, &repo, number)
 }
 
+/// Create issue
+///
 /// Create an issue in the connected GitHub account.
 #[tool]
 pub fn create_issue(
@@ -60,6 +68,8 @@ pub fn create_issue(
     api::create_issue(&owner, &repo, &issue)
 }
 
+/// Comment
+///
 /// Add a comment to an issue or pull request.
 #[tool]
 pub fn comment(
@@ -75,6 +85,8 @@ pub fn comment(
     api::comment(&owner, &repo, number, &body)
 }
 
+/// Pull requests
+///
 /// List pull requests.
 #[tool]
 pub fn pull_requests(
@@ -90,6 +102,8 @@ pub fn pull_requests(
     api::pull_requests(&owner, &repo, state.as_deref(), &page.unwrap_or_default())
 }
 
+/// Pull request
+///
 /// Read a pull request.
 #[tool]
 pub fn pull_request(
@@ -103,6 +117,8 @@ pub fn pull_request(
     api::pull_request(&owner, &repo, number)
 }
 
+/// Create pull request
+///
 /// Open a pull request between existing branches.
 #[tool]
 pub fn create_pull_request(
@@ -116,6 +132,8 @@ pub fn create_pull_request(
     api::create_pull_request(&owner, &repo, &pull)
 }
 
+/// Releases
+///
 /// List releases, excluding tags without a release.
 #[tool]
 pub fn releases(
@@ -129,6 +147,8 @@ pub fn releases(
     api::releases(&owner, &repo, &page.unwrap_or_default())
 }
 
+/// Latest release
+///
 /// Read the latest non-draft, non-prerelease release.
 #[tool]
 pub fn latest_release(
@@ -140,6 +160,8 @@ pub fn latest_release(
     api::latest_release(&owner, &repo)
 }
 
+/// Create release
+///
 /// Create a release; this can also create a Git tag.
 #[tool]
 pub fn create_release(

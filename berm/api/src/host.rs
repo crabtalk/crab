@@ -4,6 +4,9 @@ use crate::{Logged, Meter, Output};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, net::IpAddr};
 
+pub const EXPORT: &str = "/export";
+pub const SQLITE: &str = "application/vnd.sqlite3";
+
 /// Header carrying a tool call's [`Meter`], summed over every
 /// service the call reached, as JSON.
 pub const METER: &str = "berm-meter";
@@ -265,6 +268,9 @@ pub struct Link {
     pub replay: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accepted: Option<crate::workflow::run::Binding>,
+    /// The dispatch's guest context, present only on a workflow's direct link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<berm_abi::workflow::Run>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<crate::workflow::spend::Context>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -15,12 +15,14 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use berm_lang::{Caller, Result, Schema, event, key, tool};
+use berm_lang::{Caller, Result, Schema, event, key, store, tool};
 
 berm_lang::declare_service!(fixture);
 
+/// Answers its arguments back
+///
 /// Answers its arguments back.
-#[tool]
+#[tool(budget(cpu = 10000, read = 10, written = 10, memory = 16))]
 pub fn echo(
     /// The text to echo back.
     query: String,
@@ -30,6 +32,8 @@ pub fn echo(
     Ok(Echo { query, page })
 }
 
+/// Carry
+///
 /// Takes its arguments without reading them, to price the parse `echo`
 /// makes of the same payload.
 #[tool]
@@ -37,6 +41,8 @@ pub fn carry() -> Result<()> {
     Ok(())
 }
 
+/// Spin
+///
 /// Loops `rounds` times, to run a call past the CPU time it includes.
 #[tool]
 pub fn spin(rounds: u64) -> Result<u64> {
@@ -47,6 +53,8 @@ pub fn spin(rounds: u64) -> Result<u64> {
     Ok(acc)
 }
 
+/// Lowered
+///
 /// Lowers this call's memory budget to `memory` bytes, `0` keeping it, then
 /// loops `rounds` times, answering whether lowering it again was refused.
 #[tool]
@@ -57,6 +65,8 @@ pub fn lowered(memory: u64, rounds: u64) -> Result<bool> {
     Ok(refused)
 }
 
+/// Makes 100 host calls, to price one
+///
 /// Makes 100 host calls, to price one.
 #[tool]
 pub fn chatty() -> Result<()> {
@@ -70,6 +80,8 @@ pub fn chatty() -> Result<()> {
     Ok(())
 }
 
+/// Allocates, to prove the heap arrives without a second entry
+///
 /// Allocates, to prove the heap arrives without a second entry.
 #[tool]
 pub fn probe() -> Result<Vec<u8>> {
@@ -77,6 +89,8 @@ pub fn probe() -> Result<Vec<u8>> {
     Ok(v[..2].to_vec())
 }
 
+/// Reads one stored key and answers whether it was set. Under
+///
 /// Reads one stored key and answers whether it was set. Under
 /// `examples/load.rs` the read stands in for a host call that waits on
 /// I/O.
@@ -88,6 +102,8 @@ pub fn wait() -> Result<Wait> {
     })
 }
 
+/// Fetch
+///
 /// Fetches `url`, posting `body` when there is one, and answers the status
 /// and the body's length.
 #[tool]
@@ -114,6 +130,8 @@ pub fn fetch(
     })
 }
 
+/// Answers 32 bytes from the host's random source, as hex
+///
 /// Answers 32 bytes from the host's random source, as hex.
 #[tool]
 pub fn random() -> Result<String> {
@@ -122,18 +140,24 @@ pub fn random() -> Result<String> {
     Ok(hex::encode(bytes))
 }
 
+/// Answers its copy's `greeting` var
+///
 /// Answers its copy's `greeting` var.
 #[tool]
 pub fn greet() -> Result<String> {
     Ok(berm_lang::var("greeting")?)
 }
 
+/// Reads a var `[vars]` does not declare
+///
 /// Reads a var `[vars]` does not declare.
 #[tool]
 pub fn undeclared() -> Result<String> {
     Ok(berm_lang::var("missing")?)
 }
 
+/// Whoami
+///
 /// Says who called: `outside NAME`, `service NAME`, or `none`, then
 /// ` user ISSUER SUBJECT` when the chain runs for a user.
 #[tool]
@@ -152,6 +176,8 @@ pub fn whoami() -> Result<String> {
     Ok(said)
 }
 
+/// Answers `ok` to a service, and denies any other caller
+///
 /// Answers `ok` to a service, and denies any other caller.
 #[tool]
 pub fn guarded() -> Result<String> {
@@ -161,12 +187,16 @@ pub fn guarded() -> Result<String> {
     }
 }
 
+/// Answers `ok`; only services may call it
+///
 /// Answers `ok`; only services may call it.
-#[tool]
+#[tool(access = "services")]
 pub fn fromservices() -> Result<String> {
     Ok("ok".into())
 }
 
+/// Askguarded
+///
 /// Calls `guarded` and `fromservices` on `fixture`, and answers what they
 /// said.
 #[tool]
@@ -176,12 +206,16 @@ pub fn askguarded() -> Result<String> {
     Ok(format!("{} {}", calls::guarded()?, calls::fromservices()?))
 }
 
+/// Calls `whoami` on `fixture`, and answers what it said
+///
 /// Calls `whoami` on `fixture`, and answers what it said.
 #[tool]
 pub fn askwho() -> Result<String> {
     Ok(crate::fixture::calls::whoami()?)
 }
 
+/// Vouched
+///
 /// Vouches for `subject`, then calls `whoami` on `fixture`, and answers
 /// what it said.
 #[tool]
@@ -193,6 +227,8 @@ pub fn vouched(
     Ok(crate::fixture::calls::whoami()?)
 }
 
+/// Reach
+///
 /// Makes the host calls no other tool here makes, whatever each answers, so
 /// this image imports them. Answers `url`'s fetch status, when it had one.
 #[tool]
@@ -216,6 +252,8 @@ pub fn reach(url: String) -> Result<Option<u16>> {
         .map(|response| response.status))
 }
 
+/// Client context
+///
 /// Read the chain's daily client key and IP, optionally through another service.
 #[tool]
 pub fn client_context(target: Option<String>) -> Result<Vec<Option<String>>> {
@@ -232,12 +270,16 @@ pub fn client_context(target: Option<String>) -> Result<Vec<Option<String>>> {
     ])
 }
 
+/// Always fails, to exercise the error path
+///
 /// Always fails, to exercise the error path.
 #[tool]
 pub fn boom() -> Result<()> {
     Err("boom, as requested".into())
 }
 
+/// Flaky
+///
 /// Fetches `url`, draws 4 random bytes, then fails with the body it got and
 /// the bytes, to exercise a tape.
 #[tool]
@@ -253,6 +295,8 @@ pub fn flaky(url: String) -> Result<()> {
     .into())
 }
 
+/// Nest
+///
 /// Calls `echo` on whatever is deployed as `inner`, and says which kind of
 /// failure came back.
 #[tool]
@@ -265,11 +309,13 @@ pub fn nest(query: String, page: Option<u32>) -> Result<Echo> {
     }
 }
 
+/// Tick
+///
 /// Counts how many times it has run, arming itself to run again in `delay`
 /// milliseconds until it has run three times. Proves an invocation can
 /// outlive the one that asked for it, and that what crosses the gap is the
 /// service's own keys.
-#[tool]
+#[tool(access = "internal")]
 pub fn tick(delay: u64) -> Result<Round> {
     let round = berm_lang::get("ticks")
         .ok()
@@ -289,6 +335,8 @@ pub fn tick(delay: u64) -> Result<Round> {
     })
 }
 
+/// Note
+///
 /// Writes `word` under `note`, emits it as a `Noted` event, answers what it
 /// reads back, and fails when `word` is `fail`.
 #[tool]
@@ -305,6 +353,8 @@ pub fn note(word: String) -> Result<String> {
     Ok(String::from_utf8_lossy(&seen).into_owned())
 }
 
+/// Relay
+///
 /// Calls `note` on `inner` with `word`, carries on whether or not that
 /// failed, emits `word` under the topic `relay`, and answers what this
 /// service reads back under `note`.
@@ -319,6 +369,8 @@ pub fn relay(word: String) -> Result<String> {
     })
 }
 
+/// Ask
+///
 /// Calls `peek` on `fixture`, then `echo` on `fixture` with the note it
 /// read, and answers the query `echo` answered.
 #[tool]
@@ -330,6 +382,8 @@ pub fn ask() -> Result<String> {
     Ok(echoed.query)
 }
 
+/// Peek
+///
 /// Reads `note`, then tries to write it, emit under `note`, arm `tick` and
 /// call `note` on `inner`, and answers what it read and what each attempt
 /// was told.
@@ -354,6 +408,8 @@ pub fn peek() -> Result<Peek> {
     })
 }
 
+/// Recurse
+///
 /// Calls itself on `inner` one level deeper, which is this same service
 /// when deployed under that name — the runaway a depth limit exists to
 /// stop. Answers how many levels got through before the host refused.
@@ -425,6 +481,8 @@ pub struct Attempts {
     pub call: String,
 }
 
+/// Calls or schedules a tool at a deployment address
+///
 /// Calls or schedules a tool at a deployment address.
 #[tool]
 pub fn invoke(service: String, tool: String, args: String, delay: Option<u64>) -> Result<String> {
@@ -435,10 +493,37 @@ pub fn invoke(service: String, tool: String, args: String, delay: Option<u64>) -
     Ok(berm_lang::call(&service, &tool, &args)?)
 }
 
+/// Answers `ok`; only accounts may call it
+///
 /// Answers `ok`; only accounts may call it.
-#[tool]
+#[tool(access = "accounts")]
 pub fn fromaccounts() -> Result<String> {
     Ok("ok".into())
 }
 
 mod workflows;
+
+#[derive(Schema)]
+pub struct StoredText {
+    pub text: Option<String>,
+    pub bytes: Option<Vec<u8>>,
+}
+
+/// Stored text
+#[tool]
+pub fn stored_text(
+    key: String,
+    text: Option<String>,
+    bytes: Option<Vec<u8>>,
+) -> Result<StoredText> {
+    if let Some(text) = text {
+        store::set_str(&key, &text)?;
+    }
+    if let Some(bytes) = bytes {
+        berm_lang::set(&key, &bytes)?;
+    }
+    Ok(StoredText {
+        text: store::get_str(&key)?,
+        bytes: berm_lang::get(&key)?,
+    })
+}

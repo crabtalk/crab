@@ -427,6 +427,10 @@ impl<T: Schema> Schema for BTreeMap<String, T> {
     const SHAPE: Shape = Shape::Map { values: &T::SHAPE };
 }
 
+impl Schema for alloc::boxed::Box<crate::RawValue> {
+    const SHAPE: Shape = Shape::Any;
+}
+
 impl Schema for crate::serde_json::Value {
     const SHAPE: Shape = Shape::Any;
 }

@@ -3,14 +3,13 @@ use crate::{
     runtime,
 };
 use anyhow::{Result, bail};
-use berm_api::{Deployed, Manifest, digest};
-use berm_oci::{Access, Reference, Registry};
+use berm_api::{Deployed, digest};
 use crabtalk_sdk::{
     account::request::RequestStatus,
     client::Client,
     services::service::{DeployRequest, DeployResult, DeploySetRequest, UploadRequest},
 };
-use std::{collections::BTreeMap, str::FromStr};
+use std::collections::BTreeMap;
 
 pub(crate) fn submit(
     client: &Client,
@@ -48,7 +47,7 @@ pub(crate) fn report_results(
             DeployResult::Live(deployed) => report(client, name, deployed)?,
             DeployResult::Published { digest, published } => {
                 println!(
-                    "{name}: template {} ({digest})",
+                    "{name}: image {} ({digest})",
                     if *published {
                         "published"
                     } else {
@@ -107,28 +106,6 @@ pub(crate) fn approved(
     report_results(client, &results)
 }
 
-pub(crate) fn reference(
-    client: &Client,
-    name: &str,
-    repository: &str,
-    registry: Option<&str>,
-    bytes: Vec<u8>,
-) -> Result<String> {
-    match registry {
-        Some(registry) => {
-            let version = Manifest::try_from(bytes.as_slice())?.version;
-            let reference = Reference::from_str(&format!("{registry}/{repository}:{version}"))?;
-            let digest =
-                Registry::open(&reference, Access::Write)?.push(&reference.reference, &bytes)?;
-            Ok(format!(
-                "{}/{}@{digest}",
-                reference.registry, reference.repository
-            ))
-        }
-        None => send(client, name, bytes),
-    }
-}
-
 /// Show what `name` serves now that `deployed` installed it, how it breaks
 /// callers, and the secrets it needs that are not set.
 fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
@@ -141,7 +118,13 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
             client.secrets(name)
         )
     })?;
-    inspect::show(&deployed.service, Some(&running), &terms, None);
+    inspect::show(
+        &deployed.service,
+        Some(&running),
+        &terms,
+        None,
+        &running.workflows,
+    );
     for broken in &deployed.breaks {
         println!("  breaks  {broken}");
     }
@@ -159,7 +142,7 @@ fn report(client: &Client, name: &str, deployed: &Deployed) -> Result<()> {
 
 /// Upload `image` for `name`'s deploy unless the host holds it already,
 /// answering the digest the deploy names it by.
-fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
+pub(crate) fn send(client: &Client, name: &str, image: Vec<u8>) -> Result<String> {
     let sha256 = digest::hex(&image);
     let size = image.len() as u64;
     let request = UploadRequest {

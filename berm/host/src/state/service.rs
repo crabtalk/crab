@@ -8,7 +8,10 @@ use crate::{
 use anyhow::Result;
 use berm_api::{schedule as cron, workflow::config::Spec};
 use rusqlite::{OptionalExtension, Transaction, params};
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::{Path, PathBuf},
+};
 
 /// One service, as a row.
 pub(crate) struct Row {
@@ -145,41 +148,57 @@ pub(crate) async fn install(
     declared_vars: Vec<String>,
     vars: BTreeMap<String, String>,
     now: i64,
+    seed: Option<PathBuf>,
 ) -> Result<()> {
     let row = [scope, name, reference, digest, version].map(str::to_owned);
     let declared = declare(&cron_tools, &crons, now)?;
     store
         .run(move |conn| {
             let [scope, name, reference, digest, version] = row;
-            let tx = conn.transaction()?;
-            tx.execute(
-                "INSERT INTO services
-                     (scope, name, reference, digest, version, size, stopped, project, code_bytes)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-                 ON CONFLICT (scope, name) DO UPDATE
-                    SET reference = excluded.reference, digest = excluded.digest,
-                        version = excluded.version, size = excluded.size,
-                        stopped = excluded.stopped, code_bytes = excluded.code_bytes,
-                        project = COALESCE(excluded.project, services.project),
-                        updated_at = unixepoch()",
-                params![
-                    scope,
-                    name,
-                    reference,
-                    digest,
-                    version,
-                    size as i64,
-                    stopped,
-                    project,
-                    code_bytes as i64
-                ],
-            )?;
-            deprecate(&tx, &scope, &name, &deprecated, now)?;
-            schedule(&tx, &scope, &name, &cron_tools, &declared)?;
-            Schedules::install(&tx, &scope, &name, &workflows, now)
-                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(error.into()))?;
-            state::vars::deploy(&tx, &scope, &name, &declared_vars, &vars)?;
-            tx.commit()
+            if let Some(seed) = &seed {
+                conn.execute("ATTACH DATABASE ?1 AS export_seed", [seed.to_string_lossy().as_ref()])?;
+            }
+            let result = (|| {
+                let tx = conn.transaction()?;
+                tx.execute(
+                    "INSERT INTO services
+                         (scope, name, reference, digest, version, size, stopped, project, code_bytes)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                     ON CONFLICT (scope, name) DO UPDATE
+                        SET reference = excluded.reference, digest = excluded.digest,
+                            version = excluded.version, size = excluded.size,
+                            stopped = excluded.stopped, code_bytes = excluded.code_bytes,
+                            project = COALESCE(excluded.project, services.project),
+                            updated_at = unixepoch()",
+                    params![
+                        scope,
+                        name,
+                        reference,
+                        digest,
+                        version,
+                        size as i64,
+                        stopped,
+                        project,
+                        code_bytes as i64
+                    ],
+                )?;
+                deprecate(&tx, &scope, &name, &deprecated, now)?;
+                schedule(&tx, &scope, &name, &cron_tools, &declared)?;
+                Schedules::install(&tx, &scope, &name, &workflows, now)
+                    .map_err(|error| rusqlite::Error::ToSqlConversionFailure(error.into()))?;
+                state::vars::deploy(&tx, &scope, &name, &declared_vars, &vars)?;
+                if seed.is_some() {
+                    tx.execute("INSERT INTO service_state(scope,name,key,value) SELECT ?1,?2,key,value FROM export_seed._berm_state", params![scope, name])?;
+                }
+                tx.commit()
+            })();
+            if seed.is_some() {
+                let detached = conn.execute_batch("DETACH DATABASE export_seed");
+                result?;
+                detached
+            } else {
+                result
+            }
         })
         .await
 }
@@ -342,4 +361,21 @@ pub(crate) async fn footprint(store: &Store, scope: &str, name: &str, bytes: u64
             Ok(())
         })
         .await
+}
+
+/// A KV-only seed holds only the key-value table.
+pub(crate) fn check_seed(path: &Path) -> Result<()> {
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let tables: Vec<(String, String)> = conn.prepare("SELECT name,type FROM sqlite_schema WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'")?.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+    anyhow::ensure!(
+        tables == [("_berm_state".into(), "table".into())],
+        "A service without SQL accepts a seed containing only its key-value state"
+    );
+    let valid: bool = conn.query_row("SELECT COUNT(*) = COUNT(DISTINCT key) AND COUNT(*) = COUNT(CASE WHEN typeof(key) = 'text' AND typeof(value) = 'blob' THEN 1 END) FROM _berm_state", [], |row| row.get(0))?;
+    anyhow::ensure!(
+        valid,
+        "A key-value seed requires unique text keys and byte values"
+    );
+    Ok(())
 }

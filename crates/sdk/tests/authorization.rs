@@ -1,4 +1,8 @@
-use crabtalk_sdk::account::request::{AgentLoginRequest, DeviceToken};
+use crabtalk_sdk::account::{
+    auth::Status,
+    key::Scope,
+    request::{AgentLoginRequest, DeviceToken},
+};
 use serde_json::json;
 
 #[test]
@@ -16,5 +20,23 @@ fn device_credentials_distinguish_agent_identity_from_legacy_sessions() {
         })
         .unwrap(),
         json!({"client_name":"Claude Code"})
+    );
+}
+
+#[test]
+fn credential_status_checks_scope_inheritance_without_key_list_permission() {
+    let status: Status = serde_json::from_value(json!({"kind":"api_key","key":{
+        "id":"agent","owner_id":"org","label":"agent","scope":["deployments:write"],
+        "expires_at":null,"budget":0,"spent":0,"services":[]
+    }}))
+    .unwrap();
+    assert!(status.allows(Scope::DeploymentsWrite));
+    assert!(status.allows(Scope::DeploymentsRead));
+    assert!(!status.allows(Scope::KeysRead));
+    assert!(
+        !Status::Local {
+            caller: Some("operator".into())
+        }
+        .allows(Scope::DeploymentsWrite)
     );
 }

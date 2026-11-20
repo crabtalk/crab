@@ -1,11 +1,9 @@
-//! Images built by an earlier `berm-lang`, kept in `old/` and never rebuilt, run
-//! on the current host.
+//! Historical image imports and ABI boundary refusals.
 
 use anyhow::Result;
 use berm::{Berm, Calls, Config, Engine, MissingHostCall};
 use berm_api::{Image, host::DATABASE_SIZE};
 use berm_host::{Denied, test::TestHost};
-use serde_json::json;
 use std::collections::BTreeSet;
 
 const FIXTURE: &[u8] = include_bytes!("../old/fixture_abi7.wasm");
@@ -54,25 +52,18 @@ fn the_images_import_every_host_call() -> Result<()> {
 }
 
 #[tokio::test]
-async fn they_run_on_this_host() -> Result<()> {
+async fn legacy_images_are_refused_before_applying_the_new_access_default() -> Result<()> {
     let host = TestHost::open(0).await?;
-    host.deploy("fixture", FIXTURE).await?;
-    host.deploy("keeper", KEEPER).await?;
-
-    let args = json!({"query": "crab", "page": 1});
-    assert_eq!(host.call_json("fixture", "echo", args.clone()).await?, args);
-    let tick = host.call_json("fixture", "tick", json!({"delay": 60_000}));
-    assert_eq!(tick.await?["round"], 1);
-    assert_eq!(
-        host.call_json("fixture", "note", json!({"word": "crab"}))
-            .await?,
-        "crab"
-    );
-    host.call_json("fixture", "reach", json!({"url": "http://127.0.0.1:1/"}))
-        .await?;
-    host.call_json("keeper", "put", json!({"word": "crab"}))
-        .await?;
-    assert_eq!(host.call_json("keeper", "count", json!({})).await?, 1);
+    for image in [FIXTURE, KEEPER] {
+        let error = host
+            .deploy("old", image)
+            .await
+            .err()
+            .expect("old ABI refused");
+        let denied = error.downcast_ref::<Denied>().unwrap();
+        assert_eq!(denied.status.as_u16(), 400);
+        assert!(denied.message.contains("ABI version 7"));
+    }
     Ok(())
 }
 
@@ -80,7 +71,7 @@ async fn they_run_on_this_host() -> Result<()> {
 fn a_runtime_links_a_call_it_has_no_door_for() -> Result<()> {
     let engine = Engine::new(&Config::default())?;
     let berm = Berm::new(&engine, Calls::by_name(Calls::DEFAULT_DEPTH), Vec::new());
-    berm.deploy("fixture", FIXTURE)?;
+    berm.deploy("fixture", &berm_build::fixture::image("berm-fixture")?)?;
     Ok(())
 }
 
@@ -110,7 +101,7 @@ fn a_runtime_refuses_an_image_naming_a_call_it_has_never_heard_of() -> Result<()
 #[tokio::test]
 async fn a_project_deploy_of_a_call_the_host_lacks_carries_its_code() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let image = unknown(KEEPER);
+    let image = unknown(&berm_build::fixture::image("berm-keeper")?);
     let refused = host
         .deploy_set("p", &[("acct/keeper", &image, DATABASE_SIZE)])
         .await
@@ -125,7 +116,13 @@ async fn a_project_deploy_of_a_call_the_host_lacks_carries_its_code() -> Result<
 #[tokio::test]
 async fn a_deploy_of_a_call_the_host_lacks_carries_its_code() -> Result<()> {
     let host = TestHost::open(0).await?;
-    let Err(refused) = host.deploy("keeper", &unknown(KEEPER)).await else {
+    let Err(refused) = host
+        .deploy(
+            "keeper",
+            &unknown(&berm_build::fixture::image("berm-keeper")?),
+        )
+        .await
+    else {
         panic!("no host serves berm.sez");
     };
     let denied = refused.downcast_ref::<Denied>().expect("a refusal");

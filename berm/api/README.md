@@ -22,6 +22,8 @@ Tool responses carry `host::DENIED` (`berm-denied: 1`) when the tool refused its
 `Output::Failed` is the service's own report and arrives with the same `200` a
 result does: the call was fine and the tool said no.
 
+`schema::Validator::try_from(&schema)` compiles a reusable validator; `validate(&value)` checks each input with the same error format as the one-shot `schema::validate`. References are resolved without HTTP or filesystem retrieval. Run `cargo run --release -p berm-api --example validation` to compare repeated compilation with reuse.
+
 ## Workflow contracts
 
 `workflow::graph` defines v1 entry records, typed call schemas, symbolic targets, dependencies, guards, and once/optional/each/branch/output shapes. `Entry::digest` hashes compact JSON with recursively sorted object keys; declaration and item order remain significant. `Source` pairs this graph identity with the complete service image digest. Unknown contract versions are refused.
@@ -30,10 +32,14 @@ result does: the call was fine and the tool said no.
 
 `workflow::Policy` configures the seven-day retention default and each-item ceiling (100 by default). Checkpoint capacity and control resource limits are explicit accepted fields. Workflow compilation emits these records; `berm-host` persists complete runs and executes accepted graphs. `Graph::check` verifies declaration order, bounds, case references, guard consistency and output reachability using the same validator as the compiler.
 
-`workflow::config::Config` reads the matching `[workflows.<name>]` table: access, title, task price, required `max_cost` and `checkpoint_bytes`, control budget, retention and optional UTC schedule/input. The image retains this configuration. Manifest loading checks local call schemas, graph validity, control export signatures and schedule inputs without executing controls. Services may export tools, workflows, or both. `Service.workflows` exposes public entries and task prices; `Runtime.workflows` includes the full owner configuration. Invalid workflow declarations carry the typed `workflow::config::Invalid` error.
+`workflow::config::Config` reads a workflow's ABI declaration: access, title, task price, owner spend cap, control budget, checkpoint capacity and retention. The defaults are public access, free task price, host control budgets, 100,000 USD micros ($0.10), 8 MiB checkpoints and seven days. Only schedules stay in `[schedules]` in `crab.toml`; `[workflows]` and `[tools]` tables are refused. Manifest loading checks local call schemas, graph validity, control export signatures and schedule inputs without executing controls. `Runtime.workflows` includes owner configuration. Invalid workflow declarations carry `workflow::config::Invalid`.
+
+`Service.workflows` exposes the base task fee as `price` and a conservative caller fee range as `price_range: [least, most]`, both in USD micros. The range includes the base fee and allows zero through the declared maximum calls for each priced step. It is not an input-specific quote. Older service listings may omit the range.
 
 ## License
 
 Apache-2.0
 
 `Deps::secret_resources` permits host-granted runtime secret IDs in HTTP placeholders. `project::Project` reads `secret_resources = true`; linked dependencies merge this capability and permission changes require upgrade review. Individual resources and grants are managed separately from image declarations. Fixed secret names cannot be opaque resource IDs.
+
+Repeat `example = "find recent Rust releases"` on `#[tool]` or an OpenAPI operation entry for up to three example tasks, at most 120 characters each. The built image stores them in `examples`, and `crab inspect` lists them.

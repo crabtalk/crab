@@ -1,0 +1,5 @@
+error: webhook scheme must be `standard` or `stripe`
+ --> tests/ui/webhook_scheme.rs:4:18
+  |
+4 | #[tool(webhook = "unknown")]
+  |                  ^^^^^^^^^

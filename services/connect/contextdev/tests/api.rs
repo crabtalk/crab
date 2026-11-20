@@ -21,7 +21,10 @@ fn brand_supports_all_six_lookup_variants_with_host_managed_authentication() {
             200,
             br#"{"brand":{"name":"Example"},"request_id":"req-1"}"#,
         );
-        assert_eq!(api::brand(&input).unwrap()["request_id"], "req-1");
+        assert_eq!(
+            berm_lang::serde_json::to_value(api::brand(&input).unwrap()).unwrap()["request_id"],
+            "req-1"
+        );
         let requests = test::fetched();
         let request = requests.last().unwrap();
         assert_eq!(
@@ -53,7 +56,10 @@ fn scrape_preserves_output_options_and_recursive_extraction_rules() {
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::scrape(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::scrape(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(
         serde_json::from_slice::<Value>(&test::fetched()[0].body).unwrap(),
         body
@@ -73,7 +79,10 @@ fn styleguide_encodes_deadlines_and_explicit_cache_refresh() {
         200,
         br#"{"styleguide":{"typography":{}},"partial":true}"#,
     );
-    assert_eq!(api::styleguide(&input).unwrap()["partial"], true);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::styleguide(&input).unwrap()).unwrap()["partial"],
+        true
+    );
 }
 
 #[test]
@@ -88,7 +97,10 @@ fn map_encodes_target_headers_filters_and_deadlines() {
         200,
         br#"{"urls":[],"partial":true}"#,
     );
-    assert_eq!(api::map(&input).unwrap()["partial"], true);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::map(&input).unwrap()).unwrap()["partial"],
+        true
+    );
     assert_eq!(test::fetched().len(), 1);
 }
 
@@ -119,7 +131,10 @@ fn search_answers_and_crawl_preserve_their_json_requests() {
             _ => unreachable!(),
         }
         .unwrap();
-        assert_eq!(result["partial"], true);
+        assert_eq!(
+            serde_json::from_str::<Value>(result.get()).unwrap()["partial"],
+            true
+        );
         assert_eq!(
             serde_json::from_slice::<Value>(&test::fetched().last().unwrap().body).unwrap(),
             body

@@ -83,6 +83,16 @@ struct Table {
 }
 
 impl Catalog {
+    pub fn check_manifest(&self, manifest: &berm_api::Manifest) -> Result<(), String> {
+        for tool in &manifest.tools {
+            if let Some(job) = &tool.catalog {
+                self.check(job)
+                    .map_err(|error| format!("tool {}: {error}", tool.name))?;
+            }
+        }
+        Ok(())
+    }
+
     /// The list compiled into the SDK.
     pub fn listed() -> &'static Catalog {
         &LISTED

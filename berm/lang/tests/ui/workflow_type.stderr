@@ -1,7 +1,7 @@
 error[E0277]: the trait bound `u64: Projection<std::string::String>` is not satisfied
- --> tests/ui/workflow_type.rs:6:1
+ --> tests/ui/workflow_type.rs:7:1
   |
-6 | #[workflow]
+7 | #[workflow]
   | ^^^^^^^^^^^ the trait `Projection<std::string::String>` is not implemented for `u64`
   |
 help: `Route` implements trait `Projection<T>`
@@ -15,9 +15,9 @@ help: `Route` implements trait `Projection<T>`
   = note: this error originates in the attribute macro `workflow` which comes from the expansion of the derive macro `Branch` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `u64: Projection<std::string::String>` is not satisfied
- --> tests/ui/workflow_type.rs:6:1
+ --> tests/ui/workflow_type.rs:7:1
   |
-6 | #[workflow]
+7 | #[workflow]
   | ^^^^^^^^^^^
   | |
   | `u64` doesn't satisfy the trait bound

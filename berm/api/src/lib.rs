@@ -8,15 +8,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use compat::{Break, Surface};
+pub use credential::{Credential, CredentialSecret};
 pub use http::{Http, Reach};
 pub use image::Image;
 pub use manifest::{
-    Credential, CredentialSecret, Database, Deps, EventSpec, Kit, Manifest, Migration, Sequence,
-    ServiceRecord, ToolRecord, Var,
+    Database, Deps, EventSpec, Kit, Manifest, Migration, Sequence, ServiceRecord, ToolRecord, Var,
 };
 
 pub mod address;
 mod compat;
+pub mod credential;
 pub mod digest;
 pub mod events;
 pub mod host;
@@ -31,11 +32,14 @@ pub mod schema;
 #[cfg(feature = "rusqlite")]
 mod sql;
 pub mod text;
+pub mod webhook;
 pub mod workflow;
 
-/// The most bytes a call's arguments, and a tool's result, may hold, when a
-/// service's `crab.toml` sets no `buffer`.
-pub const DEFAULT_BUFFER: usize = 16 * 1024;
+pub const DEFAULT_WORKFLOW_MAX_COST: u64 = 100_000;
+pub const DEFAULT_WORKFLOW_CHECKPOINT_BYTES: u64 = 8 << 20;
+
+/// The default argument and result buffer size in bytes.
+pub const DEFAULT_BUFFER: usize = 1024 * 1024;
 
 /// One log a service emitted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -217,7 +221,7 @@ impl Budget {
     }
 }
 
-/// A tool's `budget` in its `crab.toml`: CPU time in microseconds, rows read,
+/// A tool's declared budget: CPU time in microseconds, rows read,
 /// rows written, and memory in MiB. A key left out takes the host's.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -288,6 +292,10 @@ impl std::fmt::Display for Limits {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<String>,
     pub name: String,
     pub description: String,
     /// JSON Schema for the tool's arguments, as the model receives it.
@@ -330,28 +338,87 @@ pub struct ToolSpec {
     /// `.`, then the owner's own words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog: Option<String>,
-    /// What its `crab.toml` sets of one call's budget.
+    /// The compiled overrides for one call's budget.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget: Option<Limits>,
     /// Called by its host on the manifest's schedule. A cron tool is not public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cron: bool,
-    /// Called by its host with each Stripe event its daemon takes for the
-    /// service, the event as the argument object. Not public; a service has
-    /// at most one.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub stripe: bool,
-    /// Called by its host with each webhook its daemon verified for this
-    /// tool, the body as the argument object. Not public.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub webhook: bool,
+    /// Called with a body verified using this tool's signature scheme.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<webhook::Scheme>,
 }
 
 impl ToolSpec {
     /// The most characters a title holds.
     pub const TITLE: usize = 60;
+    pub const MIN_PRICE: u64 = 100;
+    pub const EXAMPLES: usize = 3;
+    pub const EXAMPLE_CHARS: usize = 120;
 
-    /// Who may call it, as `access` in `crab.toml` says it; `None` is
+    pub fn check_title(title: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(!title.trim().is_empty(), "a title needs an action");
+        anyhow::ensure!(
+            title.chars().count() <= Self::TITLE && !title.contains(['\n', '\r']),
+            "a title is one line of at most {} characters",
+            Self::TITLE
+        );
+        anyhow::ensure!(!title.ends_with('.'), "a title does not end in a period");
+        Ok(())
+    }
+
+    pub fn check_declaration(&self) -> anyhow::Result<()> {
+        let tool = self;
+        if tool.webhook.is_some() {
+            anyhow::ensure!(
+                Self::signing_secret(&tool.name).len() <= 64,
+                "webhook tool {} has a signing secret name past 64 characters",
+                tool.name
+            );
+        }
+        anyhow::ensure!(
+            tool.examples.len() <= Self::EXAMPLES,
+            "a tool has at most {} example tasks",
+            Self::EXAMPLES
+        );
+        for example in &tool.examples {
+            anyhow::ensure!(
+                !example.trim().is_empty(),
+                "an example task cannot be empty"
+            );
+            anyhow::ensure!(
+                example.chars().count() <= Self::EXAMPLE_CHARS,
+                "an example task has at most {} characters",
+                Self::EXAMPLE_CHARS
+            );
+        }
+        if let Some(title) = &tool.title {
+            ToolSpec::check_title(title)?;
+        }
+        if let Some(price) = tool.price {
+            anyhow::ensure!(
+                tool.public && price >= ToolSpec::MIN_PRICE,
+                "a priced tool must have caller access and a price of at least 100 USD micros"
+            );
+        }
+        if let Some(budget) = tool.budget {
+            anyhow::ensure!(
+                budget.keys().all(|(_, value)| value > 0),
+                "tool budgets must be positive"
+            );
+        }
+        anyhow::ensure!(
+            tool.idempotency_ms != Some(0),
+            "idempotency must be at least one millisecond"
+        );
+        anyhow::ensure!(
+            tool.public || tool.catalog.is_none(),
+            "an internal tool has no catalog job"
+        );
+        Ok(())
+    }
+
+    /// Who may call it, as `access` in its declaration says it; `None` is
     /// internal.
     pub fn access(&self) -> Option<Access> {
         match (self.public, self.anonymous, self.callers) {
@@ -374,7 +441,7 @@ impl ToolSpec {
 
     /// Set who may call it to `access`; `None` makes it internal.
     pub fn set_access(&mut self, access: Option<Access>) {
-        self.public = access.is_some();
+        self.public = access.is_some_and(|access| access != Access::Internal);
         self.anonymous = access == Some(Access::Anonymous);
         self.callers = match access {
             Some(Access::Accounts) => Some(Callers::Accounts),
@@ -385,10 +452,11 @@ impl ToolSpec {
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-/// Who may call a tool, as `access` in `crab.toml`'s `[tools]` sets it.
+/// Which callers the compiled tool declaration permits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Access {
+    Internal,
     /// Accounts and other services.
     Public,
     /// Accounts and other services, and a call from outside with no caller:
@@ -413,6 +481,7 @@ impl Access {
 impl std::fmt::Display for Access {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            Self::Internal => "internal",
             Self::Public => "public",
             Self::Anonymous => "anonymous",
             Self::Accounts => "accounts",

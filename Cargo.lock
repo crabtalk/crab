@@ -253,7 +253,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "berm"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "berm-abi"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "berm-account"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "berm-api"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "berm-bare"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "berm-billing"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -359,18 +359,19 @@ dependencies = [
 
 [[package]]
 name = "berm-broken"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-build"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-abi",
  "berm-api",
+ "crabtalk-sdk",
  "serde",
  "serde_json",
  "tempfile",
@@ -378,11 +379,12 @@ dependencies = [
 
 [[package]]
 name = "berm-codegen"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-abi",
  "berm-api",
  "heck",
+ "humantime",
  "proc-macro2",
  "quote",
  "serde_json",
@@ -391,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "berm-feed"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -405,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "berm-fixture"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm",
@@ -420,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "berm-host"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "axum",
@@ -432,8 +434,10 @@ dependencies = [
  "berm-rusqlite",
  "chrono",
  "croner",
+ "futures-util",
  "humantime-serde",
  "parking_lot",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",
@@ -448,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "berm-keeper"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -463,14 +467,14 @@ dependencies = [
 
 [[package]]
 name = "berm-kit"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-lang"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -494,30 +498,19 @@ dependencies = [
 
 [[package]]
 name = "berm-linked-services"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
- "crab-agent-memory",
  "crab-github",
  "crab-posthog",
  "crab-resend",
- "crab-upstash",
  "crabkit-auth",
-]
-
-[[package]]
-name = "berm-oci"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "reqwest",
- "serde_json",
+ "crabkit-upstash",
 ]
 
 [[package]]
 name = "berm-openapi"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
  "crab-openapi",
@@ -541,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "berm-site"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -557,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "berm-tikhub"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -958,7 +951,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "axum",
@@ -967,12 +960,12 @@ dependencies = [
  "berm-api",
  "berm-build",
  "berm-host",
- "berm-oci",
  "berm-rusqlite",
  "cargo_toml",
  "chrono",
  "clap",
  "crabtalk-sdk",
+ "futures-util",
  "hex",
  "humantime",
  "parking_lot",
@@ -989,7 +982,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
- "toml_edit",
  "tower",
  "tracing",
  "tracing-subscriber",
@@ -997,35 +989,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-agent-memory"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "crab-agent-outbox"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "crab-resend",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "crab-agent-relay"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "berm",
@@ -1040,23 +1005,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-analytics"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "crab-anyapi"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1066,19 +1016,18 @@ dependencies = [
 
 [[package]]
 name = "crab-companyenrich"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-api",
  "berm-build",
  "berm-lang",
  "crab-openapi",
- "serde_json",
  "url",
 ]
 
 [[package]]
 name = "crab-contextdev"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1089,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "crab-dataforseo"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1101,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "crab-firecrawl"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1112,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "crab-github"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
  "url",
@@ -1120,11 +1069,11 @@ dependencies = [
 
 [[package]]
 name = "crab-html"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "crab-litescrape"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1135,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "crab-openapi"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1154,30 +1103,15 @@ dependencies = [
 
 [[package]]
 name = "crab-osv"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
  "url",
 ]
 
 [[package]]
-name = "crab-page-watch"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "crab-webpage",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "crab-pdl"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-build",
  "berm-lang",
@@ -1187,32 +1121,50 @@ dependencies = [
 
 [[package]]
 name = "crab-posthog"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crab-resend"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
  "berm-lang",
+ "serde_json",
+ "tokio",
  "url",
 ]
 
 [[package]]
 name = "crab-seo"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
- "crab-webpage",
+ "crab-sitemap",
+ "crabkit-webpage",
+ "http-link",
+ "language-tags",
  "scraper",
  "serde_json",
+ "url",
+]
+
+[[package]]
+name = "crab-sitemap"
+version = "0.1.8"
+dependencies = [
+ "crab-html",
+ "xmlparser",
 ]
 
 [[package]]
 name = "crab-tinyfish"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "base64 0.22.1",
  "berm-api",
@@ -1223,43 +1175,79 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-upstash"
-version = "0.1.7"
+name = "crabkit"
+version = "0.1.8"
+dependencies = [
+ "crabkit-auth",
+ "crabkit-crawl",
+ "crabkit-lake",
+ "crabkit-neon",
+ "crabkit-stripe",
+ "crabkit-supabase",
+ "crabkit-webpage",
+]
+
+[[package]]
+name = "crabkit-auth"
+version = "0.1.8"
+dependencies = [
+ "berm-lang",
+ "crab-github",
+ "hex",
+ "sha2 0.11.0",
+]
+
+[[package]]
+name = "crabkit-crawl"
+version = "0.1.8"
+dependencies = [
+ "berm-lang",
+ "crab-html",
+ "crab-sitemap",
+ "url",
+]
+
+[[package]]
+name = "crabkit-lake"
+version = "0.1.8"
+dependencies = [
+ "berm-lang",
+ "crab-html",
+ "xmlparser",
+]
+
+[[package]]
+name = "crabkit-neon"
+version = "0.1.8"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
+name = "crabkit-stripe"
+version = "0.1.8"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
+name = "crabkit-supabase"
+version = "0.1.8"
+dependencies = [
+ "berm-lang",
+]
+
+[[package]]
+name = "crabkit-upstash"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
  "url",
 ]
 
 [[package]]
-name = "crab-uptime"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "crab-webhook-inbox"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "crab-webpage"
-version = "0.1.7"
+name = "crabkit-webpage"
+version = "0.1.8"
 dependencies = [
  "berm-lang",
  "htmd",
@@ -1271,70 +1259,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "crabkit"
-version = "0.1.7"
-dependencies = [
- "crabkit-auth",
- "crabkit-crawl",
- "crabkit-lake",
- "crabkit-neon",
- "crabkit-stripe",
- "crabkit-supabase",
-]
-
-[[package]]
-name = "crabkit-auth"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
- "crab-github",
- "hex",
- "sha2 0.11.0",
-]
-
-[[package]]
-name = "crabkit-crawl"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
- "crab-html",
- "url",
- "xmlparser",
-]
-
-[[package]]
-name = "crabkit-lake"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
- "crab-html",
- "xmlparser",
-]
-
-[[package]]
-name = "crabkit-neon"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
-]
-
-[[package]]
-name = "crabkit-stripe"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
-]
-
-[[package]]
-name = "crabkit-supabase"
-version = "0.1.7"
-dependencies = [
- "berm-lang",
-]
-
-[[package]]
 name = "crabtalk-sdk"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -2469,6 +2395,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-link"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "500f1fc191bab8d956904c49818a167fd19534dbd529d93bd030bdc3bf9117a0"
+dependencies = [
+ "percent-encoding",
+ "url",
+]
+
+[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2919,6 +2855,12 @@ name = "lab"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf36173d4167ed999940f804952e6b08197cae5ad5d572eb4db150ce8ad5d58f"
+
+[[package]]
+name = "language-tags"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
 
 [[package]]
 name = "lazy_static"
@@ -5289,19 +5231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "toml_edit"
-version = "0.25.15+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
-dependencies = [
- "indexmap",
- "toml_datetime 1.1.1+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow 1.0.4",
-]
-
-[[package]]
 name = "toml_parser"
 version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6415,9 +6344,6 @@ name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
-dependencies = [
- "memchr",
-]
 
 [[package]]
 name = "wit-bindgen"

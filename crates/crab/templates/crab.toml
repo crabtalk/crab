@@ -2,31 +2,11 @@
 # image = "your-account/__NAME__"
 # Public deployment and reusable image publication are opt-in.
 # public = true
-# template = true
+# deploy = true
 # Secrets it names in `{secret:NAME}`.
 # secrets = ["API_KEY"]
 # The most bytes a call's arguments, and a tool's result, may hold.
 # buffer = 16384
-
-# Each tool's table; every key is optional.
-[tools.echo]
-# Who may call it: "public", "anonymous" (public, and callable with no
-# caller), or restricted to "accounts" or "services". Absent, it is internal:
-# only its host calls it.
-access = "public"
-# Its short display name, at most 60 characters on one line.
-# title = "Echo a query"
-# Its price a call on Cloud, in USD micros: 2_000 is $0.002, at least 100.
-# price = 2_000
-# The catalog job it does: a listed platform, `.`, then the job.
-# catalog = "web.search"
-
-# Durable state is shared by every caller of this deployment.
-[tools.remember]
-access = "public"
-
-[tools.recall]
-access = "public"
 
 # Outbound HTTP destinations. Omitted or empty lists allow none.
 # [http]
@@ -46,5 +26,5 @@ size = "64MiB"
 # When its host calls each `#[tool(cron)]` tool: five fields, minute to day of
 # week, in UTC. A tool left out is not called until its owners set one on the
 # host.
-# [crons]
+# [schedules]
 # tick = "*/5 * * * *"

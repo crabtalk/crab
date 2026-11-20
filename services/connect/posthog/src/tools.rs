@@ -13,6 +13,8 @@ fn client() -> Result<PostHog> {
     Ok(PostHog::new(region))
 }
 
+/// Capture event
+///
 /// Submit an event to PostHog. Acceptance does not mean it is immediately queryable.
 #[tool]
 pub fn capture(
@@ -22,6 +24,8 @@ pub fn capture(
     client()?.capture(&event)
 }
 
+/// Capture batch
+///
 /// Submit events in one request. Stable event UUIDs help deduplicate retries.
 #[tool]
 pub fn capture_batch(
@@ -31,6 +35,8 @@ pub fn capture_batch(
     client()?.capture_batch(&events)
 }
 
+/// Evaluate flags
+///
 /// Evaluate feature flags for a user. Inspect partial errors; this does not log exposure.
 #[tool]
 pub fn flags(
@@ -40,6 +46,8 @@ pub fn flags(
     client()?.flags(&evaluation)
 }
 
+/// Query analytics
+///
 /// Run a named HogQL analytics query using the deployment's private API key.
 #[tool]
 pub fn query(

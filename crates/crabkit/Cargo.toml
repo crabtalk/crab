@@ -16,6 +16,7 @@ lake = ["dep:lake"]
 neon = ["dep:neon"]
 stripe = ["dep:stripe"]
 supabase = ["dep:supabase"]
+webpage = ["dep:webpage"]
 
 [dependencies]
 auth = { workspace = true, optional = true }
@@ -24,6 +25,7 @@ lake = { workspace = true, optional = true }
 neon = { workspace = true, optional = true }
 stripe = { workspace = true, optional = true }
 supabase = { workspace = true, optional = true }
+webpage = { workspace = true, optional = true }
 
 [package.metadata.docs.rs]
 all-features = true

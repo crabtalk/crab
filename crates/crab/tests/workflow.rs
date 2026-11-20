@@ -425,3 +425,48 @@ fn local_admission_uses_the_selected_unchecked_caller_and_anonymous_dry_run_is_s
     );
     Ok(())
 }
+
+#[test]
+fn inspection_with_input_quotes_that_input() -> Result<()> {
+    let mut priced = inspection();
+    priced["entry"]["graph"]["nodes"][0]["price"] = json!(1_000);
+    let quote = json!({
+        "steps": {"search": 3}, "branches": {},
+        "meter": {"calls": 1, "cpu": 10, "memory": 0, "read": 0, "written": 0, "proxied": 0},
+    });
+    let gateway = Gateway::spawn(
+        None,
+        vec![
+            (
+                "GET /services/local/research/workflows/report ",
+                200,
+                priced.clone(),
+            ),
+            (
+                "POST /services/local/research/workflows/report/quote ",
+                200,
+                quote.clone(),
+            ),
+        ],
+    );
+    let workflow = Cli::try_parse_from([
+        "workflow",
+        "inspect",
+        "research.report",
+        r#"{"question":"why"}"#,
+    ])?
+    .workflow;
+    assert_eq!(
+        workflow.run(&gateway.client, true, false)?,
+        ExitCode::SUCCESS
+    );
+    let requests = gateway.requests.join().unwrap();
+    assert_eq!(requests[1].1, json!({"question": "why"}));
+    let inspection: Inspection = serde_json::from_value(priced)?;
+    let mut output = Vec::new();
+    workflow::show_quote(&inspection, &serde_json::from_value(quote)?, &mut output)?;
+    let output = String::from_utf8(output)?;
+    assert!(output.contains("for this input: $0.05\n"), "{output}");
+    assert!(output.contains("search: 3 items"), "{output}");
+    Ok(())
+}

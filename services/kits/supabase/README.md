@@ -13,16 +13,11 @@ crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features =
 
 The library is also the crate `crabkit-supabase` on its own.
 
-The library's `crab.toml` declares the secret `SUPABASE_KEY`, which reaches the service's manifest when the service links the library, and no host. The service declares its own project's host under `[http] fetch` in its own `crab.toml`:
+The library declares the Supabase credential, its setup guide and `SUPABASE_KEY`. Your service supplies only its project’s host in `crab.toml`:
 
 ```toml
-[http]
-fetch = ["abcd.supabase.co"]
-
 [credentials.supabase]
-title = "Supabase credentials"
 hosts = ["abcd.supabase.co"]
-secrets = [{ name = "SUPABASE_KEY" }]
 ```
 
 Provision `SUPABASE_KEY` after deploying this manifest, using `crab secret fill <service>` in your terminal:

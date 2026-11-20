@@ -1,14 +1,6 @@
-image = "connect/posthog"
-logo = "https://crabtalk.ai/logos/templates/posthog-v1.svg"
-template = true
-buffer = 1048576
-
 [vars]
 POSTHOG_REGION = { default = "us", description = "PostHog Cloud region: us or eu" }
 POSTHOG_PROJECT_ID = { description = "Numeric project ID for analytics queries; not needed for capture or flags" }
-
-[http]
-fetch = ["us.i.posthog.com", "eu.i.posthog.com", "us.posthog.com", "eu.posthog.com"]
 
 [credentials.posthog_project]
 title = "PostHog project token"
@@ -24,18 +16,7 @@ optional = true
 hosts = ["us.posthog.com", "eu.posthog.com"]
 secrets = [{ name = "POSTHOG_PERSONAL_API_KEY", label = "Personal API key" }]
 
-[tools.capture]
-access = "public"
-title = "Capture event"
-
-[tools.capture_batch]
-access = "public"
-title = "Capture batch"
-
-[tools.flags]
-access = "public"
-title = "Evaluate flags"
-
-[tools.query]
-access = "public"
-title = "Query analytics"
+[image]
+name = "connect/posthog"
+logo = "https://crabtalk.ai/logos/templates/posthog-v1.svg"
+publish = false

@@ -58,7 +58,7 @@ fn malformed_or_mutating_event_hooks_are_rejected() {
     let valid = tool();
     for (pointer, replacement) in [
         ("/query", json!(false)),
-        ("/webhook", json!(true)),
+        ("/webhook", json!("standard")),
         ("/events", json!("contains spaces")),
         ("/parameters/properties/cursor", json!({"type":"integer"})),
         ("/parameters/required", json!(["agent", "cursor"])),

@@ -16,6 +16,6 @@ Services wrapping third-party APIs. Each service documents its provider credenti
 - [TinyFish](tinyfish/README.md): OpenAPI-backed web, news and publication search, multi-URL extraction and asynchronous browser agents.
 - [OSV](osv/README.md): package vulnerabilities and advisory lookup.
 
-Call an accessible running deployment or deploy a published template as a private copy. Availability and required setup are documented by each service; the catalog does not determine deployment visibility.
+Call an accessible running deployment or deploy a published image as a private copy. Availability and required setup are documented by each service; the catalog does not determine deployment visibility.
 
 See [Services](../README.md) for source builds and Rust library reuse.

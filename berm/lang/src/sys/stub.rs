@@ -36,6 +36,7 @@ pub(crate) struct Host {
     pub fetched: Vec<Fetched>,
     /// What a test has arranged each var to hold: the name and the value.
     pub vars: Vec<(String, String)>,
+    pub run: Option<crate::workflow::Run>,
 }
 
 impl Host {
@@ -51,6 +52,7 @@ impl Host {
             responses: Vec::new(),
             fetched: Vec::new(),
             vars: Vec::new(),
+            run: None,
         }
     }
 }
@@ -76,6 +78,12 @@ abi::host_calls!(imports);
 /// The stand-in for the host call `name`, for what `syscalls!` declares too.
 pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
     match name {
+        abi::WORKFLOW_RUN => with(|host| {
+            host.result = host.run.as_ref().map_or_else(Vec::new, |run| {
+                crate::serde_json::to_vec(run).expect("serializable workflow context")
+            });
+            host.result.len() as u64
+        }),
         abi::ARG_LEN => with(|host| host.args.len() as u64),
         abi::ARG_READ => with(|host| {
             let taken = host.args.len().min(a1 as usize);

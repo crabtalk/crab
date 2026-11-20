@@ -24,14 +24,14 @@ enum Route {
     Same(Same),
 }
 
-/// Compare the input.
+/// Compare the input
 #[tool]
 fn compare(value: String, note: Option<String>) -> Result<Route> {
     let _ = note;
     Ok(Route::Changed(Changed { value }))
 }
 
-/// Complete without a result body.
+/// Complete without a result body
 #[tool]
 fn complete() -> Result<()> {
     Ok(())

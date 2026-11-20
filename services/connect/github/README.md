@@ -4,7 +4,7 @@ Read repositories, issues, pull requests and releases, or create issues, comment
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/github` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
+With Crab signed in to Cloud, replace `owner/github` with the address of a running deployment you can access. If only a published image is available, deploy it first.
 
 ```sh
 crab call owner/github latest_release '{"owner":"rust-lang","repo":"rust"}'
@@ -19,7 +19,7 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
-crab deploy --from owner/github
+crab deploy owner/github
 ```
 
 Public repository reads need no credential. For private repositories or writes, set `GITHUB_TOKEN` through the copy’s credential setup. Use a fine-grained token scoped to the repositories you need: Metadata for repository reads, Issues for issues, Pull requests for PRs, and Contents for releases. Grant write access only for operations you intend to use.
@@ -30,7 +30,7 @@ For private repository access or a higher GitHub rate limit, request the optiona
 crab secret request github --credential github_api
 ```
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
+To build a modified version or deploy when no image is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 

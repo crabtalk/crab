@@ -9,7 +9,7 @@ use berm_api::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// What a service runs next: the image a registry reference names, or one
+/// What a service runs next: a published Cloud image, or one
 /// uploaded through `POST /services/{owner}/{name}/image`, named by its digest,
 /// `sha256:` and its SHA-256 in hex.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -17,14 +17,10 @@ use std::collections::BTreeMap;
 #[serde(deny_unknown_fields)]
 pub struct DeployRequest {
     pub reference: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub template: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<TemplateSource>,
+    #[serde(flatten)]
+    pub overrides: Overrides,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_upgrade: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub release_notes: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub create: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -42,8 +38,9 @@ pub struct DeployRequest {
     pub size: Option<u64>,
     /// The SHA-256, in hex, of a seed uploaded through
     /// `POST /services/{owner}/{name}/seed`: a SQLite file the service's
-    /// database starts as, held to the image's migrations. Refused when the
-    /// service has a database.
+    /// data starts from. SQL seeds must match the image's migrations; services
+    /// without SQL accept only exported key-value state. Refused for an
+    /// existing service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
     /// Install it stopped: it takes no calls and fires no wakes until
@@ -55,11 +52,6 @@ pub struct DeployRequest {
     /// another project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
-    /// Each public tool's price a call, by name, in place of the prices the
-    /// service had: a deploy without them leaves it with none. Refused when
-    /// one names a tool that is not a public tool of the image.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub prices: BTreeMap<String, Price>,
     /// The value its copy holds for each var it names, by name; a var it
     /// leaves out keeps its value. Refused when one names a var its `[vars]`
     /// does not declare, or a value past 4096 bytes.
@@ -67,36 +59,81 @@ pub struct DeployRequest {
     pub vars: BTreeMap<String, String>,
 }
 
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateSource {
+pub struct ImageSummary {
+    pub available: bool,
     pub owner: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateSummary {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub published: Option<bool>,
     pub name: String,
     pub digest: String,
     pub version: String,
     pub description: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logo: Option<String>,
+    pub deploy: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Template {
+pub struct Image {
     pub owner: String,
     pub name: String,
     pub digest: String,
     pub manifest: berm_api::Manifest,
-    #[serde(default)]
-    pub yanked: bool,
-    /// Existing service copies across all versions, stopped services included.
-    #[serde(default)]
-    pub deployments: u64,
+    pub deployments: Vec<ImageDeployment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageDeployment {
+    pub owner: String,
+    pub name: String,
+    pub version: String,
+}
+
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Overrides {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public: Option<bool>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prices: BTreeMap<String, u64>,
+}
+
+impl Overrides {
+    pub fn is_empty(&self) -> bool {
+        self.public.is_none() && self.prices.is_empty()
+    }
+
+    pub fn apply(&self, manifest: &mut berm_api::Manifest) -> Result<(), String> {
+        self.apply_tools(&mut manifest.tools)?;
+        if let Some(public) = self.public {
+            manifest.public = public;
+        }
+        Ok(())
+    }
+
+    pub fn extend(&mut self, other: &Self) {
+        if other.public.is_some() {
+            self.public = other.public;
+        }
+        self.prices.extend(other.prices.clone());
+    }
+
+    pub fn apply_tools(&self, tools: &mut [berm_api::ToolSpec]) -> Result<(), String> {
+        for (name, price) in &self.prices {
+            let tool = tools
+                .iter_mut()
+                .find(|tool| tool.name == *name && tool.public)
+                .ok_or_else(|| {
+                    format!(
+                        "{name}: only a tool admitting outside callers can have a price override"
+                    )
+                })?;
+            if *price != 0 {
+                Price::try_from(*price)?;
+            }
+            tool.price = (*price != 0).then_some(*price);
+        }
+        Ok(())
+    }
 }
 
 /// What calling a service is held to and costs: each public tool's terms, by
@@ -107,18 +144,6 @@ pub struct Terms {
     pub tools: BTreeMap<String, ToolTerms>,
     /// Milliseconds a chain of calls runs before the host stops it.
     pub deadline: u64,
-}
-
-/// A published version's identity remains after its image is pruned.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateRelease {
-    pub version: String,
-    pub digest: String,
-    pub created_at: i64,
-    pub notes: Option<String>,
-    pub available: bool,
-    pub yanked: bool,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -364,8 +389,7 @@ pub struct Owned {
     pub served: host::Served,
     /// The project it was last deployed in.
     pub project: Option<String>,
-    /// The registry reference it runs, which another account can deploy as
-    /// its own; none for an uploaded image.
+    /// Its Cloud image reference; none for an uploaded image.
     pub reference: Option<String>,
     pub status: Status,
 }
@@ -451,6 +475,8 @@ pub struct DeploymentApproval {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deployment {
+    #[serde(default)]
+    pub overrides: Overrides,
     pub id: i64,
     /// The service it deployed, by its name in the account.
     pub name: String,
@@ -460,7 +486,7 @@ pub struct Deployment {
     /// `sha256:` and the hex SHA-256 of the image; none when the deploy ended
     /// before its reference was resolved.
     pub digest: Option<String>,
-    /// What it was deployed from: a registry reference, or `sha256:` and an
+    /// What it was deployed from: a Cloud image reference, or `sha256:` and an
     /// upload's SHA-256.
     pub reference: String,
     /// Why it was refused or failed, as the deploy answered.
@@ -471,8 +497,7 @@ pub struct Deployment {
     pub seeded: bool,
     /// The node it was placed on; none when it ended before placement.
     pub node: Option<String>,
-    /// Its image can be deployed again: one from a registry, or an upload
-    /// kept on the node the service is placed on now.
+    /// Its image is retained in the account’s image storage.
     pub redeployable: bool,
     /// The project it was deployed in.
     pub project: Option<String>,
@@ -482,17 +507,16 @@ pub struct Deployment {
     pub at: i64,
 }
 
-/// The public service of another account a service was deployed from: one
-/// running an image of the same registry repository.
+/// The published image a deployment follows.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Origin {
     /// Its owner, by handle, or by id when they have none.
     pub owner: String,
     pub name: String,
-    /// The registry reference it runs now.
+    /// Its Cloud image reference.
     pub reference: String,
-    /// The version it runs now.
+    /// The latest version published.
     pub version: String,
 }
 
@@ -507,7 +531,7 @@ pub enum DeployOutcome {
     Replaced,
     /// Refused: the service runs what it ran before.
     Refused,
-    /// Did not finish: Cloud, the registry or the node did not answer.
+    /// Did not finish: Cloud or the node did not answer.
     Failed,
 }
 

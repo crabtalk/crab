@@ -1,10 +1,5 @@
-image = "connect/github"
-logo = "https://crabtalk.ai/logos/templates/github-v1.svg"
-template = true
-buffer = 1048576
-
 [http]
-fetch = ["api.github.com", "github.com"]
+fetch = ["github.com"]
 
 [credentials.github_api]
 title = "GitHub access token"
@@ -13,46 +8,7 @@ optional = true
 hosts = ["api.github.com"]
 secrets = [{ name = "GITHUB_TOKEN", label = "Access token" }]
 
-[tools.repository]
-access = "public"
-title = "Repository"
-
-[tools.issues]
-access = "public"
-title = "Issues"
-
-[tools.issue]
-access = "public"
-title = "Issue"
-
-[tools.create_issue]
-access = "public"
-title = "Create issue"
-
-[tools.comment]
-access = "public"
-title = "Comment"
-
-[tools.pull_requests]
-access = "public"
-title = "Pull requests"
-
-[tools.pull_request]
-access = "public"
-title = "Pull request"
-
-[tools.create_pull_request]
-access = "public"
-title = "Create pull request"
-
-[tools.releases]
-access = "public"
-title = "Releases"
-
-[tools.latest_release]
-access = "public"
-title = "Latest release"
-
-[tools.create_release]
-access = "public"
-title = "Create release"
+[image]
+name = "connect/github"
+logo = "https://crabtalk.ai/logos/templates/github-v1.svg"
+publish = false

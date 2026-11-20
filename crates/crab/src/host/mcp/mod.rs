@@ -1,9 +1,12 @@
 //! Requests may carry the local host's unverified caller header.
 
 use crate::host::Node;
-use axum::http::request::Parts;
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts};
 use berm_api::{Output, Service, host::Caller};
-use crabtalk_sdk::mcp::{self, Found};
+use crabtalk_sdk::{
+    account::auth::Status,
+    mcp::{self, Action, Found, Inspection, Tool as FoundTool, workflow::Action as WorkflowAction},
+};
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     model::{
@@ -17,9 +20,6 @@ use rmcp::{
 use std::sync::Arc;
 
 mod workflow;
-
-/// The most services a search answers.
-const FOUND: usize = 10;
 
 pub struct Mcp {
     node: Arc<Node>,
@@ -61,16 +61,10 @@ impl Mcp {
             .filter(|deployed| !self.node.host.stopped(&deployed.name))
             .filter_map(|deployed| {
                 let manifest = &deployed.manifest;
-                let tools: Vec<mcp::Tool> = manifest
+                let tools: Vec<_> = manifest
                     .tools
                     .iter()
                     .filter(|tool| tool.callable_by(caller))
-                    .map(|tool| mcp::Tool {
-                        name: tool.name.clone(),
-                        title: tool.title.clone(),
-                        description: tool.description.clone(),
-                        price: None,
-                    })
                     .collect();
                 let score = 3 * count(&deployed.name)
                     + 2 * count(&manifest.description)
@@ -85,7 +79,13 @@ impl Mcp {
                     let found = Found {
                         service: deployed.name.to_string(),
                         description: manifest.description.clone(),
-                        tools,
+                        tools: tools
+                            .into_iter()
+                            .map(|tool| FoundTool {
+                                name: tool.name.clone(),
+                                title: tool.title.clone(),
+                            })
+                            .collect(),
                     };
                     (score, found)
                 })
@@ -95,7 +95,7 @@ impl Mcp {
             .sort_by(|(a, one), (b, other)| b.cmp(a).then_with(|| one.service.cmp(&other.service)));
         found
             .into_iter()
-            .take(FOUND)
+            .take(mcp::FOUND)
             .map(|(_, found)| found)
             .collect()
     }
@@ -122,25 +122,22 @@ impl ServerHandler for Mcp {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        let search = Tool::new(
-            mcp::SEARCH,
-            mcp::SEARCH_DESCRIPTION,
-            Arc::new(mcp::search_schema()),
-        )
-        .annotate(ToolAnnotations::new().read_only(true));
-        let inspect = Tool::new(
-            mcp::INSPECT,
-            mcp::INSPECT_DESCRIPTION,
-            Arc::new(mcp::inspect_schema()),
-        )
-        .annotate(ToolAnnotations::new().read_only(true));
-        let call = Tool::new(
-            mcp::CALL,
-            mcp::CALL_DESCRIPTION,
-            Arc::new(mcp::call_schema()),
-        );
-        let mut tools = vec![search, inspect, call];
-        tools.extend(mcp::workflow::Action::ALL.map(|action| {
+        let mut tools: Vec<_> = Action::ALL
+            .map(|action| {
+                Tool::new(
+                    action.name(),
+                    action.description(),
+                    Arc::new(action.schema()),
+                )
+                .annotate(
+                    ToolAnnotations::new()
+                        .read_only(action.read_only())
+                        .destructive(!action.read_only())
+                        .open_world(true),
+                )
+            })
+            .into();
+        tools.extend(WorkflowAction::ALL.map(|action| {
             Tool::new(
                 action.name(),
                 action.description(),
@@ -165,7 +162,7 @@ impl ServerHandler for Mcp {
             .extensions
             .get::<Parts>()
             .and_then(|parts| parts.extensions.get::<Caller>());
-        if let Ok(action) = mcp::workflow::Action::try_from(request.name.as_ref()) {
+        if let Ok(action) = WorkflowAction::try_from(request.name.as_ref()) {
             return self
                 .workflow(action, request.arguments.unwrap_or_default(), caller)
                 .await;
@@ -177,20 +174,45 @@ impl ServerHandler for Mcp {
                 .and_then(|value| value.as_str())
                 .ok_or_else(|| McpError::invalid_params(format!("`{key}` is a string"), None))
         };
-        match request.name.as_ref() {
-            mcp::SEARCH => {
+        let action = Action::try_from(request.name.as_ref())
+            .map_err(|error| McpError::invalid_params(error, None))?;
+        match action {
+            Action::Status => {
+                return Ok(CallToolResult::structured(
+                    serde_json::to_value(Status::Local {
+                        caller: caller.map(|caller| caller.id.clone()),
+                    })
+                    .map_err(|error| McpError::internal_error(error.to_string(), None))?,
+                ));
+            }
+            Action::Services => {
+                let names: Vec<_> = self
+                    .node
+                    .list()
+                    .iter()
+                    .filter_map(|service| {
+                        self.definition(&service.name, caller)
+                            .map(|definition| definition.name)
+                    })
+                    .collect();
+                return Ok(CallToolResult::success(vec![ContentBlock::text(
+                    serde_json::to_string(&names)
+                        .map_err(|error| McpError::internal_error(error.to_string(), None))?,
+                )]));
+            }
+            Action::Search => {
                 let found = serde_json::to_string(&self.search(field("query")?, caller))
                     .map_err(|error| McpError::internal_error(error.to_string(), None))?;
                 return Ok(CallToolResult::success(vec![ContentBlock::text(found)]));
             }
-            mcp::INSPECT => {
+            Action::Inspect => {
                 let name = field("service")?;
                 let Some(definition) = self.definition(name, caller) else {
                     return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                         "no accessible running service named {name:?}"
                     ))]));
                 };
-                let inspection = mcp::Inspection {
+                let inspection = Inspection {
                     service: name.to_owned(),
                     definition,
                     prices: Default::default(),
@@ -201,13 +223,7 @@ impl ServerHandler for Mcp {
                     inspection,
                 )]));
             }
-            mcp::CALL => {}
-            name => {
-                return Err(McpError::invalid_params(
-                    format!("no tool named {name:?}"),
-                    None,
-                ));
-            }
+            Action::Call | Action::Query => {}
         }
         let service = field("service")?;
         let tool = field("tool")?;
@@ -215,6 +231,29 @@ impl ServerHandler for Mcp {
             return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "the local host has no accounts: name a service it runs",
             )]));
+        }
+        let mut headers = HeaderMap::new();
+        if action == Action::Query {
+            let definition = self.definition(service, caller);
+            let Some(spec) = definition
+                .as_ref()
+                .and_then(|definition| definition.tools.iter().find(|spec| spec.name == tool))
+            else {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "no accessible tool with that name",
+                )]));
+            };
+            if let Err(error) = action.check_tool(spec) {
+                return Ok(CallToolResult::structured_error(
+                    serde_json::json!({"error":error.to_string(), "status":400, "explain":mcp::QUERY_EXPLAIN}),
+                ));
+            }
+            let digest = definition.as_ref().unwrap().digest.as_str();
+            headers.insert(
+                header::IF_MATCH,
+                HeaderValue::from_str(&format!("\"{digest}\""))
+                    .map_err(|error| McpError::internal_error(error.to_string(), None))?,
+            );
         }
         // A service reads its arguments as the JSON its manifest advertised a
         // schema for, so the object goes across as it arrived.
@@ -228,8 +267,16 @@ impl ServerHandler for Mcp {
         match self
             .node
             .host
-            .call(service, caller, tool, args, false)
+            .outside(
+                service,
+                tool,
+                action == Action::Query,
+                args,
+                caller.cloned(),
+                headers,
+            )
             .await
+            .map(|called| (called.headers, called.output))
         {
             Ok((_, Output::Done(result))) => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
@@ -237,6 +284,17 @@ impl ServerHandler for Mcp {
             // The service ran and reported failure: a tool result.
             Ok((_, Output::Failed(failure))) => {
                 Ok(CallToolResult::error(vec![ContentBlock::text(failure)]))
+            }
+            Err(error)
+                if action == Action::Query
+                    && matches!(
+                        error.status,
+                        StatusCode::PRECONDITION_FAILED | StatusCode::METHOD_NOT_ALLOWED
+                    ) =>
+            {
+                Ok(CallToolResult::structured_error(
+                    serde_json::json!({"error":"The service changed after inspection; inspect it again before using query or call", "status":412, "explain":mcp::CHANGED_EXPLAIN}),
+                ))
             }
             Err(error) => Ok(CallToolResult::error(vec![ContentBlock::text(
                 error.to_string(),
@@ -268,12 +326,9 @@ impl ServerHandler for Mcp {
         let service = self
             .definition(name, caller)
             .ok_or_else(|| McpError::resource_not_found(request.uri.clone(), None))?;
-        let idl = serde_json::to_string(&service)
-            .map_err(|error| McpError::internal_error(error.to_string(), None))?;
         Ok(ReadResourceResult::new(vec![
             ResourceContents::text(service.readme, request.uri.clone())
                 .with_mime_type("text/markdown"),
-            ResourceContents::text(idl, request.uri).with_mime_type("application/json"),
         ]))
     }
 }

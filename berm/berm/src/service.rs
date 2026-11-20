@@ -137,9 +137,6 @@ impl Service {
         if tools.is_empty() && manifest.workflows.is_empty() {
             bail!("service exports no tools or workflows");
         }
-        if manifest.tools.iter().filter(|tool| tool.stripe).count() > 1 {
-            bail!("service declares more than one stripe tool");
-        }
 
         for (name, tool) in &tools {
             if let Some(key) = tool.budget.past(&engine.most) {
@@ -183,13 +180,7 @@ impl Service {
             if tool.cron && tool.public {
                 bail!("tool {:?} is a cron tool, and cannot be public", tool.name);
             }
-            if tool.stripe && tool.public {
-                bail!(
-                    "tool {:?} is a stripe tool, and cannot be public",
-                    tool.name
-                );
-            }
-            if tool.webhook && tool.public {
+            if tool.webhook.is_some() && tool.public {
                 bail!(
                     "tool {:?} is a webhook tool, and cannot be public",
                     tool.name
@@ -315,6 +306,7 @@ impl Service {
         let Manifest {
             abi_version: _,
             public: _,
+            deploy: _,
             crons: _,
             name: _,
             lang: _,
@@ -343,7 +335,11 @@ impl Service {
             readme: readme.clone(),
             logo: logo.clone(),
             digest: self.digest.clone(),
-            tools: tools.iter().filter(|tool| tool.public).cloned().collect(),
+            tools: tools
+                .iter()
+                .filter(|tool| tool.public || self.manifest.deploy)
+                .cloned()
+                .collect(),
             workflows: workflows.iter().filter_map(|spec| spec.public()).collect(),
             vars: deps.vars.clone(),
         }
@@ -390,7 +386,7 @@ impl Service {
                 1,
                 true,
                 deadline,
-                chain::next(),
+                chain::next().into(),
                 Arc::new(Journal::default()),
                 request.meters,
                 Arc::from([self.name.clone()]),
@@ -447,7 +443,7 @@ impl Service {
         tool: &str,
         args: impl Into<Vec<u8>>,
         meters: Arc<Meters>,
-        chain: u64,
+        chain: impl Into<chain::Id>,
         taping: Taping,
     ) -> Result<Outcome> {
         let journal = Arc::new(Journal::default());
@@ -462,7 +458,7 @@ impl Service {
                 1,
                 false,
                 Instant::now() + self.deadline,
-                chain,
+                chain.into(),
                 journal.clone(),
                 meters,
                 Arc::from([self.name.clone()]),
@@ -513,7 +509,7 @@ impl Service {
                 depth,
                 query,
                 deadline,
-                chain::next(),
+                chain::next().into(),
                 journal.clone(),
                 meters,
                 stack,
@@ -549,7 +545,7 @@ impl Service {
         depth: u32,
         query: bool,
         deadline: Instant,
-        chain: u64,
+        chain: chain::Id,
         journal: Arc<Journal>,
         meters: Arc<Meters>,
         stack: Arc<[Arc<str>]>,
@@ -595,10 +591,10 @@ impl Service {
         };
         let tool = label.as_str();
 
-        let workflow = parent
+        let spend = parent
             .and_then(|parent| parent.workflow.clone())
             .or_else(workflow::current);
-        let deadline = if let Some(context) = &workflow {
+        let deadline = if let Some(context) = &spend {
             let left = context.deadline_at.saturating_sub((self.now)());
             if left == 0 {
                 return Err(Failure { status: 409,headers: BTreeMap::new(),body: serde_json::json!({"error":"workflow attempt deadline expired","explain":SpendContext::EXPIRED}) }.into());
@@ -612,7 +608,11 @@ impl Service {
             tool: tool.into(),
             budget,
             control,
-            workflow,
+            workflow: spend,
+            run: (!control && parent.is_none())
+                .then(workflow::step_current)
+                .flatten(),
+            digest: self.digest.as_str().into(),
             deps: self.deps.clone(),
             caller,
             key,
@@ -622,7 +622,8 @@ impl Service {
             stack,
             query: query || declared,
             deadline,
-            chain,
+            chain: chain.number,
+            record: parent.and_then(|at| at.record).or(chain.record),
             span: parent.map_or(0, |parent| parent.spans.fetch_add(1, Ordering::Relaxed)),
             parent: parent.map(|parent| parent.span),
             spans: parent.map_or_else(

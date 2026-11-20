@@ -1,8 +1,8 @@
 error: first depends on unknown or later node later; use an earlier method name
- --> tests/ui/workflow_forward.rs:9:14
-  |
-9 |     fn first(later: &u64) -> EchoCall {
-  |              ^^^^^^^^^^^
+  --> tests/ui/workflow_forward.rs:10:14
+   |
+10 |     fn first(later: &u64) -> EchoCall {
+   |              ^^^^^^^^^^^
 
 warning: unused imports: `EchoCall` and `Input`
  --> tests/ui/workflow_forward.rs:4:15

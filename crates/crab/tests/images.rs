@@ -4,413 +4,179 @@ use axum::{
     http::{Method, StatusCode, Uri},
 };
 use clap::Parser;
-use crab_agent::cmd::{deploy::Deploy, push::Push};
-use crabtalk_sdk::client::{Client, Owner};
+use crab_agent::cmd::{deploy::Deploy, push::Push, up::Up};
+use crabtalk_sdk::{
+    client::{Client, Owner},
+    services::service::Overrides,
+};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    fs,
-    path::Path,
     sync::{Arc, Mutex},
 };
-use tokio::task::JoinHandle;
-
-const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const MANIFEST: &str = "image = \"alice/weather:1.2.3\"\n";
-
 #[derive(Parser)]
 struct DeployCommand {
     #[command(flatten)]
     deploy: Deploy,
 }
-
+#[derive(Parser)]
+struct UpCommand {
+    #[command(flatten)]
+    up: Up,
+}
 #[derive(Parser)]
 struct PushCommand {
     #[command(flatten)]
     push: Push,
 }
 
-struct Registry {
-    client: Client,
-    requests: Arc<Mutex<Vec<(Method, String, Value)>>>,
-    server: JoinHandle<()>,
-}
-
-impl Registry {
-    async fn new(template_status: StatusCode) -> Self {
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        let captured = requests.clone();
-        let app = Router::new().fallback(move |method: Method, uri: Uri, body: Bytes| {
-            let captured = captured.clone();
-            async move {
-                let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-                captured.lock().unwrap().push((method.clone(), uri.to_string(), body.clone()));
-                let path = uri.path();
-                let response = if path.starts_with("/services/connect/osv") {
-                    if template_status != StatusCode::OK {
-                        return (StatusCode::FORBIDDEN, Json(json!({"error":"key is not bound to that account", "explain":"E0028"})));
-                    }
-                    if path.ends_with("/image") { json!({"upload":null}) }
-                    else { return (StatusCode::NOT_FOUND, Json(json!({"error":"unexpected request"}))); }
-                } else if path == "/services/bob/osv/image" {
-                    json!({"upload":null})
-                } else if path == "/services/connect" {
-                    json!({"osv":{"digest":body["services"]["osv"]["reference"], "published":true}})
-                } else if path.starts_with("/services/alice/") && path.ends_with("/template") {
-                    if template_status != StatusCode::OK {
-                        return (template_status, Json(json!({"error":"this release's image is no longer retained", "explain":"E0040"})));
-                    }
-                    json!({"owner":"alice-id", "name":path.split('/').nth(3).unwrap(), "digest":DIGEST,
-                        "manifest":{"abi_version":1, "version":"1.2.3", "tools":[]}})
-                } else if path.ends_with("/runtime") {
-                    json!({"tools":[], "deps":{}, "events":[]})
-                } else if path.ends_with("/terms") {
-                    json!({"tools":{}, "deadline":1000})
-                } else if path.ends_with("/secrets") {
-                    json!([])
-                } else if method == Method::PUT && path.starts_with("/services/bob/") {
-                    json!({"service":{"name":path.rsplit('/').next().unwrap(), "digest":DIGEST, "tools":[]}})
-                } else if method == Method::POST && path == "/users/bob/services/deploys" {
-                    Value::Object(body["services"].as_object().unwrap().keys().map(|name| {
-                        (name.clone(), json!({"service":{"name":name, "digest":DIGEST, "tools":[]}}))
-                    }).collect())
-                } else if path == "/requests" || path.starts_with("/requests/") {
-                    json!({"code":"TEST-CODE", "url":"https://example.com/deploy/TEST-CODE", "kind":"deploy", "status":"declined", "context":"", "created_at":0, "expires_at":900})
-                } else {
-                    return (StatusCode::NOT_FOUND, Json(json!({"error":"unexpected request"})));
-                };
-                (StatusCode::OK, Json(response))
-            }
-        });
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let client = Client::new(format!("http://{}", listener.local_addr().unwrap()))
-            .owner(Owner::User("bob".to_owned()));
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        Self {
-            client,
-            requests,
-            server,
-        }
-    }
-
-    async fn deploy(&self, dir: &Path, args: &[&str], yes: bool) -> anyhow::Result<()> {
-        let deploy = DeployCommand::parse_from(
-            ["deploy".as_ref(), dir.as_os_str()]
-                .into_iter()
-                .chain(args.iter().map(AsRef::as_ref)),
-        )
-        .deploy;
-        let client = self.client.clone();
-        tokio::task::spawn_blocking(move || deploy.run(&client, yes, Some("unused-registry")))
-            .await
-            .unwrap()
-    }
-
-    fn sent(&self, method: Method, path: &str) -> Value {
-        self.requests
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(verb, url, _)| *verb == method && url == path)
-            .unwrap()
-            .2
-            .clone()
-    }
-}
-
-impl Drop for Registry {
-    fn drop(&mut self) {
-        self.server.abort();
-    }
-}
-
-#[tokio::test]
-async fn a_manifest_alone_deploys_an_exact_template_without_cargo() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), format!("{MANIFEST}public = true\ntemplate = true\n[database]\nseed = \"missing.db\"\nmigrations = \"missing\"\n[tools.unbuilt]\naccess = \"public\"\nprice = 100\n")).unwrap();
-    registry.deploy(dir.path(), &[], true).await.unwrap();
-    let request = registry.sent(Method::PUT, "/services/bob/weather");
-    assert_eq!(request["reference"], DIGEST);
-    assert_eq!(
-        request["source"],
-        json!({"owner":"alice-id", "name":"weather"})
-    );
-    assert!(request.get("public").is_none());
-    assert_eq!(request["template"], false);
-    assert_eq!(request["auto_upgrade"], false);
-    assert_eq!(request["create"], true);
-    assert!(request.get("stopped").is_none());
-    for field in ["prices", "seed", "size"] {
-        assert!(request.get(field).is_none(), "{request}");
-    }
-    registry.sent(
-        Method::GET,
-        "/services/alice/weather/template?version=1.2.3",
-    );
-}
-
-#[tokio::test]
-async fn registry_refusals_keep_their_status_and_explanation_without_building() {
-    let registry = Registry::new(StatusCode::GONE).await;
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), MANIFEST).unwrap();
-
-    let error = registry.deploy(dir.path(), &[], true).await.unwrap_err();
-    let message = error.to_string();
-    assert!(
-        message.contains("410") && message.contains("E0040"),
-        "{message}"
-    );
-    assert_eq!(registry.requests.lock().unwrap().len(), 1);
-}
-
-#[tokio::test]
-async fn template_manifests_use_the_cloud_approval_flow() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), MANIFEST).unwrap();
-    let error = registry
-        .deploy(
-            dir.path(),
-            &["--copy", "weather:callback=https://example.com"],
-            false,
-        )
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("declined"), "{error:#}");
-    let request = registry.sent(Method::POST, "/requests");
-    assert_eq!(request["kind"], "deploy");
-    assert_eq!(request["services"]["weather"]["reference"], DIGEST);
-    assert_eq!(
-        request["copy"]["weather"]["callback"],
-        "https://example.com"
-    );
-    assert!(
-        registry
-            .requests
-            .lock()
-            .unwrap()
-            .iter()
-            .all(|(method, _, _)| *method != Method::PUT)
-    );
-}
-
-#[tokio::test]
-async fn explicit_from_keeps_its_version_and_upgrade_controls() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = tempfile::tempdir().unwrap();
-    registry
-        .deploy(
-            dir.path(),
-            &[
-                "--from",
-                "alice/weather",
-                "--version",
-                "1.2.3",
-                "--auto-upgrade",
-            ],
-            true,
-        )
-        .await
-        .unwrap();
-    let request = registry.sent(Method::PUT, "/services/bob/weather");
-    assert_eq!(request["reference"], DIGEST);
-    assert_eq!(request["auto_upgrade"], true);
-    assert!(request.get("stopped").is_none());
-    assert!(request.get("publish_only").is_none());
-}
-
-#[tokio::test]
-async fn workspace_template_members_deploy_together_under_their_local_names() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(
-        dir.path().join("Cargo.toml"),
-        "[workspace]\nmembers = [\"one\", \"two\"]\nresolver = \"3\"\n",
-    )
-    .unwrap();
-    for name in ["one", "two"] {
-        let member = dir.path().join(name);
-        fs::create_dir_all(member.join("src")).unwrap();
-        fs::write(member.join("src/lib.rs"), "").unwrap();
-        fs::write(
-            member.join("Cargo.toml"),
-            format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n"),
-        )
-        .unwrap();
-        fs::write(
-            member.join("crab.toml"),
-            MANIFEST.replace("alice/weather", &format!("alice/{name}")),
-        )
-        .unwrap();
-    }
-    registry.deploy(dir.path(), &[], true).await.unwrap();
-    let request = registry.sent(Method::POST, "/users/bob/services/deploys");
-    let services: BTreeMap<String, Value> =
-        serde_json::from_value(request["services"].clone()).unwrap();
-    assert_eq!(
-        services.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["one", "two"]
-    );
-    assert_eq!(request["partial"], false);
-    for service in services.values() {
-        assert_eq!(service["reference"], DIGEST);
-        assert_eq!(
-            service["project"],
-            dir.path().file_name().unwrap().to_str().unwrap()
-        );
-    }
-}
-
 #[test]
-fn build_conflicts_with_an_explicit_template_source() {
+fn verbs_separate_source_and_images_and_refuse_retired_flags() {
     assert!(
-        DeployCommand::try_parse_from(["deploy", "--build", "--from", "alice/weather"]).is_err()
-    );
-}
-
-#[tokio::test]
-async fn a_repo_uses_its_inherited_cargo_version_without_building() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let root = tempfile::tempdir().unwrap();
-    fs::write(
-        root.path().join("Cargo.toml"),
-        "[workspace]\nmembers = [\"service\"]\n[workspace.package]\nversion = \"1.2.3\"\n",
-    )
-    .unwrap();
-    let dir = root.path().join("service");
-    fs::create_dir_all(dir.join("src")).unwrap();
-    fs::write(dir.join("src/lib.rs"), "").unwrap();
-    fs::write(
-        dir.join("Cargo.toml"),
-        "[package]\nname = \"source-weather\"\nversion.workspace = true\n",
-    )
-    .unwrap();
-    fs::write(dir.join("crab.toml"), "image = \"alice/weather\"\n").unwrap();
-    registry.deploy(&dir, &[], true).await.unwrap();
-    registry.sent(
-        Method::GET,
-        "/services/alice/weather/template?version=1.2.3",
-    );
-    assert!(!root.path().join("target").exists());
-}
-
-#[tokio::test]
-async fn a_standalone_image_requires_a_version() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("crab.toml"), "image = \"alice/weather\"\n").unwrap();
-    let error = registry.deploy(dir.path(), &[], true).await.unwrap_err();
-    assert!(error.to_string().contains("exact :version"), "{error:#}");
-    assert!(registry.requests.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn publication_targets_the_image_account_and_preserves_permission_refusals() {
-    for status in [StatusCode::OK, StatusCode::FORBIDDEN] {
-        let registry = Registry::new(status).await;
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv");
-        let push = PushCommand::parse_from([
-            "push".as_ref(),
-            dir.as_os_str(),
-            "--notes".as_ref(),
-            "Fix pagination".as_ref(),
+        DeployCommand::try_parse_from([
+            "deploy",
+            "alice/weather",
+            "--as",
+            "forecast",
+            "--private",
+            "--price",
+            "echo=0"
         ])
-        .push;
-        let client = registry.client.clone();
-        let result = tokio::task::spawn_blocking(move || push.run(&client, true, None))
-            .await
-            .unwrap();
-        registry.sent(Method::POST, "/services/connect/osv/image");
-        if status == StatusCode::OK {
-            result.unwrap();
-            let publication = registry.sent(Method::POST, "/services/connect");
-            assert_eq!(publication["services"]["osv"]["publish_only"], true);
-            let release = &publication["services"]["osv"];
-            assert_eq!(release["template"], true);
-            assert_eq!(release["release_notes"], "Fix pagination");
-            for field in ["stopped", "public", "seed", "size", "prices", "create"] {
-                assert!(release.get(field).is_none(), "{release}");
-            }
-        } else {
-            let message = result.unwrap_err().to_string();
-            assert!(
-                message.contains("403") && message.contains("E0028"),
-                "{message}"
-            );
-        }
-        assert!(
-            registry
-                .requests
-                .lock()
-                .unwrap()
-                .iter()
-                .all(|(method, path, _)| *method != Method::PUT
-                    && !path.contains("/bob/")
-                    && !path.ends_with("/runtime"))
-        );
-    }
+        .is_ok()
+    );
+    assert!(
+        DeployCommand::try_parse_from(["deploy", "alice/weather", "--from", "alice/weather"])
+            .is_err()
+    );
+    assert!(UpCommand::try_parse_from(["up", ".", "--registry", "localhost:5001"]).is_err());
+    assert!(PushCommand::try_parse_from(["push", "--notes", "old"]).is_err());
+    assert!(
+        DeployCommand::try_parse_from(["deploy", "alice/weather", "--public", "--private"])
+            .is_err()
+    );
 }
 
 #[tokio::test]
-async fn publication_uses_approval_without_creating_an_instance() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv");
-    let push = PushCommand::parse_from(["push".as_ref(), dir.as_os_str()]).push;
-    let client = registry.client.clone();
-    let error = tokio::task::spawn_blocking(move || push.run(&client, false, None))
+async fn an_exact_image_deploy_needs_no_local_project() {
+    let requests = Arc::new(Mutex::new(Vec::<(Method, String, Value)>::new()));
+    let captured = requests.clone();
+    let app=Router::new().fallback(move|method:Method,uri:Uri,bytes:Bytes|{let captured=captured.clone();async move{
+        let body=serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null);
+        captured.lock().unwrap().push((method.clone(),uri.to_string(),body));
+        let path=uri.path();
+        let value=if path=="/images/alice/weather" {json!({"owner":"alice","name":"weather","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","manifest":{"abi_version":1,"version":"1.2.3","tools":[],"deploy":true},"deployments":[]})}
+        else if path.ends_with("/deploys"){json!([])}
+        else if path.ends_with("/runtime"){json!({"tools":[],"deps":{},"events":[]})}
+        else if path.ends_with("/terms"){json!({"tools":{},"deadline":1000})}
+        else if path.ends_with("/secrets"){json!([])}
+        else if method==Method::PUT{json!({"service":{"name":"forecast","tools":[],"digest":"aaa"}})}
+        else{return(StatusCode::NOT_FOUND,Json(json!({"error":"unexpected path"})));};
+        (StatusCode::OK,Json(value))
+    }});
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let client = Client::new(format!("http://{}", listener.local_addr().unwrap()))
+        .owner(Owner::User("bob".into()));
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let command = DeployCommand::parse_from([
+        "deploy",
+        "alice/weather",
+        "--version",
+        "1.2.3",
+        "--as",
+        "forecast",
+        "--private",
+    ])
+    .deploy;
+    tokio::task::spawn_blocking(move || command.run(&client, &client, true))
         .await
         .unwrap()
-        .unwrap_err();
-    assert!(error.to_string().contains("declined"), "{error:#}");
-    let request = registry.sent(Method::POST, "/requests");
-    assert_eq!(request["account"], "connect");
-    assert_eq!(request["services"]["osv"]["publish_only"], true);
+        .unwrap();
+    let requests = requests.lock().unwrap();
     assert!(
-        registry
-            .requests
-            .lock()
-            .unwrap()
+        requests
             .iter()
-            .all(|(method, path, _)| { *method != Method::PUT && path != "/services/connect" })
+            .any(|(_, path, _)| path == "/images/alice/weather?version=1.2.3")
+    );
+    let (_, _, body) = requests
+        .iter()
+        .find(|(method, path, _)| *method == Method::PUT && path == "/services/bob/forecast")
+        .unwrap();
+    assert_eq!(body["reference"], "alice/weather:1.2.3");
+    assert_eq!(body["public"], false);
+    assert!(body.get("source").is_none());
+    task.abort();
+}
+
+#[test]
+fn overrides_preserve_omitted_settings_and_reject_internal_prices() {
+    let mut previous = Overrides {
+        public: Some(false),
+        prices: BTreeMap::from([("echo".into(), 1000)]),
+    };
+    previous.extend(&Overrides {
+        public: None,
+        prices: BTreeMap::from([("echo".into(), 0)]),
+    });
+    let mut manifest:berm_api::Manifest=serde_json::from_value(json!({"abi_version":1,"public":true,"tools":[{"name":"echo","description":"Echo","public":true,"price":2000,"parameters":{}},{"name":"hidden","description":"Hidden","public":false,"parameters":{}}]})).unwrap();
+    previous.apply(&mut manifest).unwrap();
+    assert!(!manifest.public);
+    assert_eq!(manifest.tools[0].price, None);
+    previous.prices.insert("hidden".into(), 100);
+    assert!(
+        previous
+            .apply(&mut manifest)
+            .unwrap_err()
+            .contains("outside callers")
     );
 }
 
 #[test]
-fn publication_requires_cloud_before_building_source() {
-    let push = PushCommand::parse_from(["push", "/no-such-service"]).push;
-    let error = push
-        .run(&Client::new("http://127.0.0.1:0"), true, None)
-        .unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "template publication requires a Cloud context"
-    );
+fn cloud_settings_are_refused_locally_before_any_network_or_build() {
+    for flags in [
+        vec!["--public"],
+        vec!["--private"],
+        vec!["--price", "echo=0"],
+        vec!["--auto-upgrade"],
+    ] {
+        let args: Vec<_> = [vec!["deploy", "alice/weather"], flags].concat();
+        let command = DeployCommand::parse_from(args).deploy;
+        let client = Client::new("http://127.0.0.1:1".to_owned());
+        let error = command.run(&client, &client, true).unwrap_err();
+        assert!(error.to_string().contains("apply only on Cloud"), "{error}");
+    }
 }
 
-#[tokio::test]
-async fn source_deployment_starts_without_publishing_its_template() {
-    let registry = Registry::new(StatusCode::OK).await;
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/connect/osv");
-    let deploy =
-        DeployCommand::parse_from(["deploy".as_ref(), dir.as_os_str(), "--build".as_ref()]).deploy;
-    let client = registry.client.clone();
-    tokio::task::spawn_blocking(move || deploy.run(&client, true, None))
-        .await
-        .unwrap()
-        .unwrap();
-    let request = registry.sent(Method::PUT, "/services/bob/osv");
-    assert!(request.get("stopped").is_none());
-    assert!(request.get("public").is_none());
-    assert!(request.get("template").is_none());
-    assert!(request.get("publish_only").is_none());
-    assert!(
-        registry
-            .requests
-            .lock()
+#[test]
+fn push_skips_unpublished_services_and_refuses_naming_one() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nname = \"weather\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("lib.rs"), "").unwrap();
+    std::fs::write(
+        dir.path().join("crab.toml"),
+        "[image]\nname = \"alice/weather\"\npublish = false\n",
+    )
+    .unwrap();
+    let client = Client::new("http://127.0.0.1:9".to_owned()).owner(Owner::User("alice".into()));
+    let push = |packages: &[&str]| {
+        let mut args = vec!["push".to_owned(), dir.path().display().to_string()];
+        for package in packages {
+            args.extend(["-p".to_owned(), (*package).to_owned()]);
+        }
+        PushCommand::try_parse_from(args)
             .unwrap()
-            .iter()
-            .all(|(_, path, _)| { !path.starts_with("/services/connect") })
+            .push
+            .run(&client)
+            .unwrap_err()
+            .to_string()
+    };
+    assert!(push(&[]).contains("publishes"), "{}", push(&[]));
+    assert!(
+        push(&["weather"]).contains("image.publish = false"),
+        "{}",
+        push(&["weather"])
     );
 }

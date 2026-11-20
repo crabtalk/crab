@@ -55,6 +55,10 @@ async fn helpers_cannot_reach_application_syscalls_and_explanations_survive() ->
         berm::abi::RANDOM,
         berm::abi::VAR,
         berm::abi::CALLER,
+        berm::abi::WORKFLOW_RUN,
+        berm::abi::SERVICE,
+        berm::abi::DEADLINE,
+        berm::abi::CALL_ID,
     ] {
         let host = TestHost::open(0).await?;
         let imports =

@@ -14,7 +14,7 @@ mod bindings {
         module: crate::bindings,
         raw_response: true,
         tools: false,
-        operations: { artifact: "GET /artifact" },
+        operations: { #[doc = "Artifact"] artifact: "GET /artifact" },
     }
 }
 

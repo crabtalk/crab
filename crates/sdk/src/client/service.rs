@@ -5,8 +5,8 @@ use crate::{
     client::{Client, Error},
     services::service::{
         Billing, Costed, DeployRequest, DeployResult, DeploySetRequest, Deployment,
-        DeploymentStatus, MeteredDay, Secret, SetSecret, Template, TemplateRelease, Terms,
-        ToolCosted, UpgradePolicy, Upload, UploadRequest,
+        DeploymentStatus, Image, ImageSummary, MeteredDay, Secret, SetSecret, Terms, ToolCosted,
+        UpgradePolicy, Upload, UploadRequest,
     },
 };
 use berm_api::{
@@ -17,6 +17,16 @@ use reqwest::{Body, Method, RequestBuilder};
 use std::collections::BTreeMap;
 
 impl Client {
+    /// Stream the service's seed-compatible SQLite data export.
+    pub async fn export(&self, name: &str) -> Result<reqwest::Response, Error> {
+        let path = format!("{}{}", self.path_of(name), host::EXPORT);
+        let response = self.send(self.at(Method::GET, &path)).await?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        Err(Error::refusal(response.status(), response.text().await?))
+    }
+
     /// Every service the account runs.
     pub async fn list(&self) -> Result<Vec<Service>, Error> {
         self.json(self.at(Method::GET, &self.addressed().services()))
@@ -29,34 +39,50 @@ impl Client {
         self.json(self.at(Method::GET, &self.path_of(name))).await
     }
 
-    pub async fn template(&self, name: &str) -> Result<Template, Error> {
-        let path = format!("{}/template", self.path_of(name));
-        self.json(self.at(Method::GET, &path)).await
+    pub async fn published_image(&self, name: &str, version: Option<&str>) -> Result<Image, Error> {
+        self.json(
+            self.at(Method::GET, &format!("/images/{name}"))
+                .query(&[("version", version)]),
+        )
+        .await
     }
 
-    pub async fn template_version(&self, name: &str, version: &str) -> Result<Template, Error> {
-        let path = format!("{}/template", self.path_of(name));
-        self.json(self.at(Method::GET, &path).query(&[("version", version)]))
+    pub async fn image_versions(&self, name: &str) -> Result<Vec<ImageSummary>, Error> {
+        self.json(self.at(Method::GET, &format!("/images/{name}/versions")))
             .await
     }
 
-    pub async fn template_releases(&self, name: &str) -> Result<Vec<TemplateRelease>, Error> {
-        let path = format!("{}/template/releases", self.path_of(name));
-        self.json(self.at(Method::GET, &path)).await
-    }
-
-    pub async fn yank_template(
+    pub async fn download_image(
         &self,
         name: &str,
-        version: &str,
-        yanked: bool,
-    ) -> Result<(), Error> {
-        let path = format!("{}/template/yank", self.service(name)?);
+        version: Option<&str>,
+    ) -> Result<Vec<u8>, Error> {
+        let response = self
+            .send(
+                self.at(Method::GET, &format!("/images/{name}/download"))
+                    .query(&[("version", version)]),
+            )
+            .await?;
+        if !response.status().is_success() {
+            return Err(Error::refusal(response.status(), response.text().await?));
+        }
+        Ok(response.bytes().await?.to_vec())
+    }
+
+    pub async fn publish_image(&self, name: &str, digest: &str) -> Result<(), Error> {
         self.ok(self
-            .at(Method::PUT, &path)
-            .json(&serde_json::json!({"version": version, "yanked": yanked})))
+            .at(Method::PUT, &format!("/images/{name}"))
+            .json(&serde_json::json!({"digest":digest})))
             .await?;
         Ok(())
+    }
+
+    pub async fn image_upload(&self, name: &str, upload: &UploadRequest) -> Result<Upload, Error> {
+        self.json(
+            self.at(Method::POST, &format!("/images/{name}/upload"))
+                .json(upload),
+        )
+        .await
     }
 
     pub async fn upgrade_policy(&self, name: &str) -> Result<UpgradePolicy, Error> {
@@ -70,12 +96,6 @@ impl Client {
             .at(Method::PUT, &path)
             .json(&serde_json::json!({"enabled": enabled})))
             .await?;
-        Ok(())
-    }
-
-    pub async fn delete_template(&self, name: &str) -> Result<(), Error> {
-        let path = format!("{}/template", self.service(name)?);
-        self.ok(self.at(Method::DELETE, &path)).await?;
         Ok(())
     }
 

@@ -15,3 +15,18 @@ use std::time::Duration;
 /// A nested invocation runs under its caller's deadline, so depth *n* buys
 /// one deadline, not *n*.
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(60);
+
+#[derive(Debug)]
+pub struct Expired;
+
+impl Expired {
+    pub const EXPLANATION: &str = "E0084";
+}
+
+impl std::fmt::Display for Expired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("invocation exceeded its deadline")
+    }
+}
+
+impl std::error::Error for Expired {}

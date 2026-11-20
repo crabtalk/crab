@@ -44,15 +44,15 @@ impl Manifest {
                     .iter()
                     .find(|old| old.name == tool.name)
                     .map_or_else(
-                        || tool.public || tool.webhook || tool.stripe || tool.cron,
+                        || tool.public || tool.webhook.is_some() || tool.cron,
                         |old| {
-                            (old.access(), old.webhook, old.stripe, old.cron, &old.events)
+                            (old.access(), old.webhook, old.cron, &old.events, old.price)
                                 != (
                                     tool.access(),
                                     tool.webhook,
-                                    tool.stripe,
                                     tool.cron,
                                     &tool.events,
+                                    tool.price,
                                 )
                         },
                     )
@@ -60,7 +60,7 @@ impl Manifest {
     }
 
     /// Every way `next` breaks a caller of this manifest: its public tools,
-    /// its stripe and webhook tools, and its events. Empty when it is compatible.
+    /// its webhook tools, and its events. Empty when it is compatible.
     pub fn breaks(&self, next: &Manifest) -> Vec<Break> {
         let mut breaks = Vec::new();
         for old in self.tools.iter().filter(|tool| tool.public) {
@@ -75,23 +75,24 @@ impl Manifest {
                 reason,
             }));
         }
-        if let Some(old) = self.tools.iter().find(|tool| tool.stripe)
-            && !next.tools.iter().any(|tool| tool.stripe)
-        {
-            breaks.push(Break {
-                surface: Surface::Tool(old.name.clone()),
-                reason: "no longer takes Stripe events".to_owned(),
-            });
-        }
-        for old in self.tools.iter().filter(|tool| tool.webhook) {
+        for old in self.tools.iter().filter(|tool| tool.webhook.is_some()) {
             if !next
                 .tools
                 .iter()
-                .any(|tool| tool.webhook && tool.name == old.name)
+                .any(|tool| tool.webhook == old.webhook && tool.name == old.name)
             {
                 breaks.push(Break {
                     surface: Surface::Tool(old.name.clone()),
-                    reason: "no longer takes webhooks".to_owned(),
+                    reason: if next
+                        .tools
+                        .iter()
+                        .any(|tool| tool.name == old.name && tool.webhook.is_some())
+                    {
+                        "webhook signature scheme changed"
+                    } else {
+                        "no longer takes webhooks"
+                    }
+                    .to_owned(),
                 });
             }
         }

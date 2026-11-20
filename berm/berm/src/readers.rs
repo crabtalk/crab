@@ -3,27 +3,70 @@
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OpenFlags};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 /// Connections kept open while unused.
 const IDLE: usize = 8;
 
-/// Read-only connections to the file at `path`, at most [`IDLE`] of them kept
-/// open while unused.
+/// Read-only connections sharing a bounded idle cache.
 pub struct Readers {
     path: PathBuf,
-    idle: Mutex<Vec<Connection>>,
+    cache: Arc<Cache>,
     /// Run on each connection once, when it is opened.
     setup: fn(&Connection) -> Result<()>,
 }
 
+pub(crate) struct Cache {
+    idle: Mutex<VecDeque<(PathBuf, Connection)>>,
+    capacity: usize,
+}
+
+impl Cache {
+    pub(crate) fn new(capacity: usize) -> Arc<Self> {
+        Arc::new(Self {
+            idle: Mutex::default(),
+            capacity,
+        })
+    }
+
+    fn take(&self, path: &Path) -> Option<Connection> {
+        let mut idle = self.idle.lock();
+        let at = idle.iter().rposition(|(stored, _)| stored == path)?;
+        idle.remove(at).map(|(_, conn)| conn)
+    }
+
+    fn keep(&self, path: PathBuf, conn: Connection) {
+        let mut idle = self.idle.lock();
+        if idle.len() == self.capacity {
+            idle.pop_front();
+        }
+        idle.push_back((path, conn));
+    }
+}
+
 impl Readers {
     pub fn new(path: PathBuf, setup: fn(&Connection) -> Result<()>) -> Self {
-        Self {
-            path,
-            idle: Mutex::default(),
-            setup,
-        }
+        Self::shared(path, setup, Cache::new(IDLE))
+    }
+
+    pub(crate) fn shared(
+        path: PathBuf,
+        setup: fn(&Connection) -> Result<()>,
+        cache: Arc<Cache>,
+    ) -> Self {
+        Self { path, setup, cache }
+    }
+
+    pub(crate) fn close(&self) {
+        self.cache
+            .idle
+            .lock()
+            .retain(|(path, _)| path != &self.path);
     }
 
     /// Run `work` against one connection, off the async workers.
@@ -33,16 +76,13 @@ impl Readers {
     ) -> Result<T> {
         let readers = self.clone();
         tokio::task::spawn_blocking(move || {
-            let popped = readers.idle.lock().pop();
+            let popped = readers.cache.take(&readers.path);
             let conn = match popped {
                 Some(conn) => conn,
                 None => readers.open()?,
             };
             let read = work(&conn);
-            let mut idle = readers.idle.lock();
-            if idle.len() < IDLE {
-                idle.push(conn);
-            }
+            readers.cache.keep(readers.path.clone(), conn);
             read
         })
         .await?

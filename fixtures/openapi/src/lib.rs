@@ -12,9 +12,17 @@ crab_openapi::service! {
     client: crate::CLIENT,
     tools: cfg(feature = "tools"),
     operations: {
+        #[tool(access = "internal")]
+        /// Read an item
         fetch_item: "GET /items/{itemId}",
+        #[tool(access = "internal")]
+        /// Create an item
         create_item: "POST /items",
+        #[tool(access = "internal", example = "Check whether the API is reachable", example = "Verify the API before syncing", example = "Check API availability")]
+        /// Ping the API
         ping: "GET /ping",
+        #[tool(access = "internal")]
+        /// Send optional input
         optional: "POST /optional",
     },
 }

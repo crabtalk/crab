@@ -11,6 +11,8 @@ use syn::{
 
 struct Workflow {
     item: ItemImpl,
+    config: berm_api::workflow::config::Config,
+    description: String,
     name: String,
     nodes: Vec<Node>,
     input: Type,
@@ -20,6 +22,8 @@ struct Node {
     method: ImplItemFn,
     name: String,
     kind: Kind,
+    /// USD micros per item of a step, or per run of a single step.
+    price: Option<u64>,
     result: Type,
     fallible: bool,
     parameters: Vec<Parameter>,
@@ -38,8 +42,11 @@ struct Parameter {
     borrowed: Type,
 }
 
-pub fn expand(item: ItemImpl) -> syn::Result<TokenStream> {
-    let workflow = Workflow::read(item)?;
+pub fn expand(
+    declaration: crate::declaration::Declaration,
+    item: ItemImpl,
+) -> syn::Result<TokenStream> {
+    let workflow = Workflow::read(declaration, item)?;
     let record = workflow.record()?;
     let exports = workflow.exports();
     let item = &workflow.item;
@@ -48,7 +55,10 @@ pub fn expand(item: ItemImpl) -> syn::Result<TokenStream> {
 }
 
 impl Workflow {
-    fn read(mut item: ItemImpl) -> syn::Result<Self> {
+    fn read(
+        mut declaration: crate::declaration::Declaration,
+        mut item: ItemImpl,
+    ) -> syn::Result<Self> {
         if item.trait_.is_some()
             || !item.generics.params.is_empty()
             || item.generics.where_clause.is_some()
@@ -65,6 +75,16 @@ impl Workflow {
                 "a workflow is a unit struct",
             ));
         };
+        let (title, description) = crate::declaration::docs(&item.attrs, &item.self_ty)?;
+        declaration
+            .0
+            .insert("title".into(), serde_json::json!(title));
+        let config: berm_api::workflow::config::Config =
+            serde_json::from_value(serde_json::Value::Object(declaration.0))
+                .map_err(|error| syn::Error::new_spanned(&item, error))?;
+        config
+            .check()
+            .map_err(|error| syn::Error::new_spanned(&item, error))?;
         let name = path
             .path
             .segments
@@ -125,6 +145,8 @@ impl Workflow {
         })?;
         Ok(Self {
             item,
+            config,
+            description,
             name,
             nodes,
             input,
@@ -179,8 +201,10 @@ impl Workflow {
         });
         let mut out = record::Pieces::default();
         out.text(&format!(
-            r#"{{"workflow":{{"version":1,"name":{},"graph":{{"input":"#,
-            serde_json::Value::from(self.name.as_str())
+            r#"{{"config":{},"workflow":{{"version":1,"name":{},"description":{},"graph":{{"input":"#,
+            serde_json::to_string(&self.config).unwrap(),
+            serde_json::Value::from(self.name.as_str()),
+            serde_json::Value::from(self.description.as_str())
         ));
         let input = &self.input;
         out.shape(quote!(<#input as ::berm_lang::Schema>::SHAPE));
@@ -239,6 +263,9 @@ impl Workflow {
                         Kind::Each { max, .. } => format!(r#"{{"kind":"each","max":{max}}}"#),
                         _ => unreachable!(),
                     });
+                    if let Some(price) = node.price {
+                        out.text(&format!(r#","price":{price}"#));
+                    }
                 }
                 Kind::Branch => {
                     out.text(r#","kind":"branch","cases":"#);
@@ -416,6 +443,7 @@ impl Node {
             .unwrap_or(declared)
             .clone();
         concrete(&result)?;
+        let mut price = None;
         let kind = if attribute.path().is_ident("step") {
             let mut each = false;
             let mut maximum = None;
@@ -431,8 +459,17 @@ impl Node {
                                 .base10_parse::<u32>()?,
                         );
                         Ok(())
+                    } else if meta.path.is_ident("price") && price.is_none() {
+                        price = Some(
+                            meta.value()?
+                                .parse::<syn::LitInt>()?
+                                .base10_parse::<u64>()?,
+                        );
+                        Ok(())
                     } else {
-                        Err(meta.error("expected each and one max = positive integer"))
+                        Err(meta.error(
+                            "expected each, one max = positive integer and one price = USD micros",
+                        ))
                     }
                 })?;
             }
@@ -525,6 +562,7 @@ impl Node {
             method: method.clone(),
             name,
             kind,
+            price,
             result,
             fallible,
             parameters,

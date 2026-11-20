@@ -4,7 +4,7 @@ Find known vulnerabilities matching an installed package version, query multiple
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/osv` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
+With Crab signed in to Cloud, replace `owner/osv` with the address of a running deployment you can access. If only a published image is available, deploy it first.
 
 ```sh
 crab call owner/osv query '{"package":{"ecosystem":"crates.io","name":"serde","version":"1.0.0"}}'
@@ -19,12 +19,12 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
-crab deploy --from owner/osv
+crab deploy owner/osv
 ```
 
 There are no provider credentials or required settings. A private copy keeps its execution and bill under your account.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
+To build a modified version or deploy when no image is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 

@@ -13,7 +13,10 @@ fn basic_scraping_disables_pdf_parsing_and_omits_absent_options() {
         200,
         br#"{"success":true,"data":{"markdown":"Example","metadata":{"statusCode":404}}}"#,
     );
-    let result = calls::scrape("https://example.com".into(), None, None, None).unwrap();
+    let result = berm_lang::serde_json::to_value(
+        calls::scrape("https://example.com".into(), None, None, None).unwrap(),
+    )
+    .unwrap();
     assert_eq!(result["data"]["metadata"]["statusCode"], 404);
     let request = &test::fetched()[0];
     assert_eq!(
@@ -34,8 +37,10 @@ fn search_and_map_preserve_their_supported_wire_options() {
         200,
         br#"{"success":true,"creditsUsed":2,"data":{"web":[]}}"#,
     );
-    let result =
-        calls::search("example".into(), 3, Some(vec!["example.com".into()]), None).unwrap();
+    let result = berm_lang::serde_json::to_value(
+        calls::search("example".into(), 3, Some(vec!["example.com".into()]), None).unwrap(),
+    )
+    .unwrap();
     assert_eq!(result["creditsUsed"], 2);
     let body: Value = serde_json::from_slice(&test::fetched()[0].body).unwrap();
     assert_eq!(
@@ -48,12 +53,15 @@ fn search_and_map_preserve_their_supported_wire_options() {
         200,
         br#"{"success":true,"links":[]}"#,
     );
-    calls::map(
-        "https://example.com".into(),
-        Some("docs".into()),
-        Some(5),
-        Some(true),
-        Some(false),
+    berm_lang::serde_json::to_value(
+        calls::map(
+            "https://example.com".into(),
+            Some("docs".into()),
+            Some(5),
+            Some(true),
+            Some(false),
+        )
+        .unwrap(),
     )
     .unwrap();
     let body: Value = serde_json::from_slice(&test::fetched()[1].body).unwrap();
@@ -71,7 +79,10 @@ fn omitted_map_limit_still_bounds_the_upstream_request() {
         200,
         br#"{"success":true,"links":[]}"#,
     );
-    calls::map("https://example.com".into(), None, None, None, None).unwrap();
+    berm_lang::serde_json::to_value(
+        calls::map("https://example.com".into(), None, None, None, None).unwrap(),
+    )
+    .unwrap();
     let body: Value = serde_json::from_slice(&test::fetched()[0].body).unwrap();
     assert_eq!(body["limit"], 1000);
 }
@@ -85,12 +96,15 @@ fn crawl_submission_and_result_paging_remain_explicit() {
         br#"{"success":true,"id":"owned-job"}"#,
     );
     assert_eq!(
-        calls::crawl(
-            "https://example.com".into(),
-            2,
-            Some(1),
-            Some(vec!["/docs/.*".into()]),
-            None
+        berm_lang::serde_json::to_value(
+            calls::crawl(
+                "https://example.com".into(),
+                2,
+                Some(1),
+                Some(vec!["/docs/.*".into()]),
+                None
+            )
+            .unwrap()
         )
         .unwrap()["id"],
         "owned-job"
@@ -102,7 +116,9 @@ fn crawl_submission_and_result_paging_remain_explicit() {
     );
     assert_eq!(test::fetched().len(), 1);
     test::respond("GET", "https://api.firecrawl.dev/v2/crawl/owned-job?skip=20", 200, br#"{"success":true,"status":"completed","creditsUsed":2,"data":[],"next":"https://api.firecrawl.dev/v2/crawl/owned-job?skip=40"}"#);
-    let result = calls::crawl_status("owned-job".into(), Some(20)).unwrap();
+    let result =
+        berm_lang::serde_json::to_value(calls::crawl_status("owned-job".into(), Some(20)).unwrap())
+            .unwrap();
     assert_eq!(result["creditsUsed"], 2);
     assert!(result["next"].is_string());
     assert_eq!(test::fetched().len(), 2);
@@ -116,11 +132,14 @@ fn batch_options_and_failed_job_usage_are_preserved() {
         200,
         br#"{"success":true,"id":"batch-job"}"#,
     );
-    calls::batch_scrape(
-        vec!["https://example.com".into()],
-        vec![Format::Markdown, Format::Links],
-        Some(false),
-        Some(0),
+    berm_lang::serde_json::to_value(
+        calls::batch_scrape(
+            vec!["https://example.com".into()],
+            vec![Format::Markdown, Format::Links],
+            Some(false),
+            Some(0),
+        )
+        .unwrap(),
     )
     .unwrap();
     let body: Value = serde_json::from_slice(&test::fetched()[0].body).unwrap();
@@ -134,7 +153,10 @@ fn batch_options_and_failed_job_usage_are_preserved() {
         200,
         br#"{"success":true,"status":"failed","creditsUsed":1,"data":[]}"#,
     );
-    let result = calls::batch_scrape_status("batch-job".into(), None).unwrap();
+    let result = berm_lang::serde_json::to_value(
+        calls::batch_scrape_status("batch-job".into(), None).unwrap(),
+    )
+    .unwrap();
     assert_eq!(result["status"], "failed");
     assert_eq!(result["creditsUsed"], 1);
     assert_eq!(test::fetched().len(), 2);
@@ -186,4 +208,24 @@ fn application_failures_and_rate_limits_are_errors_without_retries() {
     let error = calls::scrape("https://example.com".into(), None, None, None).unwrap_err();
     assert!(error.message.contains("retry-after=30"));
     assert_eq!(test::fetched().len(), 2);
+}
+
+#[test]
+fn successful_bodies_keep_bytes_and_duplicate_success_uses_the_last_value() {
+    let body = br#"{"success":true, "data":{"amount":1e2,"escaped":"\u0061"}}"#;
+    test::respond("POST", "https://api.firecrawl.dev/v2/scrape", 200, body);
+    let response = calls::scrape("https://example.com".into(), None, None, None).unwrap();
+    assert_eq!(response.get().as_bytes(), body);
+    test::respond(
+        "POST",
+        "https://api.firecrawl.dev/v2/scrape",
+        200,
+        br#"{"success":true,"success":false,"error":"refused"}"#,
+    );
+    assert!(
+        calls::scrape("https://example.com".into(), None, None, None)
+            .unwrap_err()
+            .to_string()
+            .contains("refused")
+    );
 }

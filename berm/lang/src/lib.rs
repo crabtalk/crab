@@ -49,14 +49,16 @@ pub use berm_codegen::{
     Branch, Schema, declare_service, error_code, event, syscalls, tool, workflow,
 };
 pub use call::{
-    CallError, Caller, User, after, call, caller, client, client_ip, deny, limit, user, vouch,
+    CallError, Caller, Service, User, after, call, call_id, caller, client, client_ip, deny, limit,
+    service, user, vouch,
 };
 #[doc(hidden)]
 pub use emit::event as __event;
 pub use emit::{Event, emit};
 pub use error::{Error, Result};
-pub use host::{args_len, now, random, trace};
+pub use host::{args_len, deadline, now, random, trace};
 pub use schema::Schema;
+pub use serde_json::value::RawValue;
 pub use sql::{rows, sql};
 pub use store::{get, get_json, set, set_json};
 pub use var::var;
@@ -81,7 +83,7 @@ mod requests;
 pub mod schema;
 pub mod secret;
 mod sql;
-mod store;
+pub mod store;
 pub mod test;
 mod var;
 pub mod workflow;

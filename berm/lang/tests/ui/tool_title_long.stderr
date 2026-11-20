@@ -1,0 +1,13 @@
+error: a title is one line of at most 60 characters
+ --> tests/ui/tool_title_long.rs:5:4
+  |
+5 | fn send() -> Result<()> {
+  |    ^^^^
+
+warning: unused import: `Result`
+ --> tests/ui/tool_title_long.rs:1:17
+  |
+1 | use berm_lang::{Result, tool};
+  |                 ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

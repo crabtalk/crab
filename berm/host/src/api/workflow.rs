@@ -1,4 +1,9 @@
-use crate::{Denied, api::serve::Named, env::Env, host::Host};
+use crate::{
+    Denied,
+    api::serve::{Named, WorkflowName},
+    env::Env,
+    host::Host,
+};
 use axum::{
     Extension, Json, Router,
     extract::{Path, Request, State},
@@ -9,12 +14,13 @@ use axum::{
 };
 use berm_api::{
     host::Caller,
-    workflow::view::{Inspection, Record, Start},
+    workflow::view::{Inspection, Quote, Record, Start},
 };
 
 pub(crate) fn router<E: Env>() -> Router<Host<E>> {
     Router::new()
         .route("/workflows/{workflow}", get(inspect::<E>))
+        .route("/workflows/{workflow}/quote", post(quote::<E>))
         .route("/workflows/{workflow}/runs", post(start::<E>))
         .route("/workflows/{workflow}/runs/{run}", get(read::<E>))
         .route(
@@ -36,6 +42,15 @@ async fn inspect<E: Env>(
         &workflow,
         caller.as_ref().map(|Extension(caller)| caller),
     )?))
+}
+/// What an input settles for a run before it starts: the body is the input.
+async fn quote<E: Env>(
+    State(host): State<Host<E>>,
+    Extension(Named(service)): Extension<Named>,
+    Path(WorkflowName { workflow }): Path<WorkflowName>,
+    Json(input): Json<serde_json::Value>,
+) -> Result<Json<Quote>, Denied> {
+    Ok(Json(host.quote_workflow(&service, &workflow, input).await?))
 }
 async fn start<E: Env>(
     State(host): State<Host<E>>,

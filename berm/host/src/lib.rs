@@ -75,6 +75,10 @@ impl Denied {
         }
     }
 
+    pub(crate) const DATA_UNAVAILABLE: &str = "E0079";
+    pub(crate) const SEEDED: &str = "E0080";
+    pub(crate) const SEED_SIZE: &str = "E0081";
+
     pub(crate) const SERVICE_CALLERS: &'static str = "E0049";
 
     pub(crate) const PAUSED: &'static str = "E0018";
@@ -136,6 +140,10 @@ impl From<anyhow::Error> for Denied {
         }
         if let Some(refused) = e.downcast_ref::<WorkflowRefused>() {
             return refused.clone().into();
+        }
+        if e.is::<berm::bound::watchdog::Expired>() {
+            return deny(StatusCode::GATEWAY_TIMEOUT, e.to_string())
+                .explained(berm::bound::watchdog::Expired::EXPLANATION);
         }
         if e.is::<berm::MemoryLimit>() {
             return deny(StatusCode::TOO_MANY_REQUESTS, e.to_string()).explained(Self::MEMORY);

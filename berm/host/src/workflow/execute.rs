@@ -8,7 +8,10 @@ use anyhow::{Context, Result, bail, ensure};
 use axum::http::StatusCode;
 use berm::{
     Caller, Client, Link as InvocationLink, MemoryLimit, Meters, Refused, Service,
-    abi::workflow::{ControlInput, ControlOutput, ControlValue},
+    abi::workflow::{
+        ControlInput, ControlOutput, ControlValue, Run as StepRun, Trigger as StepTrigger,
+        User as StepUser,
+    },
     control, workflow,
 };
 use berm_api::{
@@ -17,7 +20,7 @@ use berm_api::{
     schema,
     workflow::{
         Offer, Version,
-        graph::{Entry, Kind, Mode, Node, Producer, Selection, Source, Target},
+        graph::{Entry, Kind, Mode, Node, Producer, Source, Target},
         run::{
             Accepted, Binding, Checkpoint, Failure, Item, Prepared, PreparedCall, Run, State,
             Status, Trigger,
@@ -541,20 +544,11 @@ impl<E: Env> Host<E> {
             }
         }
         for guard in &node.guards {
-            let checkpoint = &run.checkpoints[&guard.producer];
-            let selected = match &guard.selection {
-                Selection::Present => matches!(checkpoint.state, State::Succeeded { .. }),
-                Selection::Case { name } => match &checkpoint.state {
-                    State::Succeeded { value } => {
-                        value.as_str() == Some(name)
-                            || value.as_object().is_some_and(|fields| {
-                                fields.len() == 1 && fields.contains_key(name)
-                            })
-                    }
-                    _ => false,
-                },
+            let value = match &run.checkpoints[&guard.producer].state {
+                State::Succeeded { value } => Some(value),
+                _ => None,
             };
-            if !selected {
+            if !guard.selection.selects(value) {
                 return Ok(true);
             }
         }
@@ -619,17 +613,19 @@ impl<E: Env> Host<E> {
             };
             let prepared = (|| -> Result<()> {
                 match (&node.kind, result) {
-                    (Kind::Step { call, mode }, ControlOutput::Calls { inputs }) => {
+                    (Kind::Step { call, mode, .. }, ControlOutput::Calls { inputs }) => {
                         ensure!(
                             inputs.len() <= mode.maximum() as usize
                                 && (matches!(mode, Mode::Each { .. }) || inputs.len() == 1),
                             "workflow builder exceeded its declared call bound"
                         );
                         let binding = &run.accepted.bindings[&node.id];
+                        let input_schema = schema::Validator::try_from(&call.input)?;
+                        let binding_schema = schema::Validator::try_from(&binding.input)?;
                         let mut calls = Vec::with_capacity(inputs.len());
                         for input in inputs {
-                            schema::validate(&call.input, &input)?;
-                            schema::validate(&binding.input, &input)?;
+                            input_schema.validate(&input)?;
+                            binding_schema.validate(&input)?;
                             let operation_key = input
                                 .get(PreparedCall::IDEMPOTENCY_KEY)
                                 .and_then(Value::as_str)
@@ -715,9 +711,10 @@ impl<E: Env> Host<E> {
         let Some(Prepared::Calls { calls }) = checkpoint.prepared.clone() else {
             return Ok(());
         };
-        let Kind::Step { mode, call } = &node.kind else {
+        let Kind::Step { mode, call, .. } = &node.kind else {
             bail!("call checkpoint belongs to a non-step")
         };
+        let output_schema = schema::Validator::try_from(&call.output)?;
         for (index, prepared) in calls.iter().enumerate() {
             if matches!(checkpoint.items[index].state, State::Succeeded { .. }) {
                 continue;
@@ -778,6 +775,24 @@ impl<E: Env> Host<E> {
                     issuer: user.issuer.clone(),
                     subject: user.subject.clone(),
                 });
+            let context = StepRun {
+                run: run.id.clone(),
+                workflow: run.workflow.clone(),
+                attempt: execution.claim.attempt.clone(),
+                node: node.id.clone(),
+                item: checkpoint.items[index].index,
+                trigger: match &run.trigger {
+                    Trigger::Manual { caller } => StepTrigger::Manual {
+                        account: caller.id.clone(),
+                        key: caller.key.clone(),
+                        user: caller.user.as_ref().map(|user| StepUser {
+                            issuer: user.issuer.clone(),
+                            subject: user.subject.clone(),
+                        }),
+                    },
+                    Trigger::Schedule { at, .. } => StepTrigger::Schedule { at: *at },
+                },
+            };
             let args = serde_json::to_vec(&prepared.input)?;
             let local = target.is_some();
             let replay = checkpoint.items[index]
@@ -803,9 +818,11 @@ impl<E: Env> Host<E> {
                         Arc::from(binding.service.as_str()),
                     ]),
                 };
-                let outcome = target
-                    .link(link, call.target.tool(), args, meters.clone())
-                    .await;
+                let outcome = workflow::step(
+                    context,
+                    target.link(link, call.target.tool(), args, meters.clone()),
+                )
+                .await;
                 match outcome {
                     Ok(outcome) => self
                         .commit_outcome(outcome)
@@ -823,6 +840,7 @@ impl<E: Env> Host<E> {
                         .last()
                         .map(|dispatch| dispatch.id.clone()),
                     accepted: Some(binding.clone()),
+                    run: Some(context),
                     caller: Some(run.service.clone()),
                     from: run.service.clone(),
                     key: identity.and_then(|caller| caller.key.clone()),
@@ -889,7 +907,7 @@ impl<E: Env> Host<E> {
                 Ok((Output::Done(text), _)) => match serde_json::from_str(&text)
                     .map_err(anyhow::Error::from)
                     .and_then(|value| {
-                        schema::validate(&call.output, &value)?;
+                        output_schema.validate(&value)?;
                         Ok(value)
                     }) {
                     Ok(value) => State::Succeeded { value },

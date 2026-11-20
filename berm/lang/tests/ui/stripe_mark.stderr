@@ -1,0 +1,5 @@
+error: unknown declaration; use access, price, budget, catalog, idempotency or example on a tool, or access, price, budget, max_cost, checkpoint_bytes, retain or example on a workflow
+ --> tests/ui/stripe_mark.rs:4:8
+  |
+4 | #[tool(stripe)]
+  |        ^^^^^^

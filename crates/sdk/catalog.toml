@@ -7,11 +7,11 @@ platforms = ["web", "news"]
 
 [agents]
 title = "Agents"
-platforms = ["memory", "relay", "outbox"]
+platforms = ["relay"]
 
 [ops]
 title = "Operations"
-platforms = ["uptime", "webhooks"]
+platforms = ["uptime"]
 
 [search]
 title = "Search & SEO"

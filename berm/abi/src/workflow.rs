@@ -24,6 +24,47 @@ pub enum ControlOutput {
     Output { value: Value },
 }
 
+/// The workflow run an invocation is a step of, as the host answers
+/// `berm.workflow.run`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Run {
+    pub run: String,
+    pub workflow: String,
+    pub attempt: String,
+    /// The step's node ID.
+    pub node: String,
+    /// The item's index in an `each` step. Zero for a single-call step.
+    pub item: u32,
+    pub trigger: Trigger,
+}
+
+/// What started a run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Trigger {
+    /// A caller started it: the account, and the API key and verified end user
+    /// it came with.
+    Manual {
+        account: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<User>,
+    },
+    /// The deployment's schedule started it, for the occurrence at `at`,
+    /// milliseconds since the Unix epoch.
+    Schedule { at: u64 },
+}
+
+/// An end user as the host verified them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct User {
+    /// The identity provider or service that vouched for the user.
+    pub issuer: String,
+    /// Who they are to that issuer.
+    pub subject: String,
+}
+
 #[derive(Clone, Copy)]
 pub struct Node<'a> {
     pub kind: Kind,

@@ -1,5 +1,30 @@
 [
   {
+    "version": "0.1.8",
+    "date": "2026-11-20",
+    "summary": "Audit sites with crabtalk/seo, quote workflow runs from their input, and publish and deploy Cloud images with separate commands.",
+    "new": [
+      "Audit up to 100 sitemap pages with crabtalk/seo.audit and compare findings with previous audits; a successful run charges $0.0001 per page checked",
+      "Check AI crawler access, llms.txt and Markdown availability with the free ai_access tool, and inspect expanded technical SEO evidence with check",
+      "Price workflow steps per item, narrow quotes using run input and show price ranges in public service listings",
+      "Read the run and attempt IDs, step position and trigger from workflow step tools",
+      "Export service data as a SQLite snapshot with crab export and use it to seed a new Cloud deployment",
+      "Check the active Cloud credential's access with crab status or MCP status without management permissions"
+    ],
+    "changed": [
+      "Use crab up for source builds and deployment, crab push to publish Cloud images, crab deploy to run published images and crab pull to download them locally; OCI deployment is removed",
+      "Declare tools and workflows in code, including access, prices, budgets and tool examples; crab.toml holds image and deployment settings",
+      "Use fixed MCP tools for service discovery, inspection and invocation instead of exposing each service tool as a separate MCP tool",
+      "Publish only crabtalk/seo from the bundled catalog; remaining provider integrations and Relay can be deployed from source"
+    ],
+    "fixed": [
+      "Serve workflow quotes under service routes and report invalid inputs before admission",
+      "Interrupt SQL at invocation deadlines and bound idle SQLite connections and writer resources",
+      "Reuse compiled workflow validators and preserve raw JSON tool responses without re-encoding them",
+      "Refresh the Context.dev and Litescrape OpenAPI pins and build CompanyEnrich from its published JSON spec"
+    ]
+  },
+  {
     "version": "0.1.7",
     "date": "2026-11-16",
     "summary": "Run durable service workflows, review service-defined actions, and separate template publication from deployment.",

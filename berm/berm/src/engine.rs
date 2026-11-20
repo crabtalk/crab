@@ -65,7 +65,7 @@ pub struct Config {
     pub read: u64,
     /// The most rows one invocation may write.
     pub written: u64,
-    /// What one invocation of a tool whose `crab.toml` sets no budget is held
+    /// What one invocation of a tool with no declared budget is held
     /// to, key by key, each at most the most above.
     pub budget: Budget,
     /// How long a chain of invocations runs before it is stopped.
@@ -409,7 +409,7 @@ impl Image {
             );
         }
         if Instant::now() >= deadline {
-            bail!("invocation exceeded its deadline");
+            bail!(watchdog::Expired);
         }
         instance?;
         called?;

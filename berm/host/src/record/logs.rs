@@ -31,12 +31,10 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
     })
 }
 
-/// Logs not yet written, and the call each running chain is.
+/// Logs not yet written.
 pub(crate) struct Pending {
     pending: Mutex<Vec<Emitted>>,
     flight: Mutex<Flight<Emitted>>,
-    /// The call each chain started here is, by [`Callsite::chain`].
-    runs: Mutex<HashMap<u64, u64>>,
     now: Now,
 }
 
@@ -80,31 +78,15 @@ impl Pending {
         Self {
             pending: Mutex::default(),
             flight: Mutex::new(Flight::new(Table::Logs, flushed)),
-            runs: Mutex::default(),
             now,
         }
     }
 
-    /// Hold that chain `chain` is call `call` until [`Pending::ended`].
-    pub(crate) fn started(&self, chain: u64, call: u64) {
-        self.runs.lock().insert(chain, call);
-    }
-
-    pub(crate) fn ended(&self, chain: u64) {
-        self.runs.lock().remove(&chain);
-    }
-
-    /// The call chain `chain` is, while it runs.
-    pub(crate) fn run(&self, chain: u64) -> Option<u64> {
-        self.runs.lock().get(&chain).copied()
-    }
-
     /// Hold `log`, emitted at `at`.
     pub(crate) fn take(&self, at: &Callsite, log: Log) {
-        let call = self.run(at.chain);
         self.pending.lock().push(Emitted {
             service: at.service.to_string(),
-            call,
+            call: at.record,
             at: (self.now)(),
             topics: log.topics,
             data: log.data,

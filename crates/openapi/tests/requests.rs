@@ -16,10 +16,10 @@ crab_openapi::service! {
     spec: "tests/specs/api.json",
     client: crate::CLIENT,
     operations: {
-        fetch_item: "GET /items/{itemId}",
-        create_item: "POST /items",
-        ping: "GET /ping",
-        optional: "POST /optional",
+        #[doc = "Fetch item"] fetch_item: "GET /items/{itemId}",
+        #[doc = "Create item"] create_item: "POST /items",
+        #[doc = "Ping"] ping: "GET /ping",
+        #[doc = "Optional"] optional: "POST /optional",
     },
 }
 
@@ -41,7 +41,7 @@ fn parameters_keep_wire_names_encoding_and_authentication() {
             x_region: Some("eu".into()),
         }),
     };
-    let value = api::fetch_item(&input).unwrap();
+    let value = berm_lang::serde_json::to_value(api::fetch_item(&input).unwrap()).unwrap();
     assert_eq!(value["data"]["id"], 1);
     let request = &test::fetched()[0];
     assert_eq!(
@@ -76,9 +76,9 @@ fn json_bodies_keep_explicit_null_and_omit_absent_fields() {
 fn optional_body_distinguishes_absent_from_json_null() {
     test::respond("POST", "https://example.com/v1/optional", 200, b"{}");
     let absent = serde_json::from_value::<types::OptionalInput>(json!({})).unwrap();
-    api::optional(&absent).unwrap();
+    berm_lang::serde_json::to_value(api::optional(&absent).unwrap()).unwrap();
     let null = serde_json::from_value::<types::OptionalInput>(json!({"body":null})).unwrap();
-    api::optional(&null).unwrap();
+    berm_lang::serde_json::to_value(api::optional(&null).unwrap()).unwrap();
     let requests = test::fetched();
     assert!(requests[0].body.is_empty());
     assert_eq!(requests[0].header("Content-Type"), None);
@@ -88,7 +88,10 @@ fn optional_body_distinguishes_absent_from_json_null() {
 #[test]
 fn empty_responses_and_http_failures_use_existing_transport() {
     test::respond("GET", "https://example.com/v1/ping", 204, b"");
-    assert_eq!(api::ping(&types::PingInput {}).unwrap(), Value::Null);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::ping(&types::PingInput {}).unwrap()).unwrap(),
+        Value::Null
+    );
     test::respond("GET", "https://example.com/v1/ping", 429, b"slow down");
     assert!(
         api::ping(&types::PingInput {})
@@ -130,4 +133,18 @@ fn optional_parameter_groups_can_be_omitted() {
     )
     .unwrap();
     assert_eq!(test::fetched()[0].url, "https://example.com/v1/items/7");
+}
+
+#[test]
+fn raw_json_results_preserve_provider_bytes_in_the_tool_boundary() {
+    let body = br#"{"z":1e2, "a":"\u0061", "nested": [true,null,-0], "z":2}"#;
+    test::respond("GET", "https://example.com/v1/ping", 200, body);
+    let result = test::call(tools::berm_tool_ping, br#"{"input":{}}"#).unwrap();
+    assert_eq!(result, body);
+    test::respond("GET", "https://example.com/v1/ping", 200, b"{broken");
+    let error = test::call(tools::berm_tool_ping, br#"{"input":{}}"#).unwrap_err();
+    assert!(
+        error.starts_with("Example returned an unreadable response:"),
+        "{error}"
+    );
 }

@@ -49,10 +49,9 @@ impl<E: Env> Host<E> {
     /// it was. A service whose image this host cannot read, such as one built
     /// against another ABI, is replaced as on a first deploy.
     ///
-    /// `seed`, a SQLite file on the databases' filesystem, starts the
-    /// service's database, held to the image's migrations like any other:
-    /// refused when the service has a database or the image keeps none. A
-    /// deploy refused once the seed is in place deletes it.
+    /// `seed` starts a new service from a SQLite data export. SQL databases
+    /// must match the image's migrations; services without SQL accept only
+    /// `_berm_state`. A refused SQL deployment removes the installed seed.
     pub async fn deploy(
         &self,
         service: &str,
@@ -104,6 +103,9 @@ impl<E: Env> Host<E> {
             .or_default()
             .clone();
         let _deploying = lock.lock().await;
+        if seed.is_some() {
+            self.seedable(service).await?;
+        }
         let current = self.current(service).await?;
         self.moving(service, project.as_deref(), force).await?;
         let cron_tools = self.cron_tools(&manifest).await?;
@@ -115,16 +117,31 @@ impl<E: Env> Host<E> {
                 return Err(deny(StatusCode::CONFLICT, Breaking(&breaks).to_string()));
             }
         }
+        let state_seed = seed
+            .filter(|_| !manifest.keeps_database())
+            .map(Path::to_path_buf);
         if let Some(seed) = seed {
-            if !manifest.keeps_database() {
+            let bytes = std::fs::metadata(seed)
+                .map_err(|error| deny(StatusCode::BAD_REQUEST, error.to_string()))?
+                .len();
+            if bytes > size {
                 return Err(deny(
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    format!("{service} keeps no database to seed"),
-                ));
+                    "The seed is larger than the service's storage size",
+                )
+                .explained(Denied::SEED_SIZE));
             }
-            self.databases
-                .seed(&key, seed)
-                .map_err(|e| deny(StatusCode::CONFLICT, format!("{e:#}")))?;
+            if manifest.keeps_database() {
+                self.databases.seed(&key, seed).map_err(|error| {
+                    deny(StatusCode::CONFLICT, error.to_string()).explained(Denied::SEEDED)
+                })?;
+            } else {
+                let path = seed.to_owned();
+                tokio::task::spawn_blocking(move || service::check_seed(&path))
+                    .await
+                    .map_err(|error| deny(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+                    .map_err(|error| deny(StatusCode::BAD_REQUEST, error.to_string()))?;
+            }
         }
         let mut limited: Option<(Arc<Database>, u64)> = None;
         let installed = async {
@@ -180,6 +197,7 @@ impl<E: Env> Host<E> {
                 manifest.deps.vars.keys().cloned().collect(),
                 vars,
                 (self.now)() as i64,
+                state_seed,
             )
             .await?;
             self.stops.mark(&key, stopped);
@@ -196,6 +214,7 @@ impl<E: Env> Host<E> {
             tracing::error!(service, error = %e, "the refused size stays");
         }
         if seed.is_some()
+            && manifest.keeps_database()
             && installed.is_err()
             && let Err(e) = self.databases.remove(&key)
         {
@@ -247,6 +266,9 @@ impl<E: Env> Host<E> {
             .or_default()
             .clone();
         let _deploying = lock.lock().await;
+        if seeded {
+            self.seedable(service).await?;
+        }
         let current = self.current(service).await?;
         self.moving(service, deploy.project.as_deref(), deploy.force)
             .await?;
@@ -259,18 +281,6 @@ impl<E: Env> Host<E> {
             None => Vec::new(),
         };
         let exists = self.databases.path(&key).exists();
-        if seeded && !manifest.keeps_database() {
-            return Err(deny(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!("{service} keeps no database to seed"),
-            ));
-        }
-        if seeded && exists {
-            return Err(deny(
-                StatusCode::CONFLICT,
-                format!("{service} has a database, so a seed cannot start it"),
-            ));
-        }
         let mut migrations = Vec::new();
         if manifest.keeps_database() && exists {
             let database = self
@@ -350,6 +360,19 @@ impl<E: Env> Host<E> {
                 "{name} is in project {was}; call it from {project} as it is, rename {project}'s copy, or deploy with `force` to move it into {project}"
             ),
         ))
+    }
+
+    async fn seedable(&self, service: &str) -> Result<(), Denied> {
+        let (scope, name) = host::split(service);
+        if service::row(&self.store, scope, name).await?.is_some()
+            || self.databases.path(service).exists()
+        {
+            return Err(
+                deny(StatusCode::CONFLICT, "A seed only starts a new service")
+                    .explained(Denied::SEEDED),
+            );
+        }
+        Ok(())
     }
 
     /// The service `service` runs, none when it runs none or one this host

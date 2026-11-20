@@ -20,7 +20,10 @@ fn person_enrichment_preserves_identifiers_matching_options_and_api_key() {
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::enrich_person(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::enrich_person(&input).unwrap()).unwrap(),
+        response
+    );
     let request = &test::fetched()[0];
     assert_eq!(request.header("X-API-Key"), Some("{secret:PDL_API_KEY}"));
     assert!(request.body.is_empty());
@@ -41,7 +44,10 @@ fn person_search_encodes_json_query_and_explicit_cursor_without_fetching_another
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::search_people(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::search_people(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(test::fetched().len(), 1);
 }
 
@@ -58,7 +64,10 @@ fn company_enrichment_preserves_profile_ticker_location_and_field_requirements()
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::enrich_company(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::enrich_company(&input).unwrap()).unwrap(),
+        response
+    );
 }
 
 #[test]
@@ -73,7 +82,10 @@ fn company_search_encodes_sql_and_keeps_empty_results() {
         200,
         &serde_json::to_vec(&response).unwrap(),
     );
-    assert_eq!(api::search_companies(&input).unwrap(), response);
+    assert_eq!(
+        berm_lang::serde_json::to_value(api::search_companies(&input).unwrap()).unwrap(),
+        response
+    );
     assert_eq!(test::fetched().len(), 1);
 }
 

@@ -10,7 +10,15 @@
 //! The service's SQL cannot reach the tables named `_berm_*`, where the host
 //! keeps the service's `berm.get`/`berm.set` state and the migrations applied.
 
-use crate::{Callsite, Service, database::lock::Graph, readers::Readers, syscall::sql::Statement};
+use crate::{
+    Callsite, Service,
+    database::{
+        lock::Graph,
+        writer::{Writer, Writers},
+    },
+    readers::{self, Readers},
+    syscall::sql::Statement,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use berm_api::{Sequence, host::DatabaseUsage};
 pub use lock::Held;
@@ -25,18 +33,21 @@ use std::{
     sync::{
         Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
-        mpsc,
     },
-    thread,
-    time::Duration,
 };
 use tokio::sync::{Mutex, oneshot};
 
+mod export;
 mod lock;
 mod query;
+mod writer;
+
+const IDLE_READERS: usize = 64;
+
+pub const STATE_SCHEMA: &str =
+    "CREATE TABLE IF NOT EXISTS _berm_state (key TEXT PRIMARY KEY, value BLOB NOT NULL);";
 
 const SCHEMA: &str = "
-    CREATE TABLE IF NOT EXISTS _berm_state (key TEXT PRIMARY KEY, value BLOB NOT NULL);
     DROP TABLE IF EXISTS _berm_outbox;
     CREATE TABLE IF NOT EXISTS _berm_migrations (
         kit TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, sql TEXT NOT NULL,
@@ -59,14 +70,13 @@ const REKEY: &str = "
 /// keeping no database.
 pub(crate) type Kept = OnceLock<Option<Arc<Database>>>;
 
-/// Work for the writer's thread, on the one connection that writes.
-type Job = Box<dyn FnOnce(&mut Connection) + Send>;
-
 /// Every service's database, opened on first use at `{dir}/{service}.sqlite`.
 pub struct Databases {
     dir: PathBuf,
     open: parking_lot::Mutex<HashMap<String, Arc<Database>>>,
     graph: Arc<parking_lot::Mutex<Graph>>,
+    writers: Arc<Writers>,
+    readers: Arc<readers::Cache>,
 }
 
 impl Databases {
@@ -75,6 +85,8 @@ impl Databases {
             dir,
             open: Default::default(),
             graph: Default::default(),
+            writers: Writers::new(),
+            readers: readers::Cache::new(IDLE_READERS),
         }
     }
 
@@ -88,6 +100,8 @@ impl Databases {
             &self.path(service),
             service.into(),
             self.graph.clone(),
+            self.writers.clone(),
+            self.readers.clone(),
         )?);
         open.insert(service.to_owned(), database.clone());
         Ok(database)
@@ -240,13 +254,11 @@ pub struct Database {
     readers: Arc<Readers>,
     /// The service it is the database of.
     name: Arc<str>,
-    /// The writer's thread, which owns the writing connection.
-    jobs: mpsc::Sender<Job>,
-    writer: thread::JoinHandle<()>,
+    jobs: Arc<Writer>,
     /// Held by the call writing or a migration.
     writing: Arc<Mutex<()>>,
     /// The chain holding the writer, [`lock::FREE`] for none.
-    holder: AtomicU64,
+    holder: Arc<AtomicU64>,
     graph: Arc<parking_lot::Mutex<Graph>>,
 }
 
@@ -260,16 +272,18 @@ impl fmt::Debug for Database {
 
 impl Database {
     /// Open the database at `path`, creating it and its directory if needed.
-    fn open(path: &Path, name: Arc<str>, graph: Arc<parking_lot::Mutex<Graph>>) -> Result<Self> {
+    fn open(
+        path: &Path,
+        name: Arc<str>,
+        graph: Arc<parking_lot::Mutex<Graph>>,
+        writers: Arc<Writers>,
+        readers: Arc<readers::Cache>,
+    ) -> Result<Self> {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
-        let mut conn =
-            Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
-        conn.pragma_update(None, "foreign_keys", true)?;
-        conn.busy_timeout(Duration::from_secs(5))?;
+        let mut conn = Writer::connection(path, None)?;
+        conn.execute_batch(STATE_SCHEMA)?;
         conn.execute_batch(SCHEMA)?;
         let keyed: bool = conn.query_row(
             "SELECT COUNT(*) > 0 FROM pragma_table_info('_berm_migrations') WHERE name = 'kit'",
@@ -281,26 +295,24 @@ impl Database {
             tx.execute_batch(REKEY)?;
             tx.commit()?;
         }
-        query::guard(&conn)?;
         let pages: i64 = conn.pragma_query_value(None, "max_page_count", |row| row.get(0))?;
         let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
         let limit = Arc::new(AtomicU64::new(u64::try_from(pages * page)?));
-        let (jobs, queue) = mpsc::channel::<Job>();
-        let writer = thread::Builder::new()
-            .name("berm-sqlite".to_owned())
-            .spawn(move || {
-                for job in queue {
-                    job(&mut conn);
-                }
-            })?;
+        let holder = Arc::new(AtomicU64::new(lock::FREE));
+        let jobs = Writer::new(
+            path.to_owned(),
+            conn,
+            limit.clone(),
+            holder.clone(),
+            writers,
+        );
         Ok(Self {
             limit,
-            readers: Arc::new(Readers::new(path.to_owned(), query::guard)),
+            readers: Arc::new(Readers::shared(path.to_owned(), query::guard, readers)),
             name,
             jobs,
-            writer,
             writing: Arc::new(Mutex::new(())),
-            holder: AtomicU64::new(lock::FREE),
+            holder,
             graph,
         })
     }
@@ -308,23 +320,14 @@ impl Database {
     /// Close every connection to the file, once the writer has run the jobs
     /// it was sent.
     fn close(self) {
-        let Self {
-            readers,
-            jobs,
-            writer,
-            ..
-        } = self;
-        drop(readers);
-        drop(jobs);
-        if writer.join().is_err() {
-            tracing::error!("the database writer panicked");
-        }
+        self.jobs.close();
+        self.readers.close();
     }
 
     /// Hold the database to `size` bytes: a write past it fails as
     /// `SQLITE_FULL`. Refused when it holds more already, or when `size` is
-    /// under one page. Lasts as long as the writer's connection, the life of
-    /// this [`Database`]. Answers the bytes it was held to before, which
+    /// under one page. Reapplied when the writer connection reopens.
+    /// Answers the bytes it was held to before, which
     /// restore that limit when passed back.
     pub async fn limit(&self, size: u64) -> Result<u64> {
         let limit = self.limit.clone();
@@ -445,35 +448,11 @@ impl Database {
         on(&self.jobs, move |conn| {
             let tx = conn.transaction()?;
             let mut ran = Vec::new();
-            for Sequence {
-                kit,
-                formerly,
-                migrations,
-            } in &sequences
-            {
+            for Sequence { kit, migrations } in &sequences {
                 let named = |name: &str| match kit.as_str() {
                     "" => name.to_owned(),
                     kit => format!("{kit}/{name}"),
                 };
-                let kept = |key: &str| -> Result<bool> {
-                    Ok(tx.query_row(
-                        "SELECT EXISTS (SELECT 1 FROM _berm_migrations WHERE kit = ?1)",
-                        [key],
-                        |row| row.get(0),
-                    )?)
-                };
-                for former in formerly {
-                    if !kept(former)? {
-                        continue;
-                    }
-                    if kept(kit)? {
-                        bail!("kit {kit}'s applied migrations are kept under {kit} and {former}");
-                    }
-                    tx.execute(
-                        "UPDATE _berm_migrations SET kit = ?1 WHERE kit = ?2",
-                        (kit, former),
-                    )?;
-                }
                 let applied: Vec<(String, String)> = tx
                     .prepare(
                         "SELECT name, sql FROM _berm_migrations WHERE kit = ?1 ORDER BY rowid",
@@ -517,14 +496,13 @@ impl Database {
     }
 }
 
-/// Run `job` on the writer's thread.
 async fn on<T: Send + 'static>(
-    jobs: &mpsc::Sender<Job>,
+    jobs: &Arc<Writer>,
     job: impl FnOnce(&mut Connection) -> Result<T> + Send + 'static,
 ) -> Result<T> {
     let (answer, answered) = oneshot::channel();
     jobs.send(Box::new(move |conn| {
-        let _ = answer.send(job(conn));
+        let _ = answer.send(conn.and_then(job));
     }))
     .map_err(|_| anyhow!("the database is closed"))?;
     answered

@@ -1,5 +1,5 @@
 use crate::{
-    host,
+    Meter, host,
     workflow::{
         Version,
         graph::{Entry, Source},
@@ -21,8 +21,28 @@ pub struct Inspection {
     pub source: Source,
     pub quote: String,
     pub task_price: Option<u64>,
+    /// The most a successful run costs the caller in USD micros: the task
+    /// price plus each priced step's price times its most items. Absent where
+    /// runs are not charged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_price: Option<u64>,
     pub deadline_ms: u64,
     pub retention_ms: u64,
+}
+
+/// What a workflow's input settles before a run: controls that read only the
+/// input and branches that do, evaluated under the control budget.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "utoipa", schema(as = WorkflowQuote))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Quote {
+    /// Each exact priced step's item count for this input, by node ID; 0 for
+    /// one its input-only guards skip.
+    pub steps: BTreeMap<String, u32>,
+    /// Each input-only branch's selected case, by node ID.
+    pub branches: BTreeMap<String, String>,
+    /// What evaluating them used.
+    pub meter: Meter,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]

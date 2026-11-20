@@ -2,10 +2,7 @@
 id = "115a99982fc0ce031c0a94fad9aa47a0"
 
 [http]
-fetch = [
-    "oauth2.googleapis.com",
-    "openidconnect.googleapis.com",
-]
+fetch = ["openidconnect.googleapis.com"]
 
 [database]
 migrations = "migrations"

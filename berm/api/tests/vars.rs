@@ -11,7 +11,8 @@ fn read(toml: &str) -> anyhow::Result<Project> {
 }
 
 const WATCH: &str = r#"
-image = "fixtures/watch"
+[image]
+name = "fixtures/watch"
 
 [vars]
 keywords = { default = "rust, wasm", description = "Words to watch" }
@@ -27,7 +28,7 @@ fn vars_join_the_deps() {
 
 #[test]
 fn a_service_with_no_vars_has_none_in_its_deps() {
-    let deps = read("image = \"fixtures/plain\"\n").unwrap().deps();
+    let deps = read("[image]\nname = \"fixtures/plain\"\n").unwrap().deps();
     assert!(deps.vars.is_empty());
 }
 
@@ -46,7 +47,7 @@ fn a_default_past_its_bytes_is_refused() {
 
 #[test]
 fn more_vars_than_the_most_are_refused() {
-    let mut toml = String::from("image = \"fixtures/many\"\n[vars]\n");
+    let mut toml = String::from("[image]\nname = \"fixtures/many\"\n[vars]\n");
     for at in 0..=Var::MAX {
         toml.push_str(&format!("v{at} = {{}}\n"));
     }

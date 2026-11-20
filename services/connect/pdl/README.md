@@ -4,7 +4,7 @@ Enrich a person or company from known identifiers, or search people and companie
 
 ## Call
 
-With Crab signed in to Cloud, replace `owner/pdl` with the address of a running deployment you can access. If this page only offers a template, deploy a copy first.
+With Crab signed in to Cloud, replace `owner/pdl` with the address of a running deployment you can access. If only a published image is available, deploy it first.
 
 ```sh
 crab call owner/pdl enrich_person '{"input":{"query":{"email":"person@example.com","min_likelihood":6}}}'
@@ -19,12 +19,12 @@ On a callable deployment, you can also open a tool on this page to call it, or c
 If this page offers **Deploy**, use it to create a private copy with your own credentials and state. The CLI equivalent is:
 
 ```sh
-crab deploy --from owner/pdl
+crab deploy owner/pdl
 ```
 
 Set `PDL_API_KEY` through the copy’s credential setup. Enrichment consumes credits per match and search consumes credits per returned record.
 
-Template deployment needs a published image. To build a modified version or deploy when no template is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
+To build a modified version or deploy when no image is published, use the [source instructions](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source).
 
 ## Usage notes
 

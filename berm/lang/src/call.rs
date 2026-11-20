@@ -84,15 +84,39 @@ pub fn caller() -> Result<Option<Caller>, CallError> {
     }
 }
 
-/// An end user, as the host verified them.
+pub use crate::abi::workflow::User;
+
+/// The service executing this invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct User {
-    /// Who vouched for them: an identity provider's issuer URL, or the
-    /// service that called [`vouch`], as the services it calls are told it is
-    /// named.
-    pub issuer: String,
-    /// Who they are to that issuer.
-    pub subject: String,
+pub struct Service {
+    pub address: String,
+    pub digest: String,
+}
+
+/// The deployment's address and the digest of the image running this tool.
+pub fn service() -> Result<Service, CallError> {
+    let reply = host::call(sys::SERVICE, &[])?;
+    let unreadable =
+        || CallError::Failed(String::from("host framed a reply this guest cannot read"));
+    match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
+        [address, digest] => Ok(Service {
+            address: String::from_utf8_lossy(address).into_owned(),
+            digest: String::from_utf8_lossy(digest).into_owned(),
+        }),
+        _ => Err(unreadable()),
+    }
+}
+
+/// The call record ID, with a `.span` suffix for nested calls. An unrecorded
+/// invocation has a process-local `local:chain.span` ID.
+pub fn call_id() -> Result<String, CallError> {
+    let reply = host::call(sys::CALL_ID, &[])?;
+    let unreadable =
+        || CallError::Failed(String::from("host framed a reply this guest cannot read"));
+    match wire::fields(&reply).map_err(|_| unreadable())?.as_slice() {
+        [id] => Ok(String::from_utf8_lossy(id).into_owned()),
+        _ => Err(unreadable()),
+    }
 }
 
 /// The end user this chain runs for, as the host verified them, carried into

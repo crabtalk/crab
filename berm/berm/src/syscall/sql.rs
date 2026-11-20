@@ -5,12 +5,13 @@
 
 use crate::{Callsite, Syscall, abi, wire};
 use anyhow::Result;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Instant};
 
 /// One statement, as the host is handed it.
 #[derive(Debug)]
 pub struct Statement {
     pub sql: String,
+    pub deadline: Instant,
     /// A JSON array bound to the statement's `?` placeholders.
     pub params: String,
 }
@@ -32,6 +33,7 @@ where
                 let fields = abi::wire::fields(&request)?;
                 at.rows_left()?;
                 let statement = Statement {
+                    deadline: at.deadline,
                     sql: wire::text(&fields, 0, "statement")?.to_owned(),
                     params: wire::text(&fields, 1, "parameters")?.to_owned(),
                 };

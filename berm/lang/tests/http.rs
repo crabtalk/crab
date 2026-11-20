@@ -87,3 +87,42 @@ fn json_decode_failures_and_body_level_refusals_keep_context() {
         .into();
     assert!(error.message.starts_with("JSON:"));
 }
+
+#[test]
+fn raw_responses_validate_json_and_keep_its_representation() {
+    let body = br#"{"number":1e2, "escaped":"\u0061", "array": [1, 2]}"#;
+    let raw = Response {
+        status: 200,
+        headers: vec![],
+        body: body.to_vec(),
+    }
+    .read_raw("Example")
+    .unwrap();
+    assert_eq!(raw.get().as_bytes(), body);
+    assert_eq!(serde_json::to_vec(&raw).unwrap(), body);
+    assert_eq!(
+        Response {
+            status: 204,
+            headers: vec![],
+            body: vec![]
+        }
+        .read_raw("Example")
+        .unwrap()
+        .get(),
+        "null"
+    );
+    for body in [b"{broken".to_vec(), vec![0xff]] {
+        let error = Response {
+            status: 200,
+            headers: vec![],
+            body,
+        }
+        .read_raw("Example")
+        .unwrap_err();
+        assert!(
+            error
+                .message
+                .starts_with("Example returned an unreadable response:")
+        );
+    }
+}

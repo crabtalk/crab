@@ -3,6 +3,7 @@ use berm_lang::workflow;
 mod support;
 use support::{EchoCall, Input};
 struct Flow;
+/// Validate this graph
 #[workflow]
 impl Flow {
     #[step]

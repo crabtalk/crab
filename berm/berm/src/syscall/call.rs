@@ -263,7 +263,7 @@ pub(crate) fn syscalls(runtime: Weak<Berm>, calls: Calls) -> Syscall {
                         at.depth + 1,
                         at.query,
                         at.deadline,
-                        at.chain,
+                        at.chain.into(),
                         at.journal.clone(),
                         at.meters.clone(),
                         stack,

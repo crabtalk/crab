@@ -199,6 +199,7 @@ async fn changed_dependency_is_refused_before_tool_dispatch() -> Result<()> {
         workflow: None,
         operation: None,
         accepted: Some(run.accepted.bindings["ask"].clone()),
+        run: None,
         caller: Some("owner/flow".into()),
         from: "owner/flow".into(),
         key: None,
@@ -682,10 +683,9 @@ async fn cancellation_drains_one_email_and_fences_the_next_dispatch() -> Result<
         State::Succeeded { .. }
     ));
     assert!(result.attempts[0].meter.calls > 0);
-    assert_eq!(
-        host.host.workflows.pending_completions(10).await?[0].status,
-        Status::Cancelled
-    );
+    let completion = &host.host.workflows.pending_completions(10).await?[0];
+    assert_eq!(completion.status, Status::Cancelled);
+    assert_eq!(completion.succeeded.get("messages"), Some(&1));
     Ok(())
 }
 
@@ -729,5 +729,185 @@ async fn continuation_reuses_branch_and_items_with_the_original_image() -> Resul
         host.host.cancel_workflow(&run.id).await?.status,
         Status::Succeeded
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_quote_counts_input_only_priced_steps_and_leaves_the_rest_bounded() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/flow", &image).await?;
+    let quote = host
+        .host
+        .quote_workflow(
+            "owner/flow",
+            "workflow_priced",
+            json!({"count": 2, "take": true}),
+        )
+        .await?;
+    assert_eq!(
+        quote.steps,
+        [("items".to_owned(), 2), ("optional".to_owned(), 1)].into()
+    );
+    assert_eq!(
+        quote.branches,
+        [("choose".to_owned(), "yes".to_owned())].into()
+    );
+    assert!(quote.meter.cpu > 0);
+    let graph = &host
+        .host
+        .workflow_offer("owner/flow", "workflow_priced")?
+        .spec
+        .entry
+        .graph;
+    assert_eq!(graph.price_range(0, &quote.steps), (900, 1200));
+    let skipped = host
+        .host
+        .quote_workflow(
+            "owner/flow",
+            "workflow_priced",
+            json!({"count": 0, "take": false}),
+        )
+        .await?;
+    assert_eq!(
+        skipped.steps,
+        [("items".to_owned(), 0), ("optional".to_owned(), 0)].into()
+    );
+    assert!(
+        host.host
+            .quote_workflow("owner/flow", "workflow_priced", json!({"count": "two"}))
+            .await
+            .is_err()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn step_tools_see_their_manual_or_scheduled_run_context() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    let image = fixture::image("berm-fixture")?;
+    host.deploy("owner/flow", &image).await?;
+    let standalone = host
+        .call_json("owner/flow", "call_context", json!({}))
+        .await?;
+    assert_eq!(standalone["run"], Value::Null);
+    let deployed = host.host.get("owner/flow").unwrap();
+    assert_eq!(standalone["address"], "owner/flow");
+    assert_eq!(standalone["digest"], deployed.digest);
+    assert!(standalone["deadline"].as_u64().unwrap() > 0);
+
+    for (trigger, expected) in [
+        (
+            trigger(),
+            json!({
+                "kind":"manual","account":"caller","key":"key-1",
+                "user":{"issuer":"verified","subject":"reader"}
+            }),
+        ),
+        (
+            Trigger::Schedule {
+                key: "occurrence".into(),
+                at: 60_000,
+            },
+            json!({"kind":"schedule","at":60_000}),
+        ),
+    ] {
+        let run =
+            host.host
+                .prepare_workflow("owner/flow", "workflow_context", json!(2), trigger)?;
+        host.host
+            .workflows
+            .insert(
+                run.clone(),
+                image.clone(),
+                StorageGrant {
+                    scope: "owner".into(),
+                    bytes: u64::MAX,
+                },
+            )
+            .await?;
+        let complete = host.host.execute_workflow(&run.id).await?;
+        assert_eq!(complete.status, Status::Succeeded, "{:?}", complete.error);
+        let items = complete.result.unwrap();
+        let items = items.as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        for (index, item) in items.iter().enumerate() {
+            assert_eq!(
+                item["run"],
+                json!({
+                    "run": run.id,
+                    "workflow": run.workflow,
+                    "attempt": complete.attempts[0].id,
+                    "node": "read",
+                    "item": index,
+                    "trigger": expected,
+                })
+            );
+            assert_eq!(item["address"], standalone["address"]);
+            assert_eq!(item["digest"], standalone["digest"]);
+            assert!(item["deadline"].as_u64().unwrap() > 0);
+            let id = item["id"].as_str().unwrap().strip_prefix("local:").unwrap();
+            let (chain, span) = id.split_once('.').unwrap();
+            assert!(chain.parse::<u64>()? > 0);
+            assert_eq!(span, "0");
+        }
+        assert_ne!(items[0]["id"], items[1]["id"]);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn replay_answers_the_original_context_readings() -> Result<()> {
+    let host = TestHost::open(100).await?;
+    host.deploy("owner/flow", &fixture::image("berm-fixture")?)
+        .await?;
+    let service = host.host.get("owner/flow").unwrap();
+    let recorder = berm::tape::Recorder::default();
+    let args = br#"{"fail":true}"#;
+    let original = service
+        .call_as(
+            None,
+            None,
+            None,
+            berm::Client::default(),
+            "call_context",
+            args.to_vec(),
+            Arc::default(),
+            berm::chain::next(),
+            berm::tape::Taping::Record(recorder.clone()),
+        )
+        .await?;
+    let tape = recorder.tape();
+    assert!(tape.complete);
+    assert_eq!(
+        tape.entries
+            .iter()
+            .map(|entry| entry.syscall.as_str())
+            .collect::<Vec<_>>(),
+        [
+            berm::abi::SERVICE,
+            berm::abi::WORKFLOW_RUN,
+            berm::abi::DEADLINE,
+            berm::abi::CALL_ID
+        ]
+    );
+    let replay = service
+        .call_as(
+            None,
+            None,
+            None,
+            berm::Client::default(),
+            "call_context",
+            args.to_vec(),
+            Arc::default(),
+            berm::chain::next(),
+            berm::tape::Taping::Replay {
+                tape,
+                through: vec![],
+            },
+        )
+        .await?;
+    assert!(matches!(original.result, Output::Failed(_)));
+    assert_eq!(replay.result, original.result);
     Ok(())
 }

@@ -13,16 +13,11 @@ crabkit = { git = "https://github.com/crabtalk/crab", tag = "v0.1.4", features =
 
 The library is also the crate `crabkit-neon` on its own.
 
-The library's `crab.toml` declares the secret `NEON_PASSWORD`, which reaches the service's manifest when the service links the library. The library declares no host; the service declares its project's endpoint under `[http] fetch` in its own `crab.toml`: `api.` followed by the connection string's host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
+The library declares the Neon credential, its setup guide and `NEON_PASSWORD`. Your service supplies only its SQL-over-HTTP endpoint in `crab.toml`: `api.` followed by the connection string’s host without its first label. For `ep-cool-river-123456.us-east-2.aws.neon.tech`, or its `-pooler` host, that is `api.us-east-2.aws.neon.tech`.
 
 ```toml
-[http]
-fetch = ["api.us-east-2.aws.neon.tech"]
-
 [credentials.neon]
-title = "Neon credentials"
 hosts = ["api.us-east-2.aws.neon.tech"]
-secrets = [{ name = "NEON_PASSWORD" }]
 ```
 
 Provision `NEON_PASSWORD` after deploying this manifest; its destinations come from the credential declaration. The connection string carries it as `{secret:NEON_PASSWORD}`, substituted unencoded, so the password must be valid in a URL as is.

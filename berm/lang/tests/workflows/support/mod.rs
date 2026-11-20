@@ -17,7 +17,7 @@ pub enum Route {
     Yes(Yes),
     No(No),
 }
-/// Echo a value.
+/// Echo a value
 #[tool]
 pub fn echo(value: u64) -> Result<u64> {
     Ok(value)

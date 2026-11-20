@@ -1,20 +1,8 @@
-image = "fixtures/feed"
-deploy = false
-
 [http]
 fetch = ["127.0.0.1"]
 
-[tools.posts]
-access = "public"
-
-[tools.list]
-access = "public"
-
-[tools.record]
-access = "public"
-
-[tools.versions]
-access = "public"
-
-[crons]
+[schedules]
 tick = "* * * * *"
+
+[image]
+name = "fixtures/feed"

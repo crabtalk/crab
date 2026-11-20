@@ -2,7 +2,8 @@
 //! [`SERVICE_SECTION`] and [`KITS_SECTION`].
 
 use crate::{
-    Access, DEFAULT_BUFFER, Http, Image, Limits, ToolSpec,
+    Access, DEFAULT_BUFFER, Http, Image, ToolSpec,
+    credential::{Credential, CredentialSecret},
     events::Source,
     host,
     logo::Logo,
@@ -26,6 +27,8 @@ pub struct Manifest {
     pub abi_version: u32,
     #[serde(default)]
     pub public: bool,
+    #[serde(default)]
+    pub deploy: bool,
     /// The package it was built from.
     #[serde(default)]
     pub name: String,
@@ -85,9 +88,12 @@ pub struct Manifest {
 /// The [`SERVICE_SECTION`] the build appends: the service's own declarations,
 /// from its package and its `crab.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceRecord {
     #[serde(default)]
     pub public: bool,
+    #[serde(default)]
+    pub deploy: bool,
     /// The package it was built from. Each tool record names it.
     pub name: String,
     #[serde(default)]
@@ -108,35 +114,46 @@ pub struct ServiceRecord {
     pub buffer: usize,
     #[serde(default, deserialize_with = "Deps::deserialize")]
     pub deps: Deps,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub credential_hosts: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
     /// Default reservation for a new deployment, in bytes.
     #[serde(default = "host::database_size")]
     pub database_size: u64,
-    /// What `[tools]` in its `crab.toml` says of each tool, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tools: BTreeMap<String, ToolRecord>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub workflows: BTreeMap<String, Config>,
+    pub workflows: BTreeMap<String, crate::project::Workflow>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub crons: BTreeMap<String, String>,
 }
 
-/// What `[tools]` in a service's `crab.toml` says of one tool, applied onto
-/// its [`ToolSpec`].
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// A tool's compiled declaration in the ABI section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolRecord {
-    /// `None` is internal.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub access: Option<Access>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub catalog: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub budget: Option<Limits>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub idempotency_ms: Option<u64>,
+    #[serde(flatten)]
+    pub spec: ToolSpec,
+    #[serde(default = "public_access")]
+    pub access: Access,
+}
+fn public_access() -> Access {
+    Access::Public
+}
+
+impl TryFrom<ToolRecord> for ToolSpec {
+    type Error = anyhow::Error;
+    fn try_from(record: ToolRecord) -> Result<Self> {
+        let mut tool = record.spec;
+        if tool.cron || tool.webhook.is_some() {
+            anyhow::ensure!(
+                record.access == Access::Internal,
+                "host-triggered tool {} must be internal",
+                tool.name
+            );
+        }
+        tool.set_access(Some(record.access));
+        tool.check_declaration()?;
+        Ok(tool)
+    }
 }
 
 /// A library crate a service links that has a `crab.toml` of its own: its
@@ -149,9 +166,6 @@ pub struct Kit {
     /// under. Present on a kit with a `database`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// What its applied migrations were kept under before `id`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub formerly: Vec<String>,
     /// The package's version when the service was built.
     #[serde(default)]
     pub version: String,
@@ -174,8 +188,6 @@ pub struct Sequence {
     /// What its applied migrations are kept under: a kit's id, or `""` for
     /// the service's own.
     pub kit: String,
-    /// What its applied migrations were kept under before `kit`.
-    pub formerly: Vec<String>,
     pub migrations: Vec<Migration>,
 }
 
@@ -247,92 +259,6 @@ impl Var {
     }
 }
 
-/// Secrets a person gets together from one provider, such as a GitHub OAuth
-/// app's client ID and secret.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Credential {
-    /// What the person sets up, as `GitHub OAuth app`.
-    pub title: String,
-    /// How to get its secrets, in Markdown.
-    #[serde(default)]
-    pub guide: String,
-    /// Values the person enters at the provider, each label by key. A secret
-    /// request gives each value, since they differ per product.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub copy: BTreeMap<String, String>,
-    /// The hosts its secrets may be sent to, each named in full.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub hosts: Vec<String>,
-    /// Whether the service is called with its secrets unset. A header naming
-    /// an unset one is left off the request; a body naming one is refused.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub optional: bool,
-    /// In the order the person sets them.
-    pub secrets: Vec<CredentialSecret>,
-}
-
-impl Credential {
-    pub const HOSTS_MAX: usize = 16;
-
-    pub fn check_hosts(hosts: &[String]) -> Result<(), String> {
-        if hosts.len() > Self::HOSTS_MAX {
-            return Err(format!(
-                "a secret is sent to at most {} hosts",
-                Self::HOSTS_MAX
-            ));
-        }
-        if let Some(host) = hosts.iter().find(|host| !Self::host(host)) {
-            return Err(format!(
-                "{host:?} is not a host named in full, as `api.example.com`: no scheme, port, path or `*`"
-            ));
-        }
-        if let Some((_, host)) = hosts
-            .iter()
-            .enumerate()
-            .find(|(at, host)| hosts[..*at].contains(host))
-        {
-            return Err(format!("{host} is given twice"));
-        }
-        Ok(())
-    }
-
-    /// Whether `host` names one host in full: lowercase ASCII letters, digits,
-    /// `-` and `.`, with no pattern, port or scheme.
-    pub fn host(host: &str) -> bool {
-        !host.is_empty()
-            && host.len() <= 253
-            && !host.starts_with(['.', '-'])
-            && !host.ends_with(['.', '-'])
-            && !host.contains("..")
-            && host
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
-    }
-}
-
-/// One secret of a [`Credential`].
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CredentialSecret {
-    pub name: String,
-    /// What the provider calls it, as `Client ID`; the name when empty.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub label: String,
-    /// Whether the entry field hides the value while it is typed.
-    #[serde(default = "masked")]
-    pub masked: bool,
-    /// A regular expression a value must match; one that does not is refused.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pattern: Option<String>,
-}
-
-fn masked() -> bool {
-    true
-}
-
 impl Deps {
     pub fn check_secret_declarations(&self) -> Result<()> {
         if self
@@ -367,7 +293,8 @@ impl Deps {
             },
             ..Deps::default()
         };
-        deps.merge(&legacy).map_err(Error::custom)?;
+        deps.merge(&legacy, &BTreeMap::new())
+            .map_err(Error::custom)?;
         Ok(deps)
     }
 
@@ -407,7 +334,7 @@ impl Deps {
 
     /// Add what `other` reaches that this does not. Refused when both declare
     /// a credential of one id, or one secret in two credentials.
-    pub fn merge(&mut self, other: &Deps) -> Result<()> {
+    pub fn merge(&mut self, other: &Deps, hosts: &BTreeMap<String, Vec<String>>) -> Result<()> {
         let missing = |into: &mut Vec<String>, from: &[String]| {
             for item in from {
                 if !into.contains(item) {
@@ -430,7 +357,15 @@ impl Deps {
             {
                 bail!("secret {} is in two credentials", secret.name);
             }
-            self.credentials.insert(id.clone(), credential.clone());
+            let mut credential = credential.clone();
+            if let Some(hosts) = hosts.get(id) {
+                if !credential.hosts.is_empty() {
+                    bail!("credential {id} is declared twice");
+                }
+                credential.hosts.clone_from(hosts);
+                missing(&mut self.http.fetch, hosts);
+            }
+            self.credentials.insert(id.clone(), credential);
         }
         Ok(())
     }
@@ -546,21 +481,19 @@ impl Manifest {
             let database = kit.database.as_ref()?;
             Some(Sequence {
                 kit: kit.id.clone()?,
-                formerly: kit.formerly.clone(),
                 migrations: database.migrations.clone(),
             })
         });
         let own = self.database.iter().map(|database| Sequence {
             kit: String::new(),
-            formerly: Vec::new(),
             migrations: database.migrations.clone(),
         });
         kits.chain(own).collect()
     }
 
     /// Refuse a manifest of another ABI, with neither tools nor workflows, naming a kit twice,
-    /// with a kit keeping tables or naming former keys and declaring no id, or
-    /// with an id or former key empty or named twice.
+    /// with a kit keeping tables and declaring no id, or
+    /// with an id empty or named twice.
     fn checked(self) -> Result<Self> {
         versioned(self.abi_version)?;
         if self.tools.is_empty() && self.workflows.is_empty() {
@@ -568,6 +501,9 @@ impl Manifest {
         }
         if !(host::MIN_DATABASE_SIZE..=host::MAX_DATABASE_SIZE).contains(&self.database_size) {
             bail!("default database size is outside the host limits");
+        }
+        for tool in &self.tools {
+            tool.check_declaration()?;
         }
         let mut names = BTreeSet::new();
         for spec in &self.workflows {
@@ -602,7 +538,16 @@ impl Manifest {
             }
         }
         self.deps.check_secret_declarations()?;
-        for credential in self.deps.credentials.values() {
+        for (id, credential) in &self.deps.credentials {
+            if credential.hosts.is_empty()
+                && !self.tools.iter().any(|tool| {
+                    tool.webhook.is_some()
+                        && ToolSpec::signing_credential(&tool.name) == *id
+                        && self.deps.credentials[id] == tool.webhook.unwrap().credential(&tool.name)
+                })
+            {
+                bail!("credential `{id}` needs `hosts`: the hosts its secrets are sent to.");
+            }
             Credential::check_hosts(&credential.hosts).map_err(anyhow::Error::msg)?;
         }
         let mut event_names = BTreeSet::new();
@@ -629,28 +574,16 @@ impl Manifest {
             if kit.database.is_some() && kit.id.is_none() {
                 bail!("kit {} keeps tables and declares no id", kit.name);
             }
-            if kit.formerly.iter().any(|key| key.is_empty()) {
-                bail!("kit {} names an empty former key", kit.name);
-            }
-            if !kit.formerly.is_empty() && kit.id.is_none() {
-                bail!("kit {} names former keys and declares no id", kit.name);
-            }
-            let keys = |kit: &Kit| -> Vec<String> {
-                kit.id.iter().chain(&kit.formerly).cloned().collect()
-            };
-            let mine = keys(kit);
-            if let Some(key) = mine
-                .iter()
-                .enumerate()
-                .find_map(|(at, key)| mine[..at].contains(key).then_some(key))
-            {
-                bail!("kit {} names the key {key} twice", kit.name);
-            }
-            if let Some(key) = mine
-                .iter()
-                .find(|key| self.kits[..at].iter().any(|seen| keys(seen).contains(key)))
-            {
-                bail!("kits {} and another keep migrations under {key}", kit.name);
+            if let Some(id) = &kit.id {
+                if id.is_empty() {
+                    bail!("kit {} has an empty migration id", kit.name);
+                }
+                if self.kits[..at]
+                    .iter()
+                    .any(|seen| seen.id.as_ref() == Some(id))
+                {
+                    bail!("kits {} and another keep migrations under {id}", kit.name);
+                }
             }
         }
         Ok(self)
@@ -659,11 +592,11 @@ impl Manifest {
 
 /// What an image claims to be, read without compiling or running it.
 ///
-/// Each tool takes its access, title and catalog from the service record.
+/// Tools and workflow declarations come from the ABI records.
 /// Refused when the image has no [`SERVICE_SECTION`], which a bare
 /// `cargo build` leaves out; when it declares neither tools nor workflows; when a tool record was
 /// compiled in a crate other than the service's; when the service record
-/// names a tool the image lacks, or gives a cron, stripe or webhook tool
+/// names a tool the image lacks, or gives a cron or webhook tool
 /// access; and
 /// when it names a kit twice.
 impl TryFrom<&[u8]> for Manifest {
@@ -685,7 +618,7 @@ impl TryFrom<&[u8]> for Manifest {
                     Invalid(anyhow::anyhow!("invalid workflow record: {error}"))
                 })?;
                 versioned(record.abi_version).map_err(Invalid::from)?;
-                workflows.push((record.workflow, record.krate));
+                workflows.push((record.workflow, record.config, record.krate));
                 continue;
             }
             match serde_json::from_value::<AbiRecord>(record)
@@ -698,7 +631,7 @@ impl TryFrom<&[u8]> for Manifest {
                     krate,
                 } => {
                     versioned(abi_version)?;
-                    tools.push((*tool, krate));
+                    tools.push((ToolSpec::try_from(*tool)?, krate));
                 }
                 AbiRecord::Service { abi_version } => {
                     versioned(abi_version)?;
@@ -732,41 +665,15 @@ impl TryFrom<&[u8]> for Manifest {
             None => Vec::new(),
         };
 
-        let mut records = std::mem::take(&mut service.tools);
-        let tools = tools
-            .into_iter()
-            .map(|(mut tool, krate)| {
-                if krate != service.name {
-                    bail!(
-                        "tool {:?} was compiled in {krate}, not in the service {}; a kit carries no tools",
-                        tool.name,
-                        service.name
-                    );
-                }
-                let record = records.remove(&tool.name).unwrap_or_default();
-                if record.access.is_some() && (tool.cron || tool.stripe || tool.webhook) {
-                    bail!(
-                        "tool {:?} is called by its host, and takes no access",
-                        tool.name
-                    );
-                }
-                tool.set_access(record.access);
-                tool.title = record.title;
-                tool.catalog = record.catalog;
-                tool.budget = record.budget;
-                if record.idempotency_ms == Some(0) {bail!("tool {} has a zero idempotency window",tool.name);}
-                tool.idempotency_ms = record.idempotency_ms;
-                Ok(tool)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        if let Some(name) = records.keys().next() {
-            bail!("[tools] names {name:?}, which the service has no tool of");
-        }
+        let tools = tools.into_iter().map(|(tool, krate)| {
+            if krate != service.name { bail!("tool {:?} was compiled in {krate}, not in the service {}; a kit carries no tools", tool.name, service.name); }
+            Ok(tool)
+        }).collect::<Result<Vec<_>>>()?;
 
         let mut configured = std::mem::take(&mut service.workflows);
         let workflows = workflows
             .into_iter()
-            .map(|(entry, krate)| {
+            .map(|(entry, mut config, krate)| {
                 if krate != service.name {
                     return Err(Invalid(anyhow::anyhow!(
                         "workflow {} was compiled in {krate}, not {}",
@@ -775,19 +682,15 @@ impl TryFrom<&[u8]> for Manifest {
                     ))
                     .into());
                 }
-                let config = configured.remove(&entry.name).ok_or_else(|| {
-                    Invalid(anyhow::anyhow!(
-                        "workflow {} needs a [workflows.{}] table",
-                        entry.name,
-                        entry.name
-                    ))
-                })?;
+                config.schedule = configured
+                    .remove(&entry.name)
+                    .and_then(|config| config.schedule);
                 Ok(Spec { entry, config })
             })
             .collect::<Result<Vec<_>>>()?;
         if let Some(name) = configured.keys().next() {
             return Err(
-                Invalid(anyhow::anyhow!("[workflows] names missing workflow {name}")).into(),
+                Invalid(anyhow::anyhow!("[schedules] names missing workflow {name}")).into(),
             );
         }
         image
@@ -796,6 +699,7 @@ impl TryFrom<&[u8]> for Manifest {
 
         let ServiceRecord {
             public,
+            deploy,
             name,
             version,
             lang,
@@ -806,19 +710,56 @@ impl TryFrom<&[u8]> for Manifest {
             logo,
             buffer,
             mut deps,
+            credential_hosts,
             database,
             database_size,
-            tools: _,
             workflows: _,
             crons,
         } = service;
+        for tool in tools.iter().filter(|tool| tool.webhook.is_some()) {
+            for name in deps
+                .credentials
+                .keys()
+                .chain(deps.secrets.iter())
+                .chain(credential_hosts.keys())
+                .chain(
+                    kits.iter()
+                        .flat_map(|kit| kit.deps.credentials.keys().chain(kit.deps.secrets.iter())),
+                )
+            {
+                tool.check_signing_name(name)?;
+            }
+        }
+        let own_credentials = deps.credentials.keys().cloned().collect::<Vec<_>>();
         for kit in &kits {
-            deps.merge(&kit.deps)
+            for (id, credential) in &kit.deps.credentials {
+                if own_credentials.contains(id) {
+                    bail!(
+                        "credential `{id}` is declared by kit `{}`; set only `hosts`.",
+                        kit.name
+                    );
+                }
+                if credential.hosts.is_empty() && credential_hosts.get(id).is_none_or(Vec::is_empty)
+                {
+                    bail!(
+                        "credential `{id}` from kit `{}` needs `hosts`; add `[credentials.{id}] hosts = [...]` to your crab.toml.",
+                        kit.name
+                    );
+                }
+            }
+            deps.merge(&kit.deps, &credential_hosts)
                 .with_context(|| format!("linking kit {}", kit.name))?;
         }
+        for id in credential_hosts.keys() {
+            if !kits.iter().any(|kit| kit.deps.credentials.contains_key(id)) {
+                bail!("credential `{id}` has no title or secrets, and no linked kit declares it.");
+            }
+        }
+        deps.add_signing(&tools)?;
         let mut manifest = Manifest {
             abi_version: ABI_VERSION,
             public,
+            deploy,
             name,
             version,
             lang,
@@ -882,7 +823,7 @@ enum AbiRecord {
     },
     /// One per `#[tool]`, naming the package it was compiled in.
     Tool {
-        tool: Box<ToolSpec>,
+        tool: Box<ToolRecord>,
         abi_version: u32,
         #[serde(rename = "crate")]
         krate: String,
@@ -897,6 +838,8 @@ enum AbiRecord {
 #[derive(Deserialize)]
 struct WorkflowRecord {
     workflow: Entry,
+    #[serde(default)]
+    config: Config,
     abi_version: u32,
     #[serde(rename = "crate")]
     krate: String,

@@ -2,7 +2,8 @@ use alloc::{string::String, vec::Vec};
 use berm_lang::{Branch, Result, Schema, tool, workflow};
 
 struct WorkflowExample;
-#[workflow]
+/// Count work
+#[workflow(price = 1000, max_cost = 10000, checkpoint_bytes = 1048576)]
 impl WorkflowExample {
     #[step]
     fn spin(input: &u64) -> crate::SpinCall {
@@ -41,8 +42,10 @@ struct FlowOutput {
     identity: String,
 }
 
+/// Append an item; fail_at requests a transactional failure
+///
 /// Append an item; fail_at requests a transactional failure.
-#[tool]
+#[tool(access = "internal")]
 fn workflow_item(index: u32, fail_at: Option<u32>) -> Result<u32> {
     let mut items: Vec<u32> = berm_lang::get("workflow_items")?
         .map(|bytes| berm_lang::serde_json::from_slice(&bytes))
@@ -57,7 +60,8 @@ fn workflow_item(index: u32, fail_at: Option<u32>) -> Result<u32> {
 }
 
 struct WorkflowFlow;
-#[workflow]
+/// Workflow Flow
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
 impl WorkflowFlow {
     #[step]
     fn left(input: &FlowInput) -> crate::SpinCall {
@@ -127,8 +131,59 @@ impl WorkflowFlow {
     }
 }
 
+struct WorkflowPriced;
+/// Workflow Priced
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
+impl WorkflowPriced {
+    #[branch]
+    fn choose(input: &FlowInput) -> Route {
+        if input.take {
+            Route::Yes(Proceed {
+                fail_at: input.fail_at,
+            })
+        } else {
+            Route::No(Stop {})
+        }
+    }
+    #[step(price = 500)]
+    fn optional(choose: &Proceed) -> WorkflowItemCall {
+        WorkflowItemCall {
+            index: 99,
+            fail_at: choose.fail_at,
+        }
+    }
+    #[step(each, max = 3, price = 200)]
+    fn items(input: &FlowInput) -> Vec<WorkflowItemCall> {
+        (0..input.count)
+            .map(|index| WorkflowItemCall {
+                index,
+                fail_at: input.fail_at,
+            })
+            .collect()
+    }
+    #[step]
+    fn left(input: &FlowInput) -> crate::SpinCall {
+        let _ = input;
+        crate::SpinCall { rounds: 3 }
+    }
+    #[step(each, max = 3, price = 100)]
+    fn later(left: &u64) -> Vec<WorkflowItemCall> {
+        (0..*left as u32)
+            .map(|index| WorkflowItemCall {
+                index,
+                fail_at: None,
+            })
+            .collect()
+    }
+    #[output]
+    fn done(optional: Option<&u32>, items: &[u32], later: &[u32]) -> u32 {
+        optional.copied().unwrap_or(0) + items.iter().sum::<u32>() + later.iter().sum::<u32>()
+    }
+}
+
 struct WorkflowExternal;
-#[workflow]
+/// Workflow External
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
 impl WorkflowExternal {
     #[step]
     fn ask(input: &u64) -> crate::fixture::WhoamiCall {
@@ -142,7 +197,8 @@ impl WorkflowExternal {
 }
 
 struct WorkflowFlaky;
-#[workflow]
+/// Workflow Flaky
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
 impl WorkflowFlaky {
     #[step]
     fn call(input: &str) -> crate::FlakyCall {
@@ -161,7 +217,8 @@ struct NestedInput {
     args: String,
 }
 struct WorkflowNested;
-#[workflow]
+/// Workflow Nested
+#[workflow(max_cost = 2000, checkpoint_bytes = 1048576)]
 impl WorkflowNested {
     #[step(each, max = 2)]
     fn calls(input: &NestedInput) -> Vec<crate::InvokeCall> {
@@ -180,8 +237,10 @@ impl WorkflowNested {
     }
 }
 
+/// Workflow mail
+///
 /// The endpoint must retain idempotency keys for at least ten seconds.
-#[tool]
+#[tool(idempotency = "10s")]
 fn workflow_mail(url: String, idempotency_key: String) -> Result<String> {
     let response = berm_lang::http::fetch(
         "POST",
@@ -202,7 +261,8 @@ struct MailInput {
 }
 
 struct WorkflowMail;
-#[workflow]
+/// Workflow Mail
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
 impl WorkflowMail {
     #[step(each, max = 3)]
     fn messages(input: &MailInput) -> Vec<WorkflowMailCall> {
@@ -218,5 +278,41 @@ impl WorkflowMail {
     #[output]
     fn done(messages: &[String]) -> Vec<String> {
         messages.to_vec()
+    }
+}
+
+/// Read call context
+///
+/// Can fail with the same context so the host keeps a replay tape.
+#[tool]
+fn call_context(fail: Option<bool>) -> Result<berm_lang::serde_json::Value> {
+    let service = berm_lang::service()?;
+    let context = berm_lang::serde_json::json!({
+        "run": berm_lang::workflow::run()?,
+        "address": service.address,
+        "digest": service.digest,
+        "deadline": berm_lang::deadline(),
+        "id": berm_lang::call_id()?,
+    });
+    if fail == Some(true) {
+        return Err(berm_lang::json::to(&context)?.into());
+    }
+    Ok(context)
+}
+
+struct WorkflowContext;
+/// Read the run context from a step
+#[workflow(max_cost = 10000, checkpoint_bytes = 1048576)]
+impl WorkflowContext {
+    #[step(each, max = 2)]
+    fn read(input: &u32) -> Vec<CallContextCall> {
+        (0..*input)
+            .map(|_| CallContextCall { fail: None })
+            .collect()
+    }
+
+    #[output]
+    fn done(read: &[berm_lang::serde_json::Value]) -> Vec<berm_lang::serde_json::Value> {
+        read.to_vec()
     }
 }
