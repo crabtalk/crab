@@ -3,7 +3,7 @@ use berm_build::source;
 use std::{env, fs, path::PathBuf};
 
 const SPEC_URL: &str = "https://litescrape.com/api/openapi.json";
-const SPEC_SHA256: &str = "161e1eeffffd29259cc369de91bd236aed00ce6f08e8c89d2972e6002c221192";
+const SPEC_SHA256: &str = "8e684b10918d2d7e43f6c3eeec47e14f11396c7855f1c9ba07a415803f0fd791";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo::rerun-if-changed=build.rs");
