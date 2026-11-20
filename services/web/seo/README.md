@@ -36,16 +36,18 @@ Informational findings identify things to review; an absent canonical or multipl
 ## Site audit
 
 ```sh
-crab workflow run crabtalk/seo.audit '{"site":"https://example.com/docs/"}' --yes
+crab workflow run crabtalk/seo.audit '{"site":"https://example.com/docs/","pages":["https://example.com/docs/install"],"max":25}' --yes
 ```
 
-`audit` reads `robots.txt` and the same-origin sitemap or sitemap index. Pass the site's root URL for the whole site or a path to narrow it. The workflow samples up to 100 listed URLs and reports sitemap entries blocked by robots rules before fetching them.
+Pass the site's root for the whole site or a path for one section. The audit reads robots.txt and same-origin sitemaps, then checks up to 1,000 listed URLs, least recently checked first. It reuses ETag and Last-Modified validators and compares the SEO fields in HTML responses. It reports redirects, failed responses and sitemap entries blocked by robots rules. Discovery reads up to eight sitemap files of 4 MiB each. When discovery is incomplete, the report indicates it and preserves previously known sitemap rows.
 
-The report includes page metadata findings, duplicate titles and descriptions, same-origin canonicals returning a redirect or error, broken internal links, and reachable HTML pages missing from a complete sitemap. It checks up to eight distinct internal links per page and probes up to 100 additional targets across the audit. Discovery reads up to eight sitemap files of 256 KiB each and up to 1,000 distinct URLs. The report marks incomplete discovery, sampling and truncation.
+Use the optional `pages` array to prioritize sitemap URLs you know changed. The audit fills the remaining slots with never-scanned pages, then changed pages with the most incoming internal links, then the oldest remaining scans. The optional `max` defaults to 100 and is capped at 100. A page beyond the limit stays pending for a later run.
 
-A manual run compares findings with the previous audit for the starting account and site. Verified app-user histories are scoped to the user. It reports new findings first and reports fixed findings when the sample can be compared. Audits with incomplete evidence preserve the previous baseline.
+The report opens with new and fixed findings. It also shows the full findings within the report limit and the counts of listed, checked, audited and pending pages. Cross-page checks cover duplicate titles and descriptions, canonical targets, broken internal links and reachable HTML pages missing from a complete sitemap. A cross-page fix requires current checks of the pages involved. Findings that rely on earlier scans are marked stale. The first completed audit establishes the baseline.
 
-The workflow charges 100 USD micros ($0.0001) per page step that reports an audit result, on a successful run. The quote is bounded by 100 pages. A sitemap entry skipped by robots rules runs no page step.
+The audit keeps scans and the latest report for each site or section in your caller storage. Download or delete the data under Storage in your CrabTalk settings. Each caller can run one audit for a given site at a time.
+
+A successful run charges $0.0001 per pending HTML page that reaches the audit step. Conditional checks and unchanged pages are free of task charges. The workflow quotes up to $0.01 and actual charges respect your `max`.
 
 ## Limits
 

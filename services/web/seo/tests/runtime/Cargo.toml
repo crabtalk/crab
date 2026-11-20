@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+
+[workspace.dependencies]
+anyhow = "1"
+berm = { path = "../../../../../berm/berm" }
+berm-api = { path = "../../../../../berm/api" }
+berm-build = { path = "../../../../../berm/build" }
+berm-host = { path = "../../../../../berm/host", features = ["test"] }
+rusqlite = { package = "berm-rusqlite", version = "0.39", features = ["bundled"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[package]
+name = "crab-seo-runtime-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[test]]
+name = "audit"
+path = "audit.rs"
+
+[dev-dependencies]
+anyhow.workspace = true
+berm.workspace = true
+berm-api.workspace = true
+berm-build.workspace = true
+berm-host.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

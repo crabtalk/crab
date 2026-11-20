@@ -1,6 +1,5 @@
-[database]
-migrations = "migrations"
-size = "64MiB"
+[storage.caller]
+migrations = "caller"
 
 [image]
 name = "crabtalk/seo"
