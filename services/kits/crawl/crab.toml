@@ -3,5 +3,5 @@ id = "ff083de5ca8e6a544c7393002e0447d7"
 [http]
 fetch = ["*"]
 
-[database]
+[storage]
 migrations = "migrations"

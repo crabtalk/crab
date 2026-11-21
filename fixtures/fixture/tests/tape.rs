@@ -15,6 +15,7 @@ const URL: &str = "http://127.0.0.1/status";
 
 fn caller() -> Caller {
     Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: None,

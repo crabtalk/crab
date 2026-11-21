@@ -26,6 +26,33 @@ where
     W: Fn(Callsite, String, Vec<u8>) -> Taken + Send + Sync + 'static,
     Taken: Future<Output = Result<bool>> + Send + 'static,
 {
+    values(abi::GET, abi::SET, true, read, write)
+}
+
+/// Serve a keyspace whose writes are handled by the supplied store.
+pub fn caller<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
+where
+    R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
+    W: Fn(Callsite, String, Vec<u8>) -> Taken + Send + Sync + 'static,
+    Taken: Future<Output = Result<bool>> + Send + 'static,
+{
+    values(abi::CALLER_GET, abi::CALLER_SET, false, read, write)
+}
+
+fn values<R, Found, W, Taken>(
+    get_name: &'static str,
+    set_name: &'static str,
+    journal: bool,
+    read: R,
+    write: W,
+) -> Vec<Syscall>
+where
+    R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
+    W: Fn(Callsite, String, Vec<u8>) -> Taken + Send + Sync + 'static,
+    Taken: Future<Output = Result<bool>> + Send + 'static,
+{
     let (read, write) = (Arc::new(read), Arc::new(write));
     let get = move |at: Callsite, request: Vec<u8>| {
         let read = read.clone();
@@ -33,7 +60,8 @@ where
             let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
             at.rows_left()?;
-            let value = match at.journal.read(&at.service, key) {
+            let held = journal.then(|| at.journal.read(&at.service, key)).flatten();
+            let value = match held {
                 Some(held) => Some(held),
                 None => read(at.clone(), key.to_owned()).await?,
             };
@@ -62,7 +90,7 @@ where
                 return Err(Refused(format!("a query cannot write; {key:?} was not set")).into());
             }
             at.rows_left()?;
-            if !write(at.clone(), key.to_owned(), value.to_vec()).await? {
+            if !write(at.clone(), key.to_owned(), value.to_vec()).await? && journal {
                 at.journal.write(&at.service, key, value)?;
             }
             at.meter(Meter {
@@ -74,11 +102,11 @@ where
     };
     vec![
         Syscall {
-            name: abi::GET.to_owned(),
+            name: get_name.to_owned(),
             call: Arc::new(move |at: Callsite, request: Vec<u8>| Box::pin(get(at, request))),
         },
         Syscall {
-            name: abi::SET.to_owned(),
+            name: set_name.to_owned(),
             call: Arc::new(move |at: Callsite, request: Vec<u8>| Box::pin(set(at, request))),
         },
     ]

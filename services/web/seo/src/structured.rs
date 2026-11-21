@@ -4,7 +4,7 @@ use berm_lang::{
     serde_json::{self, Value},
 };
 use scraper::Selector;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::LazyLock};
 use webpage::page::Page;
 
 const JSON_LD: &str = "application/ld+json";
@@ -17,24 +17,26 @@ pub struct Block {
 }
 
 impl Block {
+    pub(crate) fn sources(page: &Page) -> impl Iterator<Item = String> {
+        static SELECTOR: LazyLock<Selector> =
+            LazyLock::new(|| Selector::parse("script[type]").expect("static selector"));
+        page.document
+            .select(&SELECTOR)
+            .filter(|element| {
+                element
+                    .value()
+                    .attr("type")
+                    .is_some_and(|kind| kind.trim().eq_ignore_ascii_case(JSON_LD))
+            })
+            .map(|element| element.text().collect())
+    }
+
     pub(crate) fn inspect(page: &Page, findings: &mut Vec<Finding>) -> Vec<Self> {
         let mut blocks = Vec::new();
-        for element in page
-            .document
-            .select(&Selector::parse("script[type]").expect("static selector"))
-        {
-            if !element
-                .value()
-                .attr("type")
-                .unwrap_or_default()
-                .trim()
-                .eq_ignore_ascii_case(JSON_LD)
-            {
-                continue;
-            }
+        for source in Self::sources(page) {
             let mut types = BTreeSet::new();
             let mut error = None;
-            match serde_json::from_str::<Value>(&element.text().collect::<String>()) {
+            match serde_json::from_str::<Value>(&source) {
                 Err(cause) => error = Some(cause.to_string()),
                 Ok(value) => {
                     if !value.is_object()

@@ -15,6 +15,7 @@ async fn a_failed_call_keeps_its_input_and_a_done_one_none() -> Result<()> {
     let image = fixture::image("berm-fixture")?;
     host.deploy("acct/fixture", &image).await?;
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: Some(User {

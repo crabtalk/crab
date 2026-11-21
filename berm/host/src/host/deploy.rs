@@ -59,6 +59,7 @@ impl<E: Env> Host<E> {
         seed: Option<&Path>,
     ) -> Result<Installed, Denied> {
         let Deploy {
+            storage_id,
             reference,
             digest,
             force,
@@ -179,6 +180,14 @@ impl<E: Env> Host<E> {
                     denied
                 }
             })?;
+            let storage_id = storage_id
+                .or_else(|| {
+                    current
+                        .as_ref()
+                        .and_then(|service| service.storage_id.get())
+                        .cloned()
+                })
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
             service::install(
                 &self.store,
                 scope,
@@ -188,6 +197,7 @@ impl<E: Env> Host<E> {
                 &manifest.version,
                 size,
                 deployed.bytes,
+                &storage_id,
                 deprecated,
                 cron_tools,
                 manifest.crons.clone(),
@@ -200,6 +210,7 @@ impl<E: Env> Host<E> {
                 state_seed,
             )
             .await?;
+            let _ = deployed.storage_id.set(storage_id);
             self.stops.mark(&key, stopped);
             Ok(Installed {
                 service: deployed,
@@ -315,20 +326,20 @@ impl<E: Env> Host<E> {
         digest: &str,
         size: u64,
     ) -> Result<(Vec<u8>, Manifest), Denied> {
-        if !(MIN_DATABASE_SIZE..=MAX_DATABASE_SIZE).contains(&size) {
-            return Err(deny(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!(
-                    "a database holds from {MIN_DATABASE_SIZE} to {MAX_DATABASE_SIZE} bytes, not {size}"
-                ),
-            ));
-        }
         let image = self
             .images
             .pull(reference, digest)
             .await
             .map_err(|e| deny(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
         let manifest = Manifest::try_from(image.as_slice()).map_err(Denied::manifest)?;
+        if !manifest.accepts_database_size(size) {
+            return Err(deny(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "shared storage takes a size from {MIN_DATABASE_SIZE} to {MAX_DATABASE_SIZE} bytes; got {size}"
+                ),
+            ));
+        }
         self.served(&manifest)?;
         Ok((image, manifest))
     }

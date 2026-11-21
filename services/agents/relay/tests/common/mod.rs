@@ -45,6 +45,7 @@ impl Relay {
         input: Value,
     ) -> Result<Value> {
         let caller = Caller {
+            account: None,
             id: owner.into(),
             app: None,
             user: None,

@@ -5,7 +5,11 @@
 
 use crate::{
     host,
-    state::{service, store::Store},
+    state::{
+        caller::{self, Storage, call::Session},
+        service,
+        store::Store,
+    },
 };
 use anyhow::Result;
 use berm::{
@@ -19,11 +23,16 @@ use std::{collections::BTreeMap, sync::Arc};
 pub(crate) struct Commits {
     pub(crate) store: Store,
     databases: Arc<Databases>,
+    storage: Arc<Storage>,
 }
 
 impl Commits {
-    pub(crate) fn new(store: Store, databases: Arc<Databases>) -> Self {
-        Self { store, databases }
+    pub(crate) fn new(store: Store, databases: Arc<Databases>, storage: Arc<Storage>) -> Self {
+        Self {
+            store,
+            databases,
+            storage,
+        }
     }
 
     /// Commit `changes`' writes in one transaction, counting a commit of
@@ -63,13 +72,34 @@ pub(crate) fn enter(commits: Commits, additional: Option<Enter>) -> Enter {
         let (commits, entering) = (commits.clone(), commits.databases.enter(service, at));
         let admitted = additional.as_ref().map(|enter| enter(service, at));
         let first = at.depth == 1;
+        let migrations = service
+            .manifest
+            .caller_storage
+            .as_ref()
+            .filter(|_| !caller::scheduled(at))
+            .cloned();
+        let id = service.storage_id.get().cloned();
+        let at = at.clone();
         Box::pin(async move {
             let mut admitted = match admitted {
                 Some(admitted) => Some(admitted.await?),
                 None => None,
             };
-            let held = match entering.await {
-                Ok(held) => held,
+            let entered = async {
+                let caller = match migrations {
+                    Some(migrations) => Some(
+                        commits
+                            .storage
+                            .enter(&at, id.as_deref(), migrations)
+                            .await?,
+                    ),
+                    None => None,
+                };
+                Ok::<_, anyhow::Error>((entering.await?, caller))
+            }
+            .await;
+            let (held, caller) = match entered {
+                Ok(entered) => entered,
                 Err(error) => {
                     if let Some(scope) = &mut admitted {
                         scope.complete().await?;
@@ -80,6 +110,7 @@ pub(crate) fn enter(commits: Commits, additional: Option<Enter>) -> Enter {
             Ok(Box::new(Entered {
                 commits,
                 held,
+                caller,
                 admitted,
                 first,
             }) as Box<dyn Scope>)
@@ -91,6 +122,7 @@ pub(crate) fn enter(commits: Commits, additional: Option<Enter>) -> Enter {
 pub(crate) struct Entered {
     pub(crate) commits: Commits,
     pub(crate) held: Held,
+    pub(crate) caller: Option<Session>,
     pub(crate) admitted: Option<Box<dyn Scope>>,
     /// The chain's first call, whose changes the host commits.
     pub(crate) first: bool,

@@ -59,7 +59,7 @@ impl Up {
                 eprintln!("{name}: {line}");
             }
             let reference = deployment::send(client, &name, bytes)?;
-            let seed = match &service.project.database.seed {
+            let seed = match &service.project.storage.seed {
                 Some(_) if client.owner.is_none() => {
                     bail!("{name}: a seed starts a service on Cloud")
                 }
@@ -72,7 +72,7 @@ impl Up {
                 name,
                 DeployRequest {
                     reference,
-                    size: Some(service.project.database.size()),
+                    size: Some(manifest.database_size),
                     seed,
                     force: self.force,
                     project: selection.project.clone(),

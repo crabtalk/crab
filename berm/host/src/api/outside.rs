@@ -6,6 +6,7 @@ use crate::{
     env::Env,
     host::{self, Host, Inner},
     record::{calls, usage},
+    state::caller as storage,
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use berm::{
@@ -207,6 +208,12 @@ impl<E: Env> Host<E> {
             .iter()
             .any(|spec| spec.name == tool && spec.deprecated);
         let mut headers = HeaderMap::new();
+        if deployed.manifest.caller_storage.is_some() {
+            headers.insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, no-store"),
+            );
+        }
         let (scope, name) = host::split(&service);
         if deprecated
             && let Some((since, sunset)) =
@@ -252,23 +259,30 @@ impl<E: Env> Host<E> {
             )
         };
         let (source, who) = counted(caller.as_ref());
-        let invoked = self
-            .invoke(
-                &deployed,
-                started.id,
-                caller
-                    .as_ref()
-                    .filter(|caller| !caller.anonymous())
-                    .map(|caller| caller.id.as_str()),
-                caller.as_ref().and_then(|caller| caller.key.as_deref()),
-                caller
-                    .as_ref()
-                    .and_then(|caller| caller.user.as_ref())
-                    .map(host::user),
-                client.clone(),
-                &tool,
-                args,
-                Taping::Record(recorder.clone()),
+        let account = caller
+            .as_ref()
+            .filter(|caller| !caller.anonymous())
+            .map(|caller| caller.account().to_owned());
+        let invoked = storage::ACCOUNT
+            .scope(
+                account,
+                self.invoke(
+                    &deployed,
+                    started.id,
+                    caller
+                        .as_ref()
+                        .filter(|caller| !caller.anonymous())
+                        .map(|caller| caller.id.as_str()),
+                    caller.as_ref().and_then(|caller| caller.key.as_deref()),
+                    caller
+                        .as_ref()
+                        .and_then(|caller| caller.user.as_ref())
+                        .map(host::user),
+                    client.clone(),
+                    &tool,
+                    args,
+                    Taping::Record(recorder.clone()),
+                ),
             )
             .await;
         let mut invoked = match invoked {

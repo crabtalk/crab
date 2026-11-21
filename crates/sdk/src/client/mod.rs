@@ -18,6 +18,7 @@ mod owner;
 mod request;
 mod secret;
 mod service;
+mod storage;
 mod user;
 mod workflow;
 pub use owner::{LOCAL, Owner};
@@ -166,6 +167,15 @@ impl Client {
             return Ok(body);
         }
         Err(Error::refusal(status, body))
+    }
+
+    /// Send a request and stream a successful response.
+    pub async fn stream(&self, req: RequestBuilder) -> Result<Response, Error> {
+        let response = self.send(req).await?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        Err(Error::refusal(response.status(), response.text().await?))
     }
 
     /// Send, and read the raw body a success carries.

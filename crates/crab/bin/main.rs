@@ -99,6 +99,13 @@ enum Command {
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
+    /// Show which callers have storage in a service you operate.
+    Callers { service: String },
+    /// List, download or delete your caller storage.
+    Storage {
+        #[command(subcommand)]
+        action: Option<cmd::storage::Action>,
+    },
     /// Build the service in a directory and print the path of its image.
     Build {
         #[arg(default_value = ".")]
@@ -683,6 +690,8 @@ fn run() -> Result<ExitCode> {
         Command::New { name } => cmd::new::run(name)?,
         Command::Ls => cmd::ls::run(&client()?, json)?,
         Command::Export { name, out } => cmd::export::run(&client()?, name, out.as_deref())?,
+        Command::Callers { service } => cmd::storage::callers(&client()?, service, json)?,
+        Command::Storage { action } => cmd::storage::run(&client()?, action.as_ref(), json, yes)?,
         Command::Build { dir } => cmd::build::run(dir)?,
         Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
         Command::Up(up) => up.run(&client()?, yes)?,

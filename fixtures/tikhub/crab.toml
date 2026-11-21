@@ -1,7 +1,0 @@
-[credentials.tikhub]
-title = "TikHub API key"
-hosts = ["api.tikhub.io"]
-secrets = [{ name = "TIKHUB_API_KEY", label = "API key" }]
-
-[image]
-name = "fixtures/tikhub"

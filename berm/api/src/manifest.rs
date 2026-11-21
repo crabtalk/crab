@@ -77,6 +77,8 @@ pub struct Manifest {
     /// The SQLite database it keeps, when it keeps one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_storage: Option<Database>,
     /// Default reservation for a new deployment, in bytes.
     #[serde(default = "host::database_size")]
     pub database_size: u64,
@@ -118,6 +120,8 @@ pub struct ServiceRecord {
     pub credential_hosts: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database: Option<Database>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_storage: Option<Database>,
     /// Default reservation for a new deployment, in bytes.
     #[serde(default = "host::database_size")]
     pub database_size: u64,
@@ -473,6 +477,17 @@ impl Manifest {
         self.database.is_some() || self.kits.iter().any(|kit| kit.database.is_some())
     }
 
+    pub fn accepts_database_size(&self, size: u64) -> bool {
+        (host::MIN_DATABASE_SIZE..=host::MAX_DATABASE_SIZE).contains(&size)
+            || (size == 0
+                && self.caller_storage.is_some()
+                && !self.keeps_database()
+                && !self
+                    .imports
+                    .iter()
+                    .any(|name| matches!(name.as_str(), abi::GET | abi::SET)))
+    }
+
     /// Each sequence of migrations its database is built by, under the name
     /// its applied migrations are kept by: each kit's under the kit's, in
     /// name order, then its own under `""`.
@@ -499,7 +514,7 @@ impl Manifest {
         if self.tools.is_empty() && self.workflows.is_empty() {
             bail!("service declares no tools or workflows");
         }
-        if !(host::MIN_DATABASE_SIZE..=host::MAX_DATABASE_SIZE).contains(&self.database_size) {
+        if !self.accepts_database_size(self.database_size) {
             bail!("default database size is outside the host limits");
         }
         for tool in &self.tools {
@@ -712,6 +727,7 @@ impl TryFrom<&[u8]> for Manifest {
             mut deps,
             credential_hosts,
             database,
+            caller_storage,
             database_size,
             workflows: _,
             crons,
@@ -776,6 +792,7 @@ impl TryFrom<&[u8]> for Manifest {
             deps,
             events,
             database,
+            caller_storage,
             database_size,
             kits,
         };

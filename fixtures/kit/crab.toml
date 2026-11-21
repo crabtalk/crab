@@ -6,5 +6,5 @@ title = "Fixture kit key"
 hosts = ["kit.example.com"]
 secrets = [{ name = "kit" }]
 
-[database]
+[storage]
 migrations = "migrations"

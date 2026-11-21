@@ -15,8 +15,8 @@ use crate::{
         usage::{self, Counts},
     },
     state::{
-        self, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql, stop::Stops,
-        store::Store,
+        self, caller, commit::Commits, hold::Holds, pool::Pools, routes::Routes, service, sql,
+        stop::Stops, store::Store,
     },
     wake,
     workflow::{Eligibility, Ledger},
@@ -91,7 +91,7 @@ pub struct Inner<E: Env> {
     /// Runs not yet written.
     pub(crate) calls: calls::Pending,
     /// Logs not yet written.
-    pub(crate) logs: logs::Pending,
+    pub(crate) logs: Arc<logs::Pending>,
     /// Meters not yet written.
     pub(crate) meters: Pending,
     /// Held by a flush.
@@ -103,13 +103,14 @@ pub struct Inner<E: Env> {
     pub databases: Arc<Databases>,
     /// Where a chain's changes are committed.
     pub(crate) commits: Commits,
+    pub(crate) caller_storage: Arc<caller::Storage>,
     /// Where the services this host does not run live.
     pub(crate) routes: Routes,
     /// The scopes held.
     pub(crate) holds: Holds,
     /// The services stopped.
     pub(crate) stops: Stops,
-    pub(crate) peers: E::Peers,
+    pub(crate) peers: Arc<E::Peers>,
     pub(crate) images: E::Images,
     pub(crate) secrets: E::Secrets,
     /// [`Edges::layers`] around the host's own service.
@@ -185,14 +186,26 @@ impl<E: Env> Host<E> {
             deadline: config.deadline,
         })?;
         let databases = Arc::new(Databases::new(config.databases.clone()));
-        let commits = Commits::new(store.clone(), databases.clone());
+
         let ran = calls::Pending::new(
             now.clone(),
             calls::newest(&store).await?,
             Table::Calls.last(&store).await?,
         );
         let used = Counts::new(now.clone(), Table::Usage.last(&store).await?);
-        let emitted = logs::Pending::new(now.clone(), Table::Logs.last(&store).await?);
+        let emitted = Arc::new(logs::Pending::new(
+            now.clone(),
+            Table::Logs.last(&store).await?,
+        ));
+        let peers = Arc::new(peers);
+        let caller_storage = Arc::new(caller::Storage::new(
+            databases.clone(),
+            store.clone(),
+            emitted.clone(),
+            now.clone(),
+            peers.clone(),
+        ));
+        let commits = Commits::new(store.clone(), databases.clone(), caller_storage.clone());
         let metered = Pending::new(now.clone(), Table::Meters.last(&store).await?);
         let chains = (config.instances / (config.depth + 1)).max(1);
         let pools = Arc::new(Pools::new(config.held));
@@ -207,6 +220,7 @@ impl<E: Env> Host<E> {
                 syscalls.push(fetch::syscall(host, proxy, Door::ProxyAll));
             }
             syscalls.extend(state::syscalls(host));
+            syscalls.extend(caller::call::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
             syscalls.push(secrets::syscall(host));
@@ -240,6 +254,7 @@ impl<E: Env> Host<E> {
                 landing: sync::Mutex::default(),
                 databases,
                 commits,
+                caller_storage,
                 routes,
                 holds,
                 stops,
@@ -328,6 +343,7 @@ impl<E: Env> Host<E> {
         let restored = task::spawn_blocking(move || berm.restore(&key, &image, row.code_bytes))
             .await
             .context("restoring a deployment panicked")??;
+        let _ = restored.storage_id.set(row.storage_id);
         if row.code_bytes.is_none() {
             service::footprint(&self.store, &row.scope, &row.name, restored.bytes).await?;
         }
@@ -377,6 +393,20 @@ impl<E: Env> Host<E> {
                 tracing::warn!(peer, "handing over service usage failed: {e:#}");
             }
         }
+        let reports = self.caller_storage.pending().await?;
+        for batch in reports.chunks(128) {
+            let reports = batch
+                .iter()
+                .map(|pending| pending.report.clone())
+                .collect::<Vec<_>>();
+            match self.peers.caller_usage(&reports).await {
+                Ok(grants) => self.caller_storage.reported(batch, grants).await?,
+                Err(error) => {
+                    tracing::warn!(%error, "reporting caller storage usage failed");
+                    break;
+                }
+            }
+        }
         for service in self.berm.list() {
             self.sample(&service.name).await?;
         }
@@ -408,8 +438,8 @@ impl<E: Env> Host<E> {
             .collect()
     }
 
-    /// Stop running `service` and drop what it committed, its database, its
-    /// wake and its usage. `false` when it was not deployed.
+    /// Remove the service and its shared state. Its caller files remain
+    /// available for caller export and deletion.
     pub async fn remove(&self, service: &str) -> Result<bool> {
         let lock = self
             .deploying
@@ -422,6 +452,9 @@ impl<E: Env> Host<E> {
         self.workflows.invalidate(service).await?;
         self.berm.remove(service);
         self.databases.remove(service)?;
+        if let Some(row) = service::row(&self.store, scope, name).await? {
+            self.caller_storage.retain(&row.storage_id).await?;
+        }
         let removed = service::remove(&self.store, scope, name).await?;
         self.stops.mark(service, false);
         Ok(removed)

@@ -21,6 +21,7 @@ use std::{
 fn trigger() -> Trigger {
     Trigger::Manual {
         caller: Caller {
+            account: None,
             id: "caller".into(),
             key: Some("key-1".into()),
             app: None,
@@ -194,6 +195,7 @@ async fn changed_dependency_is_refused_before_tool_dispatch() -> Result<()> {
     );
     assert_eq!(result.error.unwrap().body["explain"], "E0060");
     let link = Link {
+        scheduled: false,
         retained_until: None,
         replay: None,
         workflow: None,

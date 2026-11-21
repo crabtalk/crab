@@ -783,7 +783,7 @@ impl<E: Env> Host<E> {
                 item: checkpoint.items[index].index,
                 trigger: match &run.trigger {
                     Trigger::Manual { caller } => StepTrigger::Manual {
-                        account: caller.id.clone(),
+                        account: caller.account().to_owned(),
                         key: caller.key.clone(),
                         user: caller.user.as_ref().map(|user| StepUser {
                             issuer: user.issuer.clone(),
@@ -818,11 +818,20 @@ impl<E: Env> Host<E> {
                         Arc::from(binding.service.as_str()),
                     ]),
                 };
-                let outcome = workflow::step(
+                let scheduled = matches!(run.trigger, Trigger::Schedule { .. });
+                let scope = workflow::step(
                     context,
                     target.link(link, call.target.tool(), args, meters.clone()),
-                )
-                .await;
+                );
+                let account = identity
+                    .filter(|caller| !caller.anonymous())
+                    .map(|caller| caller.account().to_owned());
+                let outcome = crate::state::caller::ACCOUNT
+                    .scope(
+                        account,
+                        crate::state::caller::SCHEDULED.scope(scheduled, scope),
+                    )
+                    .await;
                 match outcome {
                     Ok(outcome) => self
                         .commit_outcome(outcome)
@@ -832,6 +841,7 @@ impl<E: Env> Host<E> {
                 }
             } else {
                 let link = Link {
+                    scheduled: matches!(run.trigger, Trigger::Schedule { .. }),
                     retained_until: Some(run.expires_at),
                     replay: replay.clone(),
                     workflow: workflow::current(),

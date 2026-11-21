@@ -78,6 +78,7 @@ async fn a_deploy_sets_the_vars_it_names_and_keeps_the_rest() -> Result<()> {
     let image = fixture::image("berm-fixture")?;
     host.deploy("acct/fixture", &image).await?;
     let redeploy = |vars: BTreeMap<String, String>| Deploy {
+        storage_id: None,
         reference: "test/acct/fixture".to_owned(),
         digest: digest::of(&image),
         force: true,

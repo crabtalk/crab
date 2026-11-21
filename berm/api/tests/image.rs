@@ -46,6 +46,7 @@ fn service_record() -> Vec<u8> {
         },
         credential_hosts: BTreeMap::new(),
         database: None,
+        caller_storage: None,
         database_size: host::DATABASE_SIZE,
         workflows: BTreeMap::new(),
         crons: BTreeMap::new(),

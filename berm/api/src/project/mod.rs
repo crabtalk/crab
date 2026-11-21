@@ -21,7 +21,7 @@ pub const FILE: &str = "crab.toml";
 
 /// A service image's declarations. A library declares only `id`,
 /// `[credentials]`, `[http]` and
-/// `[database] migrations`.
+/// `[storage] migrations`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
@@ -48,14 +48,14 @@ pub struct Project {
     /// Settings each deployed copy sets its own value of, by name.
     #[serde(default)]
     pub vars: BTreeMap<String, Var>,
-    #[serde(default)]
-    pub database: Database,
+    #[serde(default, alias = "database")]
+    pub storage: Storage,
 }
 
-/// `[database]` of `crab.toml`.
+/// `[storage]` of `crab.toml`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Database {
+pub struct Storage {
     /// What the service's database may hold, such as `"2GiB"`, from
     /// [`host::MIN_DATABASE_SIZE`] to [`host::MAX_DATABASE_SIZE`] bytes;
     /// [`host::DATABASE_SIZE`] when absent.
@@ -66,6 +66,13 @@ pub struct Database {
     /// A directory of `*.sql` migrations, relative to `crab.toml`, applied in
     /// name order.
     pub migrations: Option<PathBuf>,
+    pub caller: Option<CallerStorage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallerStorage {
+    pub migrations: PathBuf,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, Deserialize)]
@@ -295,8 +302,9 @@ impl Project {
             ("schedules", !self.schedules.is_empty()),
             ("buffer", self.buffer.is_some()),
             ("vars", !self.vars.is_empty()),
-            ("database.size", self.database.size.is_some()),
-            ("database.seed", self.database.seed.is_some()),
+            ("storage.size", self.storage.size.is_some()),
+            ("storage.seed", self.storage.seed.is_some()),
+            ("storage.caller", self.storage.caller.is_some()),
         ];
         let declared: Vec<&str> = service_only
             .iter()
@@ -305,7 +313,7 @@ impl Project {
             .collect();
         if !declared.is_empty() {
             bail!(
-                "a kit declares only id, [credentials], [http] and [database] migrations, not {}",
+                "a kit declares only id, [credentials], [http] and [storage] migrations, not {}",
                 declared.join(", ")
             );
         }
@@ -315,7 +323,7 @@ impl Project {
     /// Validate a linked package's migration identity. Deployment settings stay with its own image.
     pub fn check_dependency(&self) -> Result<()> {
         match &self.id {
-            None if self.database.migrations.is_some() => {
+            None if self.storage.migrations.is_some() => {
                 bail!("a kit keeping tables declares its id")
             }
             Some(id)
@@ -331,7 +339,7 @@ impl Project {
     }
 }
 
-impl Database {
+impl Storage {
     /// What the service's database may hold, in bytes.
     pub fn size(&self) -> u64 {
         self.size.map_or(host::DATABASE_SIZE, |size| size.0)

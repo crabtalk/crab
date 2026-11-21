@@ -10,6 +10,7 @@ use berm::{
 };
 use berm_api::{
     host::{Link, Reply, Used},
+    storage::{Grant, GrantRequest, Report},
     workflow::{
         run::{Binding, Receipt},
         schedule::Occurrence,
@@ -112,6 +113,17 @@ pub trait Peers: Send + Sync + 'static {
     /// Return true after external admission, or false to admit locally.
     fn scheduled(&self, _occurrence: &Occurrence) -> impl Future<Output = Result<bool>> + Send {
         async { Ok(false) }
+    }
+
+    fn caller_allowance(
+        &self,
+        _request: &GrantRequest,
+    ) -> impl Future<Output = Result<Option<Grant>>> + Send {
+        async { Ok(None) }
+    }
+
+    fn caller_usage(&self, _reports: &[Report]) -> impl Future<Output = Result<Vec<Grant>>> + Send {
+        async { Ok(Vec::new()) }
     }
 
     /// Hand `peer` the uses counted here of services it runs.

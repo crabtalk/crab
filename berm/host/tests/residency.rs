@@ -191,6 +191,7 @@ async fn a_cold_module_cannot_exceed_a_lowered_scope_limit() -> Result<()> {
     );
     assert_eq!(host.host.memory("acct").loaded, 0);
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         key: None,
         app: None,

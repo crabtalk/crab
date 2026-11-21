@@ -24,6 +24,7 @@ use uuid::Uuid;
 
 fn caller() -> Caller {
     Caller {
+        account: None,
         id: "operator".into(),
         key: None,
         app: None,

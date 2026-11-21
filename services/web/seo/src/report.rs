@@ -118,6 +118,14 @@ impl TryFrom<&Page> for Report {
     type Error = berm_lang::Error;
 
     fn try_from(page: &Page) -> Result<Self> {
+        let report = Self::inspect(page);
+        berm_lang::serde_json::to_writer(ReportLimit(0), &report)?;
+        Ok(report)
+    }
+}
+
+impl Report {
+    pub(crate) fn inspect(page: &Page) -> Self {
         let title = page.title();
         let description = page.meta("description").map(str::to_owned);
         let titles = page.titles().count();
@@ -238,7 +246,7 @@ impl TryFrom<&Page> for Report {
                 ),
             ));
         }
-        let report = Self {
+        Self {
             url: page.url.to_string(),
             title,
             description,
@@ -258,8 +266,6 @@ impl TryFrom<&Page> for Report {
             robots_directives,
             image_alt_samples,
             hreflang,
-        };
-        berm_lang::serde_json::to_writer(ReportLimit(0), &report)?;
-        Ok(report)
+        }
     }
 }

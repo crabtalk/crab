@@ -37,6 +37,7 @@ async fn authenticated_key_ids_survive_nested_calls_and_are_absent_for_sessions(
     host.deploy("alice/a", &image).await?;
     host.deploy("alice/b", &image).await?;
     let caller = Caller {
+        account: None,
         id: "alice".into(),
         key: Some("research-key".into()),
         app: None,
@@ -70,6 +71,7 @@ async fn authenticated_key_ids_survive_nested_calls_and_are_absent_for_sessions(
         )?)?)
     );
     let link = Link {
+        scheduled: false,
         retained_until: None,
         replay: None,
         accepted: None,
@@ -126,6 +128,8 @@ async fn a_peer_step_receives_context_but_its_nested_call_does_not() -> Result<(
         trigger: berm_abi::workflow::Trigger::Schedule { at: 60_000 },
     };
     let link = Link {
+        scheduled: true,
+
         run: Some(run.clone()),
         caller: Some("alice/workflow".into()),
         from: "alice/workflow".into(),

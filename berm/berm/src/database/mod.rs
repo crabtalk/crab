@@ -92,6 +92,10 @@ impl Databases {
 
     /// `service`'s database.
     pub fn get(&self, service: &str) -> Result<Arc<Database>> {
+        self.get_with_limit(service, None)
+    }
+
+    pub fn get_with_limit(&self, service: &str, limit: Option<u64>) -> Result<Arc<Database>> {
         let mut open = self.open.lock();
         if let Some(database) = open.get(service) {
             return Ok(database.clone());
@@ -102,9 +106,25 @@ impl Databases {
             self.graph.clone(),
             self.writers.clone(),
             self.readers.clone(),
+            limit,
         )?);
         open.insert(service.to_owned(), database.clone());
         Ok(database)
+    }
+
+    pub fn memory(&self) -> Result<Arc<Database>> {
+        Ok(Arc::new(Database::open(
+            Path::new(":memory:"),
+            "caller storage".into(),
+            self.graph.clone(),
+            self.writers.clone(),
+            self.readers.clone(),
+            None,
+        )?))
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.dir
     }
 
     /// Where `service`'s database file is.
@@ -145,23 +165,43 @@ impl Databases {
     /// anything but this holds it open: an invocation's [`Held`] holds it.
     /// Blocks until the writer has run the jobs it was sent.
     pub fn remove(&self, service: &str) -> Result<()> {
-        let closing = {
-            let mut open = self.open.lock();
-            match open.remove(service).map(Arc::try_unwrap) {
-                Some(Ok(database)) => Some(database),
-                Some(Err(database)) => {
-                    open.insert(service.to_owned(), database);
-                    bail!("{service}'s database is in use");
-                }
-                None => None,
-            }
-        };
-        if let Some(database) = closing {
-            database.close();
-        }
+        self.close(service)?;
         let path = self.path(service);
         for file in [self.wal(service), self.shm(service), path] {
             remove(&file)?;
+        }
+        Ok(())
+    }
+
+    pub fn close(&self, service: &str) -> Result<()> {
+        let mut open = self.open.lock();
+        match open.remove(service).map(Arc::try_unwrap) {
+            Some(Ok(database)) => database.close(),
+            Some(Err(database)) => {
+                open.insert(service.to_owned(), database);
+                bail!("{service}'s database is in use");
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
+    pub fn close_under(&self, dir: &str) -> Result<()> {
+        let mut open = self.open.lock();
+        let names: Vec<_> = open
+            .keys()
+            .filter(|name| Path::new(name).starts_with(dir))
+            .cloned()
+            .collect();
+        for name in &names {
+            if Arc::strong_count(&open[name]) != 1 {
+                bail!("{name}'s database is in use");
+            }
+        }
+        for name in names {
+            if let Some(database) = open.remove(&name).and_then(|db| Arc::try_unwrap(db).ok()) {
+                database.close();
+            }
         }
         Ok(())
     }
@@ -251,7 +291,7 @@ fn remove(path: &Path) -> Result<()> {
 /// One service's database.
 pub struct Database {
     limit: Arc<AtomicU64>,
-    readers: Arc<Readers>,
+    readers: Option<Arc<Readers>>,
     /// The service it is the database of.
     name: Arc<str>,
     jobs: Arc<Writer>,
@@ -278,23 +318,25 @@ impl Database {
         graph: Arc<parking_lot::Mutex<Graph>>,
         writers: Arc<Writers>,
         readers: Arc<readers::Cache>,
+        cap: Option<u64>,
     ) -> Result<Self> {
-        if let Some(dir) = path.parent() {
+        let memory = path == Path::new(":memory:");
+        if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
             fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
-        let mut conn = Writer::connection(path, None)?;
-        conn.execute_batch(STATE_SCHEMA)?;
-        conn.execute_batch(SCHEMA)?;
-        let keyed: bool = conn.query_row(
+        let mut conn = Writer::connection(path, cap)?;
+        let tx = conn.transaction()?;
+        tx.execute_batch(STATE_SCHEMA)?;
+        tx.execute_batch(SCHEMA)?;
+        let keyed: bool = tx.query_row(
             "SELECT COUNT(*) > 0 FROM pragma_table_info('_berm_migrations') WHERE name = 'kit'",
             [],
             |row| row.get(0),
         )?;
         if !keyed {
-            let tx = conn.transaction()?;
             tx.execute_batch(REKEY)?;
-            tx.commit()?;
         }
+        tx.commit()?;
         let pages: i64 = conn.pragma_query_value(None, "max_page_count", |row| row.get(0))?;
         let page: i64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
         let limit = Arc::new(AtomicU64::new(u64::try_from(pages * page)?));
@@ -308,7 +350,8 @@ impl Database {
         );
         Ok(Self {
             limit,
-            readers: Arc::new(Readers::shared(path.to_owned(), query::guard, readers)),
+            readers: (!memory)
+                .then(|| Arc::new(Readers::shared(path.to_owned(), query::guard, readers))),
             name,
             jobs,
             writing: Arc::new(Mutex::new(())),
@@ -321,7 +364,9 @@ impl Database {
     /// it was sent.
     fn close(self) {
         self.jobs.close();
-        self.readers.close();
+        if let Some(readers) = &self.readers {
+            readers.close();
+        }
     }
 
     /// Hold the database to `size` bytes: a write past it fails as
@@ -353,26 +398,29 @@ impl Database {
     /// Reads the last commit, including pages not yet checkpointed from WAL.
     pub async fn usage(&self, at: i64) -> Result<DatabaseUsage> {
         let limit = self.limit.clone();
-        self.readers
-            .with(move |conn| {
-                let used: i64 = conn.query_row(
-                    "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()",
-                    [],
-                    |row| row.get(0),
-                )?;
-                Ok(DatabaseUsage {
-                    used: u64::try_from(used)?,
-                    limit: limit.load(Ordering::Acquire),
-                    at,
-                })
+        self.with_reader(move |conn| {
+            let used: i64 = conn.query_row(
+                "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()",
+                [],
+                |row| row.get(0),
+            )?;
+            Ok(DatabaseUsage {
+                used: u64::try_from(used)?,
+                limit: limit.load(Ordering::Acquire),
+                at,
             })
-            .await
+        })
+        .await
     }
 
     /// Run the service's statement inside the transaction `chain` holds.
     pub async fn exec(&self, chain: u64, statement: Statement) -> Result<Answer> {
         self.held(chain)?;
-        on(&self.jobs, move |conn| query::run(conn, &statement, false)).await
+        on(&self.jobs, move |conn| {
+            ensure_transaction(conn)?;
+            query::run(conn, &statement, false)
+        })
+        .await
     }
 
     /// Run the service's statement, refusing one that writes: inside the
@@ -381,8 +429,7 @@ impl Database {
         if self.holds(chain) {
             return on(&self.jobs, move |conn| query::run(conn, &statement, true)).await;
         }
-        self.readers
-            .with(move |conn| query::run(conn, &statement, true))
+        self.with_reader(move |conn| query::run(conn, &statement, true))
             .await
     }
 
@@ -401,17 +448,59 @@ impl Database {
         if self.holds(chain) {
             return on(&self.jobs, move |conn| state(conn, key)).await;
         }
-        self.readers.with(move |conn| state(conn, key)).await
+        self.with_reader(move |conn| state(conn, key)).await
+    }
+
+    async fn with_reader<T: Send + 'static>(
+        &self,
+        job: impl FnOnce(&Connection) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        match &self.readers {
+            Some(readers) => readers.with(job).await,
+            None => on(&self.jobs, move |conn| job(conn)).await,
+        }
+    }
+
+    pub async fn readonly(&self, sql: String) -> Result<bool> {
+        self.with_reader(move |conn| query::readonly(conn, &sql))
+            .await
+    }
+
+    pub async fn schema(&self) -> Result<u32> {
+        self.with_reader(|conn| {
+            Ok(
+                conn.query_row("SELECT COUNT(*) FROM _berm_migrations", [], |row| {
+                    row.get(0)
+                })?,
+            )
+        })
+        .await
+    }
+
+    pub async fn write_open(&self, chain: u64) -> Result<bool> {
+        self.held(chain)?;
+        on(&self.jobs, |conn| Ok(!conn.is_autocommit())).await
+    }
+
+    pub async fn restart_write(&self, chain: u64) -> Result<()> {
+        self.held(chain)?;
+        on(
+            &self.jobs,
+            |conn| Ok(conn.execute_batch("BEGIN IMMEDIATE")?),
+        )
+        .await
     }
 
     /// Set the service's `key` inside the transaction `chain` holds.
     pub async fn set(&self, chain: u64, key: String, value: Vec<u8>) -> Result<()> {
         self.held(chain)?;
         on(&self.jobs, move |conn| {
-            conn.execute(
+            ensure_transaction(conn)?;
+            conn.query_row(
                 "INSERT INTO _berm_state (key, value) VALUES (?1, ?2)
-                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value RETURNING 1",
                 (&key, &value),
+                |_| Ok(()),
             )?;
             Ok(())
         })
@@ -494,6 +583,14 @@ impl Database {
         })
         .await
     }
+}
+
+fn ensure_transaction(conn: &Connection) -> Result<()> {
+    anyhow::ensure!(
+        !conn.is_autocommit(),
+        "the database transaction was rolled back"
+    );
+    Ok(())
 }
 
 async fn on<T: Send + 'static>(

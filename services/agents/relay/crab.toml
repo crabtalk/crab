@@ -2,7 +2,7 @@ id = "aade4fa1a9694e6fa7853cf7c319f29c"
 buffer = 262144
 secret_resources = true
 
-[database]
+[storage]
 migrations = "migrations"
 size = "64MiB"
 

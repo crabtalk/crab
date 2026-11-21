@@ -317,12 +317,18 @@ async fn query<E: Env>(
     Query(arguments): Query<Arguments>,
     headers: HeaderMap,
 ) -> Result<Response, Denied> {
-    let commits = host.commits(&service).await?;
-    let etag =
-        HeaderValue::from_str(&format!("\"{commits}\"")).expect("a number is a header value");
-    if headers.get(header::IF_NONE_MATCH) == Some(&etag) {
-        return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
-    }
+    let caller_storage = host.deployed(&service)?.manifest.caller_storage.is_some();
+    let etag = if caller_storage {
+        None
+    } else {
+        let commits = host.commits(&service).await?;
+        let etag =
+            HeaderValue::from_str(&format!("\"{commits}\"")).expect("a number is a header value");
+        if headers.get(header::IF_NONE_MATCH) == Some(&etag) {
+            return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
+        }
+        Some(etag)
+    };
     let caller = caller.map(|Extension(caller)| caller);
     let mut called = host
         .outside(
@@ -334,7 +340,16 @@ async fn query<E: Env>(
             headers,
         )
         .await?;
-    called.headers.insert(header::ETAG, etag);
+    if let Some(etag) = etag
+        && !called.headers.contains_key(header::CACHE_CONTROL)
+    {
+        called.headers.insert(header::ETAG, etag);
+    } else {
+        called.headers.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-store"),
+        );
+    }
     Ok((called.headers, Json(called.output)).into_response())
 }
 
@@ -405,6 +420,10 @@ async fn export<E: Env>(
     Extension(Named(service)): Extension<Named>,
 ) -> Result<Response, Denied> {
     let file = host.export(&service).await?;
+    sqlite_file(file, service.rsplit('/').next().unwrap_or(&service))
+}
+
+pub(crate) fn sqlite_file(file: tempfile::NamedTempFile, name: &str) -> Result<Response, Denied> {
     let length = file
         .as_file()
         .metadata()
@@ -424,10 +443,7 @@ async fn export<E: Env>(
             chunk.truncate(read);
             Ok(Some((chunk, (reader, file))))
         });
-    let filename = format!(
-        "attachment; filename=\"{}.sqlite\"",
-        service.rsplit('/').next().unwrap_or(&service)
-    );
+    let filename = format!("attachment; filename=\"{name}.sqlite\"");
     let disposition = HeaderValue::from_str(&filename)
         .map_err(|error| crate::deny(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
     Ok((

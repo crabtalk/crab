@@ -38,6 +38,7 @@ impl Node {
         }
         let digest = deploy.reference.clone();
         Ok(host::Deploy {
+            storage_id: None,
             digest,
             reference: deploy.reference,
             force: deploy.force,

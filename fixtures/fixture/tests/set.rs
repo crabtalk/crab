@@ -120,6 +120,7 @@ async fn a_project_names_its_services_and_their_calls() -> Result<()> {
     host.deploy_set("q", &[("acct/three", &image, DATABASE_SIZE)])
         .await?;
     let caller = Caller {
+        account: None,
         id: "acct".to_owned(),
         app: None,
         user: None,

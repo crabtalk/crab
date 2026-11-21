@@ -14,6 +14,7 @@ impl Mcp {
         caller: Option<&Caller>,
     ) -> Result<CallToolResult, McpError> {
         let operator = Caller {
+            account: None,
             id: "local".into(),
             key: None,
             app: None,

@@ -57,7 +57,7 @@ pub fn deny(status: StatusCode, message: impl Into<String>) -> Denied {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Denied {
     pub status: StatusCode,
     pub failure: Option<Failure>,
