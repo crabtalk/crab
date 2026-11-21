@@ -39,7 +39,7 @@ For local development, start the host with `crab dev -d`, use `crab --context de
 
 ## Checking changes
 
-From the repository root, `cargo nextest run --release` and `cargo clippy` use Cargo’s default members: runtime, CLI, SDK, generator fixtures, stateful services and handwritten integrations. Pure generated adapters and the large TikHub fixture are checked explicitly.
+From the repository root, `cargo nextest run --release` and `cargo clippy` use Cargo’s default members: every workspace member except the integrations under `connect/`, which are checked explicitly.
 
 When changing or publishing a generated adapter, refetch and review its upstream specification, then run its native tests and build the service image. For example:
 
