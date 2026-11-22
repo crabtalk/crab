@@ -173,23 +173,18 @@ fn batch_urls<'a>(run: &'a Run, step: &str) -> Vec<Vec<&'a str>> {
         .collect()
 }
 
-fn paid_urls(run: &Run) -> Vec<&str> {
+fn audited_urls(run: &Run) -> Vec<&str> {
     batch_urls(run, "audit").into_iter().flatten().collect()
 }
 
-fn assert_batch_price(host: &TestHost, run: &Run, batches: u32) {
+fn assert_free_batches(host: &TestHost, run: &Run, batches: u32) {
     let service = host.host.get(SERVICE).unwrap();
     let workflow = &service.manifest.workflows[0];
     assert_eq!(run.checkpoints["audit"].items.len(), batches as usize);
     assert_eq!(batch_urls(run, "audit").len(), batches as usize);
-    let base = workflow.config.price.unwrap_or_default();
-    assert_eq!(
-        workflow.entry.graph.price_range(base, &BTreeMap::new()),
-        (0, 10_000)
-    );
+    assert_eq!(workflow.config.price, None);
     let exact = BTreeMap::from([("audit".into(), batches)]);
-    let cost = u64::from(batches) * 100;
-    assert_eq!(workflow.entry.graph.price_range(base, &exact), (cost, cost));
+    assert_eq!(workflow.entry.graph.price_range(0, &exact), (0, 0));
 }
 
 #[tokio::test]
@@ -240,7 +235,7 @@ async fn incremental_reports_and_priority() -> Result<()> {
     )
     .await?;
     let baseline = report(&first);
-    assert_eq!(paid_urls(&first), [&b]);
+    assert_eq!(audited_urls(&first), [&b]);
     assert_eq!(baseline["listed"], 6);
     assert_eq!(baseline["checked"], 6);
     assert_eq!(baseline["audited"], 1);
@@ -263,7 +258,7 @@ async fn incremental_reports_and_priority() -> Result<()> {
     }
     let second = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     let filled = report(&second);
-    assert_eq!(paid_urls(&second), [&a, &c]);
+    assert_eq!(audited_urls(&second), [&a, &c]);
     assert_eq!(filled["audited"], 2);
     assert_eq!(filled["pending"], 0);
     for kind in [
@@ -313,7 +308,7 @@ async fn incremental_reports_and_priority() -> Result<()> {
     );
     let unchanged = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     assert_eq!(report(&unchanged)["audited"], 0);
-    assert_batch_price(&host, &unchanged, 0);
+    assert_free_batches(&host, &unchanged, 0);
     assert_eq!(unchanged.checkpoints["check"].meter.written, 0);
 
     respond(
@@ -326,7 +321,7 @@ async fn incremental_reports_and_priority() -> Result<()> {
     let one_changed = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     assert_eq!(report(&one_changed)["audited"], 1);
     assert_eq!(batch_urls(&one_changed, "audit"), [[a.as_str()]]);
-    assert_batch_price(&host, &one_changed, 1);
+    assert_free_batches(&host, &one_changed, 1);
 
     respond(
         &host,
@@ -352,10 +347,10 @@ async fn incremental_reports_and_priority() -> Result<()> {
     respond(&host, &dead, 200, html("Now reachable", ""), Duration::ZERO);
     let capped = run(&host, ACCOUNT, json!({"site": SITE, "max": 1})).await?;
     assert_eq!(report(&capped)["pending"], 3);
-    assert_eq!(paid_urls(&capped), [&dead]);
+    assert_eq!(audited_urls(&capped), [&dead]);
     let prioritized = run(&host, ACCOUNT, json!({"site": SITE, "max": 1})).await?;
     assert_eq!(report(&prioritized)["audited"], 1);
-    assert_eq!(paid_urls(&prioritized), [&b]);
+    assert_eq!(audited_urls(&prioritized), [&b]);
     let fixed = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     let fixed = report(&fixed);
     for kind in [
@@ -404,12 +399,12 @@ async fn incremental_reports_and_priority() -> Result<()> {
     assert_eq!(report(&partial)["sitemap_complete"], false);
     assert_eq!(report(&partial)["listed"], 2);
     assert_eq!(report(&partial)["checked"], 2);
-    assert!(paid_urls(&partial).is_empty());
+    assert!(audited_urls(&partial).is_empty());
 
     sitemap(&host, listings.into_iter().filter(|url| url != &c));
     let removed = run(&host, ACCOUNT, json!({"site": SITE, "max": 0})).await?;
     assert_eq!(report(&removed)["listed"], 5);
-    assert!(paid_urls(&removed).is_empty());
+    assert!(audited_urls(&removed).is_empty());
     let conn =
         Connection::open_with_flags(database(&host, ACCOUNT)?, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let rows: i64 = conn.query_row("SELECT count(*) FROM pages WHERE url = ?1", [&c], |row| {
@@ -421,7 +416,7 @@ async fn incremental_reports_and_priority() -> Result<()> {
 
     let another = run(&host, "another-caller", json!({"site": SITE, "max": 1})).await?;
     assert_eq!(report(&another)["new"], json!([]));
-    assert_eq!(paid_urls(&another).len(), 1);
+    assert_eq!(audited_urls(&another).len(), 1);
     Ok(())
 }
 
@@ -594,7 +589,7 @@ async fn thousand_page_fixture() -> Result<()> {
     assert_eq!(report(&first)["checked"], 1_000);
     assert_eq!(report(&first)["audited"], 1_000);
     assert_eq!(report(&first)["pending"], 0);
-    assert_batch_price(&host, &first, 100);
+    assert_free_batches(&host, &first, 100);
     assert!(
         batch_urls(&first, "audit")
             .iter()
@@ -629,7 +624,7 @@ async fn thousand_page_fixture() -> Result<()> {
     let elapsed = begin.elapsed();
     assert_eq!(report(&conditional)["checked"], 1_000);
     assert_eq!(report(&conditional)["audited"], 0);
-    assert_batch_price(&host, &conditional, 0);
+    assert_free_batches(&host, &conditional, 0);
     assert_eq!(conditional.checkpoints["check"].meter.written, 0);
     assert_eq!(conditional.checkpoints["discover"].meter.written, 1);
     print_meters("unchanged", &conditional, elapsed);
@@ -649,7 +644,7 @@ async fn thousand_page_fixture() -> Result<()> {
     assert_eq!(report(&changed)["checked"], 1_000);
     assert_eq!(report(&changed)["audited"], 1_000);
     assert_eq!(report(&changed)["pending"], 0);
-    assert_batch_price(&host, &changed, 100);
+    assert_free_batches(&host, &changed, 100);
     assert!(
         batch_urls(&changed, "audit")
             .iter()
@@ -666,7 +661,7 @@ async fn thousand_page_fixture() -> Result<()> {
     let rotated = run(&host, ACCOUNT, json!({"site": SITE})).await?;
     assert_eq!(report(&rotated)["listed"], 1_001);
     assert_eq!(report(&rotated)["checked"], 1_000);
-    assert_eq!(paid_urls(&rotated), [&extra]);
+    assert_eq!(audited_urls(&rotated), [&extra]);
     let actual: Vec<_> = batch_urls(&rotated, "check")
         .into_iter()
         .flatten()

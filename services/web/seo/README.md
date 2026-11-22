@@ -25,7 +25,7 @@ Returns the final URL, title, descriptions, canonical declarations and targets, 
 crab call crabtalk/seo ai_access '{"site":"https://example.com/"}'
 ```
 
-- Each of GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended and CCBot is `allowed`, `blocked` or `unspecified` for the root page's path, with the `robots.txt` group that applied: the crawler's own, else `*`. Rules are read as RFC 9309 reads them: the longest matching pattern wins, `allow` wins a tie, and `*` and a final `$` match. `unspecified` means no group names the crawler and there is no `*` group, or `robots.txt` did not answer 2xx.
+- Each of GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Googlebot, Google-Extended, Google-CloudVertexBot, bingbot, Applebot, Applebot-Extended, Bytespider, meta-externalagent, meta-externalfetcher, FacebookBot, Amazonbot, DuckAssistBot, MistralAI-User and CCBot is `allowed`, `blocked` or `unspecified` for the root page's path, with the `robots.txt` group that applied: the crawler's own, else `*`. Rules are read as RFC 9309 reads them: the longest matching pattern wins, `allow` wins a tie, and `*` and a final `$` match. `unspecified` means no group names the crawler and there is no `*` group, or `robots.txt` did not answer 2xx.
 - `/llms.txt`: its status, the H1 it opens with, its Markdown link count, and which of its first ten links did not answer 2xx.
 - Characters of visible text and script elements in the root page's HTML response; a page with under 200 characters that runs scripts is reported as needing JavaScript for its content.
 - Whether the root page answers at its URL with `.md` appended (`index.html.md` for a path ending in `/`), and whether it answers `Accept: text/markdown` with Markdown.
@@ -47,7 +47,7 @@ The report opens with new and fixed findings. It also shows the full findings wi
 
 The audit keeps scans and the latest report for each site or section in your caller storage. Download or delete the data under Storage in your CrabTalk settings. Each caller can run one audit for a given site at a time.
 
-A successful run charges $0.0001 per batch of up to 10 pending HTML pages, including a final partial batch. Checking for changes is free. The workflow quotes up to $0.01. Actual charges depend on how many pages reach the audit step within your `max`.
+Audits are free to run.
 
 ## Limits
 

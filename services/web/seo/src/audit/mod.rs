@@ -76,7 +76,7 @@ impl Audit {
         }
     }
 
-    #[step(each, max = 100, price = 100)]
+    #[step(each, max = 100)]
     fn audit(select: &Selection) -> Vec<AuditBatchCall> {
         select
             .urls
