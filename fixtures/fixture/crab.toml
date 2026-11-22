@@ -5,7 +5,6 @@ greeting = { default = "hello", description = "What greet answers" }
 
 [http]
 
-proxy = ["127.0.0.1"]
 
 [credentials.fixture]
 title = "Fixture token"

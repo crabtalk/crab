@@ -179,7 +179,7 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
                 host.result.len() as u64
             })
         }
-        abi::HTTP_FETCH | abi::HTTP_PROXY => {
+        abi::HTTP_FETCH => {
             let request = bytes(a0, a1);
             let Some(response) = respond(request) else {
                 no_host(name)
@@ -189,7 +189,7 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
                 host.result.len() as u64
             })
         }
-        abi::HTTP_FETCH_ALL | abi::HTTP_FETCH_ALL_LITERAL_BODY | abi::HTTP_PROXY_ALL => {
+        abi::HTTP_FETCH_ALL | abi::HTTP_FETCH_ALL_LITERAL_BODY => {
             let batch = bytes(a0, a1);
             let Ok(requests) = abi::wire::fields(batch) else {
                 no_host(name)

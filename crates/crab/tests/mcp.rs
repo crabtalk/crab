@@ -78,7 +78,6 @@ async fn mcp_uses_each_requests_caller_for_discovery_and_execution() -> Result<(
         8,
         Duration::from_secs(1),
         Duration::from_secs(30),
-        None,
     )
     .await?;
     let digest = node.keep(&image).await?;
@@ -336,7 +335,6 @@ async fn local_mcp_workflows_share_quotes_run_identity_and_controls() -> Result<
         8,
         Duration::from_secs(10),
         Duration::from_secs(30),
-        None,
     )
     .await?;
     let digest = node.keep(&image).await?;

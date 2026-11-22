@@ -11,6 +11,7 @@ use crate::{
     sys,
 };
 use alloc::{string::String, vec, vec::Vec};
+use serde::Deserialize;
 
 /// Why a syscall did not produce a result, as the host told it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,14 +19,77 @@ pub enum CallError {
     /// The operation or its transport failed.
     Failed(String),
     /// The host refused the operation under its policy.
-    Refused(String),
+    Refused(Refusal),
+}
+
+/// The host's refusal and its explanation code, when supplied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusal {
+    pub message: String,
+    pub explanation: Option<String>,
+}
+
+impl From<String> for Refusal {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            explanation: None,
+        }
+    }
+}
+
+impl From<&str> for Refusal {
+    fn from(message: &str) -> Self {
+        String::from(message).into()
+    }
+}
+
+impl Refusal {
+    pub(crate) fn from_wire(message: String, explanation: Option<&str>) -> Self {
+        if let Some(code) = explanation {
+            return Self {
+                message,
+                explanation: Some(code.into()),
+            };
+        }
+        // Single errors and older batch hosts carry the explanation in a
+        // refusal's JSON envelope.
+        #[derive(Deserialize)]
+        struct Explained {
+            status: u16,
+            #[serde(rename = "error")]
+            _error: serde::de::IgnoredAny,
+            explain: String,
+        }
+        if message.starts_with('{')
+            && let Some(Ok(explained)) = serde_json::Deserializer::from_str(&message)
+                .into_iter::<Explained>()
+                .next()
+            && (400..500).contains(&explained.status)
+        {
+            return Self {
+                message,
+                explanation: Some(explained.explain),
+            };
+        }
+        message.into()
+    }
 }
 
 impl CallError {
     /// What went wrong, whichever kind it was.
     pub fn message(&self) -> &str {
         match self {
-            Self::Failed(message) | Self::Refused(message) => message,
+            Self::Failed(message) => message,
+            Self::Refused(refusal) => &refusal.message,
+        }
+    }
+
+    /// The host explanation code, when one accompanies the refusal.
+    pub fn explanation(&self) -> Option<&str> {
+        match self {
+            Self::Refused(refusal) => refusal.explanation.as_deref(),
+            Self::Failed(_) => None,
         }
     }
 
@@ -61,7 +125,7 @@ pub fn call(
     if failed {
         let message = String::from_utf8_lossy(&result).into_owned();
         return Err(match refused {
-            true => CallError::Refused(message),
+            true => CallError::Refused(Refusal::from_wire(message, None)),
             false => CallError::Failed(message),
         });
     }

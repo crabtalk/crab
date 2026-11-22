@@ -268,6 +268,53 @@ pub fn http_batch_probe(
         .collect())
 }
 
+/// Inspect HTTP replies
+#[tool]
+pub fn http_reply_probe(urls: Vec<String>) -> Result<Vec<HttpReply>> {
+    let requests: Vec<_> = urls
+        .iter()
+        .map(|url| berm_lang::http::Request {
+            method: "GET",
+            url,
+            headers: &[],
+            body: b"",
+            timeout: None,
+            limit: None,
+        })
+        .collect();
+    let replies = match requests.as_slice() {
+        [one] => alloc::vec![berm_lang::http::fetch(
+            one.method,
+            one.url,
+            one.headers,
+            one.body
+        )],
+        _ => berm_lang::http::fetch_all(&requests)?,
+    };
+    Ok(replies
+        .into_iter()
+        .map(|reply| match reply {
+            Ok(response) => HttpReply::Response {
+                status: response.status,
+                body: String::from_utf8_lossy(&response.body).into_owned(),
+            },
+            Err(error) if error.refused() => HttpReply::Refused {
+                explanation: error.explanation().map(String::from),
+            },
+            Err(error) => HttpReply::Failed {
+                message: error.message().into(),
+            },
+        })
+        .collect())
+}
+
+#[derive(Schema)]
+pub enum HttpReply {
+    Response { status: u16, body: String },
+    Refused { explanation: Option<String> },
+    Failed { message: String },
+}
+
 /// Runtime secret owner
 #[tool]
 pub fn secret_owner(id: String, host: String) -> Result<Option<String>> {
@@ -302,8 +349,6 @@ pub fn reach(url: String) -> Result<Option<u16>> {
         limit: None,
     };
     let _ = berm_lang::client();
-    let _ = berm_lang::http::proxy("GET", &url, &[], b"");
-    let _ = berm_lang::http::proxy_all(core::slice::from_ref(&request));
     let fetched = berm_lang::http::fetch_all(core::slice::from_ref(&request))?;
     Ok(fetched
         .into_iter()

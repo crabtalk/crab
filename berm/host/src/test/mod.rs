@@ -92,7 +92,6 @@ async fn opened(
         &config,
         Edges {
             fetch: fetch.clone(),
-            proxy: Some(fetch.clone()),
             images: images.clone(),
             peers: Alone,
             secrets: secrets.clone(),

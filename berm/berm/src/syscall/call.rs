@@ -302,7 +302,7 @@ fn answer(invoked: Result<Ended>) -> Result<Vec<u8>> {
                         .body
                         .get("explain")
                         .and_then(serde_json::Value::as_str),
-                    Some(host::SECRET_ACCESS | host::HTTP_DESTINATION)
+                    Some(host::SECRET_ACCESS)
                 )
             {
                 return Err(Abort(failure.clone()).into());

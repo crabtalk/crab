@@ -765,7 +765,7 @@ impl<E: Env> Host<E> {
             cpu: count(used.all.cpu, used.on.cpu),
             read: count(used.all.read, used.on.read),
             written: count(used.all.written, used.on.written),
-            proxied: count(used.all.proxied, used.on.proxied),
+            proxied: count(0, 0),
             logged: count(used.all.logged, used.on.logged),
         })
     }

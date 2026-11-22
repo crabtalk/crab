@@ -6,7 +6,7 @@ use axum::{
 };
 use berm_api::host::Caller;
 use berm_build::fixture;
-use berm_host::{Layers, Named, Outside, deny, router, test::TestHost};
+use berm_host::{CalledOutcome, Layers, Named, Outside, deny, router, test::TestHost};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tower::{ServiceExt, layer::layer_fn, service_fn};
@@ -60,6 +60,21 @@ async fn conditional_queries_use_the_same_tool_admission_as_other_queries() -> R
     assert_eq!(cached.headers()[header::ETAG], tag);
     assert!(!cached.headers().contains_key(berm_api::host::METER));
     assert!(to_bytes(cached.into_body(), 1024).await?.is_empty());
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(header::IF_NONE_MATCH, tag.clone());
+    let cached = host
+        .host
+        .outside(
+            "service",
+            "peek",
+            true,
+            b"{}".to_vec(),
+            Some(caller.clone()),
+            headers,
+        )
+        .await?;
+    assert!(matches!(cached.outcome, CalledOutcome::NotModified));
 
     for condition in [None, Some(tag.clone())] {
         for (tool, allowed, status) in [

@@ -1,6 +1,5 @@
 //! One HTTP request, to a host this service's manifest allows under
-//! `[http] fetch`, or under `[http] proxy` to send it through the host's
-//! proxy.
+//! `[http] fetch`.
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
 //! manifest declares, or `{secret:ID}` for a host-granted resource when the
@@ -130,17 +129,6 @@ pub fn fetch(
     send(sys::HTTP_FETCH, method, url, headers, body)
 }
 
-/// [`fetch`], through the host's proxy. The host meters the bytes sent and
-/// received against this service as `proxied`.
-pub fn proxy(
-    method: &str,
-    url: &str,
-    headers: &[(&str, &str)],
-    body: &[u8],
-) -> Result<Response, CallError> {
-    send(sys::HTTP_PROXY, method, url, headers, body)
-}
-
 /// One request of a batch [`fetch_all`] sends.
 pub struct Request<'a> {
     pub method: &'a str,
@@ -168,13 +156,6 @@ pub fn fetch_all_literal_body(
     send_all(sys::HTTP_FETCH_ALL_LITERAL_BODY, requests)
 }
 
-/// [`fetch_all`], through the host's proxy, each request to a host the
-/// manifest declares under `[http] proxy`. The host meters the bytes sent
-/// and received against this service as `proxied`.
-pub fn proxy_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
-    send_all(sys::HTTP_PROXY_ALL, requests)
-}
-
 fn send_all(
     import: impl FnOnce(usize, usize) -> u64,
     requests: &[Request<'_>],
@@ -195,7 +176,17 @@ fn send_all(
                 || String::from_utf8_lossy(rest.first().copied().unwrap_or_default()).into_owned();
             Ok(match *kind {
                 b"ok" => response(rest),
-                b"refused" => Err(CallError::Refused(why())),
+                b"refused" => {
+                    let explanation = rest
+                        .get(1)
+                        .map(|code| core::str::from_utf8(code))
+                        .transpose()
+                        .map_err(|_| unreadable())?;
+                    Err(CallError::Refused(host::Refusal::from_wire(
+                        why(),
+                        explanation,
+                    )))
+                }
                 b"failed" => Err(CallError::Failed(why())),
                 _ => return Err(unreadable()),
             })

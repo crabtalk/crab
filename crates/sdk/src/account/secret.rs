@@ -77,10 +77,11 @@ impl Grant {
         if !deps.secret_resources {
             return Err("The service does not declare secret_resources = true".into());
         }
-        if self.hosts.iter().any(|host| {
-            deps.http.reach(abi::HTTP_FETCH, host).is_none()
-                && deps.http.reach(abi::HTTP_PROXY, host).is_none()
-        }) {
+        if self
+            .hosts
+            .iter()
+            .any(|host| deps.http.reach(abi::HTTP_FETCH, host).is_none())
+        {
             return Err(
                 "The secret destinations must be allowed by the service's HTTP permissions".into(),
             );

@@ -800,7 +800,8 @@ pub struct Live {
     /// Rows read and written in its database and state.
     pub read: Count,
     pub written: Count,
-    /// Bytes sent and received through `berm.http.proxy`.
+    /// Reserved for compatibility with earlier usage records.
+    #[serde(skip_deserializing)]
     pub proxied: Count,
     /// Bytes of the logs it emitted.
     pub logged: Count,
@@ -835,7 +836,7 @@ pub struct Held {
 
 /// One of a [`Live`]'s counts.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Count {
     /// Since its first deploy.
     pub total: u64,
@@ -877,7 +878,8 @@ pub struct Metered {
     /// in microseconds; not part of `cpu`.
     #[serde(default)]
     pub sql_cpu: u64,
-    /// Bytes sent and received through `berm.http.proxy`.
+    /// Reserved for compatibility with earlier usage records.
+    #[serde(skip_deserializing)]
     pub proxied: u64,
     /// Bytes of the logs those invocations emitted.
     #[serde(default)]
@@ -887,7 +889,7 @@ pub struct Metered {
     #[serde(default)]
     pub failed: u64,
     /// Bytes sent off the host: the bodies of answers to outside callers, and
-    /// each request `berm.http.fetch` and `berm.http.proxy` sent.
+    /// each outbound HTTP request sent.
     #[serde(default)]
     pub sent: u64,
     /// Bytes the service kept when the day was sampled: its database file,
@@ -907,7 +909,6 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.read += used.read;
         self.written += used.written;
         self.sql_cpu += used.sql_cpu;
-        self.proxied += used.proxied;
         self.logged += used.logged;
         self.failed += used.failed;
         self.sent += used.sent;
@@ -923,7 +924,6 @@ impl std::ops::SubAssign<Meter> for Metered {
         self.read = self.read.saturating_sub(used.read);
         self.written = self.written.saturating_sub(used.written);
         self.sql_cpu = self.sql_cpu.saturating_sub(used.sql_cpu);
-        self.proxied = self.proxied.saturating_sub(used.proxied);
         self.logged = self.logged.saturating_sub(used.logged);
         self.failed = self.failed.saturating_sub(used.failed);
         self.sent = self.sent.saturating_sub(used.sent);
@@ -941,7 +941,7 @@ impl From<Metered> for Meter {
             read: used.read,
             written: used.written,
             sql_cpu: used.sql_cpu,
-            proxied: used.proxied,
+            proxied: 0,
             logged: used.logged,
             failed: used.failed,
             sent: used.sent,

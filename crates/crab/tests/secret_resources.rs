@@ -16,7 +16,6 @@ async fn local_resource_api_keeps_values_private_and_rotation_keeps_the_id() -> 
         4,
         Duration::from_millis(100),
         Duration::from_secs(60),
-        None,
     )
     .await?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;

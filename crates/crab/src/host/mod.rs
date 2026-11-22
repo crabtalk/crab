@@ -54,23 +54,17 @@ impl Node {
     /// Open `root`, restoring whatever was deployed before this process, its
     /// services' secrets read from the file at `secrets`. Chains of services
     /// calling services nest at most `depth` deep, and a call spends at most
-    /// `cpu` of CPU and runs at most `deadline`. `berm.http.proxy` goes
-    /// through `proxy`, or direct without one.
+    /// `cpu` of CPU and runs at most `deadline`.
     pub async fn new(
         root: PathBuf,
         secrets: PathBuf,
         depth: u32,
         cpu: Duration,
         deadline: Duration,
-        proxy: Option<&str>,
     ) -> Result<Arc<Self>> {
         let images = Stored::open(&root);
         let grants = Grants::open(secrets);
-        let fetch = Fetch::new(None)?;
-        let proxy = match proxy {
-            Some(proxy) => Fetch::new(Some(proxy))?,
-            None => fetch.clone(),
-        };
+        let fetch = Fetch::new()?;
         let config = Config {
             depth,
             cpu,
@@ -84,7 +78,6 @@ impl Node {
             &config,
             Edges {
                 fetch,
-                proxy: Some(proxy),
                 images: images.clone(),
                 peers: Alone,
                 secrets: grants.clone(),

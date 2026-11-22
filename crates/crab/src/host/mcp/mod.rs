@@ -276,7 +276,7 @@ impl ServerHandler for Mcp {
                 headers,
             )
             .await
-            .map(|called| (called.headers, called.output))
+            .and_then(berm_host::Called::into_output)
         {
             Ok((_, Output::Done(result))) => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))

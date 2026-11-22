@@ -65,7 +65,6 @@ async fn renamed_starter_tools_build_and_state_survives_callers_and_restarts() -
         4,
         Duration::from_secs(1),
         Duration::from_secs(30),
-        None,
     )
     .await?;
     let digest = node.keep(&image).await?;
@@ -109,7 +108,6 @@ async fn renamed_starter_tools_build_and_state_survives_callers_and_restarts() -
         4,
         Duration::from_secs(1),
         Duration::from_secs(30),
-        None,
     )
     .await?;
     time::timeout(Duration::from_secs(5), async {

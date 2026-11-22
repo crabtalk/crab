@@ -16,7 +16,6 @@ async fn local_host_answers_the_status_probe_without_deployed_services() -> Resu
         4,
         Duration::from_millis(100),
         Duration::from_secs(60),
-        None,
     )
     .await?;
     let dev = Dev::new(

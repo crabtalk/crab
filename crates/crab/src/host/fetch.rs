@@ -1,16 +1,20 @@
-//! `berm.http.fetch` and `berm.http.proxy`, sent from this process.
+//! Outbound HTTP from the local host.
 
 use anyhow::{Context, Result, bail};
+use axum::http::StatusCode;
 use berm::{
-    Reach,
+    Reach, Refused,
     syscall::http::{Request, Response},
 };
+use berm_api::{host, workflow::run::Failure};
+use berm_host::deny;
 use reqwest::{
-    Client, ClientBuilder, Method, Proxy,
+    Client, ClientBuilder, Method,
     dns::{Addrs, Name, Resolve, Resolving},
     redirect,
 };
 use std::{
+    error::Error,
     future::Future,
     net::{IpAddr, Ipv4Addr},
     pin::Pin,
@@ -27,8 +31,7 @@ const MAX_BODY: usize = 16 << 20;
 /// A client that answers a redirect to the guest as one.
 ///
 /// A host the manifest reaches only through a pattern is refused when it is,
-/// or resolves only to, an address that is not public. Through a proxy, the
-/// proxy resolves the name, and only an address written in the URL is checked.
+/// or resolves only to, an address that is not public.
 #[derive(Clone)]
 pub struct Fetch {
     named: Client,
@@ -36,26 +39,17 @@ pub struct Fetch {
 }
 
 impl Fetch {
-    /// Through `proxy` when given, with no idle connection kept, so a rotating
-    /// proxy gives each request a fresh exit.
-    pub fn new(proxy: Option<&str>) -> Result<Self> {
-        let builder = || Client::builder().redirect(redirect::Policy::none());
+    pub fn new() -> Result<Self> {
+        let builder = || {
+            Client::builder()
+                .no_proxy()
+                .redirect(redirect::Policy::none())
+        };
         let build =
             |builder: ClientBuilder| builder.build().context("failed to build the HTTP client");
-        let Some(proxy) = proxy else {
-            return Ok(Self {
-                named: build(builder())?,
-                pattern: build(builder().dns_resolver(Public))?,
-            });
-        };
-        let client = build(
-            builder()
-                .proxy(Proxy::all(proxy).context("the proxy URL is not one")?)
-                .pool_max_idle_per_host(0),
-        )?;
         Ok(Self {
-            named: client.clone(),
-            pattern: client,
+            named: build(builder())?,
+            pattern: build(builder().dns_resolver(Public))?,
         })
     }
 }
@@ -72,10 +66,28 @@ impl Resolve for Public {
                 .filter(|addr| public(addr.ip()))
                 .collect();
             if found.is_empty() {
-                return Err(format!("{name} resolves to no public address").into());
+                return Err(Blocked(format!("{name} resolves to no public address")).into());
             }
             Ok(Box::new(found.into_iter()) as Addrs)
         })
+    }
+}
+
+#[derive(Debug)]
+struct Blocked(String);
+
+impl std::fmt::Display for Blocked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Error for Blocked {}
+
+impl Blocked {
+    fn refusal(&self) -> anyhow::Error {
+        let refusal = deny(StatusCode::FORBIDDEN, self.0.clone()).explained(host::HTTP_DESTINATION);
+        anyhow::Error::new(Refused(self.0.clone())).context(Failure::from(&refusal))
     }
 }
 
@@ -127,7 +139,7 @@ impl Service<Request> for Fetch {
                 && let Ok(ip) = request.host.parse::<IpAddr>()
                 && !public(ip)
             {
-                bail!("{} is not a public address", request.host);
+                return Err(Blocked(format!("{} is not a public address", request.host)).refusal());
             }
             let method = Method::from_bytes(request.method.as_bytes())
                 .with_context(|| format!("{:?} is not an HTTP method", request.method))?;
@@ -135,7 +147,16 @@ impl Service<Request> for Fetch {
             for (name, value) in &request.headers {
                 sending = sending.header(name, value);
             }
-            let mut response = sending.send().await?;
+            let mut response = sending.send().await.map_err(|error| {
+                let mut cause = error.source();
+                while let Some(source) = cause {
+                    if let Some(blocked) = source.downcast_ref::<Blocked>() {
+                        return blocked.refusal();
+                    }
+                    cause = source.source();
+                }
+                anyhow::Error::from(error)
+            })?;
             let status = response.status().as_u16();
             let headers = response
                 .headers()

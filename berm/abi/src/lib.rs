@@ -107,26 +107,18 @@ macro_rules! host_calls {
             SECRET_RESOURCE = "berm.secret.resource";
             SECRET_BIND = "berm.secret.bind";
 
-            /// Make one HTTP request through the host's proxy. The request and reply are
-            /// [`HTTP_FETCH`]'s.
-            HTTP_PROXY = "berm.http.proxy";
-
             /// Make a batch of HTTP requests at once, each to a host the manifest
             /// declares under [`HTTP_FETCH`]. `(ptr, len) -> staged length`
             ///
             /// Each request field is one [`HTTP_FETCH`] request, framed. Each reply
             /// field answers the request in its place, framed: `ok`, then
             /// [`HTTP_FETCH`]'s reply fields; or `refused` or `failed`, then why.
+            /// A refused item may append an explanation code.
             HTTP_FETCH_ALL = "berm.http.fetch_all";
 
             /// [`HTTP_FETCH_ALL`] with body bytes sent literally. Only header values
             /// undergo secret substitution. The request and reply framing are unchanged.
             HTTP_FETCH_ALL_LITERAL_BODY = "berm.http.fetch_all.literal_body";
-
-            /// [`HTTP_FETCH_ALL`] through the host's proxy, each request to a host
-            /// the manifest declares under [`HTTP_PROXY`]. The request and reply are
-            /// [`HTTP_FETCH_ALL`]'s.
-            HTTP_PROXY_ALL = "berm.http.proxy_all";
 
             /// Emit one log. `(ptr, len) -> staged length`
             ///

@@ -7,12 +7,11 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 pub struct Http {
     pub fetch: Vec<String>,
-    pub proxy: Vec<String>,
 }
 
 impl Http {
     pub fn is_empty(&self) -> bool {
-        self.fetch.is_empty() && self.proxy.is_empty()
+        self.fetch.is_empty()
     }
 
     /// Matching ignores ASCII case. `*.example.com` excludes `example.com`.
@@ -20,7 +19,6 @@ impl Http {
     pub fn reach(&self, syscall: &str, host: &str) -> Option<Reach> {
         let declared = match syscall {
             abi::HTTP_FETCH | abi::HTTP_FETCH_ALL | abi::HTTP_FETCH_ALL_LITERAL_BODY => &self.fetch,
-            abi::HTTP_PROXY | abi::HTTP_PROXY_ALL => &self.proxy,
             _ => return None,
         };
         if declared.iter().any(|item| item.eq_ignore_ascii_case(host)) {

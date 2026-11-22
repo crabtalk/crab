@@ -23,7 +23,7 @@ use serde_json::Value;
 use std::fmt;
 
 pub use api::{
-    outside::{Call, Called, Layers, Outside},
+    outside::{Call, Called, CalledOutcome, Layers, Outside},
     serve::{Named, Scoped, router, scope_router},
 };
 pub use config::Config;

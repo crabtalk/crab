@@ -33,8 +33,7 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> [Syscall; 2] {
                     abi::secrets::Id::try_from(id).map_err(anyhow::Error::msg)?;
                     Credential::check_hosts(&[destination.into()]).map_err(anyhow::Error::msg)?;
                     if !at.deps.secret_resources
-                        || (at.deps.http.reach(abi::HTTP_FETCH, destination).is_none()
-                            && at.deps.http.reach(abi::HTTP_PROXY, destination).is_none())
+                        || at.deps.http.reach(abi::HTTP_FETCH, destination).is_none()
                     {
                         let message =
                             "The service has no runtime secret permission at that destination";

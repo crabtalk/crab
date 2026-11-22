@@ -8,11 +8,7 @@ use crate::{
     record::{calls, usage},
     state::caller as storage,
 };
-use axum::{
-    Json,
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
-    response::{IntoResponse, Response},
-};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use berm::{
     Client, Meter,
     tape::{Recorder, Taping},
@@ -48,22 +44,28 @@ pub struct Call {
     pub headers: HeaderMap,
 }
 
-/// How a call from outside ended.
+/// The result of an admitted outside call.
 #[derive(Debug)]
 pub struct Called {
-    /// What the answer carries: its meter, and the tool's deprecation.
     pub headers: HeaderMap,
-    pub output: Output,
-    /// The recorded call ID, or zero for a conditional query that did not run.
-    pub id: u64,
+    pub outcome: CalledOutcome,
+}
+
+#[derive(Debug)]
+pub enum CalledOutcome {
+    Ran { id: u64, output: Output },
+    NotModified,
 }
 
 impl Called {
-    pub(crate) fn into_response(self) -> Response {
-        if self.id == 0 {
-            (StatusCode::NOT_MODIFIED, self.headers).into_response()
-        } else {
-            (self.headers, Json(self.output)).into_response()
+    /// Read the output when the caller expects an invocation.
+    pub fn into_output(self) -> Result<(HeaderMap, Output), Denied> {
+        match self.outcome {
+            CalledOutcome::Ran { output, .. } => Ok((self.headers, output)),
+            CalledOutcome::NotModified => Err(deny(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the request expected a tool result but received not modified",
+            )),
         }
     }
 }
@@ -96,7 +98,7 @@ impl<E: Env> Host<E> {
                 HeaderMap::new(),
             )
             .await?;
-        Ok((called.headers, called.output))
+        called.into_output()
     }
 
     /// A call from outside, through the daemon's layers. `query` holds it to a
@@ -275,8 +277,7 @@ impl<E: Env> Host<E> {
             if unchanged {
                 return Ok(Called {
                     headers,
-                    output: Output::Done(String::new()),
-                    id: 0,
+                    outcome: CalledOutcome::NotModified,
                 });
             }
         }
@@ -378,8 +379,10 @@ impl<E: Env> Host<E> {
         }
         Ok(Called {
             headers,
-            output: invoked.result,
-            id,
+            outcome: CalledOutcome::Ran {
+                id,
+                output: invoked.result,
+            },
         })
     }
 }

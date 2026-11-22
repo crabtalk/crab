@@ -481,10 +481,13 @@ async fn a_failed_calls_tape_keeps_the_upstream_reply_and_hashes_before_injectio
                 Default::default(),
             )
             .await?;
-        assert!(matches!(called.output, Output::Failed(_)));
+        let host::CalledOutcome::Ran { output, id } = called.outcome else {
+            anyhow::bail!("the probe did not run");
+        };
+        assert!(matches!(output, Output::Failed(_)));
         assert_eq!(host.fetched().last().unwrap().headers[0].1, credential);
         host.flush().await?;
-        let bytes = host.host.call_tape(FIXTURE, called.id).await?;
+        let bytes = host.host.call_tape(FIXTURE, id).await?;
         assert_eq!(
             bytes
                 .windows(credential.len())

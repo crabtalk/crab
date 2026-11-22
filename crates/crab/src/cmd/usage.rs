@@ -22,7 +22,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         return Ok(());
     }
     println!(
-        "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>13}  {:>12}",
+        "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>12}",
         "DAY",
         "RUNS",
         "CALLS",
@@ -33,12 +33,11 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         "WRITTEN",
         "SQL CPU µs",
         "MEMORY",
-        "PROXIED",
         "DATABASE"
     );
     for day in &meters {
         println!(
-            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>13}  {:>12}",
+            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>12}",
             format::day(day.used.day.into()),
             day.used.runs,
             day.used.calls,
@@ -49,7 +48,6 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
             day.used.written,
             day.used.sql_cpu,
             display::bytes(day.used.memory),
-            display::bytes(day.used.proxied),
             day.used
                 .database
                 .map(|sample| display::bytes(sample.used))

@@ -1,7 +1,7 @@
 //! The routes a host serves for one service, and for one scope, for a daemon
 //! to nest under the paths it names them by.
 
-use crate::{Denied, env::Env, host::Host};
+use crate::{Called, CalledOutcome, Denied, env::Env, host::Host};
 use axum::{
     Extension, Json, Router,
     body::{Body, Bytes},
@@ -279,7 +279,7 @@ async fn call<E: Env>(
     let called = host
         .outside(&service, &tool, false, args.to_vec(), caller, headers)
         .await?;
-    Ok(called.into_response())
+    Ok(outside_response(called))
 }
 
 /// The tool a route names, among the daemon's own path parameters.
@@ -327,7 +327,14 @@ async fn query<E: Env>(
             headers,
         )
         .await?;
-    Ok(called.into_response())
+    Ok(outside_response(called))
+}
+
+fn outside_response(called: Called) -> Response {
+    match called.outcome {
+        CalledOutcome::Ran { output, .. } => (called.headers, Json(output)).into_response(),
+        CalledOutcome::NotModified => (StatusCode::NOT_MODIFIED, called.headers).into_response(),
+    }
 }
 
 /// Hand a webhook to the service's `#[tool(webhook)]` tool `tool`, the body byte

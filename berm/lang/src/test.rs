@@ -14,7 +14,10 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use crate::{CallError, abi, http, sys};
-use std::{string::String, vec::Vec};
+use std::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 /// Invoke a tool export with `args`, as the host does.
 ///
@@ -62,7 +65,17 @@ pub fn answer(service: &str, tool: &str, result: Result<&[u8], CallError>) {
     let (outcome, bytes) = match result {
         Ok(bytes) => (0, bytes.to_vec()),
         Err(CallError::Failed(message)) => (abi::ERROR, message.into_bytes()),
-        Err(CallError::Refused(message)) => (abi::ERROR | abi::REFUSED, message.into_bytes()),
+        Err(CallError::Refused(refusal)) => {
+            let bytes = match refusal.explanation {
+                Some(explain) => serde_json::json!({
+                    "status":403, "error":refusal.message, "explain":explain
+                })
+                .to_string()
+                .into_bytes(),
+                None => refusal.message.into_bytes(),
+            };
+            (abi::ERROR | abi::REFUSED, bytes)
+        }
     };
     sys::with(|host| {
         host.answers.retain(|(a, b, ..)| a != service || b != tool);
@@ -88,7 +101,7 @@ pub fn forget() {
     });
 }
 
-/// One request a service sent through `berm.http.fetch` or `berm.http.proxy`,
+/// One request a service sent through `berm.http.fetch`,
 /// `{secret:NAME}` as the service wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fetched {

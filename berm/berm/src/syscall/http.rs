@@ -1,6 +1,4 @@
-//! `berm.http.fetch` and `berm.http.proxy` — one HTTP request, to a host the
-//! service's manifest allows under `[http]` — and their batch
-//! forms `berm.http.fetch_all` and `berm.http.proxy_all`.
+//! Outbound HTTP requests to hosts the service declares under `[http] fetch`.
 //!
 //! berm checks the request against the asking service's [`crate::Deps`] and
 //! substitutes every `{secret:NAME}` in a header value and in the body.
@@ -10,6 +8,7 @@
 use crate::{Callsite, Reach, Refused, Syscall, abi, syscall::Abort, wire};
 use anyhow::{Result, anyhow, bail};
 use berm_abi::secrets::Id;
+use berm_api::workflow::run::Failure;
 use futures_util::future;
 use std::{future::Future, str, sync::Arc, time::Duration};
 use url::{Host, Url};
@@ -59,13 +58,6 @@ pub struct Response {
     pub body: Vec<u8>,
 }
 
-impl Response {
-    /// Its bytes as metered: header names and values, and body.
-    pub fn size(&self) -> usize {
-        self.body.len() + headers(&self.headers)
-    }
-}
-
 /// Serve `berm.http.fetch`.
 ///
 /// `secret` is handed the callsite, a secret's name and the request's host,
@@ -80,19 +72,17 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve(abi::HTTP_FETCH, send, secret)
-}
-
-/// Serve `berm.http.proxy`: [`fetch`], to the hosts the manifest declares under
-/// it, where `send` goes through the host's proxy.
-pub fn proxy<S, Sent, R, Found>(send: S, secret: R) -> Syscall
-where
-    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
-    Sent: Future<Output = Result<Response>> + Send + 'static,
-    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
-    Found: Future<Output = Result<Option<String>>> + Send + 'static,
-{
-    serve(abi::HTTP_PROXY, send, secret)
+    let (send, secret) = (Arc::new(send), Arc::new(secret));
+    Syscall {
+        name: abi::HTTP_FETCH.to_owned(),
+        call: Arc::new(move |at: Callsite, request: Vec<u8>| {
+            let (send, secret) = (send.clone(), secret.clone());
+            Box::pin(async move {
+                let response = answer(&at, false, &request, &*send, &*secret).await?;
+                Ok(write(&response))
+            })
+        }),
+    }
 }
 
 /// Serve `berm.http.fetch_all`: a batch of [`fetch`] requests, each to a
@@ -105,7 +95,7 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve_all(abi::HTTP_FETCH_ALL, abi::HTTP_FETCH, false, send, secret)
+    serve_all(abi::HTTP_FETCH_ALL, false, send, secret)
 }
 
 pub fn fetch_all_literal_body<S, Sent, R, Found>(send: S, secret: R) -> Syscall
@@ -115,32 +105,12 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
-    serve_all(
-        abi::HTTP_FETCH_ALL_LITERAL_BODY,
-        abi::HTTP_FETCH,
-        true,
-        send,
-        secret,
-    )
+    serve_all(abi::HTTP_FETCH_ALL_LITERAL_BODY, true, send, secret)
 }
 
-/// Serve `berm.http.proxy_all`: [`fetch_all`], each request to a host the
-/// manifest declares under `[http] proxy`, where `send` goes through the
-/// host's proxy.
-pub fn proxy_all<S, Sent, R, Found>(send: S, secret: R) -> Syscall
-where
-    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
-    Sent: Future<Output = Result<Response>> + Send + 'static,
-    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
-    Found: Future<Output = Result<Option<String>>> + Send + 'static,
-{
-    serve_all(abi::HTTP_PROXY_ALL, abi::HTTP_PROXY, false, send, secret)
-}
-
-/// The batch syscall `name`, each request allowed under `syscall`.
+/// Serve a batch under the named fetch import.
 fn serve_all<S, Sent, R, Found>(
     name: &'static str,
-    syscall: &'static str,
     literal_body: bool,
     send: S,
     secret: R,
@@ -158,11 +128,12 @@ where
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
                 let requests = abi::wire::fields(&batch)?;
-                let answers =
-                    future::join_all(requests.iter().map(|request| {
-                        answer(&at, syscall, literal_body, request, &*send, &*secret)
-                    }))
-                    .await;
+                let answers = future::join_all(
+                    requests
+                        .iter()
+                        .map(|request| answer(&at, literal_body, request, &*send, &*secret)),
+                )
+                .await;
                 if let Some(abort) = answers
                     .iter()
                     .find_map(|answer| answer.as_ref().err()?.downcast_ref::<Abort>())
@@ -173,12 +144,17 @@ where
                     .iter()
                     .map(|answered| match answered {
                         Ok(response) => [abi::wire::request(&[b"ok"]), write(response)].concat(),
+                        Err(error) if error.is::<Refused>() => {
+                            let message = format!("{error:#}");
+                            let body = error.downcast_ref::<Failure>().map(|failure| &failure.body);
+                            let explanation = body.and_then(|body| body["explain"].as_str());
+                            let message = body
+                                .and_then(|body| body["error"].as_str())
+                                .unwrap_or(&message);
+                            abi::wire::http_refusal(message, explanation)
+                        }
                         Err(error) => {
-                            let kind: &[u8] = match error.downcast_ref::<Refused>() {
-                                Some(_) => b"refused",
-                                None => b"failed",
-                            };
-                            abi::wire::request(&[kind, format!("{error:#}").as_bytes()])
+                            abi::wire::request(&[b"failed", format!("{error:#}").as_bytes()])
                         }
                     })
                     .collect();
@@ -189,31 +165,9 @@ where
     }
 }
 
-fn serve<S, Sent, R, Found>(name: &'static str, send: S, secret: R) -> Syscall
-where
-    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
-    Sent: Future<Output = Result<Response>> + Send + 'static,
-    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
-    Found: Future<Output = Result<Option<String>>> + Send + 'static,
-{
-    let (send, secret) = (Arc::new(send), Arc::new(secret));
-    Syscall {
-        name: name.to_owned(),
-        call: Arc::new(move |at: Callsite, request: Vec<u8>| {
-            let (send, secret) = (send.clone(), secret.clone());
-            Box::pin(async move {
-                let response = answer(&at, name, false, &request, &*send, &*secret).await?;
-                Ok(write(&response))
-            })
-        }),
-    }
-}
-
-/// Send `request`, read off the wire and allowed under `syscall`, its secrets
-/// substituted, through `send`.
+/// Decode the request and substitute its secrets before dispatch.
 async fn answer<S, Sent, R, Found>(
     at: &Callsite,
-    syscall: &str,
     literal_body: bool,
     request: &[u8],
     send: &S,
@@ -225,7 +179,7 @@ where
     R: Fn(Callsite, String, String) -> Found,
     Found: Future<Output = Result<Option<String>>>,
 {
-    let mut request = read(at, syscall, request)?;
+    let mut request = read(at, request)?;
     let mut headers = Vec::with_capacity(request.headers.len());
     for (name, value) in request.headers {
         match substitute(at, secret, &request.host, value.as_bytes()).await? {
@@ -338,21 +292,8 @@ fn headers(headers: &[(String, String)]) -> usize {
         .sum()
 }
 
-/// Refuse a host the asking service's manifest does not declare under
-/// `syscall`.
-fn permitted(at: &Callsite, syscall: &str, host: &str) -> Result<Reach> {
-    at.deps.http.reach(syscall, host).ok_or_else(|| {
-        Refused(format!(
-            "{} does not declare {host} in [http] for {syscall}",
-            at.service
-        ))
-        .into()
-    })
-}
-
-/// `request` off the wire, refused unless the asking service declares its host
-/// under `syscall`.
-fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
+/// Decode a fetch request and check the destination against `[http] fetch`.
+fn read(at: &Callsite, request: &[u8]) -> Result<Request> {
     let fields = abi::wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?;
@@ -397,7 +338,13 @@ fn read(at: &Callsite, syscall: &str, request: &[u8]) -> Result<Request> {
     }) else {
         bail!("{url} is not an http or https URL with a host");
     };
-    let reach = permitted(at, syscall, &host)?;
+    let reach = at.deps.http.reach(abi::HTTP_FETCH, &host).ok_or_else(|| {
+        Refused(format!(
+            "{} does not declare {host} in [http] for {}",
+            at.service,
+            abi::HTTP_FETCH
+        ))
+    })?;
     Ok(Request {
         service: at.service.to_string(),
         chain: at.chain,

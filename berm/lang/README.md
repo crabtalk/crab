@@ -123,7 +123,7 @@ Reads within a tool call see its earlier writes, including pending changes from 
 
 Past its arguments, a service reaches who called, its own state, a database, its vars, logs, HTTP, other services, wakes and the clock, each through a syscall its host serves. [The Guest API](https://crabtalk.ai/docs/development/api) covers each.
 
-`CallError::Refused` reports host policy. `CallError::Failed` reports an operation or transport failure and can occur before dispatch. Establish delivery status before retrying a call with side effects.
+`CallError::Refused` reports host policy. `CallError::explanation()` returns the explanation code when the host supplies one. `CallError::Failed` reports an operation or transport failure and can occur before dispatch. Establish delivery status before retrying a call with side effects.
 
 ## License
 

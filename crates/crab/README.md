@@ -20,7 +20,7 @@ crab rm example
 
 ## crab.toml
 
-Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]` and `proxy = ["*.example.org"]`. Credential hosts join `fetch`; list only other direct destinations under `[http] fetch`. Missing or empty lists add no hosts; linked libraries contribute their destinations.
+Host calls are discovered from the linked Wasm imports. Set allowed outbound destinations under `[http]` with `fetch = ["api.example.com"]`. Credential hosts join `fetch`; list only other direct destinations under `[http] fetch`. Missing or empty lists add no hosts; linked libraries contribute their destinations.
 
 `crab build` builds source and prints its image path. `crab up [dir]` builds and deploys your source, selecting workspace services with `-p`. `crab push [dir]` publishes images to Cloud without deploying them. `crab deploy owner/name --version 1.2.3` deploys a published image under the selected account. `crab pull owner/name:1.2.3` downloads it into the local host; local deployments use stored images and pull when needed.
 

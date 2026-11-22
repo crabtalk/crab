@@ -40,15 +40,11 @@ fn credential_fetch_duplicates_compare_exact_strings() {
     assert!(
         format!("{error:#}").contains("`api.github.com` is already allowed by credential `github`")
     );
-    let project = read(&format!(
-        "{GITHUB}\n[http]\nfetch = [\"*.github.com\"]\nproxy = [\"api.github.com\"]"
-    ))
-    .unwrap();
+    let project = read(&format!("{GITHUB}\n[http]\nfetch = [\"*.github.com\"]")).unwrap();
     assert_eq!(
         project.deps().http.fetch,
         ["*.github.com", "api.github.com"]
     );
-    assert_eq!(project.deps().http.proxy, ["api.github.com"]);
 }
 #[test]
 fn retired_project_keys_are_refused_without_a_compatibility_path() {
@@ -67,6 +63,7 @@ fn retired_project_keys_are_refused_without_a_compatibility_path() {
         "calls = []",
         "[syscalls]",
         "[http]\nftech = []",
+        "[http]\nproxy = []",
     ] {
         assert!(read(text).is_err(), "accepted {text}");
     }
