@@ -12,13 +12,13 @@ Use the running service address in place of `crabtalk/analytics` if you [deploy 
 
 ## Set up tracking
 
-1. Register an anonymous app for your site’s origin. Keep the app ID for the snippet.
+1. Register an anonymous app for the origin that serves the snippet. Include the `www.` prefix in the origin if the site uses it. Keep the app ID for the snippet.
 
    ```sh
    crab app create site-analytics --origin https://example.com --service crabtalk/analytics --anonymous
    ```
 
-2. Call `claim` for your domain. Publish the returned token as plain text at `https://example.com/.well-known/crabtalk-analytics` and call `claim` again. If the domain already belongs to another account, the refusal carries a fresh token to prove control. A transfer clears visits that were still buffered for the former owner.
+2. Call `claim` for your domain. Publish the returned token as plain text at `https://example.com/.well-known/crabtalk-analytics` and call `claim` again. The bare domain and its `www.` version share one claim. The returned proof URL uses the bare domain. If you previously verified only the `www.` host, verify the bare domain now. If the domain already belongs to another account, the refusal carries a fresh token to prove control. A transfer clears visits that were still buffered for the former owner.
 3. Add the snippet to your site with the app ID filled in. The site owner manages consent for browser storage.
 4. Use an account API key on your backend to call `event` for actions such as signups. Pass the visitor and session IDs from the browser. The event inherits the visitor’s latest channel, or `direct` if the visitor has no earlier hits.
 
@@ -60,7 +60,9 @@ Single-page apps call `crabtalk.track()` on navigation. If the browser has no st
 
 3. Call `connect_stripe` with the approved `secret_id`. Use `sync_revenue` to import revenue or `channels` to sync and report together. The funnel and channel reports take `since` in Unix seconds. `channels` reports visitor counts, paying customers, and revenue by currency in minor units. For unpaid visitors, the last-touch report uses their latest hit in the window. Payments without a matching touch appear as `unattributed`.
 
-Stripe sync reads newly created objects after its saved cursors. An object that completes or is paid after its creation timestamp passes the cursor can be missed. Revenue records gross payments and subscription renewals, excluding later refunds.
+Stripe sync reads newly created objects in bounded windows and saves progress after each completed window. For an initial import, call `sync_revenue` again while `has_more` is true. `synced_through` gives the oldest completed endpoint cursor in Unix seconds. If Stripe fails, `sync_revenue` includes the error and keeps the completed progress. `channels` still reports from storage and shows `revenue_synced_through` and `revenue_fully_synced` when Stripe is connected.
+
+A window with more than two Stripe pages is split. A single second with over 200 objects at one endpoint cannot be split further and leaves that endpoint's cursor unchanged. An object that completes or is paid after its creation timestamp passes the cursor can be missed. Revenue records gross payments and subscription renewals, excluding later refunds.
 
 ## Storage and limits
 

@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 const SERVICE: &str = "publisher/analytics";
 const PROOF: &str = "https://example.com/.well-known/crabtalk-analytics";
 const STRIPE: &str = "https://api.stripe.com/v1";
+const YEAR: u64 = 365 * 24 * 60 * 60;
 const KEY: &str = "secret_11111111111111111111111111111111";
 const PUBLISHER_KEY: &str = "secret_22222222222222222222222222222222";
 
@@ -122,30 +123,70 @@ impl Analytics {
         Ok(Connection::open(self.host.host.databases.path(&name))?)
     }
 
+    async fn connect_stripe(&self) -> Result<()> {
+        self.host
+            .grant_resource(SERVICE, KEY, "api.stripe.com", "alice", "rk_fixture");
+        self.call("connect_stripe", json!({"secret_id":KEY}))
+            .await?;
+        Ok(())
+    }
+
     fn stripe(
         &self,
         endpoint: &str,
         status: Option<&str>,
-        cursor: u64,
+        window: (u64, u64),
         after: Option<&str>,
         rows: Value,
         more: bool,
     ) {
-        let filter = status.map_or_else(String::new, |s| format!("status={s}&"));
-        let through = self.host.now() / 1000 - 1;
-        let after = after.map_or_else(String::new, |id| format!("&starting_after={id}"));
-        let url = format!(
-            "{STRIPE}/{endpoint}?{filter}created%5Bgt%5D={cursor}&created%5Blte%5D={through}&limit=25{after}"
-        );
         self.host.arrange(
             "GET",
-            &url,
+            &stripe_url(endpoint, status, window, after),
             200,
             json!({"data": rows, "has_more": more})
                 .to_string()
                 .into_bytes(),
         );
     }
+
+    fn payments(&self, window: (u64, u64), rows: &[Value]) {
+        let mut after = None;
+        for (index, page) in rows.chunks(100).enumerate() {
+            let more = (index + 1) * 100 < rows.len();
+            self.stripe("payment_intents", None, window, after, json!(page), more);
+            after = page.last().and_then(|record| record["id"].as_str());
+        }
+    }
+
+    fn without_sessions_or_invoices(&self, window: (u64, u64)) {
+        self.stripe(
+            "checkout/sessions",
+            Some("complete"),
+            window,
+            None,
+            json!([]),
+            false,
+        );
+        self.stripe("invoices", Some("paid"), window, None, json!([]), false);
+    }
+}
+
+fn stripe_url(
+    endpoint: &str,
+    status: Option<&str>,
+    (cursor, through): (u64, u64),
+    after: Option<&str>,
+) -> String {
+    let filter = status.map_or_else(String::new, |s| format!("status={s}&"));
+    let after = after.map_or_else(String::new, |id| format!("&starting_after={id}"));
+    format!(
+        "{STRIPE}/{endpoint}?{filter}created%5Bgt%5D={cursor}&created%5Blte%5D={through}&limit=100{after}"
+    )
+}
+
+fn payment(id: u64, created: u64) -> Value {
+    json!({"id":format!("pi_{id}"), "created":created, "status":"succeeded", "amount_received":id, "currency":"usd"})
 }
 
 fn output(output: Output) -> Result<Value> {
@@ -238,6 +279,47 @@ async fn claim_verifies_a_public_host_and_requires_fresh_proof_for_transfer() ->
         .await?;
     assert_eq!(replacement["verified"], false);
     assert_ne!(pending["token"], replacement["token"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn www_visits_and_events_share_the_bare_domain_claim() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    let claim = analytics.claim("alice", "www.example.com").await?;
+    assert_eq!(claim["domain"], "example.com");
+    assert_eq!(claim["url"], PROOF);
+    assert_eq!(claim["verified"], true);
+    assert_eq!(
+        analytics
+            .call("claim", json!({"domain":"example.com"}))
+            .await?,
+        claim
+    );
+
+    analytics
+        .app(
+            "www.example.com",
+            json!({"visitor":"v","session":"s","path":"/"}),
+        )
+        .await?;
+    analytics
+        .call(
+            "event",
+            json!({
+                "domain":"www.example.com","visitor":"v","session":"s","name":"signup"
+            }),
+        )
+        .await?;
+    let funnel = analytics
+        .call("funnel", json!({"steps":["/","signup"],"since":0}))
+        .await?;
+    assert_eq!(funnel["steps"][1]["visitors"], 1);
+    let domains: String = analytics.caller_file("alice")?.query_row(
+        "SELECT group_concat(DISTINCT domain) FROM hits",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(domains, "example.com");
     Ok(())
 }
 
@@ -565,7 +647,7 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
     analytics.stripe(
         "checkout/sessions",
         Some("complete"),
-        0,
+        (0, 999),
         None,
         json!([
             {"id":"cs_new","created":150,"customer":"cus_a","metadata":{"crabtalk_visitor_id":"v"}}
@@ -575,14 +657,14 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
     analytics.stripe(
         "checkout/sessions",
         Some("complete"),
-        0,
+        (0, 999),
         Some("cs_new"),
         json!([
             {"id":"cs_old","created":149,"customer":null,"metadata":null}
         ]),
         false,
     );
-    analytics.stripe("payment_intents", None, 0, None, json!([
+    analytics.stripe("payment_intents", None, (0, 999), None, json!([
         {"id":"pi_renewal","created":300,"status":"succeeded","amount_received":500,"currency":"usd","customer":"cus_a"},
         {"id":"pi_pending","created":250,"status":"requires_payment_method","amount_received":0,"currency":"usd"},
         {"id":"pi_paid","created":200,"status":"succeeded","amount_received":100,"currency":"eur",
@@ -591,7 +673,7 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
     analytics.stripe(
         "invoices",
         Some("paid"),
-        0,
+        (0, 999),
         None,
         json!([
             {"id":"in_cycle","created":299,"billing_reason":"subscription_cycle",
@@ -606,19 +688,9 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
     let synced = analytics.call("sync_revenue", json!({})).await?;
     assert_eq!(
         synced,
-        json!({"checkout_sessions":1,"payment_intents":2,"renewal_invoices":1})
+        json!({"checkout_sessions":1,"payment_intents":2,"renewal_invoices":1,"synced_through":999,"has_more":false})
     );
 
-    analytics.stripe(
-        "checkout/sessions",
-        Some("complete"),
-        150,
-        None,
-        json!([]),
-        false,
-    );
-    analytics.stripe("payment_intents", None, 300, None, json!([]), false);
-    analytics.stripe("invoices", Some("paid"), 299, None, json!([]), false);
     let report = analytics
         .call("channels", json!({"since":100,"model":"last"}))
         .await?;
@@ -628,13 +700,15 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
             {"channel":"search","visitors":1,"paying_customers":1,"revenue":{"eur":100,"usd":500}}
         ])
     );
+    assert_eq!(report["revenue_synced_through"], 999);
+    assert_eq!(report["revenue_fully_synced"], true);
     let requests = analytics.host.fetched();
     assert_eq!(
         requests
             .iter()
             .filter(|request| request.url.starts_with(STRIPE))
             .count(),
-        7
+        4
     );
     assert!(
         requests
@@ -657,6 +731,171 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
         |row| row.get(0),
     )?;
     assert_eq!(visitor, "v");
+    Ok(())
+}
+
+#[tokio::test]
+async fn stripe_sync_finishes_a_large_history_over_several_calls() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    analytics.connect_stripe().await?;
+    const WINDOWS: u64 = 8;
+    const PER_WINDOW: u64 = 131;
+    analytics.host.set_now((WINDOWS * YEAR + 1) * 1000);
+    for window in 0..WINDOWS {
+        let window_start = window * YEAR;
+        let bounds = (window_start, window_start + YEAR);
+        analytics.without_sessions_or_invoices(bounds);
+        let rows: Vec<_> = (1..=PER_WINDOW)
+            .rev()
+            .map(|offset| {
+                payment(
+                    window * PER_WINDOW + offset,
+                    if offset == PER_WINDOW {
+                        bounds.1
+                    } else {
+                        window_start + offset
+                    },
+                )
+            })
+            .collect();
+        analytics.payments(bounds, &rows);
+    }
+
+    let mut imported = 0;
+    for (windows, remaining) in [(3, true), (6, true), (8, false)] {
+        let synced = analytics.call("sync_revenue", json!({})).await?;
+        imported += synced["payment_intents"].as_u64().unwrap();
+        assert_eq!(synced["synced_through"], windows * YEAR);
+        assert_eq!(synced["has_more"], remaining);
+        assert_eq!(imported, windows * PER_WINDOW);
+    }
+    let requests = analytics.host.fetched().len();
+    let synced = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(synced["payment_intents"], 0);
+    assert_eq!(synced["has_more"], false);
+    assert_eq!(analytics.host.fetched().len(), requests);
+    let db = analytics.caller_file("alice")?;
+    let mut found = db.prepare("SELECT amount FROM payments ORDER BY amount")?;
+    let amounts = found
+        .query_map([], |row| row.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    assert_eq!(
+        amounts,
+        (1..=(WINDOWS * PER_WINDOW) as i64).collect::<Vec<_>>()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn stripe_shrinks_dense_windows_and_remembers_the_split_after_the_call_cap() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    analytics.connect_stripe().await?;
+    analytics.host.set_now(1_001_000);
+    analytics.without_sessions_or_invoices((0, 1000));
+    let mut rows: Vec<_> = (2..=301)
+        .rev()
+        .map(|id| {
+            payment(
+                id,
+                if id > 151 {
+                    750 + id - 151
+                } else {
+                    500 + id - 1
+                },
+            )
+        })
+        .collect();
+    analytics.payments((500, 1000), &rows);
+    analytics.payments((750, 1000), &rows[..150]);
+    analytics.payments((500, 750), &rows[150..]);
+    rows.push(payment(1, 500));
+    analytics.payments((0, 1000), &rows);
+    analytics.payments((0, 500), &rows[300..]);
+
+    let first = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(first["synced_through"], 500);
+    assert_eq!(first["has_more"], true);
+    assert_eq!(first["payment_intents"], 1);
+    let first_amount: i64 = analytics.caller_file("alice")?.query_row(
+        "SELECT sum(amount) FROM payments",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(first_amount, 1);
+    let second = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(second["synced_through"], 1000);
+    assert_eq!(second["has_more"], false);
+    assert_eq!(second["payment_intents"], 300);
+    let total: (i64, i64) = analytics.caller_file("alice")?.query_row(
+        "SELECT count(*), sum(amount) FROM payments",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(total, (301, 301 * 302 / 2));
+    Ok(())
+}
+
+#[tokio::test]
+async fn channels_reports_stored_revenue_when_a_later_stripe_page_fails() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    analytics.connect_stripe().await?;
+    analytics.host.set_now((2 * YEAR + 1) * 1000);
+    analytics.without_sessions_or_invoices((0, YEAR));
+    analytics.without_sessions_or_invoices((YEAR, 2 * YEAR));
+    analytics.stripe(
+        "payment_intents",
+        None,
+        (0, YEAR),
+        None,
+        json!([payment(7, YEAR)]),
+        false,
+    );
+    analytics.stripe(
+        "payment_intents",
+        None,
+        (YEAR, 2 * YEAR),
+        None,
+        json!([payment(11, 2 * YEAR)]),
+        true,
+    );
+    analytics.host.arrange(
+        "GET",
+        &stripe_url("payment_intents", None, (YEAR, 2 * YEAR), Some("pi_11")),
+        503,
+        b"try again later".as_slice(),
+    );
+
+    let report = analytics
+        .call("channels", json!({"since":0,"model":"first"}))
+        .await?;
+    assert_eq!(report["revenue_synced_through"], YEAR);
+    assert_eq!(report["revenue_fully_synced"], false);
+    assert_eq!(
+        report["channels"],
+        json!([
+            {"channel":"unattributed","visitors":0,"paying_customers":1,"revenue":{"usd":7}}
+        ])
+    );
+    let failed = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(failed["synced_through"], YEAR);
+    assert_eq!(failed["has_more"], true);
+    assert_eq!(failed["payment_intents"], 0);
+    assert!(failed["error"].as_str().unwrap().contains("503"));
+
+    analytics.stripe(
+        "payment_intents",
+        None,
+        (YEAR, 2 * YEAR),
+        Some("pi_11"),
+        json!([payment(5, YEAR + 1)]),
+        false,
+    );
+    let repaired = analytics
+        .call("channels", json!({"since":0,"model":"first"}))
+        .await?;
+    assert_eq!(repaired["revenue_synced_through"], 2 * YEAR);
+    assert_eq!(repaired["revenue_fully_synced"], true);
+    assert_eq!(repaired["channels"][0]["revenue"], json!({"usd":23}));
     Ok(())
 }
 

@@ -95,6 +95,7 @@ pub(crate) fn normalize(domain: &str) -> Result<String> {
         return Err("Use a valid domain name".into());
     };
     let host = host.strip_suffix('.').unwrap_or(host);
+    let host = host.strip_prefix("www.").unwrap_or(host);
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()
         || url.password().is_some()

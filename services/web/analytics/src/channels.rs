@@ -7,9 +7,12 @@ pub enum Model {
     Last,
 }
 
-#[derive(Schema)]
+#[derive(Schema, Default)]
 pub struct Channels {
     pub channels: Vec<Channel>,
+    /// Oldest completed Stripe endpoint cursor, in Unix seconds, if configured.
+    pub revenue_synced_through: Option<u64>,
+    pub revenue_fully_synced: bool,
 }
 
 #[derive(Schema, Default)]
@@ -75,6 +78,7 @@ impl Channels {
                     ..channel
                 })
                 .collect(),
+            ..Self::default()
         })
     }
 }

@@ -106,7 +106,7 @@ pub fn funnel(
 
 /// Attribute visitors and Stripe revenue by channel
 ///
-/// Use first or last touch for the reporting window.
+/// Use first or last touch for the reporting window. Revenue may be behind Stripe.
 #[tool(
     access = "accounts",
     catalog = "web.analytics-channels",
@@ -119,15 +119,20 @@ pub fn channels(
 ) -> Result<Channels> {
     let account = Account::calling()?;
     drain::run(&account)?;
-    if let Some(stripe) = Stripe::connected()? {
-        stripe.sync()?;
+    let sync = Stripe::connected()?
+        .map(|stripe| stripe.sync())
+        .transpose()?;
+    let mut report = Channels::report(since, model)?;
+    if let Some(sync) = sync {
+        report.revenue_synced_through = Some(sync.synced_through);
+        report.revenue_fully_synced = !sync.has_more && sync.error.is_none();
     }
-    Channels::report(since, model)
+    Ok(report)
 }
 
 /// Sync Stripe revenue
 ///
-/// Import Stripe payments and subscription renewals using the connected key.
+/// Import a bounded part of Stripe history. Call again while has_more is true.
 #[tool(
     access = "accounts",
     catalog = "web.analytics-sync-revenue",
