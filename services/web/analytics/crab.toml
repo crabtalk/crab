@@ -1,0 +1,17 @@
+id = "3b7b57c035bc4daea3a733f1611324f0"
+secret_resources = true
+
+[storage]
+migrations = "migrations"
+size = "64MiB"
+
+[storage.caller]
+migrations = "caller"
+
+[http]
+fetch = ["*"]
+
+[image]
+name = "crabtalk/analytics"
+public = true
+publish = true

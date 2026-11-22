@@ -6,13 +6,13 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 
 - [Connect](connect/README.md): third-party API integrations.
 - [Agents](agents/README.md): agent identities and conversations.
-- [Web](web/README.md): SEO checks and audits.
+- [Web](web/README.md): SEO checks, site audits and revenue attribution.
 
-The catalog directories are `connect`, `agents` and `web`. CrabTalk publishes its services under the `crabtalk` account; `crabtalk/seo` is the only one published. The others set `publish = false` and are deployed from source. A context supplies the server and credentials, which must authorize publication to the `[image]` address.
+The catalog directories are `connect`, `agents` and `web`. CrabTalk service images use the `crabtalk` account. See each service’s README for its deployment and publication settings. A context supplies the server and credentials, which must authorize publication to the `[image]` address.
 
-Call an accessible running deployment or deploy a published image as a private copy. Catalog membership does not make a deployment public. `crabtalk/seo` is a public service whose image cannot be deployed by other accounts. Each service documents its setup and state ownership.
+Call an accessible running deployment or deploy a published image as a private copy. Catalog membership does not make a deployment public. SEO and Analytics are configured as public services. Private copies can be built from source. Each service documents its setup and state ownership.
 
-Tools declare their discovery classification with `catalog` in `crab.toml`. See the [Service catalog guide](https://crabtalk.ai/docs/guides/catalog) for categories, platform prefixes and job names.
+Tools declare their discovery classification with `catalog` in `#[tool]`. See the [Service catalog guide](https://crabtalk.ai/docs/guides/catalog) for categories, platform prefixes and job names.
 
 Library-only packages live under [services/kits](kits/) and are listed in [crabkit](../crates/crabkit/README.md).
 

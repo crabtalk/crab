@@ -994,6 +994,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-analytics"
+version = "0.1.8"
+dependencies = [
+ "anyhow",
+ "berm",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "berm-rusqlite",
+ "hex",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "crab-anyapi"
 version = "0.1.8"
 dependencies = [
