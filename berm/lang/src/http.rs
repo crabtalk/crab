@@ -4,7 +4,7 @@
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
 //! manifest declares, or `{secret:ID}` for a host-granted resource when the
-//! manifest enables `secret_resources`. The service never holds the value.
+//! manifest enables `secret_resources`. The host substitutes values on dispatch.
 
 use crate::{
     Error, RawValue, Result,
@@ -119,9 +119,8 @@ impl Response {
 /// )?;
 /// ```
 ///
-/// [`CallError::Refused`] means nothing was sent: a host or secret the
-/// manifest does not declare, or a secret nobody granted. A status the far end
-/// answered with, 4xx and 5xx included, is a [`Response`].
+/// [`CallError::Refused`] reports host policy. Upstream statuses, including
+/// 4xx and 5xx, are returned in a [`Response`].
 pub fn fetch(
     method: &str,
     url: &str,

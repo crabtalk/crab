@@ -4,7 +4,10 @@
 
 use anyhow::Result;
 use axum::http::StatusCode;
-use berm::{Callsite, Changes, Enter, Scope};
+use berm::{
+    Callsite, Changes, Enter, Scope, abi,
+    tape::{Answer, Tape},
+};
 use berm_api::{
     Output,
     host::{CallPage, Caller, RecordedLog, Records, RecordsPage},
@@ -452,5 +455,54 @@ async fn guest_call_id_matches_the_host_record() -> Result<()> {
     let (calls, _) = host.host.calls(FIXTURE, page()).await?;
     assert_eq!(calls.len(), 1);
     assert_eq!(context["id"], calls[0].id.to_string());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_failed_calls_tape_keeps_the_upstream_reply_and_hashes_before_injection() -> Result<()> {
+    const TOKEN: &str = "dummy-tape-value";
+    let host = fixture().await?;
+    let url = "http://127.0.0.1/tape";
+    let args = serde_json::to_vec(&serde_json::json!({
+        "urls":[url],"header":"Authorization: {secret:fixture}","fail":true
+    }))?;
+    let mut digests = Vec::new();
+    for (credential, body) in [("first-dummy", "reply"), (TOKEN, TOKEN)] {
+        host.grant(FIXTURE, "fixture", "127.0.0.1", credential);
+        host.arrange("GET", url, 200, body);
+        let called = host
+            .host
+            .outside(
+                FIXTURE,
+                "http_batch_probe",
+                false,
+                args.clone(),
+                Some(caller()),
+                Default::default(),
+            )
+            .await?;
+        assert!(matches!(called.output, Output::Failed(_)));
+        assert_eq!(host.fetched().last().unwrap().headers[0].1, credential);
+        host.flush().await?;
+        let bytes = host.host.call_tape(FIXTURE, called.id).await?;
+        assert_eq!(
+            bytes
+                .windows(credential.len())
+                .any(|w| w == credential.as_bytes()),
+            credential == TOKEN
+        );
+        let tape = Tape::try_from(bytes.as_slice())?;
+        let entry = tape
+            .entries
+            .iter()
+            .find(|entry| entry.syscall == abi::HTTP_FETCH_ALL)
+            .unwrap();
+        let Answer::Done(answer) = &entry.answer else {
+            panic!("{entry:?}")
+        };
+        assert!(answer.windows(body.len()).any(|w| w == body.as_bytes()));
+        digests.push(entry.asked);
+    }
+    assert_eq!(digests[0], digests[1]);
     Ok(())
 }

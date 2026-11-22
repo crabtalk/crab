@@ -145,3 +145,111 @@ async fn a_service_can_use_its_own_runtime_secret_for_another_account() -> Resul
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn a_runtime_secret_refusal_aborts_the_batch_after_an_allowed_sibling_dispatches()
+-> Result<()> {
+    let host = TestHost::open(0).await?;
+    let service = "publisher/relay";
+    host.deploy(service, &fixture::image("berm-fixture")?)
+        .await?;
+    let id = "secret_11111111111111111111111111111111";
+    let allowed = "http://127.0.0.1/batch";
+    let refused = "http://127.0.0.1/refused";
+    for url in [allowed, refused] {
+        host.arrange("GET", url, 200, "ok");
+    }
+    host.grant_resource(service, id, "127.0.0.1", "other-tenant", "dummy-other");
+    let caller = serde_json::from_value(json!({"id":"member","account":"customer"}))?;
+    let denied = host.host.outside(
+        service, "http_batch_probe", false,
+        serde_json::to_vec(&json!({"urls":[refused, allowed], "header":format!("Authorization: {{secret:{id}}}")}))?,
+        Some(caller), Default::default(),
+    ).await.unwrap_err();
+    assert_eq!(denied.status.as_u16(), 403);
+    assert_eq!(denied.failure.unwrap().body["explain"], "E0089");
+    assert_eq!(host.fetched().len(), 1);
+    assert_eq!(host.fetched()[0].url, allowed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn literal_bodies_skip_substitution_and_optional_headers_can_be_omitted() -> Result<()> {
+    let host = TestHost::open(0).await?;
+    let service = "publisher/relay";
+    host.deploy(service, &fixture::image("berm-fixture")?)
+        .await?;
+    let url = "http://127.0.0.1/body";
+    let body = "literal {secret:spare}";
+    host.arrange("POST", url, 200, "ok");
+    let input = |literal| {
+        json!({
+            "urls":[url], "header":"X-Optional: {secret:spare}", "body":body, "literal":literal
+        })
+    };
+    assert_eq!(
+        host.call_json(service, "http_batch_probe", input(false))
+            .await?,
+        json!([0])
+    );
+    assert!(host.fetched().is_empty());
+    assert_eq!(
+        host.call_json(service, "http_batch_probe", input(true))
+            .await?,
+        json!([200])
+    );
+    assert!(host.fetched()[0].headers.is_empty());
+    assert_eq!(host.fetched()[0].body, body.as_bytes());
+    Ok(())
+}
+
+#[tokio::test]
+async fn resource_owner_metadata_requires_the_destination_grant_and_calling_account() -> Result<()>
+{
+    let host = TestHost::open(0).await?;
+    let service = "publisher/relay";
+    host.deploy(service, &fixture::image("berm-fixture")?)
+        .await?;
+    let id = "secret_11111111111111111111111111111111";
+    host.grant_resource(service, id, "127.0.0.1", "customer", "dummy-value");
+    let customer: Caller = serde_json::from_value(json!({"id":"customer"}))?;
+    let lookup = |dest| serde_json::to_vec(&json!({"id":id,"host":dest})).unwrap();
+    let (_, found) = host
+        .host
+        .call(
+            service,
+            Some(&customer),
+            "secret_owner",
+            lookup("127.0.0.1"),
+            false,
+        )
+        .await?;
+    assert_eq!(found, Output::Done(r#""customer""#.to_owned()));
+    let (_, absent) = host
+        .host
+        .call(
+            service,
+            Some(&customer),
+            "secret_owner",
+            lookup("other.example.com"),
+            false,
+        )
+        .await?;
+    assert_eq!(absent, Output::Done("null".to_owned()));
+    let other = serde_json::from_value(json!({"id":"other"}))?;
+    let denied = host
+        .host
+        .call(
+            service,
+            Some(&other),
+            "secret_owner",
+            lookup("127.0.0.1"),
+            false,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(denied.status.as_u16(), 403);
+    assert_eq!(denied.failure.unwrap().body["explain"], "E0089");
+    assert!(host.fetched().is_empty());
+    Ok(())
+}

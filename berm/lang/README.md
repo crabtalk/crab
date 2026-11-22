@@ -35,7 +35,7 @@ A function marked `#[tool(...)]`, in any module of the service's crate, is a too
 
 Enums with payloads use external snake-case tags: `Platform::Grok(Connection { … })` is `{"grok":{…}}`. Payload variants accept one unnamed field or named fields. Enums containing only unit variants remain strings.
 
-A tool defaults to public caller access. Use `#[tool(access = "internal")]` for an internal tool; `anonymous`, `accounts` and `services` select other callers. Cron and webhook handlers are internal. The first doc-comment line is the title, at most 60 characters and without a final period. The remaining comment is its description. Price, catalog, `budget(...)`, idempotency and example tasks are attributes on `#[tool]`; all travel in the built image.
+A tool defaults to public caller access. Use `#[tool(access = "internal")]` for an internal tool; `anonymous`, `accounts` and `services` select other callers. Cron and both Standard Webhook and Stripe webhook handlers are internal. A public deployment with `services` access can accept authorized service callers from other accounts. The first doc-comment line is the title, at most 60 characters and without a final period. The remaining comment is its description. Price, catalog, `budget(...)`, idempotency and example tasks are attributes on `#[tool]`; all travel in the built image.
 
 Off the guest's target this is an ordinary library, which is why the `cfg_attr` above is worth copying: tools then run under `cargo nextest run` with no wasm toolchain and no daemon. See `berm_lang::test`.
 
@@ -107,6 +107,8 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. On Cloud, an account owner grants a resource ID to a service for exact hosts. During a call, the service’s account or the authenticated calling account must own the resource. A scheduled run can use any grant made to the service. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
 
+HTTP credentials are substituted by the host at dispatch. Service code receives upstream response data, which can include credentials and can be retained on a replay tape.
+
 ## Stored values
 
 `get` and `set` store any serde type as JSON, `get_raw` and `set_raw` store bytes as given, and `delete` removes a key. `get` fails with the key name when the stored value does not parse as the requested type. `caller_storage` has the same five functions over the verified caller's storage.
@@ -120,6 +122,8 @@ Reads within a tool call see its earlier writes, including pending changes from 
 ## Reaching a runtime
 
 Past its arguments, a service reaches who called, its own state, a database, its vars, logs, HTTP, other services, wakes and the clock, each through a syscall its host serves. [The Guest API](https://crabtalk.ai/docs/development/api) covers each.
+
+`CallError::Refused` reports host policy. `CallError::Failed` reports an operation or transport failure and can occur before dispatch. Establish delivery status before retrying a call with side effects.
 
 ## License
 

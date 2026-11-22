@@ -30,6 +30,7 @@ use std::{
 const MAX_PAGE: i64 = 1000;
 
 /// The error code a webhook for a tool that takes none carries.
+const VAR: &str = "E0011";
 const NO_WEBHOOK_TOOL: &str = "E0014";
 
 impl<E: Env> Host<E> {
@@ -173,11 +174,13 @@ impl<E: Env> Host<E> {
             return Err(deny(
                 StatusCode::NOT_FOUND,
                 format!("the service has no var named {var:?}"),
-            ));
+            )
+            .explained(VAR));
         }
         if let Some(value) = &value {
-            deps.settable(var, value)
-                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            deps.settable(var, value).map_err(|error| {
+                deny(StatusCode::BAD_REQUEST, format!("{error:#}")).explained(VAR)
+            })?;
         }
         let (scope, name) = host::split(service);
         vars::set(&self.store, scope, name, var.to_owned(), value).await?;

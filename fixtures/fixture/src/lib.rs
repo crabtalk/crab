@@ -227,6 +227,60 @@ pub fn vouched(
     Ok(crate::fixture::calls::whoami()?)
 }
 
+/// HTTP batch probe
+///
+/// Sends requests to `urls`, with a header on the first request.
+#[tool]
+pub fn http_batch_probe(
+    urls: Vec<String>,
+    header: Option<String>,
+    body: Option<String>,
+    literal: Option<bool>,
+    fail: Option<bool>,
+) -> Result<Vec<u16>> {
+    let header = header
+        .as_deref()
+        .and_then(|header| header.split_once(':'))
+        .map(|(name, value)| (name, value.trim()));
+    let requests: Vec<_> = urls
+        .iter()
+        .enumerate()
+        .map(|(index, url)| berm_lang::http::Request {
+            method: if body.is_some() { "POST" } else { "GET" },
+            url,
+            headers: if index == 0 { header.as_slice() } else { &[] },
+            body: body.as_deref().unwrap_or_default().as_bytes(),
+            timeout: None,
+            limit: None,
+        })
+        .collect();
+    let replies = if literal == Some(true) {
+        berm_lang::http::fetch_all_literal_body(&requests)?
+    } else {
+        berm_lang::http::fetch_all(&requests)?
+    };
+    if fail == Some(true) {
+        return Err("probe failed after the requests".into());
+    }
+    Ok(replies
+        .into_iter()
+        .map(|reply| reply.map_or(0, |r| r.status))
+        .collect())
+}
+
+/// Runtime secret owner
+#[tool]
+pub fn secret_owner(id: String, host: String) -> Result<Option<String>> {
+    Ok(berm_lang::secret::owner(&id, &host)?)
+}
+
+/// Call a peer's note tool
+#[tool]
+pub fn ask_note(target: String, word: String) -> Result<String> {
+    let args = format!(r#"{{"word":{}}}"#, berm_lang::json::to(&word)?);
+    Ok(berm_lang::call(&target, "note", &args)?)
+}
+
 /// Reach
 ///
 /// Makes the host calls no other tool here makes, whatever each answers, so

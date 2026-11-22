@@ -66,6 +66,8 @@ pub(crate) async fn claim(store: &Store, now: i64, lease: i64, limit: i64) -> Re
                                      AND scope NOT IN (SELECT scope FROM held_scopes)
                                      AND (scope, name) NOT IN
                                          (SELECT scope, name FROM services WHERE stopped = 1)
+                                     AND (scope, service) NOT IN
+                                         (SELECT scope, name FROM services WHERE stopped = 1)
                                    ORDER BY due LIMIT ?3)
                   RETURNING scope, name, service, tool, args, armed, slot",
             )?;
@@ -81,6 +83,25 @@ pub(crate) async fn claim(store: &Store, now: i64, lease: i64, limit: i64) -> Re
                 })
             })?;
             rows.collect()
+        })
+        .await
+}
+
+pub(crate) async fn defer(store: &Store, wake: &Wake, due: i64) -> Result<()> {
+    let (scope, name, slot, armed) = (
+        wake.scope.clone(),
+        wake.name.clone(),
+        wake.slot.clone(),
+        wake.armed,
+    );
+    store
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE service_wakes SET due = ?5
+                  WHERE scope = ?1 AND name = ?2 AND slot = ?3 AND armed = ?4",
+                params![scope, name, slot, armed, due],
+            )?;
+            Ok(())
         })
         .await
 }
@@ -270,6 +291,8 @@ pub(crate) async fn next(store: &Store) -> Result<Option<i64>> {
                 "SELECT MIN(due) FROM service_wakes
                   WHERE scope NOT IN (SELECT scope FROM held_scopes)
                     AND (scope, name) NOT IN
+                        (SELECT scope, name FROM services WHERE stopped = 1)
+                    AND (scope, service) NOT IN
                         (SELECT scope, name FROM services WHERE stopped = 1)",
                 [],
                 |row| row.get(0),

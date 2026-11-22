@@ -97,6 +97,35 @@ impl<E: Env> Host<E> {
         headers: HeaderMap,
     ) -> Result<Called, Denied> {
         let deployed = self.deployed(service)?;
+        let query = self.check_outside(&deployed, service, tool, query, caller.as_ref())?;
+        let call = Call {
+            service: service.to_owned(),
+            tool: tool.to_owned(),
+            query,
+            args,
+            caller: caller.clone(),
+            client: Client {
+                key: None,
+                ip: caller.as_ref().and_then(Caller::client_ip),
+            },
+            headers,
+        };
+        match self.outside.clone().oneshot(call).await {
+            Err(denied) if denied.status.is_client_error() => {
+                Err(self.record_outside_refusal(service, tool, caller.as_ref(), denied))
+            }
+            answered => answered,
+        }
+    }
+
+    pub(crate) fn check_outside(
+        &self,
+        deployed: &berm::Service,
+        service: &str,
+        tool: &str,
+        query: bool,
+        caller: Option<&Caller>,
+    ) -> Result<bool, Denied> {
         let Some(spec) = deployed
             .manifest
             .tools
@@ -118,59 +147,47 @@ impl<E: Env> Host<E> {
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("{service} is stopped"),
-            ));
+            )
+            .explained(Denied::PAUSED));
         }
-        let refused = |denied: Denied, caller: Option<&Caller>| {
-            let (source, who) = counted(caller);
-            self.usage
-                .record(service, Kind::Tool, tool, source, who, Outcome::Refused);
-            self.calls.record(
-                service,
-                self.calls.start(),
-                tool,
-                source,
-                who,
-                Outcome::Refused,
-                None,
-                None,
-                None,
-            );
-            Err(denied)
-        };
+        let refused = |denied| self.record_outside_refusal(service, tool, caller, denied);
         if !deployed.reached_by_accounts(tool) {
-            return refused(
-                deny(
-                    StatusCode::FORBIDDEN,
-                    format!("{tool} takes calls from services only"),
-                ),
-                caller.as_ref(),
-            );
+            return Err(refused(deny(
+                StatusCode::FORBIDDEN,
+                format!("{tool} takes calls from services only"),
+            )));
         }
-        if !spec.anonymous && caller.as_ref().is_none_or(Caller::anonymous) {
-            return refused(
-                deny(
-                    StatusCode::UNAUTHORIZED,
-                    format!("{tool} takes no anonymous calls; call it as a caller"),
-                ),
-                caller.as_ref(),
-            );
+        if !spec.anonymous && caller.is_none_or(Caller::anonymous) {
+            return Err(refused(deny(
+                StatusCode::UNAUTHORIZED,
+                format!("{tool} takes no anonymous calls; call it as a caller"),
+            )));
         }
-        let call = Call {
-            service: service.to_owned(),
-            tool: tool.to_owned(),
-            query: spec.query,
-            args,
-            caller: caller.clone(),
-            client: Client {
-                key: None,
-                ip: caller.as_ref().and_then(Caller::client_ip),
-            },
-            headers,
-        };
-        match self.outside.clone().oneshot(call).await {
-            Err(denied) if denied.status.is_client_error() => refused(denied, caller.as_ref()),
-            answered => answered,
-        }
+        Ok(spec.query)
+    }
+
+    fn record_outside_refusal(
+        &self,
+        service: &str,
+        tool: &str,
+        caller: Option<&Caller>,
+        denied: Denied,
+    ) -> Denied {
+        let (source, who) = counted(caller);
+        self.usage
+            .record(service, Kind::Tool, tool, source, who, Outcome::Refused);
+        self.calls.record(
+            service,
+            self.calls.start(),
+            tool,
+            source,
+            who,
+            Outcome::Refused,
+            None,
+            None,
+            None,
+        );
+        denied
     }
 
     /// The bottom of the layers: a call the layers let through, run.

@@ -4,7 +4,7 @@
 //! host-side until the guest pulls them, as the argument blob is pulled
 //! (`args.len` then `args.read`); the host never enters a guest to give it
 //! something. The high bit of the returned length says the staged bytes are a
-//! failure message, and a second bit says whether anything ran at all.
+//! failure message, and a second bit marks a policy refusal.
 
 use crate::{
     abi::{ERROR, REFUSED},
@@ -15,9 +15,9 @@ use alloc::{string::String, vec, vec::Vec};
 /// Why a syscall did not produce a result, as the host told it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallError {
-    /// Whatever the call reached ran, and reported failure.
+    /// The operation or its transport failed.
     Failed(String),
-    /// The host refused the call. Nothing ran.
+    /// The host refused the operation under its policy.
     Refused(String),
 }
 
@@ -29,7 +29,7 @@ impl CallError {
         }
     }
 
-    /// Whether the call was refused before anything ran.
+    /// Whether the host reported a policy refusal.
     pub fn refused(&self) -> bool {
         matches!(self, Self::Refused(_))
     }

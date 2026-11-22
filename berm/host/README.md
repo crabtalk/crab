@@ -14,13 +14,17 @@ The `test` feature adds `berm_host::test`: a host whose edges a test holds, runn
 
 `host::Caller.key` carries the authenticated API key ID. The embedder verifies it; the local host trusts supplied caller metadata. `berm_lang::key::id()` reads that ID throughout the chain, including peer links. Scheduled calls carry no key.
 
-Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway.
+Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway. Local caller storage selects the unchecked caller and any supplied user. Removing a deployment retains its caller files.
+
+For a group deploy, the host preflights every member, switches members one at a time and attempts to restore earlier images if a later switch fails. Applied migrations stay in place and may prevent restoration.
 
 `Host::event_page` reads a named `#[tool(events = "name")]` source under the supplied caller's authorization and checks its page framing before returning a resume position. A read without a cursor returns the current checkpoint. Tool authorization refusals return `403`; ordinary source failures return `400`. Native discovery metadata comes from `berm_api::events::Source`. MCP subscription management and callback delivery are not implemented.
 
 `Host::live` returns a fresh `database` snapshot: committed SQLite allocation, the writer's enforced capacity, and an epoch-second measurement time. WAL, logs and code caches are excluded. Recorded database snapshots refresh on deployment and each background flush; history reads do not write samples. The legacy `stored` field remains separate.
 
 Service databases share caches of at most 64 idle writer connections and 64 idle read connections per host. Active transactions retain their writer connection. Writer jobs execute in submission order on Tokio's blocking pool; idle services hold no dedicated writer thread. Capacity limits and SQL guards are reapplied when a connection reopens.
+
+Replay tapes hash HTTP requests before substituting credentials and retain responses as received. An upstream response can put a credential on a tape.
 
 ## License
 

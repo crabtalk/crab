@@ -317,19 +317,20 @@ async fn query<E: Env>(
     Query(arguments): Query<Arguments>,
     headers: HeaderMap,
 ) -> Result<Response, Denied> {
-    let caller_storage = host.deployed(&service)?.manifest.caller_storage.is_some();
-    let etag = if caller_storage {
+    let deployed = host.deployed(&service)?;
+    let caller = caller.map(|Extension(caller)| caller);
+    let etag = if deployed.manifest.caller_storage.is_some() {
         None
     } else {
         let commits = host.commits(&service).await?;
         let etag =
             HeaderValue::from_str(&format!("\"{commits}\"")).expect("a number is a header value");
         if headers.get(header::IF_NONE_MATCH) == Some(&etag) {
+            host.check_outside(&deployed, &service, &tool, true, caller.as_ref())?;
             return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
         }
         Some(etag)
     };
-    let caller = caller.map(|Extension(caller)| caller);
     let mut called = host
         .outside(
             &service,

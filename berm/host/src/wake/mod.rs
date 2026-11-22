@@ -152,6 +152,7 @@ impl<E: Env> Host<E> {
     /// [`RETRY`]. Answers how the call ended when it ran here.
     pub(crate) async fn fire(&self, wake: table::Wake) -> Option<Invoked> {
         let mut ran = None;
+        let mut deferred = false;
         let fired = async {
             let key = host::join(&wake.scope, &wake.service);
             let from = host::join(&wake.scope, &wake.name);
@@ -193,10 +194,14 @@ impl<E: Env> Host<E> {
                 }
                 return Ok(());
             };
+            let _slot = self.gate.acquire().await?;
+            if self.stopped(&key) || self.stopped(&from) || self.holds.holds(&wake.scope) {
+                deferred = true;
+                return Ok(());
+            }
             if self.pools.pool(&wake.scope).full() {
                 bail!("{} holds as much memory as it may", wake.scope);
             }
-            let _slot = self.gate.acquire().await?;
             let started = self.calls.start();
             let recorder = Recorder::default();
             let invoked = SCHEDULED
@@ -259,7 +264,14 @@ impl<E: Env> Host<E> {
             }
             Result::<()>::Ok(())
         };
-        let failed = match fired.await {
+        let result = fired.await;
+        if deferred {
+            if let Err(error) = table::defer(&self.store, &wake, (self.now)() as i64).await {
+                tracing::error!(service = wake.name, %error, "deferring a stopped wake failed");
+            }
+            return None;
+        }
+        let failed = match result {
             Ok(()) => false,
             Err(e) => {
                 tracing::warn!(
