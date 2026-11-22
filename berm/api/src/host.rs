@@ -12,6 +12,11 @@ pub const SQLITE: &str = "application/vnd.sqlite3";
 pub const METER: &str = "berm-meter";
 pub const LAUNCHED: &str = "berm-launched";
 
+/// Explanation for a runtime secret binding or account refusal.
+pub const SECRET_ACCESS: &str = "E0089";
+/// Explanation for a refused outbound HTTP destination.
+pub const HTTP_DESTINATION: &str = "E0091";
+
 /// Response header set to `1` when a tool refused its caller.
 pub const DENIED: &str = "berm-denied";
 
@@ -271,6 +276,9 @@ pub struct Route {
 /// the chain it runs as.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
+    /// The authenticated outside account, if this chain has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scheduled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -274,6 +274,12 @@ pub fn secret_owner(id: String, host: String) -> Result<Option<String>> {
     Ok(berm_lang::secret::owner(&id, &host)?)
 }
 
+/// Bind a runtime secret
+#[tool]
+pub fn bind_secret(id: String, host: String) -> Result<bool> {
+    Ok(berm_lang::secret::bind(&id, &host)?)
+}
+
 /// Call a peer's note tool
 #[tool]
 pub fn ask_note(target: String, word: String) -> Result<String> {

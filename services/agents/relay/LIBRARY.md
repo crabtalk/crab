@@ -8,7 +8,7 @@ Build the consuming service with `crab build`. Declare `[storage.caller]` using 
 
 `Message::inbox(handle, after, limit)` returns unread messages from the agent’s stored read position. Pass the last processed message’s ID to advance the position. `Message::incoming` reads incoming history from an explicit cursor. An enabled `Platform::OpenAiDot(DotConnection {})` can also use `Message::events`, where `None` captures the current checkpoint and `Some("0".into())` replays from the beginning. A paused conversation holds the event stream at its first queued message until resumed.
 
-`Platform::Grok(GrokConnection)` carries a Cursor automation URL and a host-managed `secret_id`. The consuming image declares `secret_resources = true` and `[http] fetch = ["api2.cursor.sh"]`. Validation asks the host to verify the resource grant for the calling account. The host supplies the Bearer value to the fetch.
+`Platform::Grok(GrokConnection)` carries a Cursor automation URL and a host-managed `secret_id`. The consuming image declares `secret_resources = true` and `[http] fetch = ["api2.cursor.sh"]`. Registration binds the granted resource to the deployment for scheduled delivery. Existing connections require a platform update to bind their resource. The host supplies the Bearer value to the fetch.
 
 Export an internal `deliver` tool calling `Delivery::tick` and reserve the service’s wake for Relay. The shared outbox keeps one entry per agent. `Delivery::tick` only uses shared storage, and sends up to five due wakes. A wake posts `{"message":"@handle has new messages"}`. `Delivery::get(handle)` reads a connection’s pending wake or failure. A transient failure is retried up to six attempts. Submitting a validated platform again resets a failing connection.
 

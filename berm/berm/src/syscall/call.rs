@@ -6,10 +6,14 @@
 
 use crate::{
     Berm, Caller, Callsite, Changes, Ended, Link, Meter, Pool, Refused, Service, Syscall, abi,
-    clock, service::Entry, wire,
+    clock, service::Entry, syscall::Abort, wire,
 };
 use anyhow::{Result, bail};
-use berm_api::{Output, host::Outcome};
+use berm_api::{
+    Output,
+    host::{self, Outcome},
+    workflow::run::Failure,
+};
 use std::{
     future::Future,
     pin::Pin,
@@ -291,7 +295,20 @@ fn answer(invoked: Result<Ended>) -> Result<Vec<u8>> {
             result: Output::Failed(failure),
             ..
         }) => bail!(failure),
-        Err(error) => Err(error),
+        Err(error) => {
+            if let Some(failure) = error.downcast_ref::<Failure>()
+                && matches!(
+                    failure
+                        .body
+                        .get("explain")
+                        .and_then(serde_json::Value::as_str),
+                    Some(host::SECRET_ACCESS | host::HTTP_DESTINATION)
+                )
+            {
+                return Err(Abort(failure.clone()).into());
+            }
+            Err(error)
+        }
     }
 }
 

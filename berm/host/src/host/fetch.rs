@@ -6,7 +6,7 @@
 
 use crate::{
     env::Env,
-    host::{self, Inner, secrets},
+    host::{self, Inner},
 };
 use anyhow::Context;
 use berm::{
@@ -63,7 +63,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     let host = host.clone();
     let secret = move |at: Callsite, secret: String, to: String| {
         let host = host::alive(&host);
-        async move { secrets::resolve(&host?.secrets, &at, &secret, &to).await }
+        async move { host?.secret(&at, &secret, &to).await }
     };
     match door {
         Door::Fetch => http::fetch(send, secret),

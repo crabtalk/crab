@@ -608,6 +608,7 @@ impl Service {
         };
         let mut at = Callsite {
             service: self.name.clone(),
+            storage_id: self.storage_id.get().map(|id| Arc::from(id.as_str())),
             tool: tool.into(),
             budget,
             control,

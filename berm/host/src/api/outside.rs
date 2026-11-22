@@ -8,7 +8,11 @@ use crate::{
     record::{calls, usage},
     state::caller as storage,
 };
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
+use axum::{
+    Json,
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
+};
 use berm::{
     Client, Meter,
     tape::{Recorder, Taping},
@@ -35,7 +39,7 @@ pub struct Call {
     /// The service, as its daemon names it.
     pub service: String,
     pub tool: String,
-    /// Whether the tool is a query.
+    /// Whether the caller requested a query.
     pub query: bool,
     pub args: Vec<u8>,
     pub caller: Option<Caller>,
@@ -50,8 +54,18 @@ pub struct Called {
     /// What the answer carries: its meter, and the tool's deprecation.
     pub headers: HeaderMap,
     pub output: Output,
-    /// Its id among its service's calls.
+    /// The recorded call ID, or zero for a conditional query that did not run.
     pub id: u64,
+}
+
+impl Called {
+    pub(crate) fn into_response(self) -> Response {
+        if self.id == 0 {
+            (StatusCode::NOT_MODIFIED, self.headers).into_response()
+        } else {
+            (self.headers, Json(self.output)).into_response()
+        }
+    }
 }
 
 /// A service taking calls from outside.
@@ -97,35 +111,6 @@ impl<E: Env> Host<E> {
         headers: HeaderMap,
     ) -> Result<Called, Denied> {
         let deployed = self.deployed(service)?;
-        let query = self.check_outside(&deployed, service, tool, query, caller.as_ref())?;
-        let call = Call {
-            service: service.to_owned(),
-            tool: tool.to_owned(),
-            query,
-            args,
-            caller: caller.clone(),
-            client: Client {
-                key: None,
-                ip: caller.as_ref().and_then(Caller::client_ip),
-            },
-            headers,
-        };
-        match self.outside.clone().oneshot(call).await {
-            Err(denied) if denied.status.is_client_error() => {
-                Err(self.record_outside_refusal(service, tool, caller.as_ref(), denied))
-            }
-            answered => answered,
-        }
-    }
-
-    pub(crate) fn check_outside(
-        &self,
-        deployed: &berm::Service,
-        service: &str,
-        tool: &str,
-        query: bool,
-        caller: Option<&Caller>,
-    ) -> Result<bool, Denied> {
         let Some(spec) = deployed
             .manifest
             .tools
@@ -150,20 +135,38 @@ impl<E: Env> Host<E> {
             )
             .explained(Denied::PAUSED));
         }
-        let refused = |denied| self.record_outside_refusal(service, tool, caller, denied);
+        let refused =
+            |message: Denied| self.record_outside_refusal(service, tool, caller.as_ref(), message);
         if !deployed.reached_by_accounts(tool) {
             return Err(refused(deny(
                 StatusCode::FORBIDDEN,
                 format!("{tool} takes calls from services only"),
             )));
         }
-        if !spec.anonymous && caller.is_none_or(Caller::anonymous) {
+        if !spec.anonymous && caller.as_ref().is_none_or(Caller::anonymous) {
             return Err(refused(deny(
                 StatusCode::UNAUTHORIZED,
                 format!("{tool} takes no anonymous calls; call it as a caller"),
             )));
         }
-        Ok(spec.query)
+        let call = Call {
+            service: service.to_owned(),
+            tool: tool.to_owned(),
+            query,
+            args,
+            caller: caller.clone(),
+            client: Client {
+                key: None,
+                ip: caller.as_ref().and_then(Caller::client_ip),
+            },
+            headers,
+        };
+        match self.outside.clone().oneshot(call).await {
+            Err(denied) if denied.status.is_client_error() => {
+                Err(self.record_outside_refusal(service, tool, caller.as_ref(), denied))
+            }
+            answered => answered,
+        }
     }
 
     fn record_outside_refusal(
@@ -199,7 +202,7 @@ impl<E: Env> Host<E> {
             caller,
             client,
             headers: conditions,
-            ..
+            query,
         } = call;
         let deployed = self
             .get(&service)
@@ -263,6 +266,20 @@ impl<E: Env> Host<E> {
                 "every call slot is taken; retry",
             ));
         };
+        if query && !headers.contains_key(header::CACHE_CONTROL) {
+            let commits = self.commits(&service).await?;
+            let tag = HeaderValue::from_str(&format!("\"{commits}\""))
+                .expect("a number is a header value");
+            let unchanged = conditions.get(header::IF_NONE_MATCH) == Some(&tag);
+            headers.insert(header::ETAG, tag);
+            if unchanged {
+                return Ok(Called {
+                    headers,
+                    output: Output::Done(String::new()),
+                    id: 0,
+                });
+            }
+        }
         let started = self.calls.start();
         let recorder = Recorder::default();
         let kept = args.clone();

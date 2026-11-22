@@ -279,7 +279,7 @@ async fn call<E: Env>(
     let called = host
         .outside(&service, &tool, false, args.to_vec(), caller, headers)
         .await?;
-    Ok((called.headers, Json(called.output)).into_response())
+    Ok(called.into_response())
 }
 
 /// The tool a route names, among the daemon's own path parameters.
@@ -317,41 +317,17 @@ async fn query<E: Env>(
     Query(arguments): Query<Arguments>,
     headers: HeaderMap,
 ) -> Result<Response, Denied> {
-    let deployed = host.deployed(&service)?;
-    let caller = caller.map(|Extension(caller)| caller);
-    let etag = if deployed.manifest.caller_storage.is_some() {
-        None
-    } else {
-        let commits = host.commits(&service).await?;
-        let etag =
-            HeaderValue::from_str(&format!("\"{commits}\"")).expect("a number is a header value");
-        if headers.get(header::IF_NONE_MATCH) == Some(&etag) {
-            host.check_outside(&deployed, &service, &tool, true, caller.as_ref())?;
-            return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
-        }
-        Some(etag)
-    };
-    let mut called = host
+    let called = host
         .outside(
             &service,
             &tool,
             true,
             arguments.args.into_bytes(),
-            caller,
+            caller.map(|Extension(caller)| caller),
             headers,
         )
         .await?;
-    if let Some(etag) = etag
-        && !called.headers.contains_key(header::CACHE_CONTROL)
-    {
-        called.headers.insert(header::ETAG, etag);
-    } else {
-        called.headers.insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("private, no-store"),
-        );
-    }
-    Ok((called.headers, Json(called.output)).into_response())
+    Ok(called.into_response())
 }
 
 /// Hand a webhook to the service's `#[tool(webhook)]` tool `tool`, the body byte

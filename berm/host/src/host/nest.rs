@@ -4,7 +4,7 @@ use crate::{
     env::{Env, Observe, Peers},
     host::{self, Inner},
     state::{
-        caller::SCHEDULED,
+        caller::{self, SCHEDULED},
         commit::{self, Commits},
         pool::Pools,
     },
@@ -120,6 +120,7 @@ pub(crate) fn calls<E: Env>(
                 let from = at.service.to_string();
                 let (service, tool) = (deployed.to_owned(), tool.to_owned());
                 let link = Link {
+                    account: caller::authenticated_account(),
                     scheduled: SCHEDULED.try_with(|scheduled| *scheduled).unwrap_or(false),
                     retained_until: None,
                     replay: None,

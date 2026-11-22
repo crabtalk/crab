@@ -6,13 +6,32 @@ use axum::{
 };
 use berm_api::host::Caller;
 use berm_build::fixture;
-use berm_host::{Named, router, test::TestHost};
+use berm_host::{Layers, Named, Outside, deny, router, test::TestHost};
 use serde_json::json;
-use tower::ServiceExt;
+use std::sync::{Arc, Mutex};
+use tower::{ServiceExt, layer::layer_fn, service_fn};
 
 #[tokio::test]
 async fn conditional_queries_use_the_same_tool_admission_as_other_queries() -> Result<()> {
-    let host = TestHost::open(0).await?;
+    let refused = Arc::new(Mutex::new(None));
+    let gate = refused.clone();
+    let host = TestHost::open_with_layers(
+        0,
+        Layers::new(layer_fn(move |inner: Outside| {
+            let gate = gate.clone();
+            Outside::new(service_fn(move |call| {
+                let refused = *gate.lock().unwrap();
+                let inner = inner.clone();
+                async move {
+                    if let Some(status) = refused {
+                        return Err(deny(status, "admission refused"));
+                    }
+                    inner.oneshot(call).await
+                }
+            }))
+        })),
+    )
+    .await?;
     host.deploy("service", &fixture::image("berm-fixture")?)
         .await?;
     let router = router(host.host.clone()).layer(Extension(Named("service".into())));
@@ -33,14 +52,14 @@ async fn conditional_queries_use_the_same_tool_admission_as_other_queries() -> R
     let first = router.clone().oneshot(request("peek", None, true)).await?;
     assert_eq!(first.status(), StatusCode::OK);
     let tag = first.headers()[header::ETAG].clone();
-    assert_eq!(
-        router
-            .clone()
-            .oneshot(request("peek", Some(tag.clone()), true))
-            .await?
-            .status(),
-        StatusCode::NOT_MODIFIED
-    );
+    let cached = router
+        .clone()
+        .oneshot(request("peek", Some(tag.clone()), true))
+        .await?;
+    assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(cached.headers()[header::ETAG], tag);
+    assert!(!cached.headers().contains_key(berm_api::host::METER));
+    assert!(to_bytes(cached.into_body(), 1024).await?.is_empty());
 
     for condition in [None, Some(tag.clone())] {
         for (tool, allowed, status) in [
@@ -55,6 +74,18 @@ async fn conditional_queries_use_the_same_tool_admission_as_other_queries() -> R
             assert_eq!(response.status(), status, "{tool}");
         }
     }
+
+    for refusal in [StatusCode::PAYMENT_REQUIRED, StatusCode::TOO_MANY_REQUESTS] {
+        *refused.lock().unwrap() = Some(refusal);
+        for condition in [None, Some(tag.clone())] {
+            let response = router
+                .clone()
+                .oneshot(request("peek", condition, true))
+                .await?;
+            assert_eq!(response.status(), refusal);
+        }
+    }
+    *refused.lock().unwrap() = None;
 
     assert!(host.host.stop("service").await?);
     for condition in [None, Some(tag)] {

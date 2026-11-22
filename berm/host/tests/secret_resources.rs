@@ -22,15 +22,34 @@ async fn secret_resources_use_service_and_host_grants_without_declaring_each_id(
     ));
     assert!(host.fetched().is_empty());
     host.grant_resource("publisher/relay", id, "127.0.0.1", "publisher", "first-key");
-    host.call_json("publisher/relay", "fetch", input.clone())
+    let publisher: Caller = serde_json::from_value(json!({"id":"publisher"}))?;
+    let (_, output) = host
+        .host
+        .call(
+            "publisher/relay",
+            Some(&publisher),
+            "fetch",
+            serde_json::to_vec(&input)?,
+            false,
+        )
         .await?;
+    assert!(matches!(output, Output::Done(_)));
     assert_eq!(
         host.fetched()[0].headers,
         [("Authorization".into(), "Bearer first-key".into())]
     );
     host.grant("publisher/relay", id, "127.0.0.1", "rotated-key");
-    host.call_json("publisher/relay", "fetch", input.clone())
+    let (_, output) = host
+        .host
+        .call(
+            "publisher/relay",
+            Some(&publisher),
+            "fetch",
+            serde_json::to_vec(&input)?,
+            false,
+        )
         .await?;
+    assert!(matches!(output, Output::Done(_)));
     assert_eq!(
         host.fetched()[1].headers,
         [("Authorization".into(), "Bearer rotated-key".into())]
@@ -55,8 +74,8 @@ async fn secret_resources_use_service_and_host_grants_without_declaring_each_id(
 }
 
 #[tokio::test]
-async fn cross_account_secret_requires_its_account_or_an_actual_wake() -> Result<()> {
-    let host = TestHost::open(0).await?;
+async fn a_wake_requires_a_binding_and_an_authenticated_owner_can_bind_it() -> Result<()> {
+    let mut host = TestHost::open(0).await?;
     host.deploy("publisher/relay", &fixture::image("berm-fixture")?)
         .await?;
     let id = "secret_11111111111111111111111111111111";
@@ -98,12 +117,62 @@ async fn cross_account_secret_requires_its_account_or_an_actual_wake() -> Result
         .await?;
     assert!(matches!(output, Output::Done(_)));
 
-    host.call_json(
-        "publisher/relay",
-        "invoke",
-        json!({"service":"","tool":"fetch","args":input.to_string(),"delay":0}),
-    )
-    .await?;
+    let scheduled = serde_json::from_value(json!({
+        "scheduled":true,
+        "from":"publisher/relay",
+        "depth":1,
+        "query":false,
+        "timeout":1000,
+        "stack":["publisher/relay"]
+    }))?;
+    let refused = host
+        .host
+        .link(
+            "publisher/relay",
+            "fetch",
+            serde_json::to_vec(&input)?,
+            scheduled,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused.status.as_u16(), 403);
+    assert_eq!(refused.failure.unwrap().body["explain"], "E0089");
+
+    let wake = json!({"service":"","tool":"fetch","args":input.to_string(),"delay":0});
+    host.call_json("publisher/relay", "invoke", wake.clone())
+        .await?;
+    assert!(host.fire().await.is_err());
+    assert_eq!(host.fetched().len(), 1);
+
+    let binding = serde_json::to_vec(&json!({"id":id,"host":"127.0.0.1"}))?;
+    let outsider: Caller = serde_json::from_value(json!({"id":"account-b"}))?;
+    let denied = host
+        .host
+        .call(
+            "publisher/relay",
+            Some(&outsider),
+            "bind_secret",
+            binding.clone(),
+            false,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(denied.failure.unwrap().body["explain"], "E0089");
+    for _ in 0..2 {
+        let (_, bound) = host
+            .host
+            .call(
+                "publisher/relay",
+                Some(&caller),
+                "bind_secret",
+                binding.clone(),
+                false,
+            )
+            .await?;
+        assert_eq!(bound, Output::Done("true".into()));
+    }
+    host.reopen().await?;
+    host.call_json("publisher/relay", "invoke", wake).await?;
     let wakes = host.fire().await?;
     assert_eq!(wakes.len(), 1);
     assert!(matches!(wakes[0].1.result, Output::Done(_)));
@@ -118,7 +187,7 @@ async fn cross_account_secret_requires_its_account_or_an_actual_wake() -> Result
 }
 
 #[tokio::test]
-async fn a_service_can_use_its_own_runtime_secret_for_another_account() -> Result<()> {
+async fn a_service_cannot_use_its_own_runtime_secret_for_another_account() -> Result<()> {
     let host = TestHost::open(0).await?;
     host.deploy("publisher/relay", &fixture::image("berm-fixture")?)
         .await?;
@@ -128,21 +197,25 @@ async fn a_service_can_use_its_own_runtime_secret_for_another_account() -> Resul
     let input = json!({"url":url,"header":format!("Authorization: Bearer {{secret:{id}}}")});
     host.arrange("GET", url, 200, "ok");
     host.grant_resource("publisher/relay", id, "127.0.0.1", "publisher", "key");
-    let (_, output) = host
-        .host
-        .call(
-            "publisher/relay",
-            Some(&caller),
-            "fetch",
-            serde_json::to_vec(&input)?,
-            false,
-        )
+    host.deploy("publisher/wrapper", &fixture::image("berm-fixture")?)
         .await?;
-    assert!(matches!(output, Output::Done(_)));
-    assert_eq!(
-        host.fetched()[0].headers,
-        [("Authorization".into(), "Bearer key".into())]
-    );
+    let direct = serde_json::to_vec(&input)?;
+    let nested = serde_json::to_vec(&json!({
+        "service":"relay","tool":"fetch","args":input.to_string()
+    }))?;
+    for (service, tool, args) in [
+        ("publisher/relay", "fetch", direct),
+        ("publisher/wrapper", "invoke", nested),
+    ] {
+        let denied = host
+            .host
+            .call(service, Some(&caller), tool, args, false)
+            .await
+            .unwrap_err();
+        assert_eq!(denied.status.as_u16(), 403);
+        assert_eq!(denied.failure.unwrap().body["explain"], "E0089");
+    }
+    assert!(host.fetched().is_empty());
     Ok(())
 }
 

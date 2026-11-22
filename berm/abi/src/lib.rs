@@ -105,6 +105,7 @@ macro_rules! host_calls {
             /// Resource ID and destination host in; the granted resource's owner out,
             /// or no fields if no grant exists. Never returns a value.
             SECRET_RESOURCE = "berm.secret.resource";
+            SECRET_BIND = "berm.secret.bind";
 
             /// Make one HTTP request through the host's proxy. The request and reply are
             /// [`HTTP_FETCH`]'s.

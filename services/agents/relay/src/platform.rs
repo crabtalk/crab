@@ -60,7 +60,7 @@ impl GrokConnection {
     pub fn validate(&mut self) -> Result<()> {
         self.normalize_url()?;
         Id::try_from(self.secret_id.as_str())?;
-        if secret::owner(&self.secret_id, GROK_HOST)?.is_none() {
+        if !secret::bind(&self.secret_id, GROK_HOST)? {
             return Err(berm_lang::deny(
                 "This account has no approved secret resource for the webhook host",
             ));

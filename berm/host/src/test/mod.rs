@@ -69,6 +69,7 @@ pub struct TestHost {
     dir: PathBuf,
     config: crate::Config,
     enter: Option<Enter>,
+    layers: Layers,
 }
 
 /// A host over the state in `dir`, sized by `config`.
@@ -80,6 +81,7 @@ async fn opened(
     secrets: &Granted,
     clock: &Manual,
     enter: Option<Enter>,
+    layers: Layers,
 ) -> Result<Host<Test>> {
     let config = crate::Config {
         databases: dir.join("databases"),
@@ -94,7 +96,7 @@ async fn opened(
             images: images.clone(),
             peers: Alone,
             secrets: secrets.clone(),
-            layers: Layers::new(tower::layer::util::Identity::new()),
+            layers,
             enter,
             observe: (),
             clock: clock.clone(),
@@ -143,6 +145,21 @@ impl TestHost {
         config: crate::Config,
         enter: Option<Enter>,
     ) -> Result<Self> {
+        let layers = Layers::new(tower::layer::util::Identity::new());
+        Self::open_using(now, config, enter, layers).await
+    }
+
+    /// Open with layers around outside calls.
+    pub async fn open_with_layers(now: u64, layers: Layers) -> Result<Self> {
+        Self::open_using(now, crate::Config::default(), None, layers).await
+    }
+
+    async fn open_using(
+        now: u64,
+        config: crate::Config,
+        enter: Option<Enter>,
+        layers: Layers,
+    ) -> Result<Self> {
         static OPENED: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "berm-test-{}-{}",
@@ -161,6 +178,7 @@ impl TestHost {
             &secrets,
             &clock,
             enter.clone(),
+            layers.clone(),
         )
         .await?;
         Ok(Self {
@@ -172,6 +190,7 @@ impl TestHost {
             dir,
             config,
             enter,
+            layers,
         })
     }
 
@@ -186,6 +205,7 @@ impl TestHost {
             &self.secrets,
             &self.clock,
             self.enter.clone(),
+            self.layers.clone(),
         )
         .await?;
         self.host.reconcile().await;

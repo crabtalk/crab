@@ -38,6 +38,10 @@ tokio::task_local! {
     pub(crate) static SCHEDULED: bool;
 }
 
+pub(crate) fn authenticated_account() -> Option<String> {
+    ACCOUNT.try_with(Clone::clone).ok().flatten()
+}
+
 pub(crate) fn scheduled(at: &Callsite) -> bool {
     SCHEDULED.try_with(|scheduled| *scheduled).unwrap_or(false)
         || at

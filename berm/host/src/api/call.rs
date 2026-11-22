@@ -29,8 +29,10 @@ use std::{
 /// The most logs or calls one page answers.
 const MAX_PAGE: i64 = 1000;
 
-/// The error code a webhook for a tool that takes none carries.
+/// The error code for a var name or value the deployment refuses.
 const VAR: &str = "E0011";
+
+/// The error code a webhook for a tool that takes none carries.
 const NO_WEBHOOK_TOOL: &str = "E0014";
 
 impl<E: Env> Host<E> {
@@ -548,13 +550,16 @@ impl<E: Env> Host<E> {
                     None => invoke.await,
                 }
             };
-            let outcome = crate::state::caller::SCHEDULED
-                .scope(scheduled, async {
-                    match link.workflow {
-                        Some(context) => berm::workflow::scope(context, outcome).await,
-                        None => outcome.await,
-                    }
-                })
+            let outcome = crate::state::caller::ACCOUNT
+                .scope(
+                    link.account,
+                    crate::state::caller::SCHEDULED.scope(scheduled, async {
+                        match link.workflow {
+                            Some(context) => berm::workflow::scope(context, outcome).await,
+                            None => outcome.await,
+                        }
+                    }),
+                )
                 .await;
             let used = meters.take();
             launched = used.values().any(|used| used.calls > 0);

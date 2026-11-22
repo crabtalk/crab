@@ -223,7 +223,7 @@ impl<E: Env> Host<E> {
             syscalls.extend(caller::call::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
-            syscalls.push(secrets::syscall(host));
+            syscalls.extend(secrets::syscalls(host));
             syscalls.push(wake::syscall(host));
             let calls = nest::calls(
                 host,

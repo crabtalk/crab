@@ -105,7 +105,7 @@ The resulting `.wasm` is the whole artifact: one file, every platform.
 
 ## Runtime secret resources
 
-Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. On Cloud, an account owner grants a resource ID to a service for exact hosts. During a call, the service’s account or the authenticated calling account must own the resource. A scheduled run can use any grant made to the service. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
+Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. On Cloud, an account owner grants a resource ID to a service for exact hosts. An authenticated call can use a resource owned by its account. Register a granted resource for schedules with `berm_lang::secret::bind(id, host)` in an authenticated write call. Scheduled calls require the binding and an active grant at the exact destination. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.
 
 HTTP credentials are substituted by the host at dispatch. Service code receives upstream response data, which can include credentials and can be retained on a replay tape.
 
