@@ -9,8 +9,10 @@ use std::sync::OnceLock;
 
 const SERVICE: &str = "publisher/analytics";
 const PROOF: &str = "https://example.com/.well-known/crabtalk-analytics";
+const WWW_PROOF: &str = "https://www.example.com/.well-known/crabtalk-analytics";
 const STRIPE: &str = "https://api.stripe.com/v1";
-const YEAR: u64 = 365 * 24 * 60 * 60;
+const DAY: u64 = 24 * 60 * 60;
+const YEAR: u64 = 365 * DAY;
 const KEY: &str = "secret_11111111111111111111111111111111";
 const PUBLISHER_KEY: &str = "secret_22222222222222222222222222222222";
 
@@ -250,13 +252,16 @@ async fn claim_verifies_a_public_host_and_requires_fresh_proof_for_transfer() ->
         .await?;
     analytics
         .host
-        .arrange("GET", PROOF, 200, challenge.as_bytes());
-    assert_eq!(
-        analytics
-            .as_account("bob", None, "claim", args.clone())
-            .await?["verified"],
-        true
-    );
+        .arrange("GET", PROOF, 301, b"Moved permanently".as_slice());
+    analytics
+        .host
+        .arrange("GET", WWW_PROOF, 200, challenge.as_bytes());
+    let transferred = analytics
+        .as_account("bob", None, "claim", args.clone())
+        .await?;
+    assert_eq!(transferred["verified"], true);
+    assert_eq!(transferred["domain"], "example.com");
+    assert_eq!(transferred["url"], WWW_PROOF);
     let buffer = analytics
         .host
         .sql(SERVICE, "SELECT count(*) FROM buffer", json!([]))
@@ -279,6 +284,37 @@ async fn claim_verifies_a_public_host_and_requires_fresh_proof_for_transfer() ->
         .await?;
     assert_eq!(replacement["verified"], false);
     assert_ne!(pending["token"], replacement["token"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn claim_verifies_on_www_when_the_bare_url_redirects() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    let args = json!({"domain":"example.com"});
+    let pending = analytics.call("claim", args.clone()).await?;
+    let token = pending["token"].as_str().unwrap();
+    assert_eq!(pending["url"], PROOF);
+    assert_eq!(pending["verified"], false);
+    analytics
+        .host
+        .arrange("GET", PROOF, 301, b"Moved permanently".as_slice());
+    analytics
+        .host
+        .arrange("GET", WWW_PROOF, 200, token.as_bytes());
+
+    let verified = analytics.call("claim", args).await?;
+    assert_eq!(
+        verified,
+        json!({"domain":"example.com","url":WWW_PROOF,"token":token,"verified":true})
+    );
+    let requests = analytics.host.fetched();
+    assert_eq!(
+        requests
+            .iter()
+            .map(|request| request.url.as_str())
+            .collect::<Vec<_>>(),
+        [PROOF, WWW_PROOF]
+    );
     Ok(())
 }
 
@@ -735,16 +771,45 @@ async fn stripe_resolves_a_cross_account_grant_pages_and_attributes_renewals_onc
 }
 
 #[tokio::test]
+async fn stripe_sync_finishes_an_empty_account_in_one_call() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    analytics.connect_stripe().await?;
+    let through = 56 * YEAR;
+    analytics.host.set_now((through + 1) * 1000);
+    let mut cursor = 0;
+    for years in [1, 2, 4, 8, 16, 32] {
+        let upper = (cursor + years * YEAR).min(through);
+        let bounds = (cursor, upper);
+        analytics.without_sessions_or_invoices(bounds);
+        analytics.stripe("payment_intents", None, bounds, None, json!([]), false);
+        cursor = upper;
+    }
+
+    let synced = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(
+        synced,
+        json!({
+            "checkout_sessions":0,"payment_intents":0,"renewal_invoices":0,
+            "synced_through":through,"has_more":false
+        })
+    );
+    assert_eq!(analytics.host.fetched().len(), 18);
+    Ok(())
+}
+
+#[tokio::test]
 async fn stripe_sync_finishes_a_large_history_over_several_calls() -> Result<()> {
     let analytics = Analytics::open().await?;
     analytics.connect_stripe().await?;
     const WINDOWS: u64 = 8;
     const PER_WINDOW: u64 = 131;
     analytics.host.set_now((WINDOWS * YEAR + 1) * 1000);
+    for (lower, upper) in [(0, 1), (1, 3), (3, 7), (7, WINDOWS)] {
+        analytics.without_sessions_or_invoices((lower * YEAR, upper * YEAR));
+    }
     for window in 0..WINDOWS {
         let window_start = window * YEAR;
         let bounds = (window_start, window_start + YEAR);
-        analytics.without_sessions_or_invoices(bounds);
         let rows: Vec<_> = (1..=PER_WINDOW)
             .rev()
             .map(|offset| {
@@ -832,6 +897,94 @@ async fn stripe_shrinks_dense_windows_and_remembers_the_split_after_the_call_cap
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     assert_eq!(total, (301, 301 * 302 / 2));
+    Ok(())
+}
+
+#[tokio::test]
+async fn stripe_grows_windows_for_steady_sales_after_a_dense_period() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    analytics.connect_stripe().await?;
+    let dense_through = 2 * DAY;
+    analytics.host.set_now((dense_through + 1) * 1000);
+    analytics.without_sessions_or_invoices((0, dense_through));
+    let dense: Vec<_> = (1..=201)
+        .rev()
+        .map(|id| {
+            payment(
+                id,
+                if id <= 100 {
+                    DAY - 100 + id
+                } else {
+                    dense_through - 201 + id
+                },
+            )
+        })
+        .collect();
+    analytics.payments((0, dense_through), &dense);
+    analytics.payments((0, DAY), &dense[101..]);
+    analytics.payments((DAY, dense_through), &dense[..101]);
+    let synced = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(synced["payment_intents"], 201);
+    assert_eq!(synced["synced_through"], dense_through);
+    assert_eq!(synced["has_more"], false);
+
+    let through = dense_through + YEAR;
+    analytics.host.set_now((through + 1) * 1000);
+    analytics.without_sessions_or_invoices((dense_through, through));
+    let mut days = 0;
+    for width in [1, 2, 4, 8, 16, 32, 64, 128, 110] {
+        let rows: Vec<_> = (days + 1..=days + width)
+            .rev()
+            .map(|day| payment(201 + day, dense_through + day * DAY))
+            .collect();
+        analytics.payments(
+            (
+                dense_through + days * DAY,
+                dense_through + (days + width) * DAY,
+            ),
+            &rows,
+        );
+        days += width;
+    }
+
+    let requests_before = analytics.host.fetched().len();
+    let first = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(first["payment_intents"], 63);
+    assert_eq!(first["synced_through"], dense_through + 63 * DAY);
+    assert_eq!(first["has_more"], true);
+    let last = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(last["payment_intents"], 302);
+    assert_eq!(last["synced_through"], through);
+    assert_eq!(last["has_more"], false);
+    assert_eq!(analytics.host.fetched().len() - requests_before, 13);
+    Ok(())
+}
+
+#[tokio::test]
+async fn stripe_preserves_the_learned_width_across_a_short_final_window() -> Result<()> {
+    let analytics = Analytics::open().await?;
+    analytics.connect_stripe().await?;
+    let first_through = YEAR + 5;
+    analytics.host.set_now((first_through + 1) * 1000);
+    for bounds in [(0, YEAR), (YEAR, first_through)] {
+        analytics.without_sessions_or_invoices(bounds);
+        analytics.stripe("payment_intents", None, bounds, None, json!([]), false);
+    }
+    let first = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(first["synced_through"], first_through);
+    assert_eq!(first["has_more"], false);
+
+    let through = first_through + DAY;
+    analytics.host.set_now((through + 1) * 1000);
+    let bounds = (first_through, through);
+    analytics.without_sessions_or_invoices(bounds);
+    analytics.payments(bounds, &[payment(1, through)]);
+    let requests_before = analytics.host.fetched().len();
+    let next = analytics.call("sync_revenue", json!({})).await?;
+    assert_eq!(next["payment_intents"], 1);
+    assert_eq!(next["synced_through"], through);
+    assert_eq!(next["has_more"], false);
+    assert_eq!(analytics.host.fetched().len() - requests_before, 3);
     Ok(())
 }
 

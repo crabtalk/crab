@@ -24,6 +24,7 @@ const INVOICES: &str = "invoices";
 const WINDOW_SECS: u64 = 365 * 24 * 60 * 60;
 const REQUESTS_PER_ENDPOINT: usize = 6;
 const PAGES_PER_WINDOW: usize = 2;
+const PAGE_SIZE: usize = 100;
 const PAGE_TIMEOUT_MS: u64 = 2_500;
 const SETUP: &str =
     "Grant a Stripe restricted key for api.stripe.com and call connect_stripe with its secret ID";
@@ -282,12 +283,13 @@ impl Stripe {
         let mut width = previous_width;
         let mut requests_left = REQUESTS_PER_ENDPOINT;
         let mut imported = Imported::default();
-        while cursor < through && requests_left >= PAGES_PER_WINDOW {
-            let upper = (cursor + width).min(through);
+        while cursor < through && requests_left > 0 {
+            let upper = cursor + width.min(through - cursor);
+            let can_check_full_window = requests_left >= PAGES_PER_WINDOW;
             match Self::window(&base, headers, cursor, upper, &mut requests_left) {
                 Ok(Some(records)) => {
-                    if records.is_empty() {
-                        width = (width * 2).min(WINDOW_SECS);
+                    if records.len() < PAGE_SIZE {
+                        width = width.saturating_mul(2);
                     }
                     for record in &records {
                         imported.count += u64::from(keep(record)?);
@@ -299,6 +301,8 @@ impl Stripe {
                         &(kind, cursor),
                     )?;
                 }
+                // The call can run out of requests before a window hits its own page cap.
+                Ok(None) if !can_check_full_window => break,
                 Ok(None) if upper - cursor > 1 => width = (upper - cursor) / 2,
                 Ok(None) => {
                     imported.error = Some(format!(
@@ -330,11 +334,11 @@ impl Stripe {
             .query_pairs_mut()
             .append_pair("created[gt]", &cursor.to_string())
             .append_pair("created[lte]", &upper.to_string())
-            .append_pair("limit", "100");
+            .append_pair("limit", &PAGE_SIZE.to_string());
 
         let mut url = range.clone();
         let mut records = Vec::<Record<T>>::new();
-        for _ in 0..PAGES_PER_WINDOW {
+        for _ in 0..PAGES_PER_WINDOW.min(*requests_left) {
             *requests_left -= 1;
             let response = http::fetch_all(&[http::Request {
                 method: "GET",

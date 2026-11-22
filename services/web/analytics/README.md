@@ -18,7 +18,7 @@ Use the running service address in place of `crabtalk/analytics` if you [deploy 
    crab app create site-analytics --origin https://example.com --service crabtalk/analytics --anonymous
    ```
 
-2. Call `claim` for your domain. Publish the returned token as plain text at `https://example.com/.well-known/crabtalk-analytics` and call `claim` again. The bare domain and its `www.` version share one claim. The returned proof URL uses the bare domain. If you previously verified only the `www.` host, verify the bare domain now. If the domain already belongs to another account, the refusal carries a fresh token to prove control. A transfer clears visits that were still buffered for the former owner.
+2. Call `claim` for your domain. Publish the returned token as plain text at `https://example.com/.well-known/crabtalk-analytics` and call `claim` again. The bare domain and its `www.` version share one claim. The service checks the bare domain first, then the `www.` host, and returns the URL that served the token. If the bare domain redirects to `www.`, publish the token on the `www.` host. If you previously verified a claim keyed by the `www.` host, call `claim` again to verify the bare domain. If the domain already belongs to another account, the refusal carries a fresh token to publish on either host. A transfer clears visits that were still buffered for the former owner.
 3. Add the snippet to your site with the app ID filled in. The site owner manages consent for browser storage.
 4. Use an account API key on your backend to call `event` for actions such as signups. Pass the visitor and session IDs from the browser. The event inherits the visitor’s latest channel, or `direct` if the visitor has no earlier hits.
 

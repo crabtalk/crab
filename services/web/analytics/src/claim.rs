@@ -18,7 +18,7 @@ pub struct Claim {
 impl Claim {
     pub(crate) fn check(domain: &str, account: &mut Account) -> Result<Self> {
         let domain = normalize(domain)?;
-        let url = format!("https://{domain}{PROOF_PATH}");
+        let mut url = format!("https://{domain}{PROOF_PATH}");
         let current = rows::<(String, String, Option<u64>)>(
             "SELECT account, token, verified_at FROM claims WHERE domain = ?1",
             &(&domain,),
@@ -29,7 +29,7 @@ impl Claim {
             .is_some_and(|(owner, _, _)| Some(owner) == account.claim_id.as_ref());
         let (token, verified) = match current {
             Some((_, token, verified_at)) if own => {
-                let verified = verified_at.is_some() || proof(&url, &token)?;
+                let verified = verified_at.is_some() || prove(&domain, &mut url, &token)?;
                 (token, verified)
             }
             Some((_, current_token, Some(_))) => {
@@ -40,7 +40,7 @@ impl Claim {
                 digest.update(scope);
                 digest.update(seed);
                 let token = hex::encode(&digest.finalize()[..16]);
-                if !proof(&url, &token)? {
+                if !prove(&domain, &mut url, &token)? {
                     return Err(deny(&format!(
                         "This domain is claimed by another account. Publish {token} at {url} and retry to transfer it"
                     )));
@@ -122,6 +122,18 @@ pub(crate) fn verified(domain: &str) -> Result<Option<String>> {
     )?
     .pop()
     .map(|(account,)| account))
+}
+
+fn prove(domain: &str, url: &mut String, token: &str) -> Result<bool> {
+    if proof(url, token)? {
+        return Ok(true);
+    }
+    let www_url = format!("https://www.{domain}{PROOF_PATH}");
+    if !proof(&www_url, token)? {
+        return Ok(false);
+    }
+    *url = www_url;
+    Ok(true)
 }
 
 fn proof(url: &str, token: &str) -> Result<bool> {
