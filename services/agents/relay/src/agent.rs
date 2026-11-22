@@ -1,13 +1,10 @@
-use crate::{
-    account::Account,
-    delivery::Delivery,
-    platform::{DotConnection, Platform},
-};
+use crate::{account, delivery::Delivery, platform::Platform};
 use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, Schema, serde_json};
+use berm_lang::{Result, Schema, caller_storage, serde_json};
 
 pub struct Agent {
     pub(crate) id: u64,
+    pub(crate) wake: String,
     pub handle: String,
     pub name: String,
     pub platform: Platform,
@@ -20,11 +17,10 @@ impl Agent {
         name: Option<String>,
         platform: Option<Platform>,
     ) -> Result<Self> {
-        let owner = Account::current()?.id;
         let handle = Self::handle(&handle)?;
-        if let Some((id,)) = berm_lang::rows::<(u64,)>(
-            "SELECT id FROM relay_agents WHERE owner = ? AND handle = ?",
-            &(&owner, &handle),
+        if let Some((id,)) = caller_storage::rows::<(u64,)>(
+            "SELECT id FROM relay_agents WHERE handle = ?",
+            &(&handle,),
         )?
         .pop()
         {
@@ -44,30 +40,19 @@ impl Agent {
         }
         let name = name.unwrap_or_else(|| handle.clone());
         Self::validate_name(&name)?;
-        let platform = platform.unwrap_or(Platform::OpenAiDot(DotConnection {}));
+        let platform = platform.unwrap_or_default();
         platform.validate()?;
-        let (id,) = berm_lang::rows::<(u64,)>(
-            "INSERT INTO relay_agents (owner, handle, name, platform) VALUES (?, ?, ?, ?) RETURNING id",
-            &(&owner, &handle, &name, serde_json::to_string(&platform)?),
+        let row = caller_storage::rows::<AgentRow>(
+            "INSERT INTO relay_agents (handle, name, platform) VALUES (?, ?, ?) RETURNING id, wake, handle, name, platform, enabled",
+            &(&handle, &name, serde_json::to_string(&platform)?),
         )?.pop().ok_or("The agent was not registered")?;
-        let agent = Self {
-            id,
-            handle,
-            name,
-            platform,
-            enabled: true,
-        };
-        Ok(agent)
+        Self::try_from(row)
     }
 
     pub(crate) fn get(id: u64) -> Result<Self> {
-        Self::load(id, Some(&Account::current()?.id))
-    }
-
-    pub(crate) fn load(id: u64, owner: Option<&str>) -> Result<Self> {
-        let row = berm_lang::rows::<(u64, String, String, String, u8)>(
-            "SELECT id, handle, name, platform, enabled FROM relay_agents WHERE id = ? AND (? IS NULL OR owner = ?)",
-            &(id, owner, owner),
+        let row = caller_storage::rows::<AgentRow>(
+            "SELECT id, wake, handle, name, platform, enabled FROM relay_agents WHERE id = ?",
+            &(id,),
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible Relay agent with that id"))?;
@@ -75,10 +60,9 @@ impl Agent {
     }
 
     pub fn list(after: Option<&str>, limit: Option<u64>) -> Result<Vec<Self>> {
-        let owner = Account::current()?.id;
-        berm_lang::rows::<(u64, String, String, String, u8)>(
-            "SELECT id, handle, name, platform, enabled FROM relay_agents WHERE owner = ? AND handle > ? ORDER BY handle LIMIT ?",
-            &(owner, after.unwrap_or(""), limit.unwrap_or(20).clamp(1, 20)),
+        caller_storage::rows::<AgentRow>(
+            "SELECT id, wake, handle, name, platform, enabled FROM relay_agents WHERE handle > ? ORDER BY handle LIMIT ?",
+            &(after.unwrap_or(""), limit.unwrap_or(20).clamp(1, 20)),
         )?.into_iter().map(Self::try_from).collect()
     }
 
@@ -88,23 +72,22 @@ impl Agent {
         platform: Option<Platform>,
         enabled: Option<bool>,
     ) -> Result<Self> {
-        Account::require_owner()?;
+        account::require_owner()?;
         let mut agent = Self::named(handle)?;
         let id = agent.id;
         if let Some(name) = name {
             Self::validate_name(&name)?;
             agent.name = name;
         }
-        let mut connection_changed = false;
+        let reconnect = platform.is_some();
         if let Some(platform) = platform {
             platform.validate()?;
-            connection_changed = agent.platform != platform;
             agent.platform = platform;
         }
         if let Some(enabled) = enabled {
             agent.enabled = enabled;
         }
-        berm_lang::rows::<()>(
+        caller_storage::rows::<()>(
             "UPDATE relay_agents SET name = ?, platform = ?, enabled = ? WHERE id = ?",
             &(
                 &agent.name,
@@ -113,13 +96,11 @@ impl Agent {
                 id,
             ),
         )?;
-        if connection_changed {
-            berm_lang::rows::<()>(
-                "UPDATE relay_deliveries SET state = 'cancelled', reason = 'connection_changed' WHERE state = 'pending' AND message IN (SELECT id FROM relay_messages WHERE recipient = ?)",
-                &(id,),
-            )?;
+        if reconnect {
+            Delivery::reset(&agent)?;
         }
-        if connection_changed || enabled == Some(true) {
+        if reconnect || enabled.is_some() {
+            Delivery::refresh(&agent, reconnect || enabled == Some(true))?;
             Delivery::schedule()?;
         }
         Ok(agent)
@@ -133,25 +114,14 @@ impl Agent {
     }
 
     pub fn named(handle: &str) -> Result<Self> {
-        let owner = Account::current()?.id;
         let handle = Self::handle(handle)?;
-        let (id,) = berm_lang::rows::<(u64,)>(
-            "SELECT id FROM relay_agents WHERE owner = ? AND handle = ?",
-            &(owner, handle),
+        let (id,) = caller_storage::rows::<(u64,)>(
+            "SELECT id FROM relay_agents WHERE handle = ?",
+            &(handle,),
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible Relay agent with that handle; check contacts or register your own unique handle"))?;
         Self::get(id)
-    }
-
-    pub(crate) fn recipient(message: u64) -> Result<Self> {
-        let (id,) = berm_lang::rows::<(u64,)>(
-            "SELECT recipient FROM relay_messages WHERE id = ?",
-            &(message,),
-        )?
-        .pop()
-        .ok_or("No such message")?;
-        Self::load(id, None)
     }
 
     pub fn connected(handle: Option<&str>) -> Result<Self> {
@@ -171,11 +141,10 @@ impl Agent {
     }
 
     pub fn contacts(after: Option<&str>, limit: Option<u64>) -> Result<Contacts> {
-        let owner = Account::current()?.id;
         let limit = limit.unwrap_or(100).clamp(1, 100) as usize;
-        let mut items = berm_lang::rows::<(u64, String, String, String, u8)>(
-            "SELECT id, handle, name, platform, enabled FROM relay_agents WHERE owner = ? AND handle > ? ORDER BY handle LIMIT ?",
-            &(owner, after.unwrap_or(""), limit + 1),
+        let mut items = caller_storage::rows::<AgentRow>(
+            "SELECT id, wake, handle, name, platform, enabled FROM relay_agents WHERE handle > ? ORDER BY handle LIMIT ?",
+            &(after.unwrap_or(""), limit + 1),
         )?.into_iter().map(|row| Ok(Contact::from(Self::try_from(row)?))).collect::<Result<Vec<_>>>()?;
         let next = if items.len() > limit {
             items.truncate(limit);
@@ -211,14 +180,15 @@ impl Agent {
     }
 }
 
-impl TryFrom<(u64, String, String, String, u8)> for Agent {
+type AgentRow = (u64, String, String, String, String, u8);
+
+impl TryFrom<AgentRow> for Agent {
     type Error = berm_lang::Error;
 
-    fn try_from(
-        (id, handle, name, platform, enabled): (u64, String, String, String, u8),
-    ) -> Result<Self> {
+    fn try_from((id, wake, handle, name, platform, enabled): AgentRow) -> Result<Self> {
         Ok(Self {
             id,
+            wake,
             handle,
             name,
             platform: serde_json::from_str(&platform)?,
@@ -241,6 +211,7 @@ impl From<Agent> for Contact {
             handle: agent.handle,
             name: agent.name,
             platform: String::from(match agent.platform {
+                Platform::Inbox => "inbox",
                 Platform::Grok(_) => "grok",
                 Platform::OpenAiDot(_) => "open_ai_dot",
             }),

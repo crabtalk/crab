@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 use anyhow::{Result, bail};
-use berm_api::{Manifest, Output, host::Caller};
+use berm_api::{Output, host::Caller};
 use berm_build::fixture;
-use berm_host::test::{TestHost, image};
+use berm_host::test::TestHost;
 use serde_json::{Value, json};
 use std::ops::{Deref, DerefMut};
 
@@ -26,10 +26,7 @@ impl Relay {
     pub async fn open() -> Result<Self> {
         let host = TestHost::open(1000).await?;
         let bytes = fixture::image("crab-agent-relay")?;
-        let mut deps = Manifest::try_from(bytes.as_slice())?.deps;
-        deps.http.fetch = vec!["bots.example".into()];
-        host.deploy("relay", &image::with_deps(&bytes, deps)?)
-            .await?;
+        host.deploy("relay", &bytes).await?;
         Ok(Self(host))
     }
 

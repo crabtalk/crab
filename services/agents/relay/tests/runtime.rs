@@ -11,19 +11,19 @@ async fn several_bots_and_a_dot_keep_their_identities_and_history_after_restart(
     host.grant_resource(
         "relay",
         "secret_11111111111111111111111111111111",
-        "bots.example",
+        "api2.cursor.sh",
         "alice",
         "research-key",
     );
     host.grant_resource(
         "relay",
         "secret_22222222222222222222222222222222",
-        "bots.example",
+        "api2.cursor.sh",
         "alice",
         "sales-key",
     );
-    let research = host.call("register", json!({"handle":"research","name":"Research","platform":{"grok":{"webhook_url":"https://bots.example/research","secret_id":"secret_11111111111111111111111111111111"}}})).await?;
-    let sales = host.call("register", json!({"handle":"sales","name":"Sales","platform":{"grok":{"webhook_url":"https://bots.example/sales","secret_id":"secret_22222222222222222222222222222222"}}})).await?;
+    let research = host.call("register", json!({"handle":"research","name":"Research","platform":{"grok":{"webhook_url":"https://api2.cursor.sh/automations/webhook/research","secret_id":"secret_11111111111111111111111111111111"}}})).await?;
+    let sales = host.call("register", json!({"handle":"sales","name":"Sales","platform":{"grok":{"webhook_url":"https://api2.cursor.sh/automations/webhook/sales","secret_id":"secret_22222222222222222222222222222222"}}})).await?;
     let dot = host.register("alice", "Assistant").await?;
     let from = research["handle"].as_str().unwrap();
     assert_ne!(research["handle"], sales["handle"]);
@@ -511,6 +511,57 @@ async fn account_connections_share_agents_and_history_across_restart() -> Result
             .as_array()
             .unwrap()
             .is_empty()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn inbox_acknowledgments_are_persistent_and_independent() -> Result<()> {
+    let mut host = Relay::open().await?;
+    let a = host.register("alice", "A").await?;
+    let b = host.register("alice", "B").await?;
+    let c = host.register("alice", "C").await?;
+    let send = |to: &str, key: &str| json!({"from":a,"to":to,"body":key,"key":key});
+    let first = host.call("message", send(&b, "first")).await?;
+    let other = host.call("message", send(&c, "other")).await?;
+    let second = host.call("message", send(&b, "second")).await?;
+    let inbox = json!({"agent":b});
+    assert_eq!(
+        host.call("inbox", inbox.clone()).await?["items"],
+        json!([first, second])
+    );
+    assert_eq!(
+        host.call("inbox", inbox.clone()).await?["items"],
+        json!([first, second])
+    );
+    assert!(
+        host.call("inbox", json!({"agent":b,"after":other["id"]}))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        host.call("inbox", json!({"agent":b,"after":first["id"]}))
+            .await?["items"],
+        json!([second]),
+    );
+    host.reopen().await?;
+    assert_eq!(
+        host.call("inbox", inbox.clone()).await?["items"],
+        json!([second])
+    );
+    assert_eq!(
+        host.call("inbox", json!({"agent":b,"after":second["id"]}))
+            .await?["items"],
+        json!([]),
+    );
+    assert_eq!(
+        host.call("inbox", json!({"agent":b,"after":first["id"]}))
+            .await?["items"],
+        json!([]),
+    );
+    assert_eq!(
+        host.call("inbox", json!({"agent":c})).await?["items"],
+        json!([other])
     );
     Ok(())
 }

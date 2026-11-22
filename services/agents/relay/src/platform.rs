@@ -1,9 +1,14 @@
 use alloc::string::String;
-use berm_lang::{Caller, Result, Schema, abi::secrets::Id, secret};
+use berm_lang::{Result, Schema, abi::secrets::Id, secret};
 use url::Url;
 
-#[derive(Schema, PartialEq, Eq)]
+pub(crate) const GROK_HOST: &str = "api2.cursor.sh";
+const GROK_PATH: &str = "/automations/webhook/";
+
+#[derive(Default, Schema, PartialEq, Eq)]
 pub enum Platform {
+    #[default]
+    Inbox,
     Grok(GrokConnection),
     OpenAiDot(DotConnection),
 }
@@ -32,27 +37,17 @@ impl GrokConnection {
         let url = Url::parse(&self.webhook_url).map_err(|_| "Use an absolute HTTPS webhook URL")?;
         if self.webhook_url.len() > 4096
             || url.scheme() != "https"
-            || url.host_str().is_none()
+            || url.host_str() != Some(GROK_HOST)
+            || url.port().is_some()
+            || !url.path().starts_with(GROK_PATH)
             || !url.username().is_empty()
             || url.password().is_some()
             || url.fragment().is_some()
         {
-            return Err("Use an HTTPS webhook URL up to 4096 bytes without embedded credentials or a fragment".into());
+            return Err("Use an HTTPS api2.cursor.sh/automations/webhook/ URL up to 4096 bytes without embedded credentials or a fragment".into());
         }
         Id::try_from(self.secret_id.as_str())?;
-        let Some(Caller::Outside(owner)) = berm_lang::caller()? else {
-            return Err(berm_lang::deny(
-                "Use an account session to bind a Grok connection",
-            ));
-        };
-        if berm_lang::user()?.is_some()
-            || secret::owner(
-                &self.secret_id,
-                url.host_str().ok_or("Missing webhook host")?,
-            )?
-            .as_deref()
-                != Some(owner.as_str())
-        {
+        if secret::owner(&self.secret_id, GROK_HOST)?.is_none() {
             return Err(berm_lang::deny(
                 "This account has no approved secret resource for the webhook host",
             ));

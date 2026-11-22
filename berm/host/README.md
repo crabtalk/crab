@@ -28,7 +28,7 @@ AGPL-3.0-only
 
 An invocation scope can refuse admission with `berm_host::Denied`; outside calls keep that HTTP status. HTTP transports receive the sending invocation’s `chain` and `span` on each request.
 
-A service declaring `secret_resources = true` can use `{secret:ID}` for a runtime secret resource. `Secrets::grant` must authorize the complete deployment, resource ID and destination host. Missing grants refuse the request before dispatch; HTTP permissions remain independently enforced. Individual resource IDs are not added to `Deps.secrets`.
+A service declaring `secret_resources = true` can use `{secret:ID}` for a runtime secret resource. `Secrets::grant` must authorize the complete deployment, resource ID and destination host. A call can substitute resources owned by its authenticated account. A caller-free wake can use any grant made to the service. Missing grants refuse the request before dispatch; HTTP permissions remain independently enforced. Individual resource IDs are not added to `Deps.secrets`.
 
 `Secrets::resource_owner` supplies account ownership metadata for runtime-resource binding checks; its default returns no grant. `berm.secret.resource` requires the resource capability and HTTP permission. `berm.http.fetch_all.literal_body` keeps body bytes literal while applying the usual header secret grants.
 

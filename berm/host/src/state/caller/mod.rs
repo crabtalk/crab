@@ -46,6 +46,34 @@ pub(crate) fn scheduled(at: &Callsite) -> bool {
             .is_some_and(|run| matches!(run.trigger, abi::workflow::Trigger::Schedule { .. }))
 }
 
+pub(crate) fn account(at: &Callsite) -> Option<String> {
+    let account = match &at.caller {
+        Some(Caller::Outside(account)) => ACCOUNT
+            .try_with(Clone::clone)
+            .unwrap_or_else(|_| Some(account.to_string())),
+        Some(Caller::Service(service)) => {
+            let owner = host::split(service).0;
+            if owner.is_empty() {
+                ACCOUNT.try_with(Clone::clone).ok().flatten()
+            } else {
+                Some(owner.to_owned())
+            }
+        }
+        None => None,
+    };
+    match at.run.as_ref().map(|run| &run.trigger) {
+        Some(abi::workflow::Trigger::Manual { account, .. })
+            if at.stack.first() == Some(&at.service) =>
+        {
+            ACCOUNT
+                .try_with(Clone::clone)
+                .unwrap_or_else(|_| Some(account.clone()))
+        }
+        Some(abi::workflow::Trigger::Schedule { .. }) => None,
+        _ => account,
+    }
+}
+
 type Invocation = (u64, u32);
 type Allowance = dyn Fn(GrantRequest) -> BoxFuture<'static, Result<Option<Grant>>> + Send + Sync;
 
@@ -109,32 +137,7 @@ impl Storage {
     ) -> Result<Session> {
         let id = id.context("caller storage has no service identity")?;
         validate(id)?;
-        let account = match &at.caller {
-            Some(Caller::Outside(account)) => ACCOUNT
-                .try_with(Clone::clone)
-                .unwrap_or_else(|_| Some(account.to_string())),
-            Some(Caller::Service(service)) => {
-                let owner = host::split(service).0;
-                if owner.is_empty() {
-                    ACCOUNT.try_with(Clone::clone).ok().flatten()
-                } else {
-                    Some(owner.to_owned())
-                }
-            }
-            None => None,
-        };
-        let account = match at.run.as_ref().map(|run| &run.trigger) {
-            Some(abi::workflow::Trigger::Manual { account, .. })
-                if at.stack.first() == Some(&at.service) =>
-            {
-                ACCOUNT
-                    .try_with(Clone::clone)
-                    .unwrap_or_else(|_| Some(account.clone()))
-            }
-            Some(abi::workflow::Trigger::Schedule { .. }) => None,
-            _ => account,
-        };
-        let key = account
+        let key = account(at)
             .filter(|account| !account.is_empty())
             .map(|account| Key {
                 storage_id: id.to_owned(),

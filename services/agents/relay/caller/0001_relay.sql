@@ -1,15 +1,15 @@
 CREATE TABLE relay_agents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    owner TEXT NOT NULL,
+    handle TEXT NOT NULL UNIQUE,
+    wake TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16)))),
     name TEXT NOT NULL,
     platform TEXT NOT NULL,
-    enabled INTEGER NOT NULL DEFAULT 1
+    enabled INTEGER NOT NULL DEFAULT 1,
+    read_at INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX relay_agents_owner ON relay_agents (owner, id);
 
 CREATE TABLE relay_conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    owner TEXT NOT NULL,
     paused INTEGER NOT NULL DEFAULT 0,
     budget INTEGER NOT NULL,
     sent INTEGER NOT NULL DEFAULT 0

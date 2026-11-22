@@ -10,7 +10,7 @@ use crate::{
     bound::{cpu::Clock, watchdog},
     code::{Code, Resident},
     control,
-    syscall::{self, Door, Table},
+    syscall::{self, Abort, Door, Table},
     tape::{self, Answer},
 };
 use anyhow::{Context, Result, bail};
@@ -295,7 +295,10 @@ impl Image {
                                                     Answer::of(&reply),
                                                 );
                                             }
-                                            Ok(syscall::stage(&mut caller, reply))
+                                            match reply {
+                                                Err(error) if error.is::<Abort>() => Err(error),
+                                                reply => Ok(syscall::stage(&mut caller, reply)),
+                                            }
                                         }
                                     }
                                 }
@@ -411,8 +414,12 @@ impl Image {
         if Instant::now() >= deadline {
             bail!(watchdog::Expired);
         }
-        instance?;
-        called?;
+        if let Err(error) = instance.and(called) {
+            return Err(match error.downcast::<Abort>() {
+                Ok(abort) => abort.0.into(),
+                Err(error) => error.into(),
+            });
+        }
         Ok(store.into_data())
     }
 }

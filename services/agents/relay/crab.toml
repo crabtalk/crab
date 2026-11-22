@@ -6,7 +6,13 @@ secret_resources = true
 migrations = "migrations"
 size = "64MiB"
 
+[storage.caller]
+migrations = "caller"
+
+[http]
+fetch = ["api2.cursor.sh"]
+
 [image]
-name = "agents/relay"
-public = false
-publish = false
+name = "crabtalk/relay"
+public = true
+publish = true

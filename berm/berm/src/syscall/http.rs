@@ -7,7 +7,7 @@
 //! Resolving a secret and sending the request are the host's, and arrive as
 //! the two closures below.
 
-use crate::{Callsite, Reach, Refused, Syscall, abi, wire};
+use crate::{Callsite, Reach, Refused, Syscall, abi, syscall::Abort, wire};
 use anyhow::{Result, anyhow, bail};
 use berm_abi::secrets::Id;
 use futures_util::future;
@@ -163,6 +163,12 @@ where
                         answer(&at, syscall, literal_body, request, &*send, &*secret)
                     }))
                     .await;
+                if let Some(abort) = answers
+                    .iter()
+                    .find_map(|answer| answer.as_ref().err()?.downcast_ref::<Abort>())
+                {
+                    return Err(Abort(abort.0.clone()).into());
+                }
                 let framed: Vec<Vec<u8>> = answers
                     .iter()
                     .map(|answered| match answered {

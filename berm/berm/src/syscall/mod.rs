@@ -10,6 +10,7 @@ use crate::{
     Call, Caller as Asking, Callsite, Invocation, Refused, Syscall, User, abi, engine, tape::Answer,
 };
 use anyhow::{Result, anyhow, bail};
+use berm_api::workflow::run::Failure;
 use ring::rand::{SecureRandom, SystemRandom};
 use std::{
     collections::HashMap,
@@ -432,3 +433,15 @@ fn handler(
 ) -> Door {
     Door::Builtin(Arc::new(call))
 }
+
+/// A host policy refusal that ends the invocation and reaches its caller.
+#[derive(Debug)]
+pub struct Abort(pub Failure);
+
+impl std::fmt::Display for Abort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for Abort {}

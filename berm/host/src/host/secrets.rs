@@ -1,11 +1,14 @@
 use crate::{
+    deny,
     env::{Env, Secrets},
     host::{self, Inner},
+    state::caller,
 };
 use anyhow::bail;
-use berm::{Callsite, Refused, Syscall};
+use axum::http::StatusCode;
+use berm::{Callsite, Refused, Syscall, syscall::Abort};
 use berm_abi::{self as abi, wire};
-use berm_api::Credential;
+use berm_api::{Credential, workflow::run::Failure};
 use std::{
     str,
     sync::{Arc, Weak},
@@ -35,12 +38,49 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
                     )
                     .into());
                 }
-                let owner = host?
-                    .secrets
-                    .resource_owner(&at.service, id, destination)
-                    .await?;
+                let owner = resource_owner(&host?.secrets, &at, id, destination).await?;
                 Ok(owner.map_or_else(Vec::new, |owner| wire::request(&[owner.as_bytes()])))
             })
         }),
     }
+}
+
+pub(crate) async fn resolve(
+    secrets: &impl Secrets,
+    at: &Callsite,
+    secret: &str,
+    to: &str,
+) -> anyhow::Result<Option<String>> {
+    if abi::secrets::Id::try_from(secret).is_ok()
+        && resource_owner(secrets, at, secret, to).await?.is_none()
+    {
+        return Ok(None);
+    }
+    secrets.grant(&at.service, secret, to).await
+}
+
+async fn resource_owner(
+    secrets: &impl Secrets,
+    at: &Callsite,
+    id: &str,
+    to: &str,
+) -> anyhow::Result<Option<String>> {
+    let owner = secrets.resource_owner(&at.service, id, to).await?;
+    if let Some(owner) = &owner {
+        let account = caller::account(at);
+        let unidentified = account.is_none()
+            && (at.caller.is_some()
+                || at.user.is_some()
+                || caller::ACCOUNT.try_with(|_| ()).is_ok())
+            && !caller::scheduled(at);
+        if unidentified || account.as_ref().is_some_and(|account| account != owner) {
+            let refusal = deny(
+                StatusCode::FORBIDDEN,
+                "The runtime secret belongs to another account",
+            )
+            .explained("E0089");
+            return Err(Abort(Failure::from(&refusal)).into());
+        }
+    }
+    Ok(owner)
 }
