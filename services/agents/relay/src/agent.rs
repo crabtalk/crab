@@ -15,7 +15,7 @@ impl Agent {
     pub fn register(
         handle: String,
         name: Option<String>,
-        platform: Option<Platform>,
+        mut platform: Option<Platform>,
     ) -> Result<Self> {
         let handle = Self::handle(&handle)?;
         if let Some((id,)) = caller_storage::rows::<(u64,)>(
@@ -26,6 +26,9 @@ impl Agent {
         {
             let agent = Self::get(id)?;
             agent.require_enabled()?;
+            if let Some(platform) = &mut platform {
+                platform.normalize_url()?;
+            }
             if name.as_ref().is_some_and(|name| name != &agent.name)
                 || platform
                     .as_ref()
@@ -40,7 +43,7 @@ impl Agent {
         }
         let name = name.unwrap_or_else(|| handle.clone());
         Self::validate_name(&name)?;
-        let platform = platform.unwrap_or_default();
+        let mut platform = platform.unwrap_or_default();
         platform.validate()?;
         let row = caller_storage::rows::<AgentRow>(
             "INSERT INTO relay_agents (handle, name, platform) VALUES (?, ?, ?) RETURNING id, wake, handle, name, platform, enabled",
@@ -80,7 +83,7 @@ impl Agent {
             agent.name = name;
         }
         let reconnect = platform.is_some();
-        if let Some(platform) = platform {
+        if let Some(mut platform) = platform {
             platform.validate()?;
             agent.platform = platform;
         }

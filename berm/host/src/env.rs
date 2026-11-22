@@ -145,6 +145,11 @@ impl Peers for Alone {
 
 /// What `{secret:NAME}` in a fetch header stands for.
 pub trait Secrets: Send + Sync + 'static {
+    /// The account that owns a deployment in this host's namespace.
+    fn service_owner(service: &str) -> &str {
+        crate::host::split(service).0
+    }
+
     /// The value of `secret` granted to `service` for `host`, if any.
     fn grant(
         &self,

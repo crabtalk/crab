@@ -59,28 +59,24 @@ pub(crate) async fn resolve(
     secrets.grant(&at.service, secret, to).await
 }
 
-async fn resource_owner(
-    secrets: &impl Secrets,
+async fn resource_owner<S: Secrets>(
+    secrets: &S,
     at: &Callsite,
     id: &str,
     to: &str,
 ) -> anyhow::Result<Option<String>> {
     let owner = secrets.resource_owner(&at.service, id, to).await?;
-    if let Some(owner) = &owner {
-        let account = caller::account(at);
-        let unidentified = account.is_none()
-            && (at.caller.is_some()
-                || at.user.is_some()
-                || caller::ACCOUNT.try_with(|_| ()).is_ok())
-            && !caller::scheduled(at);
-        if unidentified || account.as_ref().is_some_and(|account| account != owner) {
-            let refusal = deny(
-                StatusCode::FORBIDDEN,
-                "The runtime secret belongs to another account",
-            )
-            .explained("E0089");
-            return Err(Abort(Failure::from(&refusal)).into());
-        }
+    if let Some(owner) = owner.as_deref()
+        && owner != S::service_owner(&at.service)
+        && !caller::scheduled(at)
+        && caller::account(at).as_deref() != Some(owner)
+    {
+        let refusal = deny(
+            StatusCode::FORBIDDEN,
+            "The runtime secret belongs to another account",
+        )
+        .explained("E0089");
+        return Err(Abort(Failure::from(&refusal)).into());
     }
     Ok(owner)
 }

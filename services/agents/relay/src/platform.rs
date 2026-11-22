@@ -24,16 +24,23 @@ pub struct GrokConnection {
 pub struct DotConnection {}
 
 impl Platform {
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&mut self) -> Result<()> {
         if let Self::Grok(connection) = self {
             connection.validate()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn normalize_url(&mut self) -> Result<()> {
+        if let Self::Grok(connection) = self {
+            connection.normalize_url()?;
         }
         Ok(())
     }
 }
 
 impl GrokConnection {
-    pub fn validate(&self) -> Result<()> {
+    fn normalize_url(&mut self) -> Result<()> {
         let url = Url::parse(&self.webhook_url).map_err(|_| "Use an absolute HTTPS webhook URL")?;
         if self.webhook_url.len() > 4096
             || url.scheme() != "https"
@@ -46,6 +53,12 @@ impl GrokConnection {
         {
             return Err("Use an HTTPS api2.cursor.sh/automations/webhook/ URL up to 4096 bytes without embedded credentials or a fragment".into());
         }
+        self.webhook_url = String::from(url.as_str());
+        Ok(())
+    }
+
+    pub fn validate(&mut self) -> Result<()> {
+        self.normalize_url()?;
         Id::try_from(self.secret_id.as_str())?;
         if secret::owner(&self.secret_id, GROK_HOST)?.is_none() {
             return Err(berm_lang::deny(

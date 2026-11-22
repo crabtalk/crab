@@ -1,5 +1,6 @@
 use crate::common::Relay;
-use anyhow::Result;
+use anyhow::{Result, bail};
+use berm_api::Output;
 use serde_json::{Value, json};
 
 mod common;
@@ -26,11 +27,15 @@ impl Relay {
     }
 
     async fn tick(&self) -> Result<u64> {
-        Ok(self
-            .call_json("relay", "deliver", json!({}))
-            .await?
-            .as_u64()
-            .unwrap())
+        let mut attempted = 0;
+        for (wake, ran) in self.fire().await? {
+            assert_eq!(wake.tool, "deliver");
+            let Output::Done(output) = ran.result else {
+                bail!("delivery wake failed: {:?}", ran.result);
+            };
+            attempted += serde_json::from_str::<u64>(&output)?;
+        }
+        Ok(attempted)
     }
 
     async fn send(&self, account: &str, key: &str) -> Result<Value> {
@@ -124,8 +129,16 @@ async fn pause_disable_and_reconnect_reconcile_pending_wakes() -> Result<()> {
     let host = Relay::open().await?;
     host.grant_resource("relay", ID, HOST, "alice", "old-key");
     host.grant_resource("relay", SECOND_ID, HOST, "alice", "new-key");
-    host.grok("alice", ID, URL).await?;
+    let input = "https://API2.CURSOR.SH:443/automations/webhook/unused/../research";
+    let registered = host.grok("alice", ID, input).await?;
+    assert_eq!(host.grok("alice", ID, input).await?, registered);
+    assert_eq!(host.grok("alice", ID, URL).await?, registered);
     host.register("alice", "Assistant").await?;
+    host.send("alice", "normalized").await?;
+    host.arrange("POST", URL, 200, "");
+    assert_eq!(host.tick().await?, 1);
+    assert_eq!(host.fetched()[0].url, URL);
+
     let message = host.send("alice", "one").await?;
     let conversation = message["conversation"].clone();
     host.call("pause", json!({"conversation":conversation,"paused":true}))
@@ -145,9 +158,9 @@ async fn pause_disable_and_reconnect_reconcile_pending_wakes() -> Result<()> {
     .await?;
     host.arrange("POST", SECOND_URL, 200, "");
     assert_eq!(host.tick().await?, 1);
-    assert_eq!(host.fetched()[0].url, SECOND_URL);
+    assert_eq!(host.fetched()[1].url, SECOND_URL);
     assert!(
-        host.fetched()[0]
+        host.fetched()[1]
             .headers
             .contains(&("Authorization".into(), "Bearer new-key".into()))
     );

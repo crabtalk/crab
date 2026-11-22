@@ -227,6 +227,10 @@ impl Grants {
 }
 
 impl Secrets for Grants {
+    fn service_owner(_: &str) -> &str {
+        LOCAL
+    }
+
     async fn grant(&self, service: &str, secret: &str, host: &str) -> Result<Option<String>> {
         self.with(|table| {
             table

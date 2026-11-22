@@ -8,6 +8,7 @@ use crate::{
     execution::Invoked,
     host::{self, Host, Inner},
     record::calls,
+    state::caller::SCHEDULED,
 };
 use anyhow::{Error, Result, bail};
 use axum::http::StatusCode;
@@ -198,17 +199,20 @@ impl<E: Env> Host<E> {
             let _slot = self.gate.acquire().await?;
             let started = self.calls.start();
             let recorder = Recorder::default();
-            let invoked = self
-                .invoke(
-                    &target,
-                    started.id,
-                    None,
-                    None,
-                    None,
-                    Default::default(),
-                    &wake.tool,
-                    wake.args.clone().into_bytes(),
-                    Taping::Record(recorder.clone()),
+            let invoked = SCHEDULED
+                .scope(
+                    true,
+                    self.invoke(
+                        &target,
+                        started.id,
+                        None,
+                        None,
+                        None,
+                        Default::default(),
+                        &wake.tool,
+                        wake.args.clone().into_bytes(),
+                        Taping::Record(recorder.clone()),
+                    ),
                 )
                 .await;
             let outcome = match &invoked {
