@@ -1,13 +1,13 @@
 use crate::{account::Account, track};
 use alloc::string::String;
 use berm_lang::{
-    Result, caller_storage, json, rows,
+    Result, caller_storage, rows,
     serde::{Deserialize, Serialize},
 };
 
 const DRAIN_LIMIT: usize = 5_000;
-// Even fully escaped rows fit in the default syscall buffer at this page size.
-const PAGE: usize = 24;
+// The SQL reply stays under 4 MiB even when every tracked field needs JSON escaping.
+const PAGE: usize = 96;
 
 #[derive(Deserialize, Serialize)]
 #[serde(crate = "berm_lang::serde")]
@@ -66,7 +66,7 @@ pub(crate) fn run(account: &Account) -> Result<()> {
                         value->>'kind', value->>'path', value->>'channel', value->>'referrer',
                         value->>'source', value->>'medium', value->>'campaign', value->>'name',
                         value->>'value', value->>'currency', value->>'at' FROM json_each(?1)",
-                &(json::to(&hits)?,),
+                &(&hits,),
             )?;
             remaining -= hits.len();
             if hits.len() < page || last == ceiling {

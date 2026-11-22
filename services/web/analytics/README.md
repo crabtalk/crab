@@ -1,6 +1,6 @@
 # Analytics
 
-Analytics shows which website channels bring paying customers. A shared deployment buffers page views until your account next calls it. The service keeps your visits, events, and payments in your account’s caller storage and uses your granted Stripe key to sync revenue.
+Analytics reports website traffic, funnels, acquisition, and Stripe revenue. A shared deployment buffers page views until your account next calls it. The service keeps your visits, events, and payments in your account’s caller storage and uses your granted Stripe key to sync revenue.
 
 When the service is running and accessible, call it with Crab or connect your agent through [MCP](https://crabtalk.ai/docs/guides/mcp). After verifying your domain and adding the snippet, this call moves buffered visits into your storage and returns visitor counts and conversion rates for the funnel.
 
@@ -8,7 +8,7 @@ When the service is running and accessible, call it with Crab or connect your ag
 crab call crabtalk/analytics funnel '{"steps":["/","/pricing*","signup"],"since":0}'
 ```
 
-Use the running service address in place of `crabtalk/analytics` if you [deploy your own copy from source](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source). Use that address in your app registration, snippet, and secret grant too. A private copy starts with its own storage.
+If the image is available to your account, select **Deploy** or run `crab deploy crabtalk/analytics` to start a private copy. You can also [deploy from source](https://github.com/crabtalk/crab/blob/main/services/README.md#building-from-source). A private copy starts with its own storage. Use its running address in calls, app registration, the snippet, and the secret grant.
 
 ## Set up tracking
 
@@ -58,11 +58,22 @@ Single-page apps call `crabtalk.track()` on navigation. If the browser has no st
    crab secret resource request crabtalk/analytics "Stripe analytics" --host api.stripe.com
    ```
 
-3. Call `connect_stripe` with the approved `secret_id`. Use `sync_revenue` to import revenue or `channels` to sync and report together. The funnel and channel reports take `since` in Unix seconds. `channels` reports visitor counts, paying customers, and revenue by currency in minor units. For unpaid visitors, the last-touch report uses their latest hit in the window. Payments without a matching touch appear as `unattributed`.
+3. Call `connect_stripe` with the approved `secret_id`. Use `sync_revenue` to import revenue or `channels` to sync and report together.
 
 Stripe sync reads newly created objects in bounded windows and saves progress after each completed window. For an initial import, call `sync_revenue` again while `has_more` is true. `synced_through` gives the oldest completed endpoint cursor in Unix seconds. If Stripe fails, `sync_revenue` includes the error and keeps the completed progress. `channels` still reports from storage and shows `revenue_synced_through` and `revenue_fully_synced` when Stripe is connected.
 
 A window with more than two Stripe pages is split. A single second with over 200 objects at one endpoint cannot be split further and leaves that endpoint's cursor unchanged. An object that completes or is paid after its creation timestamp passes the cursor can be missed. Revenue records gross payments and subscription renewals, excluding later refunds.
+
+## Reports
+
+`funnel`, `channels`, and `stats` take an inclusive `since` and an exclusive `until` in Unix seconds. Omit `until` to use the current time.
+
+- `funnel` counts visitors who completed two to eight page or event steps in order within the window.
+- `channels` reports visitors, paying customers, and revenue by currency. Set `by` to `channel` (the default), `source`, `medium`, `campaign`, or `landing`. Each row's `channel` field holds the grouping value. First touch uses the earliest hit. Last touch uses the latest hit before the visitor's first payment in the window, or their latest hit if unpaid. For either model, `landing` uses the first page view in the window among eligible hits. Missing values and unmatched payments appear as `unattributed`.
+- `stats` compares totals with the immediately preceding period of equal length and returns populated UTC calendar buckets for the current window. Set `interval` to `day` (the default) or `week` (starting Monday). Visitors and payers are counted distinctly in each period. Conversion is paying customers divided by visitors, including payments without a visit. Revenue and revenue per visitor use minor units by currency. Bounce rate is the share of sessions that start in the period and have exactly one recorded page view, including views outside the period when checking that count. Rates with no denominator are omitted.
+- `journey` accepts a Stripe customer ID or a visitor ID in `customer`. It shows each visit's time, landing page, channel, and pages, along with payment records in chronological order. It reports elapsed days from the first visit to the first payment when both exist and the payment follows the visit. The report keeps the earliest 25 visits, 25 pages per visit, and 100 payments, with a flag for each list that was cut. Long lists of visits or payments can reach the response size limit sooner.
+
+Revenue reports use stored Stripe payments. Call `sync_revenue` before `stats` or `journey` to refresh them. `channels` runs a bounded sync when Stripe is connected.
 
 ## Storage and limits
 

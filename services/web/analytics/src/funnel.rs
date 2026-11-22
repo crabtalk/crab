@@ -1,5 +1,6 @@
+use crate::period::Window;
 use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, Schema, caller_storage, json};
+use berm_lang::{Result, Schema, caller_storage};
 
 #[derive(Schema)]
 pub struct Funnel {
@@ -15,7 +16,7 @@ pub struct Step {
 }
 
 impl Funnel {
-    pub(crate) fn report(steps: Vec<String>, since: u64) -> Result<Self> {
+    pub(crate) fn report(steps: Vec<String>, window: Window) -> Result<Self> {
         if !(2..=8).contains(&steps.len()) {
             return Err("Supply between two and eight funnel steps".into());
         }
@@ -30,13 +31,14 @@ impl Funnel {
             "WITH RECURSIVE
              steps AS (SELECT key AS idx, value AS step FROM json_each(?1)),
              reached(visitor, idx, at, hit) AS (
-               SELECT DISTINCT visitor, -1, ?2, 0 FROM hits WHERE at >= ?2
+               SELECT DISTINCT visitor, -1, ?2, 0 FROM hits WHERE at >= ?2 AND at < ?3
                UNION ALL
                SELECT reached.visitor, steps.idx, next.at, next.id
                FROM reached JOIN steps ON steps.idx = reached.idx + 1
                JOIN hits AS next ON next.id = (
                  SELECT h.id FROM hits AS h
-                 WHERE h.visitor = reached.visitor AND (h.at, h.id) > (reached.at, reached.hit)
+                 WHERE h.visitor = reached.visitor AND h.at >= reached.at AND h.at < ?3
+                   AND (h.at, h.id) > (reached.at, reached.hit)
                    AND CASE
                      WHEN substr(steps.step, 1, 1) <> '/' THEN h.kind = 'event' AND h.name = steps.step
                      WHEN substr(steps.step, -1) = '*' THEN h.kind = 'view'
@@ -48,7 +50,7 @@ impl Funnel {
              )
              SELECT count(reached.hit) FROM steps LEFT JOIN reached USING (idx)
              GROUP BY steps.idx ORDER BY steps.idx",
-            &(json::to(&steps)?, since),
+            &(&steps, window.since, window.until),
         )?;
         let mut previous = 0;
         let steps = steps

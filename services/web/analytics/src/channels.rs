@@ -1,3 +1,4 @@
+use crate::period::Window;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use berm_lang::{Result, Schema, caller_storage};
 
@@ -5,6 +6,16 @@ use berm_lang::{Result, Schema, caller_storage};
 pub enum Model {
     First,
     Last,
+}
+
+#[derive(Schema, Default)]
+pub enum By {
+    #[default]
+    Channel,
+    Source,
+    Medium,
+    Campaign,
+    Landing,
 }
 
 #[derive(Schema, Default)]
@@ -17,6 +28,7 @@ pub struct Channels {
 
 #[derive(Schema, Default)]
 pub struct Channel {
+    /// Value of the requested grouping.
     pub channel: String,
     pub visitors: u64,
     pub paying_customers: u64,
@@ -25,41 +37,56 @@ pub struct Channel {
 }
 
 impl Channels {
-    pub(crate) fn report(since: u64, model: Model) -> Result<Self> {
+    pub(crate) fn report(window: Window, model: Model, by: By) -> Result<Self> {
+        let dimension = match by {
+            By::Channel => "channel",
+            By::Source => "source",
+            By::Medium => "medium",
+            By::Campaign => "campaign",
+            By::Landing => "landing",
+        };
         let breakdown = caller_storage::rows::<(String, u64, u64, Option<String>, u64)>(
             "WITH
-             sales AS (
-               SELECT p.id, p.customer, COALESCE(p.visitor, c.visitor) AS visitor,
-                      p.amount, p.currency, p.at
-               FROM payments p LEFT JOIN customers c ON c.id = p.customer WHERE p.at >= ?1
+             activity AS (
+               SELECT h.visitor, h.at, h.id AS hit, (?4 <> 'landing' OR h.kind = 'view') AS can_touch,
+                      CASE ?4
+                        WHEN 'source' THEN NULLIF(h.source, '')
+                        WHEN 'medium' THEN NULLIF(h.medium, '')
+                        WHEN 'campaign' THEN NULLIF(h.campaign, '')
+                        WHEN 'landing' THEN h.path
+                        ELSE h.channel
+                      END AS dimension,
+                      NULL AS payer, NULL AS currency, NULL AS amount
+               FROM hits h WHERE h.at >= ?1 AND h.at < ?2
+               UNION ALL
+               SELECT visitor, at, NULL, 0, NULL, payer, currency, amount
+               FROM analytics_sales WHERE at >= ?1 AND at < ?2
              ),
-             first_payment AS (SELECT visitor, min(at) AS at FROM sales GROUP BY visitor),
-             ranked AS (
-               SELECT h.visitor, h.channel, row_number() OVER (
-                 PARTITION BY h.visitor
-                 ORDER BY CASE WHEN ?2 THEN h.at END DESC, CASE WHEN ?2 THEN h.id END DESC, h.at, h.id
-               ) AS rank
-               FROM hits h LEFT JOIN first_payment p ON h.visitor = p.visitor
-               WHERE h.at >= ?1 AND (NOT ?2 OR p.at IS NULL OR h.at < p.at)
+             chronology AS (
+               SELECT *, min(at) FILTER (WHERE hit IS NULL) OVER (PARTITION BY visitor) AS first_payment
+               FROM activity
              ),
-             touches AS (SELECT visitor, channel FROM ranked WHERE rank = 1),
-             attributed AS (
-               SELECT COALESCE(t.channel, 'unattributed') AS channel, s.amount, s.currency,
-                      CASE
-                        WHEN s.customer IS NOT NULL THEN 'c:' || s.customer
-                        WHEN s.visitor IS NOT NULL THEN 'v:' || s.visitor
-                        ELSE 'p:' || s.id
-                      END AS payer
-               FROM sales s LEFT JOIN touches t ON s.visitor = t.visitor
+             eligible AS (
+               SELECT *, can_touch AND (NOT ?3 OR first_payment IS NULL OR at < first_payment) AS touch
+               FROM chronology
+             ),
+             attributed AS MATERIALIZED (
+               SELECT visitor, hit, payer, currency, amount,
+                      coalesce(first_value(CASE WHEN touch THEN dimension END) OVER (
+                        PARTITION BY visitor
+                        ORDER BY touch DESC,
+                          CASE WHEN ?3 AND ?4 <> 'landing' THEN at END DESC,
+                          CASE WHEN ?3 AND ?4 <> 'landing' THEN hit END DESC, at, hit
+                      ), 'unattributed') AS channel
+               FROM eligible
              )
-             SELECT COALESCE(t.channel, 'unattributed') AS channel, count(*), 0, NULL, 0
-             FROM (SELECT DISTINCT visitor FROM hits WHERE at >= ?1) v
-             LEFT JOIN touches t ON v.visitor = t.visitor GROUP BY COALESCE(t.channel, 'unattributed')
+             SELECT channel, count(DISTINCT visitor) FILTER (WHERE hit IS NOT NULL),
+                    count(DISTINCT payer), NULL, 0
+             FROM attributed GROUP BY channel
              UNION ALL
-             SELECT channel, 0, count(DISTINCT payer), NULL, 0 FROM attributed GROUP BY channel
-             UNION ALL
-             SELECT channel, 0, 0, currency, sum(amount) FROM attributed GROUP BY channel, currency",
-            &(since, matches!(model, Model::Last)),
+             SELECT channel, 0, 0, currency, sum(amount)
+             FROM attributed WHERE currency IS NOT NULL GROUP BY channel, currency",
+            &(window.since, window.until, matches!(model, Model::Last), dimension),
         )?;
         let mut channels = BTreeMap::<String, Channel>::new();
         for (name, visitors, paying_customers, currency, amount) in breakdown {
