@@ -105,10 +105,7 @@ macro_rules! host_calls {
             /// Resource ID and destination host in; the granted resource's owner out,
             /// or no fields if no grant exists. Never returns a value.
             SECRET_RESOURCE = "berm.secret.resource";
-
-            /// Make one HTTP request through the host's proxy. The request and reply are
-            /// [`HTTP_FETCH`]'s.
-            HTTP_PROXY = "berm.http.proxy";
+            SECRET_BIND = "berm.secret.bind";
 
             /// Make a batch of HTTP requests at once, each to a host the manifest
             /// declares under [`HTTP_FETCH`]. `(ptr, len) -> staged length`
@@ -116,16 +113,12 @@ macro_rules! host_calls {
             /// Each request field is one [`HTTP_FETCH`] request, framed. Each reply
             /// field answers the request in its place, framed: `ok`, then
             /// [`HTTP_FETCH`]'s reply fields; or `refused` or `failed`, then why.
+            /// A refused item may append an explanation code.
             HTTP_FETCH_ALL = "berm.http.fetch_all";
 
             /// [`HTTP_FETCH_ALL`] with body bytes sent literally. Only header values
             /// undergo secret substitution. The request and reply framing are unchanged.
             HTTP_FETCH_ALL_LITERAL_BODY = "berm.http.fetch_all.literal_body";
-
-            /// [`HTTP_FETCH_ALL`] through the host's proxy, each request to a host
-            /// the manifest declares under [`HTTP_PROXY`]. The request and reply are
-            /// [`HTTP_FETCH_ALL`]'s.
-            HTTP_PROXY_ALL = "berm.http.proxy_all";
 
             /// Emit one log. `(ptr, len) -> staged length`
             ///
@@ -150,6 +143,9 @@ macro_rules! host_calls {
             /// Write a key in the verified caller's storage.
             CALLER_SET = "berm.caller.set";
 
+            /// Remove a key from the verified caller's storage.
+            CALLER_DELETE = "berm.caller.delete";
+
             /// Read one var of this service's `[vars]`. `(ptr, len) -> staged length`
             ///
             /// The request's one field is the var's name; the reply is the value this
@@ -169,6 +165,12 @@ macro_rules! host_calls {
             /// Request fields are the key and the value; the reply is empty. The host takes
             /// the write, or has it held in the chain's journal until it reaches the host.
             SET = "berm.set";
+
+            /// Remove one. `(ptr, len) -> staged length`
+            ///
+            /// The request's one field is the key; the reply is empty. Removing an
+            /// absent key succeeds. Held in the chain's journal like [`SET`].
+            DELETE = "berm.delete";
 
             /// Who made this call. `(ptr, len) -> staged length`, the pair ignored.
             ///

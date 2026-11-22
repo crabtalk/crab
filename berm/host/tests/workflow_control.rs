@@ -50,6 +50,7 @@ async fn helpers_cannot_reach_application_syscalls_and_explanations_survive() ->
         berm::abi::SQL,
         berm::abi::GET,
         berm::abi::SET,
+        berm::abi::DELETE,
         berm::abi::EMIT,
         berm::abi::NOW,
         berm::abi::RANDOM,

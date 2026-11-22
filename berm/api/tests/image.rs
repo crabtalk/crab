@@ -360,7 +360,6 @@ fn linked_http_destinations_merge_without_duplicates() {
     record.deps.http.fetch = vec!["own.example".into(), "shared.example".into()];
     let mut linked = kit("http");
     linked.deps.http.fetch = vec!["shared.example".into(), "kit.example".into()];
-    linked.deps.http.proxy = vec!["proxy.example".into()];
     let image = image(
         &tool("a", "demo"),
         Some(&serde_json::to_vec(&record).unwrap()),
@@ -371,7 +370,6 @@ fn linked_http_destinations_merge_without_duplicates() {
         manifest.deps.http.fetch,
         ["own.example", "shared.example", "kit.example"]
     );
-    assert_eq!(manifest.deps.http.proxy, ["proxy.example"]);
 }
 
 #[test]
@@ -385,7 +383,7 @@ fn old_image_metadata_keeps_http_destinations_without_inventing_imports() {
     });
     let mut linked = serde_json::to_value(kit("old")).unwrap();
     linked["deps"].as_object_mut().unwrap().remove("http");
-    linked["deps"]["syscalls"] = serde_json::json!({"berm.http.proxy": ["proxy.example"]});
+    linked["deps"]["http"] = serde_json::json!({"fetch": ["kit.example"], "proxy": []});
     let base = Image(EMPTY)
         .with_section(ABI_SECTION, tool("a", "demo").as_bytes())
         .unwrap();
@@ -396,8 +394,7 @@ fn old_image_metadata_keeps_http_destinations_without_inventing_imports() {
         .with_section(KITS_SECTION, &serde_json::to_vec(&[linked]).unwrap())
         .unwrap();
     let manifest = Manifest::try_from(base.as_slice()).unwrap();
-    assert_eq!(manifest.deps.http.fetch, ["old.example"]);
-    assert_eq!(manifest.deps.http.proxy, ["proxy.example"]);
+    assert_eq!(manifest.deps.http.fetch, ["old.example", "kit.example"]);
     assert!(manifest.imports.is_empty());
     let mut saved = serde_json::to_value(&manifest).unwrap();
     saved["deps"].as_object_mut().unwrap().remove("http");

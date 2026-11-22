@@ -6,6 +6,7 @@ use alloc::{
 use berm_lang::{
     Result, Schema,
     abi::events::{Event, Page},
+    caller_storage,
 };
 
 const MAX_BODY: usize = 4096;
@@ -36,7 +37,7 @@ impl Message {
             return Err("Address another agent".into());
         }
         Self::validate(&body, &key)?;
-        let conversation = if let Some((id,)) = berm_lang::rows::<(u64,)>(
+        let conversation = if let Some((id,)) = caller_storage::rows::<(u64,)>(
             "SELECT id FROM relay_messages WHERE sender = ? AND request_key = ?",
             &(from.id, &key),
         )?
@@ -96,7 +97,7 @@ impl Message {
             return Err(berm_lang::deny("Use a Dot agent for MCP event delivery"));
         }
         let Some(cursor) = cursor else {
-            let (head,) = berm_lang::rows::<(u64,)>(
+            let (head,) = caller_storage::rows::<(u64,)>(
                 "SELECT COALESCE(MAX(id), 0) FROM relay_messages WHERE recipient = ?",
                 &(agent,),
             )?
@@ -111,7 +112,7 @@ impl Message {
         let after = cursor
             .parse::<u64>()
             .map_err(|_| "Invalid message cursor")?;
-        let blocked_at = berm_lang::rows::<(u64,)>(
+        let blocked_at = caller_storage::rows::<(u64,)>(
             "SELECT m.id FROM relay_messages m JOIN relay_conversations c ON c.id = m.conversation WHERE m.recipient = ? AND m.id > ? AND c.paused = 1 ORDER BY m.id LIMIT 1",
             &(agent, after),
         )?.pop().map(|(id,)| id);
@@ -154,7 +155,7 @@ impl Message {
         let from = sender.id;
         let to = recipient.id;
         Self::validate(&body, &key)?;
-        if let Some((id,)) = berm_lang::rows::<(u64,)>(
+        if let Some((id,)) = caller_storage::rows::<(u64,)>(
             "SELECT id FROM relay_messages WHERE sender = ? AND request_key = ?",
             &(from, &key),
         )?
@@ -190,11 +191,11 @@ impl Message {
             }
         }
         let created_at = berm_lang::now();
-        let (id,) = berm_lang::rows::<(u64,)>(
+        let (id,) = caller_storage::rows::<(u64,)>(
             "INSERT INTO relay_messages (conversation, sender, recipient, body, request_key, reply_to, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
             &(conversation, from, to, &body, &key, reply_to, created_at),
         )?.pop().ok_or("The message was not stored")?;
-        berm_lang::rows::<()>(
+        caller_storage::rows::<()>(
             "UPDATE relay_conversations SET sent = sent + 1 WHERE id = ?",
             &(conversation,),
         )?;
@@ -202,23 +203,20 @@ impl Message {
             id,
             conversation,
             from: sender.handle,
-            to: recipient.handle,
+            to: recipient.handle.clone(),
             body,
             reply_to,
             created_at,
         };
-        Delivery::enqueue(&message)?;
+        Delivery::enqueue(&recipient)?;
+        if matches!(recipient.platform, Platform::Grok(_)) {
+            Delivery::schedule()?;
+        }
         Ok(message)
     }
 
     pub fn get(id: u64) -> Result<Self> {
-        let message = Self::stored(id)?;
-        Conversation::get(message.conversation)?;
-        Ok(message)
-    }
-
-    pub(crate) fn stored(id: u64) -> Result<Self> {
-        let (conversation, from, to, body, reply_to, created_at) = berm_lang::rows::<(u64, String, String, String, Option<u64>, u64)>(
+        let (conversation, from, to, body, reply_to, created_at) = caller_storage::rows::<(u64, String, String, String, Option<u64>, u64)>(
             "SELECT m.conversation, s.handle, r.handle, m.body, m.reply_to, m.created_at FROM relay_messages m JOIN relay_agents s ON s.id = m.sender JOIN relay_agents r ON r.id = m.recipient WHERE m.id = ?",
             &(id,),
         )?.pop().ok_or("No such message")?;
@@ -238,10 +236,32 @@ impl Message {
         Self::page(Some(conversation), None, after, limit)
     }
 
-    pub fn inbox(handle: &str, after: u64, limit: Option<u64>) -> Result<Messages> {
+    pub fn inbox(handle: &str, after: Option<u64>, limit: Option<u64>) -> Result<Messages> {
         let agent = Agent::named(handle)?;
-        let agent = agent.id;
-        Self::page(None, Some(agent), after, limit)
+        if let Some(after) = after.filter(|&after| after != 0) {
+            let marked = caller_storage::rows::<(u64,)>(
+                "UPDATE relay_agents SET read_at = MAX(read_at, ?)
+                 WHERE id = ? AND EXISTS (SELECT 1 FROM relay_messages WHERE id = ? AND recipient = ?)
+                 RETURNING read_at",
+                &(after, agent.id, after, agent.id),
+            )?;
+            if marked.is_empty() {
+                return Err("Acknowledge a message addressed to this agent".into());
+            }
+            Delivery::refresh(&agent, false)?;
+        }
+        let (position,) = caller_storage::rows::<(u64,)>(
+            "SELECT read_at FROM relay_agents WHERE id = ?",
+            &(agent.id,),
+        )?
+        .pop()
+        .ok_or("No inbox read position")?;
+        Self::page(None, Some(agent.id), position, limit)
+    }
+
+    pub fn incoming(handle: &str, after: u64, limit: Option<u64>) -> Result<Messages> {
+        let agent = Agent::named(handle)?;
+        Self::page(None, Some(agent.id), after, limit)
     }
 
     fn page(
@@ -253,13 +273,13 @@ impl Message {
         let limit = limit.unwrap_or(10).clamp(1, 10);
         let mut found = match (conversation, recipient) {
             (Some(conversation), _) => {
-                berm_lang::rows::<(u64, u64, String, String, String, Option<u64>, u64)>(
+                caller_storage::rows::<(u64, u64, String, String, String, Option<u64>, u64)>(
                     "SELECT m.id, m.conversation, s.handle, r.handle, m.body, m.reply_to, m.created_at FROM relay_messages m JOIN relay_agents s ON s.id = m.sender JOIN relay_agents r ON r.id = m.recipient WHERE m.conversation = ? AND m.id > ? ORDER BY m.id LIMIT ?",
                     &(conversation, after, limit + 1),
                 )?
             }
             (_, Some(recipient)) => {
-                berm_lang::rows::<(u64, u64, String, String, String, Option<u64>, u64)>(
+                caller_storage::rows::<(u64, u64, String, String, String, Option<u64>, u64)>(
                     "SELECT m.id, m.conversation, s.handle, r.handle, m.body, m.reply_to, m.created_at FROM relay_messages m JOIN relay_agents s ON s.id = m.sender JOIN relay_agents r ON r.id = m.recipient WHERE m.recipient = ? AND m.id > ? ORDER BY m.id LIMIT ?",
                     &(recipient, after, limit + 1),
                 )?

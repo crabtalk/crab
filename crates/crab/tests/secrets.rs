@@ -16,6 +16,12 @@ async fn a_secret_is_kept_by_service_until_revoked() -> Result<()> {
     let hosts = ["api.example.com".to_owned()];
     grants.set("app", "TOKEN", "one", &hosts)?;
     grants.set("app", "TOKEN", "two", &hosts)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path)?.permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
     assert_eq!(
         grants.grant("app", "TOKEN", "api.example.com").await?,
         Some("two".to_owned())

@@ -348,7 +348,7 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
                 database.get(at.chain, key).await
             }
         },
-        move |at: Callsite, key: String, value: Vec<u8>| {
+        move |at: Callsite, key: String, value: Option<Vec<u8>>| {
             let host = setting.upgrade();
             async move {
                 let host = host.context("host went away")?;

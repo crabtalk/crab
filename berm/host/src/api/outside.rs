@@ -35,7 +35,7 @@ pub struct Call {
     /// The service, as its daemon names it.
     pub service: String,
     pub tool: String,
-    /// Whether the tool is a query.
+    /// Whether the caller requested a query.
     pub query: bool,
     pub args: Vec<u8>,
     pub caller: Option<Caller>,
@@ -44,14 +44,30 @@ pub struct Call {
     pub headers: HeaderMap,
 }
 
-/// How a call from outside ended.
+/// The result of an admitted outside call.
 #[derive(Debug)]
 pub struct Called {
-    /// What the answer carries: its meter, and the tool's deprecation.
     pub headers: HeaderMap,
-    pub output: Output,
-    /// Its id among its service's calls.
-    pub id: u64,
+    pub outcome: CalledOutcome,
+}
+
+#[derive(Debug)]
+pub enum CalledOutcome {
+    Ran { id: u64, output: Output },
+    NotModified,
+}
+
+impl Called {
+    /// Read the output when the caller expects an invocation.
+    pub fn into_output(self) -> Result<(HeaderMap, Output), Denied> {
+        match self.outcome {
+            CalledOutcome::Ran { output, .. } => Ok((self.headers, output)),
+            CalledOutcome::NotModified => Err(deny(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the request expected a tool result but received not modified",
+            )),
+        }
+    }
 }
 
 /// A service taking calls from outside.
@@ -82,7 +98,7 @@ impl<E: Env> Host<E> {
                 HeaderMap::new(),
             )
             .await?;
-        Ok((called.headers, called.output))
+        called.into_output()
     }
 
     /// A call from outside, through the daemon's layers. `query` holds it to a
@@ -118,47 +134,27 @@ impl<E: Env> Host<E> {
             return Err(deny(
                 StatusCode::SERVICE_UNAVAILABLE,
                 format!("{service} is stopped"),
-            ));
+            )
+            .explained(Denied::PAUSED));
         }
-        let refused = |denied: Denied, caller: Option<&Caller>| {
-            let (source, who) = counted(caller);
-            self.usage
-                .record(service, Kind::Tool, tool, source, who, Outcome::Refused);
-            self.calls.record(
-                service,
-                self.calls.start(),
-                tool,
-                source,
-                who,
-                Outcome::Refused,
-                None,
-                None,
-                None,
-            );
-            Err(denied)
-        };
+        let refused =
+            |message: Denied| self.record_outside_refusal(service, tool, caller.as_ref(), message);
         if !deployed.reached_by_accounts(tool) {
-            return refused(
-                deny(
-                    StatusCode::FORBIDDEN,
-                    format!("{tool} takes calls from services only"),
-                ),
-                caller.as_ref(),
-            );
+            return Err(refused(deny(
+                StatusCode::FORBIDDEN,
+                format!("{tool} takes calls from services only"),
+            )));
         }
         if !spec.anonymous && caller.as_ref().is_none_or(Caller::anonymous) {
-            return refused(
-                deny(
-                    StatusCode::UNAUTHORIZED,
-                    format!("{tool} takes no anonymous calls; call it as a caller"),
-                ),
-                caller.as_ref(),
-            );
+            return Err(refused(deny(
+                StatusCode::UNAUTHORIZED,
+                format!("{tool} takes no anonymous calls; call it as a caller"),
+            )));
         }
         let call = Call {
             service: service.to_owned(),
             tool: tool.to_owned(),
-            query: spec.query,
+            query,
             args,
             caller: caller.clone(),
             client: Client {
@@ -168,9 +164,35 @@ impl<E: Env> Host<E> {
             headers,
         };
         match self.outside.clone().oneshot(call).await {
-            Err(denied) if denied.status.is_client_error() => refused(denied, caller.as_ref()),
+            Err(denied) if denied.status.is_client_error() => {
+                Err(self.record_outside_refusal(service, tool, caller.as_ref(), denied))
+            }
             answered => answered,
         }
+    }
+
+    fn record_outside_refusal(
+        &self,
+        service: &str,
+        tool: &str,
+        caller: Option<&Caller>,
+        denied: Denied,
+    ) -> Denied {
+        let (source, who) = counted(caller);
+        self.usage
+            .record(service, Kind::Tool, tool, source, who, Outcome::Refused);
+        self.calls.record(
+            service,
+            self.calls.start(),
+            tool,
+            source,
+            who,
+            Outcome::Refused,
+            None,
+            None,
+            None,
+        );
+        denied
     }
 
     /// The bottom of the layers: a call the layers let through, run.
@@ -182,7 +204,7 @@ impl<E: Env> Host<E> {
             caller,
             client,
             headers: conditions,
-            ..
+            query,
         } = call;
         let deployed = self
             .get(&service)
@@ -246,6 +268,19 @@ impl<E: Env> Host<E> {
                 "every call slot is taken; retry",
             ));
         };
+        if query && !headers.contains_key(header::CACHE_CONTROL) {
+            let commits = self.commits(&service).await?;
+            let tag = HeaderValue::from_str(&format!("\"{commits}\""))
+                .expect("a number is a header value");
+            let unchanged = conditions.get(header::IF_NONE_MATCH) == Some(&tag);
+            headers.insert(header::ETAG, tag);
+            if unchanged {
+                return Ok(Called {
+                    headers,
+                    outcome: CalledOutcome::NotModified,
+                });
+            }
+        }
         let started = self.calls.start();
         let recorder = Recorder::default();
         let kept = args.clone();
@@ -344,8 +379,10 @@ impl<E: Env> Host<E> {
         }
         Ok(Called {
             headers,
-            output: invoked.result,
-            id,
+            outcome: CalledOutcome::Ran {
+                id,
+                output: invoked.result,
+            },
         })
     }
 }

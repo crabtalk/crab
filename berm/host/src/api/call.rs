@@ -29,6 +29,9 @@ use std::{
 /// The most logs or calls one page answers.
 const MAX_PAGE: i64 = 1000;
 
+/// The error code for a var name or value the deployment refuses.
+const VAR: &str = "E0011";
+
 /// The error code a webhook for a tool that takes none carries.
 const NO_WEBHOOK_TOOL: &str = "E0014";
 
@@ -173,11 +176,13 @@ impl<E: Env> Host<E> {
             return Err(deny(
                 StatusCode::NOT_FOUND,
                 format!("the service has no var named {var:?}"),
-            ));
+            )
+            .explained(VAR));
         }
         if let Some(value) = &value {
-            deps.settable(var, value)
-                .map_err(|e| deny(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+            deps.settable(var, value).map_err(|error| {
+                deny(StatusCode::BAD_REQUEST, format!("{error:#}")).explained(VAR)
+            })?;
         }
         let (scope, name) = host::split(service);
         vars::set(&self.store, scope, name, var.to_owned(), value).await?;
@@ -545,13 +550,16 @@ impl<E: Env> Host<E> {
                     None => invoke.await,
                 }
             };
-            let outcome = crate::state::caller::SCHEDULED
-                .scope(scheduled, async {
-                    match link.workflow {
-                        Some(context) => berm::workflow::scope(context, outcome).await,
-                        None => outcome.await,
-                    }
-                })
+            let outcome = crate::state::caller::ACCOUNT
+                .scope(
+                    link.account,
+                    crate::state::caller::SCHEDULED.scope(scheduled, async {
+                        match link.workflow {
+                            Some(context) => berm::workflow::scope(context, outcome).await,
+                            None => outcome.await,
+                        }
+                    }),
+                )
                 .await;
             let used = meters.take();
             launched = used.values().any(|used| used.calls > 0);
@@ -757,7 +765,7 @@ impl<E: Env> Host<E> {
             cpu: count(used.all.cpu, used.on.cpu),
             read: count(used.all.read, used.on.read),
             written: count(used.all.written, used.on.written),
-            proxied: count(used.all.proxied, used.on.proxied),
+            proxied: count(0, 0),
             logged: count(used.all.logged, used.on.logged),
         })
     }

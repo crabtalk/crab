@@ -143,15 +143,13 @@ impl<E: Env> Host<E> {
     /// `config`. It serves `berm.get` and `berm.set` over `service_state` or
     /// the service's own database, `berm.call.after` over `service_wakes`,
     /// `berm.sql` over the databases kept under `config.databases`,
-    /// `berm.http.fetch` through `edges.fetch` and, when given one,
-    /// `berm.http.proxy` through `edges.proxy`, both with `edges.secrets`.
+    /// and outbound HTTP through `edges.fetch` with `edges.secrets`.
     /// Images come from `edges.images`, a service it does not run is reached
     /// through `edges.peers`, a call from outside goes through `edges.layers`,
     /// and `edges.observe` is told of each invocation.
     pub async fn open(state: &Path, config: &Config, edges: Edges<E>) -> Result<Self> {
         let Edges {
             fetch,
-            proxy,
             images,
             peers,
             secrets,
@@ -215,15 +213,11 @@ impl<E: Env> Host<E> {
                 fetch::syscall(host, fetch.clone(), Door::FetchAll),
                 fetch::syscall(host, fetch, Door::FetchAllLiteralBody),
             ];
-            if let Some(proxy) = proxy {
-                syscalls.push(fetch::syscall(host, proxy.clone(), Door::Proxy));
-                syscalls.push(fetch::syscall(host, proxy, Door::ProxyAll));
-            }
             syscalls.extend(state::syscalls(host));
             syscalls.extend(caller::call::syscalls(host));
             syscalls.push(logs::syscall(host));
             syscalls.push(sql::syscall(host));
-            syscalls.push(secrets::syscall(host));
+            syscalls.extend(secrets::syscalls(host));
             syscalls.push(wake::syscall(host));
             let calls = nest::calls(
                 host,

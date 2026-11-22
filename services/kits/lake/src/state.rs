@@ -60,11 +60,11 @@ pub struct Watch {
 
 impl State {
     pub fn load() -> Result<Self, CallError> {
-        Ok(berm_lang::get_json(KEY)?.unwrap_or_default())
+        Ok(berm_lang::get(KEY)?.unwrap_or_default())
     }
 
     pub fn save(&self) -> Result<(), CallError> {
-        berm_lang::set_json(KEY, self)
+        berm_lang::set(KEY, self)
     }
 
     /// Follow the feed `key`, unless it already is. Answers whether it was

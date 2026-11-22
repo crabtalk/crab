@@ -275,25 +275,34 @@ impl Deps {
         Ok(())
     }
 
-    // Images built before [http] stored destinations under syscall names.
+    // Stored metadata may contain retired fields or pre-[http] syscall names.
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Self, D::Error> {
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct StoredHttp {
+            fetch: Vec<String>,
+        }
+
         #[derive(Deserialize)]
         struct Stored {
             #[serde(flatten)]
             deps: Deps,
             #[serde(default)]
+            http: StoredHttp,
+            #[serde(default)]
             syscalls: BTreeMap<String, Vec<String>>,
         }
         let Stored {
             mut deps,
+            http,
             mut syscalls,
         } = Stored::deserialize(deserializer)?;
+        deps.http.fetch = http.fetch;
         let legacy = Deps {
             http: Http {
                 fetch: syscalls.remove(abi::HTTP_FETCH).unwrap_or_default(),
-                proxy: syscalls.remove(abi::HTTP_PROXY).unwrap_or_default(),
             },
             ..Deps::default()
         };
@@ -349,7 +358,6 @@ impl Deps {
         self.secret_resources |= other.secret_resources;
         missing(&mut self.secrets, &other.secrets);
         missing(&mut self.http.fetch, &other.http.fetch);
-        missing(&mut self.http.proxy, &other.http.proxy);
         for (id, credential) in &other.credentials {
             if self.credentials.contains_key(id) {
                 bail!("credential {id} is declared twice");
@@ -458,10 +466,8 @@ impl Deps {
 impl fmt::Display for Deps {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut items = Vec::new();
-        for (name, hosts) in [("fetch", &self.http.fetch), ("proxy", &self.http.proxy)] {
-            if !hosts.is_empty() {
-                items.push(format!("http {name} ({})", hosts.join(", ")));
-            }
+        if !self.http.fetch.is_empty() {
+            items.push(format!("http fetch ({})", self.http.fetch.join(", ")));
         }
         items.extend(self.secrets.iter().map(|name| format!("secret {name}")));
         if self.secret_resources {
@@ -485,7 +491,7 @@ impl Manifest {
                 && !self
                     .imports
                     .iter()
-                    .any(|name| matches!(name.as_str(), abi::GET | abi::SET)))
+                    .any(|name| matches!(name.as_str(), abi::GET | abi::SET | abi::DELETE)))
     }
 
     /// Each sequence of migrations its database is built by, under the name

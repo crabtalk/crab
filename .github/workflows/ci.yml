@@ -32,6 +32,8 @@ jobs:
           # Tests under `berm_host::test` build guest images.
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run --release
 

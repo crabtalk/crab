@@ -1,4 +1,5 @@
-//! `berm.get` and `berm.set` — a service's own bytes, surviving its invocations.
+//! `berm.get`, `berm.set` and `berm.delete` — a service's own bytes, surviving
+//! its invocations.
 //!
 //! Neither door takes a service. The keyspace is whichever one is asking, read
 //! off the [`Callsite`], so another service's keys are not refused — a guest
@@ -7,15 +8,15 @@
 //! The host takes a write through the closure below, or leaves it to the
 //! chain's journal, which hands it back in [`crate::Changes`]. A read sees the
 //! chain's journal first, then asks the host. Each read is metered as one row
-//! read and each write as one row written.
+//! read and each write or removal as one row written.
 
 use crate::{Callsite, Meter, Refused, Syscall, abi, wire};
 use anyhow::{Result, bail};
 use std::{future::Future, sync::Arc};
 
-/// Serve both doors, reading through `read`, handed the asking site and the
-/// key, and handing each write to `write`, which answers `false` to leave it
-/// to the chain's journal.
+/// Serve the three doors, reading through `read`, handed the asking site and
+/// the key, and handing each write to `write`, `None` for a removal, which
+/// answers `false` to leave it to the chain's journal.
 ///
 /// `read` answers `None` for a key never written. The guest is suspended
 /// until it resolves.
@@ -23,10 +24,10 @@ pub fn services<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
 where
     R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
-    W: Fn(Callsite, String, Vec<u8>) -> Taken + Send + Sync + 'static,
+    W: Fn(Callsite, String, Option<Vec<u8>>) -> Taken + Send + Sync + 'static,
     Taken: Future<Output = Result<bool>> + Send + 'static,
 {
-    values(abi::GET, abi::SET, true, read, write)
+    values([abi::GET, abi::SET, abi::DELETE], true, read, write)
 }
 
 /// Serve a keyspace whose writes are handled by the supplied store.
@@ -34,15 +35,19 @@ pub fn caller<R, Found, W, Taken>(read: R, write: W) -> Vec<Syscall>
 where
     R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
-    W: Fn(Callsite, String, Vec<u8>) -> Taken + Send + Sync + 'static,
+    W: Fn(Callsite, String, Option<Vec<u8>>) -> Taken + Send + Sync + 'static,
     Taken: Future<Output = Result<bool>> + Send + 'static,
 {
-    values(abi::CALLER_GET, abi::CALLER_SET, false, read, write)
+    values(
+        [abi::CALLER_GET, abi::CALLER_SET, abi::CALLER_DELETE],
+        false,
+        read,
+        write,
+    )
 }
 
 fn values<R, Found, W, Taken>(
-    get_name: &'static str,
-    set_name: &'static str,
+    [get_name, set_name, delete_name]: [&'static str; 3],
     journal: bool,
     read: R,
     write: W,
@@ -50,7 +55,7 @@ fn values<R, Found, W, Taken>(
 where
     R: Fn(Callsite, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<Vec<u8>>>> + Send + 'static,
-    W: Fn(Callsite, String, Vec<u8>) -> Taken + Send + Sync + 'static,
+    W: Fn(Callsite, String, Option<Vec<u8>>) -> Taken + Send + Sync + 'static,
     Taken: Future<Output = Result<bool>> + Send + 'static,
 {
     let (read, write) = (Arc::new(read), Arc::new(write));
@@ -62,7 +67,7 @@ where
             at.rows_left()?;
             let held = journal.then(|| at.journal.read(&at.service, key)).flatten();
             let value = match held {
-                Some(held) => Some(held),
+                Some(held) => held,
                 None => read(at.clone(), key.to_owned()).await?,
             };
             at.meter(Meter {
@@ -78,19 +83,25 @@ where
             })
         }
     };
-    let set = move |at: Callsite, request: Vec<u8>| {
+    // A set carries the key and the value; a delete carries the key alone.
+    let change = move |at: Callsite, request: Vec<u8>, removes: bool| {
         let write = write.clone();
         async move {
             let fields = abi::wire::fields(&request)?;
             let key = wire::text(&fields, 0, "key")?;
-            let Some(value) = fields.get(1) else {
-                bail!("request has no value");
+            let value = match (removes, fields.get(1)) {
+                (true, _) => None,
+                (false, Some(value)) => Some(*value),
+                (false, None) => bail!("request has no value"),
             };
             if at.query {
-                return Err(Refused(format!("a query cannot write; {key:?} was not set")).into());
+                let done = if removes { "deleted" } else { "set" };
+                return Err(
+                    Refused(format!("a query cannot write; {key:?} was not {done}")).into(),
+                );
             }
             at.rows_left()?;
-            if !write(at.clone(), key.to_owned(), value.to_vec()).await? && journal {
+            if !write(at.clone(), key.to_owned(), value.map(<[u8]>::to_vec)).await? && journal {
                 at.journal.write(&at.service, key, value)?;
             }
             at.meter(Meter {
@@ -100,6 +111,7 @@ where
             Ok(Vec::new())
         }
     };
+    let delete = change.clone();
     vec![
         Syscall {
             name: get_name.to_owned(),
@@ -107,7 +119,15 @@ where
         },
         Syscall {
             name: set_name.to_owned(),
-            call: Arc::new(move |at: Callsite, request: Vec<u8>| Box::pin(set(at, request))),
+            call: Arc::new(move |at: Callsite, request: Vec<u8>| {
+                Box::pin(change(at, request, false))
+            }),
+        },
+        Syscall {
+            name: delete_name.to_owned(),
+            call: Arc::new(move |at: Callsite, request: Vec<u8>| {
+                Box::pin(delete(at, request, true))
+            }),
         },
     ]
 }

@@ -1,7 +1,7 @@
 //! The routes a host serves for one service, and for one scope, for a daemon
 //! to nest under the paths it names them by.
 
-use crate::{Denied, env::Env, host::Host};
+use crate::{Called, CalledOutcome, Denied, env::Env, host::Host};
 use axum::{
     Extension, Json, Router,
     body::{Body, Bytes},
@@ -279,7 +279,7 @@ async fn call<E: Env>(
     let called = host
         .outside(&service, &tool, false, args.to_vec(), caller, headers)
         .await?;
-    Ok((called.headers, Json(called.output)).into_response())
+    Ok(outside_response(called))
 }
 
 /// The tool a route names, among the daemon's own path parameters.
@@ -317,40 +317,24 @@ async fn query<E: Env>(
     Query(arguments): Query<Arguments>,
     headers: HeaderMap,
 ) -> Result<Response, Denied> {
-    let caller_storage = host.deployed(&service)?.manifest.caller_storage.is_some();
-    let etag = if caller_storage {
-        None
-    } else {
-        let commits = host.commits(&service).await?;
-        let etag =
-            HeaderValue::from_str(&format!("\"{commits}\"")).expect("a number is a header value");
-        if headers.get(header::IF_NONE_MATCH) == Some(&etag) {
-            return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
-        }
-        Some(etag)
-    };
-    let caller = caller.map(|Extension(caller)| caller);
-    let mut called = host
+    let called = host
         .outside(
             &service,
             &tool,
             true,
             arguments.args.into_bytes(),
-            caller,
+            caller.map(|Extension(caller)| caller),
             headers,
         )
         .await?;
-    if let Some(etag) = etag
-        && !called.headers.contains_key(header::CACHE_CONTROL)
-    {
-        called.headers.insert(header::ETAG, etag);
-    } else {
-        called.headers.insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("private, no-store"),
-        );
+    Ok(outside_response(called))
+}
+
+fn outside_response(called: Called) -> Response {
+    match called.outcome {
+        CalledOutcome::Ran { output, .. } => (called.headers, Json(output)).into_response(),
+        CalledOutcome::NotModified => (StatusCode::NOT_MODIFIED, called.headers).into_response(),
     }
-    Ok((called.headers, Json(called.output)).into_response())
 }
 
 /// Hand a webhook to the service's `#[tool(webhook)]` tool `tool`, the body byte

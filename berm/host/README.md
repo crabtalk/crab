@@ -4,7 +4,7 @@ The shared host for Berm daemons, built on the Wasmtime-backed [`berm`](../berm)
 
 `Host<E>` manages deployed services, persistent state, logs, crons and wakes, per-service databases, a log of each call, and usage accounting. The daemon authenticates callers and serves its own routes.
 
-Implement `Env` to supply HTTP transport, image fetching, peer calls, secret resolution, an invocation observer, and the clock. Pass those implementations, an optional proxy, and the layers put around every call from outside as `Edges` to `Host::open`, use `Edges::enter` for an optional scope around every invocation (including nested and scheduled calls), then call `Host::boot` inside a Tokio runtime to restore services and start background work.
+Implement `Env` to supply HTTP transport, image fetching, peer calls, secret resolution, an invocation observer, and the clock. Pass those implementations and the layers put around every call from outside as `Edges` to `Host::open`, use `Edges::enter` for an optional scope around every invocation (including nested and scheduled calls), then call `Host::boot` inside a Tokio runtime to restore services and start background work.
 
 The `test` feature adds `berm_host::test`: a host whose edges a test holds, running a service's built image under the real engine. Fetches answer what the test arranged, the clock stands where the test set it, and the test fires the wakes the service armed.
 
@@ -14,7 +14,9 @@ The `test` feature adds `berm_host::test`: a host whose edges a test holds, runn
 
 `host::Caller.key` carries the authenticated API key ID. The embedder verifies it; the local host trusts supplied caller metadata. `berm_lang::key::id()` reads that ID throughout the chain, including peer links. Scheduled calls carry no key.
 
-Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway.
+Nested calls use qualified `owner/service` addresses or bare names within the caller's scope. `Peers::call` authorizes calls crossing scopes, including colocated targets; `Peers::link` transports calls within a scope to another host. Local hosts have no account gateway. Local caller storage selects the unchecked caller and any supplied user. Removing a deployment retains its caller files.
+
+For a group deploy, the host preflights every member, switches members one at a time and attempts to restore earlier images if a later switch fails. Applied migrations stay in place and may prevent restoration.
 
 `Host::event_page` reads a named `#[tool(events = "name")]` source under the supplied caller's authorization and checks its page framing before returning a resume position. A read without a cursor returns the current checkpoint. Tool authorization refusals return `403`; ordinary source failures return `400`. Native discovery metadata comes from `berm_api::events::Source`. MCP subscription management and callback delivery are not implemented.
 
@@ -22,15 +24,17 @@ Nested calls use qualified `owner/service` addresses or bare names within the ca
 
 Service databases share caches of at most 64 idle writer connections and 64 idle read connections per host. Active transactions retain their writer connection. Writer jobs execute in submission order on Tokio's blocking pool; idle services hold no dedicated writer thread. Capacity limits and SQL guards are reapplied when a connection reopens.
 
+Replay tapes hash HTTP requests before substituting credentials and retain responses as received. An upstream response can put a credential on a tape.
+
 ## License
 
 AGPL-3.0-only
 
 An invocation scope can refuse admission with `berm_host::Denied`; outside calls keep that HTTP status. HTTP transports receive the sending invocation’s `chain` and `span` on each request.
 
-A service declaring `secret_resources = true` can use `{secret:ID}` for a runtime secret resource. `Secrets::grant` must authorize the complete deployment, resource ID and destination host. Missing grants refuse the request before dispatch; HTTP permissions remain independently enforced. Individual resource IDs are not added to `Deps.secrets`.
+A service declaring `secret_resources = true` can use `{secret:ID}` for a runtime secret resource. `Secrets::grant` must authorize the complete deployment, resource ID and destination host. An authenticated call can use granted resources owned by its account. Scheduled calls require an account binding for the resource, deployment and destination, and the grant must still be active. Bindings survive host restarts. Rebind resources after a deployment moves to another host. Missing grants refuse the request before dispatch; HTTP permissions remain independently enforced. Individual resource IDs are not added to `Deps.secrets`.
 
-`Secrets::resource_owner` supplies account ownership metadata for runtime-resource binding checks; its default returns no grant. `berm.secret.resource` requires the resource capability and HTTP permission. `berm.http.fetch_all.literal_body` keeps body bytes literal while applying the usual header secret grants.
+`Secrets::resource_owner` supplies account ownership metadata for runtime-resource binding checks; its default returns no grant. `berm.secret.resource` and `berm.secret.bind` require the resource capability and HTTP permission. Binding requires an authenticated write call. `berm.http.fetch_all.literal_body` keeps body bytes literal while applying the usual header secret grants.
 
 Workflow declarations load from the service image, including services with no tools. The owner runtime includes control budgets, spend caps and checkpoint policy; public IDL includes only discoverable entries, graphs and task prices. Invalid graph/configuration records are refused before execution with `E0058`. Workflow schedules use five-field UTC cron expressions and copy their configured input into each run. Occurrence identities deduplicate delivery; stopped services and downtime skip occurrences without backfill. Refused and failed runs are not retried automatically. Embedders can admit owner-funded runs through `Peers::scheduled`; the native host admits them locally by default.
 

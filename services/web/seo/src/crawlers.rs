@@ -1,10 +1,10 @@
-//! `robots.txt` rules for the crawlers AI products send, read as RFC 9309
-//! reads them.
+//! `robots.txt` rules for the crawlers search engines and AI products send,
+//! read as RFC 9309 reads them.
 
 use berm_lang::Schema;
 
 /// The user-agent tokens checked, as each product documents them.
-pub const AGENTS: [&str; 11] = [
+pub const AGENTS: [&str; 22] = [
     "GPTBot",
     "OAI-SearchBot",
     "ChatGPT-User",
@@ -13,8 +13,19 @@ pub const AGENTS: [&str; 11] = [
     "Claude-User",
     "PerplexityBot",
     "Perplexity-User",
+    "Googlebot",
     "Google-Extended",
+    "Google-CloudVertexBot",
+    "bingbot",
+    "Applebot",
     "Applebot-Extended",
+    "Bytespider",
+    "meta-externalagent",
+    "meta-externalfetcher",
+    "FacebookBot",
+    "Amazonbot",
+    "DuckAssistBot",
+    "MistralAI-User",
     "CCBot",
 ];
 

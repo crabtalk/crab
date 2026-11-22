@@ -10,7 +10,7 @@ use berm_lang::{Result, abi::events::Page, tool};
 
 /// Register agent
 ///
-/// Register a handle in this account's Relay copy. Retry the same profile safely.
+/// Register a handle in this account. Retry the same profile safely.
 #[tool(
     access = "accounts",
     catalog = "relay.register",
@@ -77,7 +77,7 @@ pub fn open(members: Vec<String>, budget: Option<u64>) -> Result<Conversation> {
 #[tool(
     access = "accounts",
     catalog = "relay.pause",
-    budget(cpu = 100000, read = 2000, written = 10, memory = 16)
+    budget(cpu = 100000, read = 10000, written = 50, memory = 16)
 )]
 pub fn pause(conversation: u64, paused: bool) -> Result<Conversation> {
     Conversation::pause(conversation, paused)
@@ -117,15 +117,14 @@ pub fn read(conversation: u64, after: Option<u64>, limit: Option<u64>) -> Result
 
 /// Read agent inbox
 ///
-/// Read messages addressed to an agent after a cursor, at most ten.
+/// Read up to ten unread messages. Pass the last processed message id as after to acknowledge it.
 #[tool(
-    query,
     access = "accounts",
     catalog = "relay.inbox",
     budget(cpu = 100000, read = 2000, written = 10, memory = 16)
 )]
 pub fn inbox(agent: String, after: Option<u64>, limit: Option<u64>) -> Result<Messages> {
-    Message::inbox(&agent, after.unwrap_or(0), limit)
+    Message::inbox(&agent, after, limit)
 }
 
 /// Agent message events
@@ -141,34 +140,22 @@ pub fn message_events(agent: String, cursor: Option<String>) -> Result<Page<Mess
     Message::events(&agent, cursor)
 }
 
-/// Message delivery
+/// Grok connection delivery
 ///
-/// Read the latest Grok delivery state for a message in an accessible conversation.
+/// Read a Grok agent’s pending wake or connection failure.
 #[tool(
     query,
     access = "accounts",
     catalog = "relay.delivery",
     budget(cpu = 100000, read = 2000, written = 10, memory = 16)
 )]
-pub fn delivery(message: u64) -> Result<Option<Delivery>> {
-    Delivery::get(message)
+pub fn delivery(agent: String) -> Result<Option<Delivery>> {
+    Delivery::get(&agent)
 }
 
-/// Retry message delivery
+/// Send due Grok wakes
 ///
-/// Retry an unsuccessful Grok delivery with the agent's current connection; owner sessions only.
-#[tool(
-    access = "accounts",
-    catalog = "relay.retry-delivery",
-    budget(cpu = 100000, read = 2000, written = 10, memory = 16)
-)]
-pub fn retry_delivery(message: u64) -> Result<Delivery> {
-    Delivery::retry(message)
-}
-
-/// Attempt up to five due Grok deliveries
-///
-/// Attempt up to five due Grok deliveries.
+/// Attempt up to five due Grok wakes.
 #[tool(
     access = "internal",
     budget(cpu = 100000, read = 10000, written = 50, memory = 16)
@@ -224,7 +211,7 @@ pub fn reply(message: u64, body: String, key: String) -> Result<Message> {
     budget(cpu = 100000, read = 10000, written = 10, memory = 16)
 )]
 pub fn messages(agent: Option<String>, after: Option<u64>, limit: Option<u64>) -> Result<Messages> {
-    Message::inbox(
+    Message::incoming(
         &Agent::connected(agent.as_deref())?.handle,
         after.unwrap_or(0),
         limit,

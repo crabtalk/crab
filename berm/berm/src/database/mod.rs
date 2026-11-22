@@ -491,17 +491,23 @@ impl Database {
         .await
     }
 
-    /// Set the service's `key` inside the transaction `chain` holds.
-    pub async fn set(&self, chain: u64, key: String, value: Vec<u8>) -> Result<()> {
+    /// Set the service's `key` inside the transaction `chain` holds, or
+    /// remove it for `None`.
+    pub async fn set(&self, chain: u64, key: String, value: Option<Vec<u8>>) -> Result<()> {
         self.held(chain)?;
         on(&self.jobs, move |conn| {
             ensure_transaction(conn)?;
-            conn.query_row(
-                "INSERT INTO _berm_state (key, value) VALUES (?1, ?2)
-                 ON CONFLICT (key) DO UPDATE SET value = excluded.value RETURNING 1",
-                (&key, &value),
-                |_| Ok(()),
-            )?;
+            match value {
+                Some(value) => conn.query_row(
+                    "INSERT INTO _berm_state (key, value) VALUES (?1, ?2)
+                     ON CONFLICT (key) DO UPDATE SET value = excluded.value RETURNING 1",
+                    (&key, &value),
+                    |_| Ok(()),
+                )?,
+                None => {
+                    conn.execute("DELETE FROM _berm_state WHERE key = ?1", [&key])?;
+                }
+            }
             Ok(())
         })
         .await

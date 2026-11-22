@@ -62,13 +62,12 @@ pub fn tool(
             },
         );
         eprintln!(
-            "{}µs CPU, {} rows read, {} written, {}µs SQL CPU, {} KiB memory, {} bytes proxied{cost}",
+            "{}µs CPU, {} rows read, {} written, {}µs SQL CPU, {} KiB memory{cost}",
             meter.cpu,
             meter.read,
             meter.written,
             meter.sql_cpu,
             meter.memory / 1024,
-            meter.proxied
         );
     }
     match output {

@@ -24,18 +24,18 @@ async fn the_manifest_carries_the_kit_and_its_declarations() -> Result<()> {
     assert_eq!(manifest.kits[0].name, "berm-kit");
     assert!(manifest.deps.secrets.contains(&"kit".to_owned()));
     assert_eq!(manifest.deps.http.fetch, ["kit.example.com"]);
-    for name in ["berm.set", "berm.sql"] {
+    for name in ["berm.set", "berm.get", "berm.delete", "berm.sql"] {
         assert!(
             manifest.imports.iter().any(|import| import == name),
             "{name}"
         );
     }
-    for name in ["berm.get", "berm.http.fetch"] {
-        assert!(
-            !manifest.imports.iter().any(|import| import == name),
-            "{name}"
-        );
-    }
+    assert!(
+        !manifest
+            .imports
+            .iter()
+            .any(|import| import == "berm.http.fetch")
+    );
     Ok(())
 }
 

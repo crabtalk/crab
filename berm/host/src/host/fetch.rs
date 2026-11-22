@@ -1,11 +1,8 @@
-//! `berm.http.fetch`, `berm.http.fetch_all`, `berm.http.proxy` and
-//! `berm.http.proxy_all`, sent through the daemon's [`Env::Fetch`]. Each
-//! request sent meters [`Meter::sent`], and each answered request through the
-//! proxy meters [`Meter::proxied`]: its URL, header names and values and body,
-//! and the response's header names and values and body.
+//! Outbound HTTP through the daemon's [`Env::Fetch`]. Each request meters
+//! its URL, header names, header values and body as [`Meter::sent`].
 
 use crate::{
-    env::{Env, Secrets},
+    env::Env,
     host::{self, Inner},
 };
 use anyhow::Context;
@@ -22,15 +19,12 @@ pub(crate) enum Door {
     Fetch,
     FetchAll,
     FetchAllLiteralBody,
-    Proxy,
-    ProxyAll,
 }
 
 /// The syscall `door` names, sent through `fetch` with `host`'s secrets, each
 /// request given up at its timeout or its call's deadline, whichever comes
 /// first.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door) -> Syscall {
-    let proxied = matches!(door, Door::Proxy | Door::ProxyAll);
     let send = move |at: Callsite, request: Request| {
         let fetch = fetch.clone();
         async move {
@@ -43,33 +37,24 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
             let timeout = request.timeout;
             let within = timeout.map(|timeout| Instant::now() + timeout);
             let given_up = within.map_or(at.deadline, |within| within.min(at.deadline));
-            let response = tokio::time::timeout_at(given_up.into(), fetch.oneshot(request))
+            tokio::time::timeout_at(given_up.into(), fetch.oneshot(request))
                 .await
                 .with_context(|| match timeout {
                     Some(timeout) if Some(given_up) == within => {
                         format!("{host} did not answer within {}ms", timeout.as_millis())
                     }
                     _ => format!("{host} did not answer before the call's deadline"),
-                })??;
-            if proxied {
-                at.meter(Meter {
-                    proxied: (size + response.size()) as u64,
-                    ..Meter::default()
-                });
-            }
-            Ok(response)
+                })?
         }
     };
     let host = host.clone();
     let secret = move |at: Callsite, secret: String, to: String| {
         let host = host::alive(&host);
-        async move { host?.secrets.grant(&at.service, &secret, &to).await }
+        async move { host?.secret(&at, &secret, &to).await }
     };
     match door {
         Door::Fetch => http::fetch(send, secret),
         Door::FetchAll => http::fetch_all(send, secret),
         Door::FetchAllLiteralBody => http::fetch_all_literal_body(send, secret),
-        Door::Proxy => http::proxy(send, secret),
-        Door::ProxyAll => http::proxy_all(send, secret),
     }
 }

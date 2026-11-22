@@ -62,7 +62,7 @@ impl Metering {
     /// The most one run of a tool held to `budget` costs to run, as a decimal
     /// of USD micros, on a host whose chains run at most `deadline`
     /// milliseconds: its CPU, rows read and rows written budgets spent, and
-    /// its memory held to the deadline. Bytes proxied and the tool's calls to
+    /// its memory held to the deadline. The tool's calls to
     /// other services are left out.
     pub fn most(&self, budget: &Budget, deadline: u64) -> String {
         decimal(self.maximum(budget, deadline))
@@ -89,16 +89,16 @@ pub struct Rates {
     pub written: u64,
     /// MiB-microseconds of a call's memory budget held, waiting included.
     pub held: u64,
-    /// Bytes through `berm.http.proxy`; unset is free.
+    /// Reserved for compatibility with earlier rate records.
+    #[serde(skip_deserializing)]
     pub proxied: Option<u64>,
 }
 
 /// The resources charged by the unit, as their rates are named, in the order
 /// [`Rates::metered`] takes them.
-const UNITS: [&str; 6] = ["runs", "overage", "read", "written", "held", "proxied"];
+const UNITS: [&str; 5] = ["runs", "overage", "read", "written", "held"];
 
-/// The [`Unit`] a plan includes of each of [`UNITS`], in its order; proxied
-/// bytes have none.
+/// The [`Unit`] a plan includes in each accounting slot.
 pub const INCLUDED: [Option<Unit>; 6] = [
     Some(Unit::Runs),
     Some(Unit::Cpu),
@@ -151,7 +151,7 @@ impl Rates {
     }
 
     /// Each charged resource over `days`: its units, its rate, and what they
-    /// cost. `proxied` is left out while it is free.
+    /// cost.
     pub fn resources<'a>(&self, days: impl IntoIterator<Item = &'a MeteredDay>) -> Vec<Resource> {
         let mut counted = [0u64; 6];
         for day in days {
@@ -163,7 +163,6 @@ impl Rates {
             .into_iter()
             .zip(counted)
             .zip(self.rates())
-            .filter(|((resource, _), _)| *resource != "proxied" || self.proxied.is_some())
             .map(|((resource, units), rate)| Resource {
                 resource: resource.to_owned(),
                 units,
@@ -181,7 +180,7 @@ impl Rates {
             self.read,
             self.written,
             self.held,
-            self.proxied.unwrap_or(0),
+            0,
         ]
     }
 
@@ -216,7 +215,7 @@ fn day_units(day: &MeteredDay) -> [u64; 6] {
         day.used.read,
         day.used.written,
         day.used.held,
-        day.used.proxied,
+        0,
     ]
 }
 
@@ -228,7 +227,7 @@ pub fn called(meter: &Meter, overage: u64) -> [u64; 6] {
         meter.read,
         meter.written,
         meter.held,
-        meter.proxied,
+        0,
     ]
 }
 

@@ -21,6 +21,15 @@ pub fn request(fields: &[&[u8]]) -> Vec<u8> {
     request
 }
 
+/// An HTTP batch refusal is its tag, message, and optional explanation code.
+pub fn http_refusal(message: &str, explanation: Option<&str>) -> Vec<u8> {
+    let mut framed = request(&[b"refused", message.as_bytes()]);
+    if let Some(code) = explanation {
+        field(&mut framed, code.as_bytes());
+    }
+    framed
+}
+
 /// Split framed bytes back into their fields.
 pub fn fields(mut framed: &[u8]) -> Result<Vec<&[u8]>, Malformed> {
     let mut fields = Vec::new();

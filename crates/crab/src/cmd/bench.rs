@@ -311,7 +311,7 @@ impl Report {
                 response.arrange(&fixtures)?;
             }
             let fetch = if live_http {
-                Fetch::Live(host::Fetch::new(None)?)
+                Fetch::Live(host::Fetch::new()?)
             } else {
                 Fetch::Fixtures(fixtures.clone())
             };
@@ -326,8 +326,7 @@ impl Report {
                     ..Default::default()
                 },
                 Edges {
-                    fetch: fetch.clone(),
-                    proxy: Some(fetch),
+                    fetch,
                     images,
                     peers: Alone,
                     secrets: Grants::open(directory.path().join("secrets.toml")),

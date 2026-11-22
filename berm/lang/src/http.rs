@@ -1,10 +1,9 @@
 //! One HTTP request, to a host this service's manifest allows under
-//! `[http] fetch`, or under `[http] proxy` to send it through the host's
-//! proxy.
+//! `[http] fetch`.
 //!
 //! A header value or the body may carry `{secret:NAME}` for a secret the
 //! manifest declares, or `{secret:ID}` for a host-granted resource when the
-//! manifest enables `secret_resources`. The service never holds the value.
+//! manifest enables `secret_resources`. The host substitutes values on dispatch.
 
 use crate::{
     Error, RawValue, Result,
@@ -119,9 +118,8 @@ impl Response {
 /// )?;
 /// ```
 ///
-/// [`CallError::Refused`] means nothing was sent: a host or secret the
-/// manifest does not declare, or a secret nobody granted. A status the far end
-/// answered with, 4xx and 5xx included, is a [`Response`].
+/// [`CallError::Refused`] reports host policy. Upstream statuses, including
+/// 4xx and 5xx, are returned in a [`Response`].
 pub fn fetch(
     method: &str,
     url: &str,
@@ -129,17 +127,6 @@ pub fn fetch(
     body: &[u8],
 ) -> Result<Response, CallError> {
     send(sys::HTTP_FETCH, method, url, headers, body)
-}
-
-/// [`fetch`], through the host's proxy. The host meters the bytes sent and
-/// received against this service as `proxied`.
-pub fn proxy(
-    method: &str,
-    url: &str,
-    headers: &[(&str, &str)],
-    body: &[u8],
-) -> Result<Response, CallError> {
-    send(sys::HTTP_PROXY, method, url, headers, body)
 }
 
 /// One request of a batch [`fetch_all`] sends.
@@ -169,13 +156,6 @@ pub fn fetch_all_literal_body(
     send_all(sys::HTTP_FETCH_ALL_LITERAL_BODY, requests)
 }
 
-/// [`fetch_all`], through the host's proxy, each request to a host the
-/// manifest declares under `[http] proxy`. The host meters the bytes sent
-/// and received against this service as `proxied`.
-pub fn proxy_all(requests: &[Request<'_>]) -> Result<Vec<Result<Response, CallError>>, CallError> {
-    send_all(sys::HTTP_PROXY_ALL, requests)
-}
-
 fn send_all(
     import: impl FnOnce(usize, usize) -> u64,
     requests: &[Request<'_>],
@@ -196,7 +176,17 @@ fn send_all(
                 || String::from_utf8_lossy(rest.first().copied().unwrap_or_default()).into_owned();
             Ok(match *kind {
                 b"ok" => response(rest),
-                b"refused" => Err(CallError::Refused(why())),
+                b"refused" => {
+                    let explanation = rest
+                        .get(1)
+                        .map(|code| core::str::from_utf8(code))
+                        .transpose()
+                        .map_err(|_| unreadable())?;
+                    Err(CallError::Refused(host::Refusal::from_wire(
+                        why(),
+                        explanation,
+                    )))
+                }
                 b"failed" => Err(CallError::Failed(why())),
                 _ => return Err(unreadable()),
             })

@@ -4,32 +4,96 @@
 //! host-side until the guest pulls them, as the argument blob is pulled
 //! (`args.len` then `args.read`); the host never enters a guest to give it
 //! something. The high bit of the returned length says the staged bytes are a
-//! failure message, and a second bit says whether anything ran at all.
+//! failure message, and a second bit marks a policy refusal.
 
 use crate::{
     abi::{ERROR, REFUSED},
     sys,
 };
 use alloc::{string::String, vec, vec::Vec};
+use serde::Deserialize;
 
 /// Why a syscall did not produce a result, as the host told it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallError {
-    /// Whatever the call reached ran, and reported failure.
+    /// The operation or its transport failed.
     Failed(String),
-    /// The host refused the call. Nothing ran.
-    Refused(String),
+    /// The host refused the operation under its policy.
+    Refused(Refusal),
+}
+
+/// The host's refusal and its explanation code, when supplied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusal {
+    pub message: String,
+    pub explanation: Option<String>,
+}
+
+impl From<String> for Refusal {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            explanation: None,
+        }
+    }
+}
+
+impl From<&str> for Refusal {
+    fn from(message: &str) -> Self {
+        String::from(message).into()
+    }
+}
+
+impl Refusal {
+    pub(crate) fn from_wire(message: String, explanation: Option<&str>) -> Self {
+        if let Some(code) = explanation {
+            return Self {
+                message,
+                explanation: Some(code.into()),
+            };
+        }
+        // Single errors and older batch hosts carry the explanation in a
+        // refusal's JSON envelope.
+        #[derive(Deserialize)]
+        struct Explained {
+            status: u16,
+            #[serde(rename = "error")]
+            _error: serde::de::IgnoredAny,
+            explain: String,
+        }
+        if message.starts_with('{')
+            && let Some(Ok(explained)) = serde_json::Deserializer::from_str(&message)
+                .into_iter::<Explained>()
+                .next()
+            && (400..500).contains(&explained.status)
+        {
+            return Self {
+                message,
+                explanation: Some(explained.explain),
+            };
+        }
+        message.into()
+    }
 }
 
 impl CallError {
     /// What went wrong, whichever kind it was.
     pub fn message(&self) -> &str {
         match self {
-            Self::Failed(message) | Self::Refused(message) => message,
+            Self::Failed(message) => message,
+            Self::Refused(refusal) => &refusal.message,
         }
     }
 
-    /// Whether the call was refused before anything ran.
+    /// The host explanation code, when one accompanies the refusal.
+    pub fn explanation(&self) -> Option<&str> {
+        match self {
+            Self::Refused(refusal) => refusal.explanation.as_deref(),
+            Self::Failed(_) => None,
+        }
+    }
+
+    /// Whether the host reported a policy refusal.
     pub fn refused(&self) -> bool {
         matches!(self, Self::Refused(_))
     }
@@ -61,7 +125,7 @@ pub fn call(
     if failed {
         let message = String::from_utf8_lossy(&result).into_owned();
         return Err(match refused {
-            true => CallError::Refused(message),
+            true => CallError::Refused(Refusal::from_wire(message, None)),
             false => CallError::Failed(message),
         });
     }

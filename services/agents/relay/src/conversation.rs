@@ -1,6 +1,6 @@
-use crate::{account::Account, agent::Agent, delivery::Delivery};
+use crate::{account, agent::Agent, delivery::Delivery};
 use alloc::{string::String, vec::Vec};
-use berm_lang::{Result, Schema};
+use berm_lang::{Result, Schema, caller_storage};
 
 #[derive(Schema)]
 pub struct Conversation {
@@ -13,31 +13,26 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn open(members: Vec<String>, budget: Option<u64>) -> Result<Self> {
-        let owner = Account::require_owner()?.id;
+        account::require_owner()?;
         let members = members
             .iter()
             .map(|handle| Ok(Agent::named(handle)?.id))
             .collect::<Result<Vec<_>>>()?;
-        Self::create(owner, members, budget)
+        Self::create(members, budget)
     }
 
     pub(crate) fn direct(from: u64, to: u64) -> Result<Self> {
-        let owner = Account::current()?.id;
-        let found = berm_lang::rows::<(u64,)>(
-            "SELECT c.id FROM relay_conversations c WHERE c.owner = ? AND (SELECT COUNT(*) FROM relay_members m WHERE m.conversation = c.id) = 2 AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) ORDER BY c.id DESC LIMIT 1",
-            &(&owner, from, to),
+        let found = caller_storage::rows::<(u64,)>(
+            "SELECT c.id FROM relay_conversations c WHERE (SELECT COUNT(*) FROM relay_members m WHERE m.conversation = c.id) = 2 AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) AND EXISTS (SELECT 1 FROM relay_members m WHERE m.conversation = c.id AND m.agent = ?) ORDER BY c.id DESC LIMIT 1",
+            &(from, to),
         )?.pop();
         match found {
             Some((id,)) => Self::get(id),
-            None => Self::create(owner, alloc::vec![from, to], None),
+            None => Self::create(alloc::vec![from, to], None),
         }
     }
 
-    fn create(
-        owner: alloc::string::String,
-        members: Vec<u64>,
-        budget: Option<u64>,
-    ) -> Result<Self> {
+    fn create(members: Vec<u64>, budget: Option<u64>) -> Result<Self> {
         if !(2..=16).contains(&members.len()) {
             return Err("A conversation needs 2–16 agents".into());
         }
@@ -45,20 +40,20 @@ impl Conversation {
             if members[..at].contains(id) {
                 return Err("List each conversation member once".into());
             }
-            Agent::load(*id, Some(&owner))?.require_enabled()?;
+            Agent::get(*id)?.require_enabled()?;
         }
         let budget = budget.unwrap_or(100);
         if !(1..=1000).contains(&budget) {
             return Err("A conversation budget must be 1–1000 messages".into());
         }
-        let (id,) = berm_lang::rows::<(u64,)>(
-            "INSERT INTO relay_conversations (owner, budget) VALUES (?, ?) RETURNING id",
-            &(owner, budget),
+        let (id,) = caller_storage::rows::<(u64,)>(
+            "INSERT INTO relay_conversations (budget) VALUES (?) RETURNING id",
+            &(budget,),
         )?
         .pop()
         .ok_or("The conversation was not created")?;
         for member in &members {
-            berm_lang::rows::<()>(
+            caller_storage::rows::<()>(
                 "INSERT INTO relay_members (conversation, agent) VALUES (?, ?)",
                 &(id, member),
             )?;
@@ -67,14 +62,13 @@ impl Conversation {
     }
 
     pub fn get(id: u64) -> Result<Self> {
-        let owner = Account::current()?.id;
-        let (paused, budget, sent) = berm_lang::rows::<(u8, u64, u64)>(
-            "SELECT paused, budget, sent FROM relay_conversations WHERE id = ? AND owner = ?",
-            &(id, owner),
+        let (paused, budget, sent) = caller_storage::rows::<(u8, u64, u64)>(
+            "SELECT paused, budget, sent FROM relay_conversations WHERE id = ?",
+            &(id,),
         )?
         .pop()
         .ok_or_else(|| berm_lang::deny("No accessible conversation with that id"))?;
-        let members = berm_lang::rows::<(String,)>(
+        let members = caller_storage::rows::<(String,)>(
             "SELECT a.handle FROM relay_members m JOIN relay_agents a ON a.id = m.agent WHERE m.conversation = ? ORDER BY a.handle",
             &(id,),
         )?
@@ -91,21 +85,27 @@ impl Conversation {
     }
 
     pub fn pause(id: u64, paused: bool) -> Result<Self> {
-        Account::require_owner()?;
+        account::require_owner()?;
         let mut conversation = Self::get(id)?;
-        berm_lang::rows::<()>(
+        caller_storage::rows::<()>(
             "UPDATE relay_conversations SET paused = ? WHERE id = ?",
             &(paused, id),
         )?;
         conversation.paused = paused;
-        if !paused {
-            Delivery::schedule()?;
+        for (recipient,) in caller_storage::rows::<(u64,)>(
+            "SELECT DISTINCT m.recipient FROM relay_messages m
+             JOIN relay_agents a ON a.id = m.recipient
+             WHERE m.conversation = ? AND m.id > a.read_at",
+            &(id,),
+        )? {
+            Delivery::refresh(&Agent::get(recipient)?, !paused)?;
         }
+        Delivery::schedule()?;
         Ok(conversation)
     }
 
     pub(crate) fn require_member(&self, id: u64) -> Result<()> {
-        if berm_lang::rows::<(u8,)>(
+        if caller_storage::rows::<(u8,)>(
             "SELECT 1 FROM relay_members WHERE conversation = ? AND agent = ?",
             &(self.id, id),
         )?

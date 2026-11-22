@@ -50,11 +50,6 @@ pub struct Daemon {
     /// costs ~720 bytes of it, and 64 MiB of guest address space.
     #[arg(long, default_value_t = Calls::DEFAULT_DEPTH)]
     pub max_call_depth: u32,
-    /// The proxy `berm.http.proxy` goes through, e.g.
-    /// `http://user:pass@gate.example.com:3120`. Without one it goes
-    /// direct.
-    #[arg(long)]
-    pub proxy: Option<String>,
     /// How many milliseconds of CPU one call may spend, nested calls
     /// excluded.
     #[arg(long, default_value_t = berm::Config::default().cpu.as_millis() as u64)]
@@ -87,9 +82,6 @@ impl Daemon {
         if let Some(root) = &self.root {
             args.extend(["--root".into(), root.into()]);
         }
-        if let Some(proxy) = &self.proxy {
-            args.extend(["--proxy".into(), proxy.into()]);
-        }
         args
     }
 }
@@ -115,7 +107,6 @@ pub fn run(daemon: &Daemon) -> Result<()> {
             daemon.max_call_depth,
             Duration::from_millis(daemon.max_cpu_millis),
             Duration::from_secs(daemon.max_call_seconds),
-            daemon.proxy.as_deref(),
         )
         .await?;
         let addr = daemon.addr;

@@ -1,3 +1,7 @@
+# Scope
+
+- A service here shows one use case built on CrabTalk, end to end. Its tools answer the questions that use case asks; a feature joins when the use case needs it.
+
 # Service documentation
 
 - Follow [README-guide.md](README-guide.md) when writing or changing a service README. These READMEs appear on crabtalk.ai and in MCP: lead with calling a deployment and deploying a private copy, and keep source integration details separate.

@@ -143,7 +143,6 @@ pub(crate) async fn write(store: &Store, metered: Taken<Day>) -> Result<()> {
                     memory = MAX(memory, excluded.memory),
                     read = read + excluded.read,
                     written = written + excluded.written,
-                    proxied = proxied + excluded.proxied,
                     logged = logged + excluded.logged,
                     failed = failed + excluded.failed,
                     sent = sent + excluded.sent,
@@ -160,7 +159,7 @@ pub(crate) async fn write(store: &Store, metered: Taken<Day>) -> Result<()> {
                             meter.memory as i64,
                             meter.read as i64,
                             meter.written as i64,
-                            meter.proxied as i64,
+                            0i64,
                             meter.logged as i64,
                             meter.failed as i64,
                             meter.sent as i64,
@@ -181,7 +180,6 @@ pub(crate) async fn write(store: &Store, metered: Taken<Day>) -> Result<()> {
                         cpu = cpu + excluded.cpu,
                         read = read + excluded.read,
                         written = written + excluded.written,
-                        proxied = proxied + excluded.proxied,
                         logged = logged + excluded.logged",
                     )?
                     .execute(params![
@@ -191,7 +189,7 @@ pub(crate) async fn write(store: &Store, metered: Taken<Day>) -> Result<()> {
                         meter.cpu as i64,
                         meter.read as i64,
                         meter.written as i64,
-                        meter.proxied as i64,
+                        0i64,
                         meter.logged as i64
                     ])?;
                     Ok(())
@@ -279,7 +277,7 @@ pub(crate) async fn read(
     store
         .read(move |conn| {
             let mut statement = conn.prepare(
-                "SELECT day, calls, cpu, memory, read, written, proxied, stored,
+                "SELECT day, calls, cpu, memory, read, written, 0, stored,
                         logged, failed, sent, runs, held, tool, sql_cpu, database_usage
                    FROM service_meters
                   WHERE scope = ?1 AND name = ?2 AND day > ?3",
@@ -305,7 +303,7 @@ pub(crate) async fn read(
                     memory: row.get::<_, i64>(3)? as u64,
                     read: row.get::<_, i64>(4)? as u64,
                     written: row.get::<_, i64>(5)? as u64,
-                    proxied: row.get::<_, i64>(6)? as u64,
+                    proxied: 0,
                     stored: row.get::<_, i64>(7)? as u64,
                     logged: row.get::<_, i64>(8)? as u64,
                     failed: row.get::<_, i64>(9)? as u64,
@@ -428,7 +426,7 @@ pub(crate) async fn since(
     store
         .read(move |conn| {
             let mut statement = conn.prepare(
-                "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
+                "SELECT scope, name, day, calls, cpu, memory, read, written, 0,
                         stored, logged, failed, sent, runs, held, tool, sql_cpu, database_usage
                    FROM service_meters
                   WHERE day >= ?1",
@@ -457,7 +455,7 @@ pub(crate) async fn since(
                         memory: row.get::<_, i64>(5)? as u64,
                         read: row.get::<_, i64>(6)? as u64,
                         written: row.get::<_, i64>(7)? as u64,
-                        proxied: row.get::<_, i64>(8)? as u64,
+                        proxied: 0,
                         stored: row.get::<_, i64>(9)? as u64,
                         logged: row.get::<_, i64>(10)? as u64,
                         failed: row.get::<_, i64>(11)? as u64,
@@ -515,11 +513,10 @@ pub(crate) async fn used(
             let mut totals = conn
                 .prepare_cached(
                     "SELECT COALESCE(t.cpu, 0), COALESCE(t.read, 0), COALESCE(t.written, 0),
-                        COALESCE(t.proxied, 0), COALESCE(t.logged, 0),
-                        d.cpu, d.read, d.written, d.proxied, d.logged
+                        COALESCE(t.logged, 0),
+                        d.cpu, d.read, d.written, d.logged
                    FROM (SELECT COALESCE(SUM(cpu), 0) AS cpu, COALESCE(SUM(read), 0) AS read,
                                 COALESCE(SUM(written), 0) AS written,
-                                COALESCE(SUM(proxied), 0) AS proxied,
                                 COALESCE(SUM(logged), 0) AS logged
                            FROM service_meters
                           WHERE scope = ?1 AND name = ?2 AND day = ?3) d
@@ -531,14 +528,13 @@ pub(crate) async fn used(
                             cpu: row.get::<_, i64>(i)? as u64,
                             read: row.get::<_, i64>(i + 1)? as u64,
                             written: row.get::<_, i64>(i + 2)? as u64,
-                            proxied: row.get::<_, i64>(i + 3)? as u64,
-                            logged: row.get::<_, i64>(i + 4)? as u64,
+                            logged: row.get::<_, i64>(i + 3)? as u64,
                             ..Meter::default()
                         })
                     };
                     Ok(Totals {
                         all: meter(0)?,
-                        on: meter(5)?,
+                        on: meter(4)?,
                     })
                 })?;
             for unsaved in unsaved.resolve(conn)? {

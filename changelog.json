@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.1.9",
+    "date": "2026-11-23",
+    "summary": "Report website traffic and Stripe revenue with Analytics, share Relay deployments across accounts, and use typed key-value storage in services.",
+    "new": [
+      "Deploy Analytics from source to verify website domains, track visits and conversion events, and report funnels, acquisition channels, period trends and customer journeys",
+      "Connect Analytics to Stripe with a granted secret to import payments and subscription renewals, attribute revenue by first or last touch, and resume imports from saved progress",
+      "Check robots.txt access for 22 search and AI crawlers with crabtalk/seo.ai_access",
+      "Store typed JSON or raw bytes and delete keys in both shared and caller-scoped key-value storage"
+    ],
+    "changed": [
+      "Run the crabtalk/seo site audit workflow for free",
+      "Run Relay on a shared deployment with separate agent handles, conversations and inbox history for each authenticated account",
+      "Use account-owned runtime secret grants for HTTP credentials. Bind a granted secret during an authenticated write call before using it for scheduled delivery. Update existing Relay Grok connections to bind their secret again",
+      "Use direct HTTP fetches. Guest proxy calls, the proxy host list and the local daemon’s --proxy option are removed"
+    ],
+    "fixed": [
+      "Apply the same admission checks to conditional queries as to ordinary queries, and defer queued wakes when a service is stopped or its account is on hold",
+      "Treat bare and www hostnames as one Analytics domain claim and verify the token on either host"
+    ]
+  },
+  {
     "version": "0.1.8",
     "date": "2026-11-20",
     "summary": "Audit sites with crabtalk/seo, quote workflow runs from their input, and publish and deploy Cloud images with separate commands.",

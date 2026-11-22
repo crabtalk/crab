@@ -104,7 +104,11 @@ pub struct Runtime {
     #[serde(default)]
     pub imports: Vec<String>,
     /// The part of `deps` this host answers to nothing for.
-    #[serde(default, skip_serializing_if = "Deps::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "Deps::deserialize",
+        skip_serializing_if = "Deps::is_empty"
+    )]
     pub unresolved: Deps,
     /// The project it was last deployed in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -539,9 +543,8 @@ pub const MAX_LOG: usize = 4096;
 /// excluded, the largest linear memory one
 /// reached, in bytes, their budgets of memory held over their wall-clock time
 /// in MiB-microseconds, the rows they read and wrote, the CPU time their SQL
-/// statements spent on the database's threads in microseconds, the bytes sent
-/// and received through the proxy, the bytes of the logs they emitted, and the
-/// bytes sent off the host.
+/// statements spent on the database's threads in microseconds, the bytes they
+/// logged, and the bytes they sent off the host.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meter {
@@ -556,6 +559,8 @@ pub struct Meter {
     pub written: u64,
     #[serde(default)]
     pub sql_cpu: u64,
+    /// Reserved for compatibility with earlier meter records.
+    #[serde(skip_deserializing)]
     pub proxied: u64,
     #[serde(default)]
     pub logged: u64,
@@ -576,7 +581,6 @@ impl std::ops::AddAssign for Meter {
         self.read += other.read;
         self.written += other.written;
         self.sql_cpu += other.sql_cpu;
-        self.proxied += other.proxied;
         self.logged += other.logged;
         self.failed += other.failed;
         self.sent += other.sent;

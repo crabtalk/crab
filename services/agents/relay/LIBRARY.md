@@ -1,25 +1,19 @@
 # Rust integration
 
-The `agent_relay` library exposes `agent::{Agent, Contact, Contacts}`, `platform::Platform`, `conversation::Conversation`, `message::{Message, Messages}`, and `delivery::{Delivery, State, Reason}`. Disable the `tools` feature when linking it into another service.
+The `agent_relay` library exposes `agent::{Agent, Contact, Contacts}`, `platform::Platform`, `conversation::Conversation`, `message::{Message, Messages}`, and `delivery::{Delivery, Reason}`. Disable the `tools` feature when linking it into another service.
 
-Build the consuming service with `crab build` to include Relay's migrations. Its database holds the identities and messages. Operations require a host-authenticated outside caller or verified end user. Connections authenticated to the same account share its agents and message history. Owner sessions manage profiles and explicit conversations. `Message::address` opens or reuses a direct conversation for the selected sender. Caller scopes remain separate within the database.
+Build the consuming service with `crab build`. Declare `[storage.caller]` using the Relay caller migrations for agent identities, conversations and messages, and declare shared `[storage]` using the wake migrations. The host selects caller storage from the authenticated account. Owner sessions manage profiles and explicit conversations.
 
-`Platform::Grok(GrokConnection)` carries a webhook URL and host-managed `secret_id`. `Platform::OpenAiDot(DotConnection {})` identifies a Dot. Grok connection validation checks resource ownership and its exact-host grant through `berm_lang::secret::owner`. The host never returns the value. The consuming image must declare `secret_resources = true` and the destination in `[http] fetch`.
+`Agent::register(handle, name, platform)` defaults to `Platform::Inbox`. Handles are unique and case-insensitive within an account. A registration retry with the same profile reuses the identity. `Message::address` opens or reuses a direct conversation and `Message::reply` sends as the original recipient in that conversation.
 
-`Agent::register(handle, name, platform)` registers an account-scoped unique handle. The default platform is an MCP assistant. Retrying the same profile reuses that identity from any connection to the account; profile changes require `Agent::update`. Handles are immutable and case-insensitive; display names are separate. Existing rows retain history and delivery configuration during migration. Contact pagination resumes after a handle.
+`Message::inbox(handle, after, limit)` returns unread messages from the agent’s stored read position. Pass the last processed message’s ID to advance the position. `Message::incoming` reads incoming history from an explicit cursor. An enabled `Platform::OpenAiDot(DotConnection {})` can also use `Message::events`, where `None` captures the current checkpoint and `Some("0".into())` replays from the beginning. A paused conversation holds the event stream at its first queued message until resumed.
 
-`Message::address` selects the sender by handle, or infers it when the account has one agent. It addresses the recipient by handle and opens or reuses a direct conversation. `Message::reply` sends as the original recipient in the original conversation. Agent tool arguments, message senders and recipients, and conversation members use handles.
+`Platform::Grok(GrokConnection)` carries a Cursor automation URL and a host-managed `secret_id`. The consuming image declares `secret_resources = true` and `[http] fetch = ["api2.cursor.sh"]`. Registration binds the granted resource to the deployment for scheduled delivery. Existing connections require a platform update to bind their resource. The host supplies the Bearer value to the fetch.
 
-`receive_events` exposes `message.received` with an optional handle filter. Its opaque cursor binds the initially selected identity; changing its display name or registering additional agents does not retarget the stream. To select a different identity, subscribe without a cursor. `Message::events` returns `berm_lang::abi::events::Page<Message>` for an enabled Dot recipient in the caller's account. `None` captures the current checkpoint; `Some("0".into())` replays history. Message rows are the event history. Identical send retries retain the same event ID and cursor. A paused conversation holds the stream at its first queued message until resumed.
-
-`Message::send` stores the message and any Grok delivery record in the same transaction and arms a wake for the earliest eligible delivery. `Delivery::tick` attempts due work and arms the next wake for the earliest eligible retry or queued message. Each recipient's oldest pending message blocks its later messages. Resuming a conversation or enabling an agent re-arms held work. No recurring schedule is needed. After upgrading a copy that used the delivery cron, resume its conversations once with `pause` set to `false` to arm existing queued work.
-
-When embedding Relay, export an internal `deliver` tool calling `Delivery::tick` and reserve the service's single wake for Relay. The host must support an empty `berm_lang::after` target as the current deployment. Writing invocations hold the database writer through commit, so a delivery wake reads the queue after the sending invocation finishes.
-
-Grok payloads are `{"event":"message.created","message":Message}`; bodies use `http::fetch_all_literal_body`, while the host injects the authorization header. `Delivery::get` checks conversation access. `Delivery::retry` requires an owner session and revalidates the current connection.
+Export an internal `deliver` tool calling `Delivery::tick` and reserve the service’s wake for Relay. The shared outbox keeps one entry per agent. `Delivery::tick` only uses shared storage, and sends up to five due wakes. A wake posts `{"message":"@handle has new messages"}`. `Delivery::get(handle)` reads a connection’s pending wake or failure. A transient failure is retried up to six attempts. Submitting a validated platform again resets a failing connection.
 
 Run the Wasm integration tests from the workspace root:
 
 ```sh
-cargo nextest run --release -p crab-agent-relay --test runtime --test delivery --test onboarding --test migration
+cargo nextest run -p crab-agent-relay
 ```

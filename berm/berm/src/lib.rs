@@ -77,6 +77,8 @@ pub type Call = Arc<dyn Fn(Callsite, Vec<u8>) -> Reply + Send + Sync>;
 pub struct Callsite {
     /// What this service was deployed as.
     pub service: Arc<str>,
+    /// The identity retained across redeploys of this deployment.
+    pub storage_id: Option<Arc<str>>,
     /// The tool this invocation runs.
     pub tool: Arc<str>,
     pub budget: Budget,

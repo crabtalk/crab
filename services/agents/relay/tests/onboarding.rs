@@ -18,7 +18,7 @@ async fn named_agents_exchange_messages_without_manual_conversations() -> Result
         .as_str()
         .unwrap()
         .to_owned();
-    let input = json!({"handle":"assistant","name":"My assistant"});
+    let input = json!({"handle":"assistant","name":"My assistant","platform":{"open_ai_dot":{}}});
     let connected = host
         .call_as("alice", Some("chatgpt"), "register", input.clone())
         .await?;
@@ -271,6 +271,7 @@ async fn registered_handles_are_stable_and_scoped_to_the_account() -> Result<()>
         )
         .await?;
     assert_eq!(profile["handle"], "my-assistant");
+    assert_eq!(profile["platform"], "inbox");
     assert!(profile.get("id").is_none());
     assert_eq!(
         host.call_as(

@@ -195,6 +195,7 @@ async fn changed_dependency_is_refused_before_tool_dispatch() -> Result<()> {
     );
     assert_eq!(result.error.unwrap().body["explain"], "E0060");
     let link = Link {
+        account: None,
         scheduled: false,
         retained_until: None,
         replay: None,

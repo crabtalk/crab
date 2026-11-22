@@ -841,6 +841,9 @@ impl<E: Env> Host<E> {
                 }
             } else {
                 let link = Link {
+                    account: identity
+                        .filter(|caller| !caller.anonymous())
+                        .map(|caller| caller.account().to_owned()),
                     scheduled: matches!(run.trigger, Trigger::Schedule { .. }),
                     retained_until: Some(run.expires_at),
                     replay: replay.clone(),

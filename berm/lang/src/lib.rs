@@ -8,8 +8,8 @@
 //! `wasm32-unknown-unknown` by `crab build`, which appends what its `crab.toml`
 //! and its kits declare; a host refuses an image cargo alone links. berm serves
 //! [`call`], [`emit()`] ([`emit!`] for an `#[event]` struct), [`now`] and
-//! [`random`] itself; [`after`], [`get`], [`set`], [`http::fetch`] and
-//! [`http::proxy`] trap as unknown host calls under a host that does not
+//! [`random`] itself; [`after`], [`get`], [`set`] and [`http::fetch`]
+//! trap as unknown host calls under a host that does not
 //! register them. Storage reads see earlier writes in the same tool call.
 //! Storage changes commit only when the tool returns `Ok`; `Err`, a trap or
 //! an exceeded deadline discards pending changes. What [`emit()`] emits is kept
@@ -56,11 +56,11 @@ pub use call::{
 pub use emit::event as __event;
 pub use emit::{Event, emit};
 pub use error::{Error, Result};
-pub use host::{args_len, deadline, now, random, trace};
+pub use host::{Refusal, args_len, deadline, now, random, trace};
 pub use schema::Schema;
 pub use serde_json::value::RawValue;
 pub use sql::{rows, sql};
-pub use store::{get, get_json, set, set_json};
+pub use store::{delete, get, get_raw, set, set_raw};
 pub use var::var;
 // Named as `::berm_lang::serde` by what the macros generate.
 pub use serde;

@@ -96,7 +96,7 @@ impl Source for Blog {
 
 ## A tick
 
-A tick fetches the feeds due and then the threads due, least recently fetched first, each phase's requests sent in one batch: plain ones over `berm.http.fetch_all`, proxied ones over `berm.http.proxy_all`. An answer with a status outside 2xx is a failed fetch. A feed whose `parse` answers `Read::More` has those requests sent in the next round, with every other feed's of that round, and its closure handed their answers, until it answers `Read::Listed`. It stores no more threads once it has stored 8 MiB. A thread is stored in place of the last only when its comment count changed. It logs a `Fetched` for each feed and a `FetchFailed` for each fetch that failed, which is retried when next due. State is stored under the service's `lake` key, and all of it commits with the call.
+A tick fetches the feeds due and then the threads due, least recently fetched first, each phase's requests sent in one batch over `berm.http.fetch_all`. An answer with a status outside 2xx is a failed fetch. A feed whose `parse` answers `Read::More` has those requests sent in the next round, with every other feed's of that round, and its closure handed their answers, until it answers `Read::Listed`. It stores no more threads once it has stored 8 MiB. A thread is stored in place of the last only when its comment count changed. It logs a `Fetched` for each feed and a `FetchFailed` for each fetch that failed, which is retried when next due. State is stored under the service's `lake` key, and all of it commits with the call.
 
 ## Reading
 

@@ -23,7 +23,7 @@ The fixture builds the Wasm service and uses caller SQLite storage and 1,000 HTM
 
 Measured on arm64 macOS on 2026-11-21. Workflow totals come from the attempt meter and include eight workflow control invocations. Elapsed time includes admitting and executing the workflow.
 
-| 1,000 checked pages | Priced batches | Rows read | Rows written | Guest CPU (µs) | Invocations | Elapsed (s) |
+| 1,000 checked pages | Audit batches | Rows read | Rows written | Guest CPU (µs) | Invocations | Elapsed (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Nothing changed | 0 | 35,311 | 5 | 112,824 | 38 | 4.241 |
 | Every page changed | 100 | 146,386 | 2,005 | 421,400 | 138 | 9.135 |
@@ -41,6 +41,6 @@ Measured on arm64 macOS on 2026-11-21. Workflow totals come from the attempt met
 | All changed | Analyze | 30,273 | 1 | 54,466 | 1 |
 | All changed | Save | 4 | 2 | 3,884 | 1 |
 
-The unchanged run wrote zero page rows. Its five writes cover creating, updating and deleting the run row, plus saving the report and cursor together. The changed run wrote ten scan rows per priced batch on average, in addition to the check's 1,000 observation writes.
+The unchanged run wrote zero page rows. Its five writes cover creating, updating and deleting the run row, plus saving the report and cursor together. The changed run wrote ten scan rows per audit batch on average, in addition to the check's 1,000 observation writes.
 
 After the baseline, the 1,000 scans occupied 1,594,340 bytes of JSON. The `pages` table occupied 2,052,096 bytes and the caller database occupied 2,543,616 bytes, including indexes, the report and free pages.

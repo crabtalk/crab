@@ -54,18 +54,14 @@ pub struct Listed<T> {
 pub struct Request {
     pub url: String,
     pub headers: Vec<(String, String)>,
-    /// Sent through the host's proxy, to a host the manifest declares under
-    /// `berm.http.proxy`.
-    pub proxied: bool,
 }
 
 impl Request {
-    /// A GET of `url` with no headers, not proxied.
+    /// A GET of `url` with no headers.
     pub fn get(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),
             headers: Vec::new(),
-            proxied: false,
         }
     }
 }
@@ -296,65 +292,56 @@ fn settle<T>(reads: Vec<Result<Read<T>, String>>) -> Vec<Result<Vec<Listed<T>>, 
     settled.into_iter().flatten().collect()
 }
 
-/// Send `requests`, the plain ones in one `berm.http.fetch_all` and the
-/// proxied ones in one `berm.http.proxy_all`, and answer each in its place. A
-/// request a source could not build answers why.
 fn send(requests: Vec<Result<Request, String>>) -> Answers {
     let mut answers: Vec<Option<Result<Response, String>>> = requests
         .iter()
         .map(|request| request.as_ref().err().map(|error| Err(error.clone())))
         .collect();
-    for proxied in [false, true] {
-        let batch: Vec<(usize, &Request)> = requests
-            .iter()
-            .enumerate()
-            .filter_map(|(at, request)| Some((at, request.as_ref().ok()?)))
-            .filter(|(_, request)| request.proxied == proxied)
-            .collect();
-        if batch.is_empty() {
-            continue;
-        }
-        let headers: Vec<Vec<(&str, &str)>> = batch
-            .iter()
-            .map(|(_, request)| {
-                request
-                    .headers
-                    .iter()
-                    .map(|(name, value)| (name.as_str(), value.as_str()))
-                    .collect()
-            })
-            .collect();
-        let sent: Vec<http::Request<'_>> = batch
-            .iter()
-            .zip(&headers)
-            .map(|((_, request), headers)| http::Request {
-                method: "GET",
-                url: &request.url,
-                headers,
-                body: b"",
-                timeout: None,
-                limit: None,
-            })
-            .collect();
-        let answered = match proxied {
-            false => http::fetch_all(&sent),
-            true => http::proxy_all(&sent),
-        };
-        match answered {
-            Ok(answered) => {
-                for ((at, request), answer) in batch.iter().zip(answered) {
-                    let url = &request.url;
-                    answers[*at] = Some(match answer {
-                        Ok(response) if response.is_success() => Ok(response),
-                        Ok(response) => Err(format!("{url}: status {}", response.status)),
-                        Err(error) => Err(format!("{url}: {}", error.message())),
-                    });
-                }
+    let batch: Vec<(usize, &Request)> = requests
+        .iter()
+        .enumerate()
+        .filter_map(|(at, request)| Some((at, request.as_ref().ok()?)))
+        .collect();
+    if batch.is_empty() {
+        return answers.into_iter().flatten().collect();
+    }
+    let headers: Vec<Vec<(&str, &str)>> = batch
+        .iter()
+        .map(|(_, request)| {
+            request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect()
+        })
+        .collect();
+    let sent: Vec<http::Request<'_>> = batch
+        .iter()
+        .zip(&headers)
+        .map(|((_, request), headers)| http::Request {
+            method: "GET",
+            url: &request.url,
+            headers,
+            body: b"",
+            timeout: None,
+            limit: None,
+        })
+        .collect();
+    let answered = http::fetch_all(&sent);
+    match answered {
+        Ok(answered) => {
+            for ((at, request), answer) in batch.iter().zip(answered) {
+                let url = &request.url;
+                answers[*at] = Some(match answer {
+                    Ok(response) if response.is_success() => Ok(response),
+                    Ok(response) => Err(format!("{url}: status {}", response.status)),
+                    Err(error) => Err(format!("{url}: {}", error.message())),
+                });
             }
-            Err(error) => {
-                for (at, request) in &batch {
-                    answers[*at] = Some(Err(format!("{}: {}", request.url, error.message())));
-                }
+        }
+        Err(error) => {
+            for (at, request) in &batch {
+                answers[*at] = Some(Err(format!("{}: {}", request.url, error.message())));
             }
         }
     }

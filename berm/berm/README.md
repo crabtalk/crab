@@ -21,7 +21,7 @@ berm serves `berm.call`, which resolves a name against the set berm already hold
 
 `berm.client` returns the daily opaque key; `berm.client.ip` returns the outside IP. Both follow the call chain.
 
-The embedder registers host capabilities as `Syscall`s. Known ABI calls with no registered implementation fail when invoked; the hosting layer refuses deploying images that import them. The standard calls — `berm.get`/`berm.set`, `berm.emit`, `berm.sql`, `berm.call.after`, `berm.http.fetch`, `berm.http.proxy` — come from `berm::syscall`'s constructors, which read and check the request and hand the work to closures the embedder supplies. `berm.http.fetch` and `berm.http.proxy` refuse a host the service's manifest does not allow under `[http] fetch` or `[http] proxy`, and substitute `{secret:NAME}` in header values so the guest never holds a secret. `berm.http.proxy` meters the bytes it sends and receives as `proxied`.
+The embedder registers host capabilities as `Syscall`s. Known ABI calls with no registered implementation fail when invoked; the hosting layer refuses deploying images that import them. The standard calls — `berm.get`/`berm.set`/`berm.delete`, `berm.emit`, `berm.sql`, `berm.call.after`, `berm.http.fetch` — come from `berm::syscall`'s constructors, which read and check the request and hand the work to closures the embedder supplies. Outbound requests use hosts declared under `[http] fetch`. The host substitutes `{secret:NAME}` placeholders into the request.
 
 ## What an invocation runs under
 

@@ -47,6 +47,7 @@ impl Client {
         Ok(())
     }
     pub async fn revoke_secret_resource(&self, id: &str, service: &str) -> Result<(), Error> {
+        let service = service.replace('/', "%2F");
         self.ok(self.at(
             Method::DELETE,
             &format!("{}/{id}/grants/{service}", self.secret_resources_path()),

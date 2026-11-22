@@ -20,8 +20,8 @@ use std::future::Future;
 
 /// One daemon's edges, as types.
 pub trait Env: Clone + Send + Sync + 'static {
-    /// Sends `berm.http.fetch`, and `berm.http.proxy` through a proxy. Follows
-    /// no redirects; the host bounds each request by its call's deadline.
+    /// Sends outbound HTTP requests without following redirects. The host
+    /// bounds each request by its call's deadline.
     type Fetch: tower::Service<Request, Response = Response, Error = anyhow::Error, Future: Send + 'static>
         + Clone
         + Send
@@ -37,9 +37,6 @@ pub trait Env: Clone + Send + Sync + 'static {
 /// One daemon's edges, as values.
 pub struct Edges<E: Env> {
     pub fetch: E::Fetch,
-    /// What `berm.http.proxy` is sent through; without one, a manifest that
-    /// declares it is refused at deploy.
-    pub proxy: Option<E::Fetch>,
     pub images: E::Images,
     pub peers: E::Peers,
     pub secrets: E::Secrets,
@@ -145,6 +142,11 @@ impl Peers for Alone {
 
 /// What `{secret:NAME}` in a fetch header stands for.
 pub trait Secrets: Send + Sync + 'static {
+    /// The account that owns a deployment in this host's namespace.
+    fn service_owner(service: &str) -> &str {
+        crate::host::split(service).0
+    }
+
     /// The value of `secret` granted to `service` for `host`, if any.
     fn grant(
         &self,

@@ -39,20 +39,6 @@ fn a_whole_cost_has_no_fraction() {
 }
 
 #[test]
-fn proxied_bytes_are_free_while_unrated() {
-    let meter = Meter {
-        proxied: 1 << 30,
-        ..Meter::default()
-    };
-    assert_eq!(rates().cost_decimal(&meter, 0), "0");
-    let rated = Rates {
-        proxied: Some(1_000_000_000),
-        ..rates()
-    };
-    assert_eq!(rated.cost_decimal(&meter, 0), (1u64 << 30).to_string());
-}
-
-#[test]
 fn the_most_a_run_costs_spends_its_whole_budget() {
     let metering = Metering {
         rates: rates(),

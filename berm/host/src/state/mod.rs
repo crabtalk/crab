@@ -20,7 +20,7 @@ pub(crate) mod stop;
 pub(crate) mod store;
 pub(crate) mod vars;
 
-/// `berm.get` and `berm.set` for `host`'s services, over the service's own
+/// `berm.get`, `berm.set` and `berm.delete` for `host`'s services, over the service's own
 /// database when it keeps one and over `service_state` otherwise, and
 /// `berm.var` over `service_vars`.
 pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
@@ -37,7 +37,7 @@ pub(crate) fn syscalls<E: Env>(host: &Weak<Inner<E>>) -> Vec<Syscall> {
                 service::read(&host.store, scope, name, key).await
             }
         },
-        move |at: Callsite, key: String, value: Vec<u8>| {
+        move |at: Callsite, key: String, value: Option<Vec<u8>>| {
             let host = host::alive(&writing);
             async move {
                 let host = host?;

@@ -31,7 +31,7 @@ const MESSAGE: &str = "message";
 /// Survives calls and restarts, shared by all callers.
 #[tool]
 pub fn remember(message: String) -> Result<()> {
-    berm_lang::set_json(MESSAGE, &message)?;
+    berm_lang::set(MESSAGE, &message)?;
     Ok(())
 }
 
@@ -40,5 +40,5 @@ pub fn remember(message: String) -> Result<()> {
 /// Returns null if none has been saved.
 #[tool(query)]
 pub fn recall() -> Result<Option<String>> {
-    Ok(berm_lang::get_json(MESSAGE)?)
+    Ok(berm_lang::get(MESSAGE)?)
 }

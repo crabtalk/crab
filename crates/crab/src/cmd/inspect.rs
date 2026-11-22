@@ -168,13 +168,8 @@ pub fn show(
     };
     println!("  berm-lang {}", runtime.lang);
     println!("  host calls {}", runtime.imports.join(", "));
-    for (name, hosts) in [
-        ("fetch", &runtime.deps.http.fetch),
-        ("proxy", &runtime.deps.http.proxy),
-    ] {
-        if !hosts.is_empty() {
-            println!("  http {name} -> {}", hosts.join(", "));
-        }
+    if !runtime.deps.http.fetch.is_empty() {
+        println!("  http fetch -> {}", runtime.deps.http.fetch.join(", "));
     }
     if runtime.deps.secret_resources {
         println!("  runtime secrets -> explicit service grants");
