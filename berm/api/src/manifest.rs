@@ -485,7 +485,7 @@ impl Manifest {
                 && !self
                     .imports
                     .iter()
-                    .any(|name| matches!(name.as_str(), abi::GET | abi::SET)))
+                    .any(|name| matches!(name.as_str(), abi::GET | abi::SET | abi::DELETE)))
     }
 
     /// Each sequence of migrations its database is built by, under the name

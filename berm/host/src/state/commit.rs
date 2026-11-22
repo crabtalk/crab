@@ -13,7 +13,7 @@ use crate::{
 };
 use anyhow::Result;
 use berm::{
-    Callsite, Changes, Enter, Scope, Service,
+    Callsite, Changes, Enter, Scope, Service, Write,
     database::{Databases, Held},
 };
 use std::{collections::BTreeMap, sync::Arc};
@@ -42,13 +42,13 @@ impl Commits {
         if changes.writes.is_empty() && took.is_none() {
             return Ok(());
         }
-        let mut shares: BTreeMap<String, Vec<(String, Vec<u8>)>> = BTreeMap::new();
+        let mut shares: BTreeMap<String, Vec<Write>> = BTreeMap::new();
         shares.extend(took.map(|key| (key, Vec::new())));
         for write in changes.writes {
             shares
                 .entry(write.service.to_string())
                 .or_default()
-                .push((write.key, write.value));
+                .push(write);
         }
         self.store
             .run(move |conn| {

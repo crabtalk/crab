@@ -109,13 +109,13 @@ Declare `secret_resources = true` and the destination under `[http]` to use sepa
 
 ## Stored values
 
-Use `store::get_str` and `store::set_str` for UTF-8 text, `get_json` and `set_json` for structured values, and `get` and `set` for bytes. Text is stored without JSON quotes or escapes; `store::get_str` fails with the key name when existing bytes are not UTF-8.
+`get` and `set` store any serde type as JSON, `get_raw` and `set_raw` store bytes as given, and `delete` removes a key. `get` fails with the key name when the stored value does not parse as the requested type. `caller_storage` has the same five functions over the verified caller's storage.
 
 `http::Response::read_raw` consumes a provider's JSON body as `Box<RawValue>` without building a value tree. Empty responses become `null`; invalid JSON fails with the provider's unreadable-response error. Generated OpenAPI operations use it unless they declare a response handler or request the HTTP response itself.
 
 ## Storage transactions
 
-Reads within a tool call see its earlier writes, including pending changes from `set` and `set_json`. Storage changes commit only when the tool succeeds with `Ok`; `Err`, a trap or an exceeded deadline discards its pending changes. Independent calls cannot read uncommitted changes. SQL statements and key/value writes share a transaction when SQL storage is declared. HTTP actions and changes already committed by other services are outside that transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).
+Reads within a tool call see its earlier writes, including pending changes from `set`, `set_raw` and `delete`. Storage changes commit only when the tool succeeds with `Ok`; `Err`, a trap or an exceeded deadline discards its pending changes. Independent calls cannot read uncommitted changes. SQL statements and key/value writes share a transaction when SQL storage is declared. HTTP actions and changes already committed by other services are outside that transaction. See [Transactions](https://crabtalk.ai/docs/development/data#transactions).
 
 ## Reaching a runtime
 

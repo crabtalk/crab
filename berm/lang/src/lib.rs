@@ -60,7 +60,7 @@ pub use host::{args_len, deadline, now, random, trace};
 pub use schema::Schema;
 pub use serde_json::value::RawValue;
 pub use sql::{rows, sql};
-pub use store::{get, get_json, set, set_json};
+pub use store::{delete, get, get_raw, set, set_raw};
 pub use var::var;
 // Named as `::berm_lang::serde` by what the macros generate.
 pub use serde;

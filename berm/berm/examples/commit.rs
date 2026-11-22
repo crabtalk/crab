@@ -147,7 +147,10 @@ fn said(changes: &Changes) -> Vec<String> {
             "write {} {} {}",
             write.service,
             write.key,
-            String::from_utf8_lossy(&write.value)
+            write
+                .value
+                .as_deref()
+                .map_or("(deleted)".into(), String::from_utf8_lossy)
         )
     });
     let logs = changes.logs.iter().map(|log| {
@@ -164,9 +167,10 @@ fn said(changes: &Changes) -> Vec<String> {
 fn commit(committed: &Committed, changes: &Changes) {
     let mut committed = committed.lock();
     for write in &changes.writes {
-        committed.insert(
-            (write.service.to_string(), write.key.clone()),
-            write.value.clone(),
-        );
+        let key = (write.service.to_string(), write.key.clone());
+        match &write.value {
+            Some(value) => committed.insert(key, value.clone()),
+            None => committed.remove(&key),
+        };
     }
 }

@@ -2,9 +2,9 @@
 //! in the database beside its own `words` table.
 //!
 //! `put` writes a word every way the database takes one, `count` reads the
-//! table back, `hook` writes the word a webhook carries, and `relay` calls
-//! `put` and `count` on `inner`. It uses `berm-kit`, whose
-//! table `note` writes to.
+//! table back, `hook` writes the word a webhook carries, `forget` removes a
+//! key, and `relay` calls `put` and `count` on `inner`. It uses `berm-kit`,
+//! whose table `note` writes to.
 
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
@@ -21,7 +21,7 @@ use berm_lang::{Result, Schema, tool};
 pub fn put(word: String) -> Result<()> {
     let params = berm_lang::json::to(&[&word])?;
     berm_lang::sql("INSERT INTO words (word) VALUES (?)", &params)?;
-    berm_lang::set("last", word.as_bytes())?;
+    berm_lang::set_raw("last", word.as_bytes())?;
     berm_lang::emit(&["put"], &word)?;
     Ok(())
 }
@@ -64,7 +64,7 @@ pub fn note(text: String) -> Result<u64> {
 /// on `inner`, and answers what `count` did.
 #[tool]
 pub fn relay(word: String) -> Result<u64> {
-    berm_lang::set("last", word.as_bytes())?;
+    berm_lang::set_raw("last", word.as_bytes())?;
     let args = format!(r#"{{"word":{}}}"#, berm_lang::json::to(&word)?);
     berm_lang::call("inner", "put", &args)?;
     let counted = berm_lang::call("inner", "count", "")?;
@@ -75,4 +75,21 @@ pub fn relay(word: String) -> Result<u64> {
 #[derive(Schema)]
 pub struct Counted {
     pub rows: Vec<Vec<u64>>,
+}
+
+#[derive(Schema)]
+pub struct Forgot {
+    pub before: bool,
+    pub after: bool,
+}
+
+/// Forget
+///
+/// Removes `key`, answering whether it held a value before and after.
+#[tool]
+pub fn forget(key: String) -> Result<Forgot> {
+    let before = berm_lang::get_raw(&key)?.is_some();
+    berm_lang::delete(&key)?;
+    let after = berm_lang::get_raw(&key)?.is_some();
+    Ok(Forgot { before, after })
 }

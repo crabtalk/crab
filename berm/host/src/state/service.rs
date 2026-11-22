@@ -6,6 +6,7 @@ use crate::{
     workflow::scheduled::Schedules,
 };
 use anyhow::Result;
+use berm::Write;
 use berm_api::{schedule as cron, workflow::config::Spec};
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::{
@@ -336,13 +337,13 @@ pub(crate) async fn read(
         .await
 }
 
-/// Commit one service's `writes` inside `tx`: upsert them, and advance its
-/// commit count.
+/// Commit one service's `writes` inside `tx`: upsert them, remove the keys
+/// written `None`, and advance its commit count.
 pub(crate) fn commit(
     tx: &Transaction<'_>,
     scope: &str,
     name: &str,
-    writes: &[(String, Vec<u8>)],
+    writes: &[Write],
 ) -> rusqlite::Result<()> {
     tx.prepare_cached("UPDATE services SET commits = commits + 1 WHERE scope = ?1 AND name = ?2")?
         .execute(params![scope, name])?;
@@ -350,8 +351,13 @@ pub(crate) fn commit(
         "INSERT INTO service_state (scope, name, key, value) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT (scope, name, key) DO UPDATE SET value = excluded.value",
     )?;
-    for (key, value) in writes {
-        upsert.execute(params![scope, name, key, value])?;
+    let mut remove =
+        tx.prepare_cached("DELETE FROM service_state WHERE scope = ?1 AND name = ?2 AND key = ?3")?;
+    for Write { key, value, .. } in writes {
+        match value {
+            Some(value) => upsert.execute(params![scope, name, key, value])?,
+            None => remove.execute(params![scope, name, key])?,
+        };
     }
     Ok(())
 }

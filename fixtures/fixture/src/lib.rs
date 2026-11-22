@@ -15,7 +15,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use berm_lang::{Caller, Result, Schema, event, key, store, tool};
+use berm_lang::{Caller, Result, Schema, event, key, tool};
 
 berm_lang::declare_service!(fixture);
 
@@ -96,7 +96,7 @@ pub fn probe() -> Result<Vec<u8>> {
 /// I/O.
 #[tool]
 pub fn wait() -> Result<Wait> {
-    Ok(match berm_lang::get("wait")? {
+    Ok(match berm_lang::get_raw("wait")? {
         Some(_) => Wait::Set,
         None => Wait::Unset,
     })
@@ -317,13 +317,8 @@ pub fn nest(query: String, page: Option<u32>) -> Result<Echo> {
 /// service's own keys.
 #[tool(access = "internal")]
 pub fn tick(delay: u64) -> Result<Round> {
-    let round = berm_lang::get("ticks")
-        .ok()
-        .flatten()
-        .and_then(|seen| core::str::from_utf8(&seen).ok()?.parse::<u64>().ok())
-        .unwrap_or(0)
-        + 1;
-    berm_lang::set("ticks", format!("{round}").as_bytes())?;
+    let round = berm_lang::get::<u64>("ticks").ok().flatten().unwrap_or(0) + 1;
+    berm_lang::set("ticks", &round)?;
 
     // The delay rides along, so each round arms the next on the same one.
     if round < 3 {
@@ -341,7 +336,7 @@ pub fn tick(delay: u64) -> Result<Round> {
 /// reads back, and fails when `word` is `fail`.
 #[tool]
 pub fn note(word: String) -> Result<String> {
-    berm_lang::set("note", word.as_bytes())?;
+    berm_lang::set_raw("note", word.as_bytes())?;
     berm_lang::emit!(Noted {
         bytes: word.len() as u64,
         word: word.clone(),
@@ -349,7 +344,7 @@ pub fn note(word: String) -> Result<String> {
     if word == "fail" {
         return Err("failed, as requested".into());
     }
-    let seen = berm_lang::get("note")?.ok_or("note was not kept")?;
+    let seen = berm_lang::get_raw("note")?.ok_or("note was not kept")?;
     Ok(String::from_utf8_lossy(&seen).into_owned())
 }
 
@@ -363,7 +358,7 @@ pub fn relay(word: String) -> Result<String> {
     let args = format!(r#"{{"word":{}}}"#, berm_lang::json::to(&word)?);
     let _ = berm_lang::call("inner", "note", &args);
     berm_lang::emit(&["relay"], &word)?;
-    Ok(match berm_lang::get("note")? {
+    Ok(match berm_lang::get_raw("note")? {
         Some(seen) => String::from_utf8_lossy(&seen).into_owned(),
         None => String::from("unset"),
     })
@@ -393,14 +388,14 @@ pub fn peek() -> Result<Peek> {
         Ok(()) => String::from("allowed"),
         Err(error) => error.message().into(),
     };
-    let note = berm_lang::get("note")
+    let note = berm_lang::get_raw("note")
         .ok()
         .flatten()
         .map(|value| String::from_utf8_lossy(&value).into_owned());
     Ok(Peek {
         note,
         attempts: Attempts {
-            set: told(berm_lang::set("note", b"peeked")),
+            set: told(berm_lang::set_raw("note", b"peeked")),
             emit: told(berm_lang::emit(&["note"], "peeked")),
             after: told(berm_lang::after(0, "fixture", "tick", r#"{"delay":0}"#)),
             call: told(berm_lang::call("inner", "note", r#"{"word":"peeked"}"#).map(|_| ())),
@@ -517,13 +512,34 @@ pub fn stored_text(
     bytes: Option<Vec<u8>>,
 ) -> Result<StoredText> {
     if let Some(text) = text {
-        store::set_str(&key, &text)?;
+        berm_lang::set_raw(&key, text.as_bytes())?;
     }
     if let Some(bytes) = bytes {
-        berm_lang::set(&key, &bytes)?;
+        berm_lang::set_raw(&key, &bytes)?;
     }
-    Ok(StoredText {
-        text: store::get_str(&key)?,
-        bytes: berm_lang::get(&key)?,
-    })
+    let bytes = berm_lang::get_raw(&key)?;
+    let text = bytes
+        .clone()
+        .map(|bytes| {
+            String::from_utf8(bytes).map_err(|_| format!("{key} holds a value that isn't UTF-8"))
+        })
+        .transpose()?;
+    Ok(StoredText { text, bytes })
+}
+
+#[derive(Schema)]
+pub struct Forgot {
+    pub before: bool,
+    pub after: bool,
+}
+
+/// Forget
+///
+/// Removes `key`, answering whether it held a value before and after.
+#[tool]
+pub fn forget(key: String) -> Result<Forgot> {
+    let before = berm_lang::get_raw(&key)?.is_some();
+    berm_lang::delete(&key)?;
+    let after = berm_lang::get_raw(&key)?.is_some();
+    Ok(Forgot { before, after })
 }

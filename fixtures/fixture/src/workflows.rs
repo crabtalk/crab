@@ -47,12 +47,9 @@ struct FlowOutput {
 /// Append an item; fail_at requests a transactional failure.
 #[tool(access = "internal")]
 fn workflow_item(index: u32, fail_at: Option<u32>) -> Result<u32> {
-    let mut items: Vec<u32> = berm_lang::get("workflow_items")?
-        .map(|bytes| berm_lang::serde_json::from_slice(&bytes))
-        .transpose()?
-        .unwrap_or_default();
+    let mut items: Vec<u32> = berm_lang::get("workflow_items")?.unwrap_or_default();
     items.push(index);
-    berm_lang::set("workflow_items", &berm_lang::json::to(&items)?.into_bytes())?;
+    berm_lang::set("workflow_items", &items)?;
     if Some(index) == fail_at {
         return Err("item failed".into());
     }

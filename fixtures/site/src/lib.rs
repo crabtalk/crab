@@ -72,7 +72,7 @@ pub fn page(url: String) -> Result<Option<Page>> {
 /// What the crawler last read at `url`.
 #[tool(query)]
 pub fn read(url: String) -> Result<Option<Read>> {
-    Ok(berm_lang::get_json(&crate::read_key(&url))?)
+    Ok(berm_lang::get(&crate::read_key(&url))?)
 }
 
 /// Pricing and comparison pages, a site read again after a week and a page
@@ -106,7 +106,7 @@ impl Crawler for Pages {
             kind: String::from(kind),
             length: html.len() as u64,
         };
-        berm_lang::set_json(&read_key(url), &read)?;
+        berm_lang::set(&read_key(url), &read)?;
         let base = Url::parse(url).map_err(|error| CallError::Failed(format!("{url}: {error}")))?;
         let links: Vec<String> = html::links(html)
             .into_iter()

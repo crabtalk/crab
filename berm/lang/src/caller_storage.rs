@@ -1,9 +1,17 @@
 //! SQL and key-value storage for the verified caller, declared in
-//! `[storage.caller]` in `crab.toml`.
+//! `[storage.caller]` in `crab.toml`. Key-value calls encode as
+//! [`crate::store`]'s do.
 
-use crate::{host::CallError, sql as shared_sql, store, sys};
+use crate::{host::CallError, sql as shared_sql, store::Keyspace, sys};
 use alloc::{string::String, vec::Vec};
 use serde::{Serialize, de::DeserializeOwned};
+
+/// The verified caller's keyspace.
+const CALLER: Keyspace = Keyspace {
+    get: sys::CALLER_GET,
+    set: sys::CALLER_SET,
+    delete: sys::CALLER_DELETE,
+};
 
 /// Run a statement with a JSON array of bound parameters.
 pub fn sql(statement: &str, params: &str) -> Result<String, CallError> {
@@ -18,12 +26,27 @@ pub fn rows<T: DeserializeOwned>(
     shared_sql::query(sys::CALLER_SQL, statement, params)
 }
 
-/// Read a value within the caller's storage.
-pub fn get(key: &str) -> Result<Option<Vec<u8>>, CallError> {
-    store::read(sys::CALLER_GET, key)
+/// Read `key` as JSON into `T` from the caller's storage.
+pub fn get<T: DeserializeOwned>(key: &str) -> Result<Option<T>, CallError> {
+    CALLER.get(key)
 }
 
-/// Stage a value within the caller's storage.
-pub fn set(key: &str, value: &[u8]) -> Result<(), CallError> {
-    store::write(sys::CALLER_SET, key, value)
+/// Stage `value` as JSON under `key` in the caller's storage.
+pub fn set<T: Serialize + ?Sized>(key: &str, value: &T) -> Result<(), CallError> {
+    CALLER.set(key, value)
+}
+
+/// Read the bytes stored under `key` in the caller's storage.
+pub fn get_raw(key: &str) -> Result<Option<Vec<u8>>, CallError> {
+    CALLER.get_raw(key)
+}
+
+/// Stage `value`'s bytes under `key` in the caller's storage as given.
+pub fn set_raw(key: &str, value: &[u8]) -> Result<(), CallError> {
+    CALLER.set_raw(key, value)
+}
+
+/// Stage the removal of `key` from the caller's storage.
+pub fn delete(key: &str) -> Result<(), CallError> {
+    CALLER.delete(key)
 }

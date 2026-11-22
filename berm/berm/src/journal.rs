@@ -1,6 +1,6 @@
 //! What a chain wrote and emitted, held until its first call returns.
 //!
-//! `berm.set` and `berm.emit` land here, not in the host. A chain whose first
+//! `berm.set`, `berm.delete` and `berm.emit` land here, not in the host. A chain whose first
 //! call returns a result hands the whole of it back from [`crate::Service::call`]
 //! as [`Changes`]; one that fails, traps or runs past its deadline hands back
 //! nothing. A nested call that fails takes its own entries with it, and the
@@ -30,12 +30,12 @@ pub struct Changes {
     pub logs: Vec<Log>,
 }
 
-/// One key a service wrote.
+/// One key a service wrote, or removed when `value` is `None`.
 #[derive(Debug, Clone)]
 pub struct Write {
     pub service: Arc<str>,
     pub key: String,
-    pub value: Vec<u8>,
+    pub value: Option<Vec<u8>>,
 }
 
 /// One log a service emitted.
@@ -72,14 +72,14 @@ enum Entry {
 }
 
 impl Journal {
-    /// Hold `value` under `service`'s `key`.
-    pub(crate) fn write(&self, service: &Arc<str>, key: &str, value: &[u8]) -> Result<()> {
+    /// Hold `value` under `service`'s `key`, or its removal for `None`.
+    pub(crate) fn write(&self, service: &Arc<str>, key: &str, value: Option<&[u8]>) -> Result<()> {
         self.push(
-            key.len() + value.len(),
+            key.len() + value.map_or(0, <[u8]>::len),
             Entry::Write(Write {
                 service: service.clone(),
                 key: key.to_owned(),
-                value: value.to_vec(),
+                value: value.map(<[u8]>::to_vec),
             }),
         )
     }
@@ -90,8 +90,9 @@ impl Journal {
         self.push(size, Entry::Log(log))
     }
 
-    /// What `service` last wrote under `key` in this chain, if it has.
-    pub(crate) fn read(&self, service: &str, key: &str) -> Option<Vec<u8>> {
+    /// What `service` last wrote under `key` in this chain, if it has:
+    /// `Some(None)` when it removed the key.
+    pub(crate) fn read(&self, service: &str, key: &str) -> Option<Option<Vec<u8>>> {
         let entries = self.0.lock();
         let at = *entries.last.get(service)?.get(key)?;
         match &entries.list[at] {
@@ -103,7 +104,8 @@ impl Journal {
     /// Hold what a call that kept a journal of its own left behind.
     pub(crate) fn extend(&self, changes: Changes) -> Result<()> {
         for write in changes.writes {
-            self.push(write.key.len() + write.value.len(), Entry::Write(write))?;
+            let size = write.key.len() + write.value.as_ref().map_or(0, Vec::len);
+            self.push(size, Entry::Write(write))?;
         }
         for log in changes.logs {
             self.emit(log)?;

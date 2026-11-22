@@ -150,6 +150,9 @@ macro_rules! host_calls {
             /// Write a key in the verified caller's storage.
             CALLER_SET = "berm.caller.set";
 
+            /// Remove a key from the verified caller's storage.
+            CALLER_DELETE = "berm.caller.delete";
+
             /// Read one var of this service's `[vars]`. `(ptr, len) -> staged length`
             ///
             /// The request's one field is the var's name; the reply is the value this
@@ -169,6 +172,12 @@ macro_rules! host_calls {
             /// Request fields are the key and the value; the reply is empty. The host takes
             /// the write, or has it held in the chain's journal until it reaches the host.
             SET = "berm.set";
+
+            /// Remove one. `(ptr, len) -> staged length`
+            ///
+            /// The request's one field is the key; the reply is empty. Removing an
+            /// absent key succeeds. Held in the chain's journal like [`SET`].
+            DELETE = "berm.delete";
 
             /// Who made this call. `(ptr, len) -> staged length`, the pair ignored.
             ///
