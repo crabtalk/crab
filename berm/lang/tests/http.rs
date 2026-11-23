@@ -1,5 +1,5 @@
 use berm_lang::{
-    http::{Client, Response},
+    http::{Client, Request, Response},
     serde_json::{self, Value, json},
     test,
 };
@@ -125,4 +125,16 @@ fn raw_responses_validate_json_and_keep_its_representation() {
                 .starts_with("Example returned an unreadable response:")
         );
     }
+}
+
+#[test]
+fn a_single_request_can_opt_in_to_rotating_egress() {
+    let url = "https://example.com/items";
+    test::respond("GET", url, 200, b"page");
+    let response = Request::new("GET", url, &[], b"")
+        .rotating()
+        .send()
+        .unwrap();
+    assert_eq!(response.body, b"page");
+    assert!(test::fetched().last().unwrap().rotating);
 }

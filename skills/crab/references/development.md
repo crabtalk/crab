@@ -15,6 +15,8 @@ Crab is the CLI and local host for CrabTalk. This repository contains the CLI (`
 - Size each tool's `#[tool(budget(...))]` declaration from its built WebAssembly execution before Cloud deployment or image publication. Native tests and image builds do not establish valid runtime budgets. Follow [Sizing tool budgets](#sizing-tool-budgets).
 - On Cloud a service reserves its `[storage] size`, 1GiB by default for shared storage. A service using caller storage alone reserves zero shared storage by default. Builds carry this default into the image for image deployments. Redeployments keep their existing reservation unless explicitly resized. An account's services reserve at most its plan's storage together, and a deploy past it is refused, so size each service to what it holds (`crab usage <service>` reports database allocation; missing snapshots show `—`).
 
+Use `http::Request::new(method, url, headers, body).rotating().send()` to opt a single request into hosted rotating egress. Declare the destination under `[http] fetch`. Local `crab dev` fetches directly and logs a warning.
+
 ## Storage transactions
 
 Declare `[storage.caller]` with its migrations directory to use `berm_lang::caller_storage`. Caller files are separate from shared storage and count against the billed account's plan. See [Caller storage](https://crabtalk.ai/docs/development/caller-storage).

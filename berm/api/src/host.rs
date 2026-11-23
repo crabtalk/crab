@@ -800,8 +800,8 @@ pub struct Live {
     /// Rows read and written in its database and state.
     pub read: Count,
     pub written: Count,
-    /// Reserved for compatibility with earlier usage records.
-    #[serde(skip_deserializing)]
+    /// Request and response bytes through hosted rotating egress.
+    #[serde(default)]
     pub proxied: Count,
     /// Bytes of the logs it emitted.
     pub logged: Count,
@@ -878,8 +878,8 @@ pub struct Metered {
     /// in microseconds; not part of `cpu`.
     #[serde(default)]
     pub sql_cpu: u64,
-    /// Reserved for compatibility with earlier usage records.
-    #[serde(skip_deserializing)]
+    /// Request and response bytes through hosted rotating egress.
+    #[serde(default)]
     pub proxied: u64,
     /// Bytes of the logs those invocations emitted.
     #[serde(default)]
@@ -909,6 +909,7 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.read += used.read;
         self.written += used.written;
         self.sql_cpu += used.sql_cpu;
+        self.proxied += used.proxied;
         self.logged += used.logged;
         self.failed += used.failed;
         self.sent += used.sent;
@@ -924,6 +925,7 @@ impl std::ops::SubAssign<Meter> for Metered {
         self.read = self.read.saturating_sub(used.read);
         self.written = self.written.saturating_sub(used.written);
         self.sql_cpu = self.sql_cpu.saturating_sub(used.sql_cpu);
+        self.proxied = self.proxied.saturating_sub(used.proxied);
         self.logged = self.logged.saturating_sub(used.logged);
         self.failed = self.failed.saturating_sub(used.failed);
         self.sent = self.sent.saturating_sub(used.sent);
@@ -941,7 +943,7 @@ impl From<Metered> for Meter {
             read: used.read,
             written: used.written,
             sql_cpu: used.sql_cpu,
-            proxied: 0,
+            proxied: used.proxied,
             logged: used.logged,
             failed: used.failed,
             sent: used.sent,

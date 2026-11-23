@@ -559,8 +559,8 @@ pub struct Meter {
     pub written: u64,
     #[serde(default)]
     pub sql_cpu: u64,
-    /// Reserved for compatibility with earlier meter records.
-    #[serde(skip_deserializing)]
+    /// Request and response bytes through hosted rotating egress.
+    #[serde(default)]
     pub proxied: u64,
     #[serde(default)]
     pub logged: u64,
@@ -581,6 +581,7 @@ impl std::ops::AddAssign for Meter {
         self.read += other.read;
         self.written += other.written;
         self.sql_cpu += other.sql_cpu;
+        self.proxied += other.proxied;
         self.logged += other.logged;
         self.failed += other.failed;
         self.sent += other.sent;

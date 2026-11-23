@@ -103,6 +103,10 @@ Leaving `[build] target` unset keeps the host build, and therefore `cargo nextes
 
 The resulting `.wasm` is the whole artifact: one file, every platform.
 
+## Rotating egress
+
+Use `http::Request::new(method, url, headers, body).rotating().send()` to request rotating egress. The destination needs `[http] fetch` permission. Hosted availability depends on the deployment. Local `crab dev` fetches directly and logs a warning.
+
 ## Runtime secret resources
 
 Declare `secret_resources = true` and the destination under `[http]` to use separately provisioned secret resources. On Cloud, an account owner grants a resource ID to a service for exact hosts. An authenticated call can use a resource owned by its account. Register a granted resource for schedules with `berm_lang::secret::bind(id, host)` in an authenticated write call. Scheduled calls require the binding and an active grant at the exact destination. Use `{secret:ID}` in HTTP headers or bodies; the host substitutes the value only when the grant and HTTP permission allow it. An absent or revoked grant refuses dispatch. Creating or rotating resources does not rebuild the service.

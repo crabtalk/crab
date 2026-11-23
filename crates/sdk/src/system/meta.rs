@@ -89,14 +89,14 @@ pub struct Rates {
     pub written: u64,
     /// MiB-microseconds of a call's memory budget held, waiting included.
     pub held: u64,
-    /// Reserved for compatibility with earlier rate records.
-    #[serde(skip_deserializing)]
-    pub proxied: Option<u64>,
+    /// USD micros per GB of hosted rotating traffic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotating: Option<u64>,
 }
 
 /// The resources charged by the unit, as their rates are named, in the order
 /// [`Rates::metered`] takes them.
-const UNITS: [&str; 5] = ["runs", "overage", "read", "written", "held"];
+const UNITS: [&str; 6] = ["runs", "overage", "read", "written", "held", "rotating"];
 
 /// The [`Unit`] a plan includes in each accounting slot.
 pub const INCLUDED: [Option<Unit>; 6] = [
@@ -163,6 +163,7 @@ impl Rates {
             .into_iter()
             .zip(counted)
             .zip(self.rates())
+            .filter(|((resource, units), rate)| *resource != "rotating" || *units > 0 || *rate > 0)
             .map(|((resource, units), rate)| Resource {
                 resource: resource.to_owned(),
                 units,
@@ -180,7 +181,7 @@ impl Rates {
             self.read,
             self.written,
             self.held,
-            0,
+            self.rotating.unwrap_or_default(),
         ]
     }
 
@@ -202,7 +203,7 @@ impl Default for Rates {
             read: 1_000_000,
             written: 1_000_000_000,
             held: 12,
-            proxied: None,
+            rotating: None,
         }
     }
 }
@@ -215,7 +216,7 @@ fn day_units(day: &MeteredDay) -> [u64; 6] {
         day.used.read,
         day.used.written,
         day.used.held,
-        0,
+        day.used.proxied,
     ]
 }
 
@@ -227,7 +228,7 @@ pub fn called(meter: &Meter, overage: u64) -> [u64; 6] {
         meter.read,
         meter.written,
         meter.held,
-        0,
+        meter.proxied,
     ]
 }
 

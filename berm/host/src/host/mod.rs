@@ -210,6 +210,7 @@ impl<E: Env> Host<E> {
         Ok(Self(Arc::new_cyclic(|host: &Weak<Inner<E>>| {
             let mut syscalls = vec![
                 fetch::syscall(host, fetch.clone(), Door::Fetch),
+                fetch::syscall(host, fetch.clone(), Door::Rotating),
                 fetch::syscall(host, fetch.clone(), Door::FetchAll),
                 fetch::syscall(host, fetch, Door::FetchAllLiteralBody),
             ];

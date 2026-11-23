@@ -22,7 +22,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         return Ok(());
     }
     println!(
-        "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>12}",
+        "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>12}  {:>12}",
         "DAY",
         "RUNS",
         "CALLS",
@@ -33,11 +33,12 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
         "WRITTEN",
         "SQL CPU µs",
         "MEMORY",
-        "DATABASE"
+        "DATABASE",
+        "ROTATING"
     );
     for day in &meters {
         println!(
-            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>12}",
+            "{:<10}  {:>8}  {:>8}  {:>8}  {:>14}  {:>14}  {:>10}  {:>10}  {:>12}  {:>10}  {:>12}  {:>12}",
             format::day(day.used.day.into()),
             day.used.runs,
             day.used.calls,
@@ -52,6 +53,7 @@ pub fn run(client: &Client, name: &str, json: bool) -> Result<()> {
                 .database
                 .map(|sample| display::bytes(sample.used))
                 .unwrap_or_else(|| "—".into()),
+            display::decimal_bytes(day.used.proxied),
         );
     }
     Ok(())
@@ -64,6 +66,7 @@ struct Sum {
     calls: u64,
     failed: u64,
     cost_micros: i64,
+    rotating_bytes: u64,
 }
 
 /// The account's services over the last 30 days, and its plan this period.
@@ -79,6 +82,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
                 calls: sum.calls + day.used.used.calls,
                 failed: sum.failed + day.used.used.failed,
                 cost_micros: sum.cost_micros + day.cost_micros,
+                rotating_bytes: sum.rotating_bytes + day.used.used.proxied,
             });
             (name, sum)
         })
@@ -99,17 +103,18 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
 
     let width = services.keys().map(String::len).max().unwrap_or(0).max(7);
     println!(
-        "{:<width$}  {:>10}  {:>10}  {:>10}  {:>6}  {:>10}",
-        "SERVICE", "RUNS", "CALLS", "FAILED", "", "COST"
+        "{:<width$}  {:>10}  {:>10}  {:>10}  {:>6}  {:>10}  {:>12}",
+        "SERVICE", "RUNS", "CALLS", "FAILED", "", "COST", "ROTATING"
     );
     for (name, sum) in &services {
         println!(
-            "{name:<width$}  {:>10}  {:>10}  {:>10}  {:>6}  {:>10}",
+            "{name:<width$}  {:>10}  {:>10}  {:>10}  {:>6}  {:>10}  {:>12}",
             format::count(sum.runs),
             format::count(sum.calls),
             format::count(sum.failed),
             failed(sum),
-            format::usd(sum.cost_micros as f64)
+            format::usd(sum.cost_micros as f64),
+            display::decimal_bytes(sum.rotating_bytes)
         );
     }
     println!("over the last 30 days, at the rates, before included amounts");
