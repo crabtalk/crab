@@ -55,6 +55,9 @@ pub struct Config {
     /// Where the databases of the services that keep one live.
     #[serde(default = "databases")]
     pub databases: PathBuf,
+    /// The caller owns checkpointing of the shared service databases.
+    #[serde(skip)]
+    pub external_checkpoints: bool,
 }
 
 impl Default for Config {
@@ -74,6 +77,7 @@ impl Default for Config {
             code_cache: code_cache(),
             code_idle: code_idle(),
             databases: databases(),
+            external_checkpoints: false,
         }
     }
 }

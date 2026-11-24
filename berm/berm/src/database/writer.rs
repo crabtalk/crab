@@ -2,7 +2,7 @@ use crate::database::{lock, query};
 use anyhow::{Context, Result, bail};
 use lru::LruCache;
 use parking_lot::{Condvar, Mutex};
-use rusqlite::Connection;
+use rusqlite::{Connection, config::DbConfig};
 use std::{
     collections::VecDeque,
     num::NonZeroUsize,
@@ -48,6 +48,7 @@ impl Writers {
 
 pub(crate) struct Writer {
     path: PathBuf,
+    external_checkpoints: bool,
     limit: Arc<AtomicU64>,
     holder: Arc<AtomicU64>,
     cache: Arc<Writers>,
@@ -69,9 +70,11 @@ impl Writer {
         limit: Arc<AtomicU64>,
         holder: Arc<AtomicU64>,
         cache: Arc<Writers>,
+        external_checkpoints: bool,
     ) -> Arc<Self> {
         let writer = Arc::new(Self {
             path,
+            external_checkpoints,
             limit,
             holder,
             cache,
@@ -145,12 +148,24 @@ impl Writer {
     }
 
     fn open(&self) -> Result<Connection> {
-        Self::connection(&self.path, Some(self.limit.load(Ordering::Acquire)))
+        Self::connection(
+            &self.path,
+            Some(self.limit.load(Ordering::Acquire)),
+            self.external_checkpoints,
+        )
     }
 
-    pub(crate) fn connection(path: &Path, limit: Option<u64>) -> Result<Connection> {
+    pub(crate) fn connection(
+        path: &Path,
+        limit: Option<u64>,
+        external_checkpoints: bool,
+    ) -> Result<Connection> {
         let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        if external_checkpoints {
+            conn.set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)?;
+            conn.pragma_update(None, "wal_autocheckpoint", 0)?;
+        }
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
@@ -166,7 +181,7 @@ impl Writer {
             }
             conn.pragma_update(None, "max_page_count", pages)?;
         }
-        query::guard(&conn)?;
+        query::guard(&conn, external_checkpoints)?;
         Ok(conn)
     }
 

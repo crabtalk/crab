@@ -183,7 +183,9 @@ impl<E: Env> Host<E> {
             budget: config.budget,
             deadline: config.deadline,
         })?;
-        let databases = Arc::new(Databases::new(config.databases.clone()));
+        let mut databases = Databases::new(config.databases.clone());
+        databases.external_checkpoints = config.external_checkpoints;
+        let databases = Arc::new(databases);
 
         let ran = calls::Pending::new(
             now.clone(),
@@ -419,6 +421,15 @@ impl<E: Env> Host<E> {
     /// The service `service` runs.
     pub fn get(&self, service: &str) -> Option<Arc<Service>> {
         self.berm.get(service)
+    }
+
+    /// The service keys and storage identities recorded on this host.
+    pub async fn database_inventory(&self) -> Result<Vec<(String, String)>> {
+        Ok(service::all(&self.store)
+            .await?
+            .into_iter()
+            .map(|row| (join(&row.scope, &row.name), row.storage_id))
+            .collect())
     }
 
     /// Every service in `scope` this host runs, by its name within it.

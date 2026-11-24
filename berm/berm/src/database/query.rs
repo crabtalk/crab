@@ -28,12 +28,17 @@ thread_local! {
 /// `PRAGMA` that sets a value, and anything reaching a `_berm_*` table. A
 /// cached statement is not authorized again, so only the service's statements
 /// are prepared through the cache.
-pub(crate) fn guard(conn: &Connection) -> Result<()> {
-    conn.authorizer(Some(|context: AuthContext<'_>| {
+pub(crate) fn guard(conn: &Connection, external_checkpoints: bool) -> Result<()> {
+    conn.authorizer(Some(move |context: AuthContext<'_>| {
         if !GUEST.get() {
             return Authorization::Allow;
         }
         let table = match context.action {
+            AuthAction::Pragma { pragma_name, .. }
+                if external_checkpoints && pragma_name.eq_ignore_ascii_case("wal_checkpoint") =>
+            {
+                return Authorization::Deny;
+            }
             AuthAction::Transaction { .. }
             | AuthAction::Savepoint { .. }
             | AuthAction::Attach { .. }

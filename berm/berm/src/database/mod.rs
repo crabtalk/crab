@@ -73,6 +73,8 @@ pub(crate) type Kept = OnceLock<Option<Arc<Database>>>;
 /// Every service's database, opened on first use at `{dir}/{service}.sqlite`.
 pub struct Databases {
     dir: PathBuf,
+    /// The host checkpoints the service WAL files. Set before opening databases.
+    pub external_checkpoints: bool,
     open: parking_lot::Mutex<HashMap<String, Arc<Database>>>,
     graph: Arc<parking_lot::Mutex<Graph>>,
     writers: Arc<Writers>,
@@ -83,6 +85,7 @@ impl Databases {
     pub fn new(dir: PathBuf) -> Self {
         Self {
             dir,
+            external_checkpoints: false,
             open: Default::default(),
             graph: Default::default(),
             writers: Writers::new(),
@@ -107,6 +110,7 @@ impl Databases {
             self.writers.clone(),
             self.readers.clone(),
             limit,
+            self.external_checkpoints,
         )?);
         open.insert(service.to_owned(), database.clone());
         Ok(database)
@@ -120,6 +124,7 @@ impl Databases {
             self.writers.clone(),
             self.readers.clone(),
             None,
+            false,
         )?))
     }
 
@@ -319,12 +324,13 @@ impl Database {
         writers: Arc<Writers>,
         readers: Arc<readers::Cache>,
         cap: Option<u64>,
+        external_checkpoints: bool,
     ) -> Result<Self> {
         let memory = path == Path::new(":memory:");
         if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
             fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
-        let mut conn = Writer::connection(path, cap)?;
+        let mut conn = Writer::connection(path, cap, external_checkpoints)?;
         let tx = conn.transaction()?;
         tx.execute_batch(STATE_SCHEMA)?;
         tx.execute_batch(SCHEMA)?;
@@ -347,11 +353,17 @@ impl Database {
             limit.clone(),
             holder.clone(),
             writers,
+            external_checkpoints,
         );
         Ok(Self {
             limit,
-            readers: (!memory)
-                .then(|| Arc::new(Readers::shared(path.to_owned(), query::guard, readers))),
+            readers: (!memory).then(|| {
+                Arc::new(Readers::shared(
+                    path.to_owned(),
+                    |conn| query::guard(conn, false),
+                    readers,
+                ))
+            }),
             name,
             jobs,
             writing: Arc::new(Mutex::new(())),
