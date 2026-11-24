@@ -184,7 +184,7 @@ impl<E: Env> Host<E> {
             deadline: config.deadline,
         })?;
         let mut databases = Databases::new(config.databases.clone());
-        databases.external_checkpoints = config.external_checkpoints;
+        databases.commit_hook = config.commit_hook.clone();
         let databases = Arc::new(databases);
 
         let ran = calls::Pending::new(

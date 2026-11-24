@@ -40,6 +40,7 @@ use tokio::sync::{Mutex, oneshot};
 mod export;
 mod lock;
 mod query;
+pub mod wal;
 mod writer;
 
 const IDLE_READERS: usize = 64;
@@ -73,8 +74,8 @@ pub(crate) type Kept = OnceLock<Option<Arc<Database>>>;
 /// Every service's database, opened on first use at `{dir}/{service}.sqlite`.
 pub struct Databases {
     dir: PathBuf,
-    /// The host checkpoints the service WAL files. Set before opening databases.
-    pub external_checkpoints: bool,
+    /// Set before opening service databases.
+    pub commit_hook: Option<wal::CommitHook>,
     open: parking_lot::Mutex<HashMap<String, Arc<Database>>>,
     graph: Arc<parking_lot::Mutex<Graph>>,
     writers: Arc<Writers>,
@@ -85,7 +86,7 @@ impl Databases {
     pub fn new(dir: PathBuf) -> Self {
         Self {
             dir,
-            external_checkpoints: false,
+            commit_hook: None,
             open: Default::default(),
             graph: Default::default(),
             writers: Writers::new(),
@@ -110,7 +111,7 @@ impl Databases {
             self.writers.clone(),
             self.readers.clone(),
             limit,
-            self.external_checkpoints,
+            self.commit_hook.clone(),
         )?);
         open.insert(service.to_owned(), database.clone());
         Ok(database)
@@ -124,7 +125,7 @@ impl Databases {
             self.writers.clone(),
             self.readers.clone(),
             None,
-            false,
+            None,
         )?))
     }
 
@@ -324,13 +325,13 @@ impl Database {
         writers: Arc<Writers>,
         readers: Arc<readers::Cache>,
         cap: Option<u64>,
-        external_checkpoints: bool,
+        commit_hook: Option<wal::CommitHook>,
     ) -> Result<Self> {
         let memory = path == Path::new(":memory:");
         if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
             fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
-        let mut conn = Writer::connection(path, cap, external_checkpoints)?;
+        let mut conn = Writer::connection(path, cap, commit_hook.as_ref())?;
         let tx = conn.transaction()?;
         tx.execute_batch(STATE_SCHEMA)?;
         tx.execute_batch(SCHEMA)?;
@@ -353,7 +354,7 @@ impl Database {
             limit.clone(),
             holder.clone(),
             writers,
-            external_checkpoints,
+            commit_hook,
         );
         Ok(Self {
             limit,

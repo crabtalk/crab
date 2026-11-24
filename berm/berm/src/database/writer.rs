@@ -1,4 +1,7 @@
-use crate::database::{lock, query};
+use crate::database::{
+    lock, query,
+    wal::{CommitHook, Hook},
+};
 use anyhow::{Context, Result, bail};
 use lru::LruCache;
 use parking_lot::{Condvar, Mutex};
@@ -6,6 +9,7 @@ use rusqlite::{Connection, config::DbConfig};
 use std::{
     collections::VecDeque,
     num::NonZeroUsize,
+    ops::{Deref, DerefMut},
     panic::{self, AssertUnwindSafe},
     path::{Path, PathBuf},
     sync::{
@@ -16,6 +20,7 @@ use std::{
 };
 
 const IDLE: usize = 64;
+const JOURNAL_SIZE_LIMIT: u32 = 4 * 1024 * 1024;
 pub(crate) type Job = Box<dyn FnOnce(Result<&mut Connection>) + Send>;
 
 pub(crate) struct Writers(Mutex<LruCache<PathBuf, Weak<Writer>>>);
@@ -48,7 +53,7 @@ impl Writers {
 
 pub(crate) struct Writer {
     path: PathBuf,
-    external_checkpoints: bool,
+    commit_hook: Option<CommitHook>,
     limit: Arc<AtomicU64>,
     holder: Arc<AtomicU64>,
     cache: Arc<Writers>,
@@ -57,24 +62,43 @@ pub(crate) struct Writer {
 }
 
 struct State {
-    connection: Option<Connection>,
+    connection: Option<WriterConnection>,
     queue: VecDeque<Job>,
     running: bool,
     closed: bool,
 }
 
+pub(crate) struct WriterConnection {
+    conn: Connection,
+    _hook: Option<Box<Hook>>,
+}
+
+impl Deref for WriterConnection {
+    type Target = Connection;
+
+    fn deref(&self) -> &Connection {
+        &self.conn
+    }
+}
+
+impl DerefMut for WriterConnection {
+    fn deref_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+}
+
 impl Writer {
     pub(crate) fn new(
         path: PathBuf,
-        connection: Connection,
+        connection: WriterConnection,
         limit: Arc<AtomicU64>,
         holder: Arc<AtomicU64>,
         cache: Arc<Writers>,
-        external_checkpoints: bool,
+        commit_hook: Option<CommitHook>,
     ) -> Arc<Self> {
         let writer = Arc::new(Self {
             path,
-            external_checkpoints,
+            commit_hook,
             limit,
             holder,
             cache,
@@ -147,24 +171,26 @@ impl Writer {
         }
     }
 
-    fn open(&self) -> Result<Connection> {
+    fn open(&self) -> Result<WriterConnection> {
         Self::connection(
             &self.path,
             Some(self.limit.load(Ordering::Acquire)),
-            self.external_checkpoints,
+            self.commit_hook.as_ref(),
         )
     }
 
     pub(crate) fn connection(
         path: &Path,
         limit: Option<u64>,
-        external_checkpoints: bool,
-    ) -> Result<Connection> {
+        commit_hook: Option<&CommitHook>,
+    ) -> Result<WriterConnection> {
         let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-        if external_checkpoints {
+        if commit_hook.is_some() {
             conn.set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)?;
-            conn.pragma_update(None, "wal_autocheckpoint", 0)?;
+        }
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        if commit_hook.is_some() {
+            conn.pragma_update(None, "journal_size_limit", JOURNAL_SIZE_LIMIT)?;
         }
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
@@ -181,8 +207,11 @@ impl Writer {
             }
             conn.pragma_update(None, "max_page_count", pages)?;
         }
-        query::guard(&conn, external_checkpoints)?;
-        Ok(conn)
+        query::guard(&conn, commit_hook.is_some())?;
+        let hook = commit_hook
+            .map(|hook| Hook::install(&conn, path.to_owned(), hook.clone()))
+            .transpose()?;
+        Ok(WriterConnection { conn, _hook: hook })
     }
 
     pub(crate) fn idle(self: &Arc<Self>) {
@@ -193,7 +222,7 @@ impl Writer {
             && state
                 .connection
                 .as_ref()
-                .is_some_and(Connection::is_autocommit);
+                .is_some_and(|conn| conn.is_autocommit());
         drop(state);
         if idle && self.path != Path::new(":memory:") {
             self.cache.retain(self);
@@ -207,7 +236,7 @@ impl Writer {
             && state
                 .connection
                 .as_ref()
-                .is_some_and(Connection::is_autocommit)
+                .is_some_and(|conn| conn.is_autocommit())
         {
             state.connection.take();
         }
