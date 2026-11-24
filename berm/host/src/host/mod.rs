@@ -449,13 +449,16 @@ impl<E: Env> Host<E> {
         self.berm.get(service)
     }
 
-    /// The service keys and storage identities recorded on this host.
+    /// The relative names and storage UUIDs of shared and caller databases.
+    /// A retained caller database keeps its UUID when its relative name changes.
     pub async fn database_inventory(&self) -> Result<Vec<(String, String)>> {
-        Ok(service::all(&self.store)
+        let mut databases: Vec<_> = service::all(&self.store)
             .await?
             .into_iter()
             .map(|row| (join(&row.scope, &row.name), row.storage_id))
-            .collect())
+            .collect();
+        databases.extend(self.caller_storage.inventory().await?);
+        Ok(databases)
     }
 
     /// Every service in `scope` this host runs, by its name within it.
