@@ -271,10 +271,24 @@ impl<E: Env> Host<E> {
     pub fn boot(&self) {
         let flushing = self.clone();
         tokio::spawn(async move {
+            let mut interval = time::interval_at(time::Instant::now() + FLUSH, FLUSH);
+            interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
             loop {
-                time::sleep(FLUSH).await;
-                if let Err(e) = flushing.flush().await {
-                    tracing::error!("writing service usage failed: {e:#}");
+                tokio::select! {
+                    _ = interval.tick() => {}
+                    _ = flushing.calls.batch_ready.notified() => {}
+                }
+                if let Err(error) = flushing.flush_records().await {
+                    tracing::error!(%error, "writing local service records failed");
+                }
+            }
+        });
+        let maintaining = self.clone();
+        tokio::spawn(async move {
+            loop {
+                time::sleep(MAINTENANCE).await;
+                if let Err(error) = maintaining.maintain().await {
+                    tracing::error!(%error, "maintaining service records failed");
                 }
             }
         });
@@ -347,20 +361,17 @@ impl<E: Env> Host<E> {
         Ok(restored)
     }
 
-    /// Write what was counted: uses of services this host runs here, and the
-    /// rest to the peer each runs on.
+    #[cfg(feature = "test")]
     pub(crate) async fn flush(&self) -> Result<()> {
-        self.workflows.expire((self.now)()).await?;
+        self.flush_records().await?;
+        self.maintain().await
+    }
+
+    async fn flush_records(&self) -> Result<()> {
         let _flushing = self.flushing.lock().await;
-        let (used, rest) = self
+        let used = self
             .usage
-            .take(|used| self.berm.get(&used.service).is_some());
-        let mut remote: HashMap<String, Vec<Used>> = HashMap::new();
-        for used in rest {
-            if let Some(peer) = self.routes.peer(&used.service) {
-                remote.entry(peer).or_default().push(used);
-            }
-        }
+            .take_local(|service| self.berm.get(service).is_some());
         // Every log of a run taken is taken after it, and written before.
         let ran = self.calls.take();
         let emitted = self.logs.take_all();
@@ -371,11 +382,10 @@ impl<E: Env> Host<E> {
             emitted.generation,
             metered.generation,
         );
-        let now = (self.now)();
         let written = [
             usage::write(&self.store, used).await,
-            logs::write(&self.store, emitted, now).await,
-            calls::write(&self.store, ran, now).await,
+            logs::write(&self.store, emitted).await,
+            calls::write(&self.store, ran).await,
             meter::write(&self.store, metered).await,
         ];
         #[cfg(feature = "test")]
@@ -384,7 +394,23 @@ impl<E: Env> Host<E> {
         self.calls.land(generations.1);
         self.logs.land(generations.2);
         self.meters.land(generations.3);
-        written.into_iter().collect::<Result<()>>()?;
+        written.into_iter().collect()
+    }
+
+    async fn maintain(&self) -> Result<()> {
+        let now = (self.now)();
+        self.workflows.expire(now).await?;
+        logs::prune(&self.store, now).await?;
+        calls::prune(&self.store, now).await?;
+        let mut remote: HashMap<String, Vec<Used>> = HashMap::new();
+        for used in self
+            .usage
+            .take_remote(|service| self.berm.get(service).is_some())
+        {
+            if let Some(peer) = self.routes.peer(&used.service) {
+                remote.entry(peer).or_default().push(used);
+            }
+        }
         for (peer, used) in remote {
             if let Err(e) = self.peers.ship(&peer, &used).await {
                 tracing::warn!(peer, "handing over service usage failed: {e:#}");
@@ -532,8 +558,8 @@ pub(crate) fn keeps(service: &Service) -> bool {
     service.manifest.keeps_database()
 }
 
-/// How often counted uses are written.
-const FLUSH: Duration = Duration::from_secs(60);
+const FLUSH: Duration = Duration::from_secs(1);
+const MAINTENANCE: Duration = Duration::from_secs(60);
 
 /// The service named `name` in `scope`.
 pub(crate) fn join(scope: &str, name: &str) -> String {

@@ -57,6 +57,9 @@ impl<T: Send + Sync + 'static> Taken<T> {
         store: &Store,
         write: impl FnOnce(&Transaction<'_>, &[T]) -> rusqlite::Result<()> + Send + 'static,
     ) -> Result<()> {
+        if self.rows.is_empty() {
+            return Ok(());
+        }
         store
             .run(move |conn| {
                 let tx = conn.transaction()?;

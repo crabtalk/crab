@@ -34,14 +34,17 @@ use std::{
     },
     time::Instant,
 };
+use tokio::sync::Notify;
 
 /// The most bytes of tapes a service keeps; past it, the oldest are dropped.
 const TAPES_MAX: usize = 64 << 20;
+const FLUSH_ROWS: usize = 512;
 
 /// Runs not yet written, each with the key of the service it ran.
 pub(crate) struct Pending {
     pending: Mutex<Vec<Ran>>,
     flight: Mutex<Flight<Ran>>,
+    pub(crate) batch_ready: Notify,
     /// The calls each run in flight made past its first, by its id.
     nested: Mutex<HashMap<u64, Vec<NestedCall>>>,
     /// The ids of runs started and not yet held.
@@ -121,6 +124,7 @@ impl Pending {
         Self {
             pending: Mutex::default(),
             flight: Mutex::new(Flight::new(Table::Calls, flushed)),
+            batch_ready: Notify::new(),
             nested: Mutex::default(),
             open: Open::default(),
             last: AtomicU64::new(last),
@@ -172,7 +176,8 @@ impl Pending {
         tape: Option<&Tape>,
     ) {
         let failed = outcome == Outcome::Failed;
-        self.pending.lock().push(Ran {
+        let mut pending = self.pending.lock();
+        pending.push(Ran {
             id: started.id,
             service: service.to_owned(),
             at: started.at,
@@ -187,6 +192,11 @@ impl Pending {
             tape: tape.filter(|_| failed).map(|tape| Vec::from(tape).into()),
             nested: invoked.map_or_else(|| Arc::from([]), |invoked| invoked.nested.clone()),
         });
+        let ready = pending.len() == FLUSH_ROWS;
+        drop(pending);
+        if ready {
+            self.batch_ready.notify_one();
+        }
     }
 
     /// Hold `nested`, a call run `call` made past its first.
@@ -276,10 +286,8 @@ pub(crate) fn ran_with(
     }
 }
 
-/// Add `ran`, and drop what is older than [`usage::WINDOW`] days before `now`.
-/// Runs of a service this host does not run are dropped.
-pub(crate) async fn write(store: &Store, ran: Taken<Ran>, now: u64) -> Result<()> {
-    let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
+/// Persist calls with their nested calls and replay data.
+pub(crate) async fn write(store: &Store, ran: Taken<Ran>) -> Result<()> {
     let taped: BTreeSet<String> = ran
         .rows
         .iter()
@@ -395,6 +403,50 @@ pub(crate) async fn write(store: &Store, ran: Taken<Ran>, now: u64) -> Result<()
         })
     })
     .await?;
+    if taped.is_empty() {
+        return Ok(());
+    }
+    store
+        .run(move |conn| {
+            let tx = conn.transaction()?;
+            for service in &taped {
+                let (scope, name) = host::split(service);
+                let over: bool = tx
+                    .prepare_cached(
+                        "SELECT tape_bytes > ?3 FROM services WHERE scope = ?1 AND name = ?2",
+                    )?
+                    .query_row(params![scope, name, TAPES_MAX as i64], |row| row.get(0))
+                    .optional()?
+                    .unwrap_or(false);
+                if !over {
+                    continue;
+                }
+                tx.prepare_cached(
+                    "UPDATE service_replays SET tape = NULL
+                      WHERE rowid IN (
+                            SELECT rowid FROM (
+                                   SELECT rowid, SUM(LENGTH(tape)) OVER (
+                                          ORDER BY call DESC) AS kept
+                                     FROM service_replays
+                                    WHERE scope = ?1 AND name = ?2 AND tape IS NOT NULL)
+                             WHERE kept > ?3)",
+                )?
+                .execute(params![scope, name, TAPES_MAX as i64])?;
+                tx.prepare_cached(
+                    "UPDATE services SET tape_bytes = (
+                            SELECT COALESCE(SUM(LENGTH(tape)), 0) FROM service_replays
+                             WHERE scope = ?1 AND name = ?2)
+                      WHERE scope = ?1 AND name = ?2",
+                )?
+                .execute(params![scope, name])?;
+            }
+            tx.commit()
+        })
+        .await
+}
+
+pub(crate) async fn prune(store: &Store, now: u64) -> Result<()> {
+    let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
     store
         .run(move |conn| {
             let tx = conn.transaction()?;
@@ -432,37 +484,6 @@ pub(crate) async fn write(store: &Store, ran: Taken<Ran>, now: u64) -> Result<()
                   WHERE last_at < ?1",
                 params![since as i64],
             )?;
-            for service in &taped {
-                let (scope, name) = host::split(service);
-                let over: bool = tx
-                    .prepare_cached(
-                        "SELECT tape_bytes > ?3 FROM services WHERE scope = ?1 AND name = ?2",
-                    )?
-                    .query_row(params![scope, name, TAPES_MAX as i64], |row| row.get(0))
-                    .optional()?
-                    .unwrap_or(false);
-                if !over {
-                    continue;
-                }
-                tx.prepare_cached(
-                    "UPDATE service_replays SET tape = NULL
-                      WHERE rowid IN (
-                            SELECT rowid FROM (
-                                   SELECT rowid, SUM(LENGTH(tape)) OVER (
-                                          ORDER BY call DESC) AS kept
-                                     FROM service_replays
-                                    WHERE scope = ?1 AND name = ?2 AND tape IS NOT NULL)
-                             WHERE kept > ?3)",
-                )?
-                .execute(params![scope, name, TAPES_MAX as i64])?;
-                tx.prepare_cached(
-                    "UPDATE services SET tape_bytes = (
-                            SELECT COALESCE(SUM(LENGTH(tape)), 0) FROM service_replays
-                             WHERE scope = ?1 AND name = ?2)
-                      WHERE scope = ?1 AND name = ?2",
-                )?
-                .execute(params![scope, name])?;
-            }
             tx.commit()
         })
         .await

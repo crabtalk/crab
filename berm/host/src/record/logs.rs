@@ -123,11 +123,8 @@ impl Pending {
     }
 }
 
-/// Add `logs`, each numbered after its service's last, and drop what is older
-/// than [`usage::WINDOW`] days before `now`. Logs of a service this host does
-/// not run are dropped.
-pub(crate) async fn write(store: &Store, logs: Taken<Emitted>, now: u64) -> Result<()> {
-    let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
+/// Add logs in per-service sequence order.
+pub(crate) async fn write(store: &Store, logs: Taken<Emitted>) -> Result<()> {
     logs.write(store, |tx, logs| {
         let logs: Vec<(&Emitted, String)> = logs
             .iter()
@@ -182,7 +179,11 @@ pub(crate) async fn write(store: &Store, logs: Taken<Emitted>, now: u64) -> Resu
         }
         Ok(())
     })
-    .await?;
+    .await
+}
+
+pub(crate) async fn prune(store: &Store, now: u64) -> Result<()> {
+    let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
     store
         .run(move |conn| {
             let tx = conn.transaction()?;

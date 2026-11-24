@@ -21,7 +21,9 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
+use tokio::time;
 
 const FIXTURE: &str = "acct/fixture";
 
@@ -93,6 +95,27 @@ fn stored(records: &Records) -> (u64, u64) {
 
 fn words(logs: &[RecordedLog]) -> Vec<String> {
     logs.iter().map(|log| log.log.data.clone()).collect()
+}
+
+#[tokio::test]
+async fn boot_persists_local_records_without_waiting_for_minute_maintenance() -> Result<()> {
+    let host = fixture().await?;
+    note(&host, "one").await?;
+    assert!(records(&host, 0, 0, 10).await?.calls.is_empty());
+    host.host.boot();
+    let written = time::timeout(Duration::from_secs(5), async {
+        loop {
+            let written = records(&host, 0, 0, 10).await?;
+            if !written.calls.is_empty() {
+                return Ok::<_, anyhow::Error>(written);
+            }
+            time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await??;
+    assert_eq!(written.calls.len(), 1);
+    assert_eq!(words(&written.logs), [r#"{"word":"one","bytes":3}"#]);
+    Ok(())
 }
 
 #[tokio::test]

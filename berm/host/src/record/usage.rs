@@ -12,7 +12,7 @@ use berm::Now;
 use berm_api::host::{self as wire, Kind, Outcome, Source, Usage, Used};
 use parking_lot::Mutex;
 use rusqlite::{OptionalExtension, Transaction, params};
-use std::{collections::HashMap, mem, ops::Range};
+use std::{collections::HashMap, ops::Range};
 
 /// Days of usage a deploy and `/usage` look back over.
 pub(crate) const WINDOW: i32 = wire::USED_DAYS;
@@ -72,15 +72,24 @@ impl Counts {
         *last = now;
     }
 
-    /// Take what is pending, as rows: those `here` takes held in flight
-    /// until [`Counts::land`], and the rest.
-    pub(crate) fn take(&self, here: impl Fn(&Used) -> bool) -> (Taken<Used>, Vec<Used>) {
+    pub(crate) fn take_local(&self, here: impl Fn(&str) -> bool) -> Taken<Used> {
         let mut pending = self.pending.lock();
-        let (local, rest) = mem::take(&mut *pending)
-            .into_iter()
+        let rows = Self::take_matching(&mut pending, here);
+        self.flight.lock().take(rows)
+    }
+
+    pub(crate) fn take_remote(&self, here: impl Fn(&str) -> bool) -> Vec<Used> {
+        Self::take_matching(&mut self.pending.lock(), |service| !here(service))
+    }
+
+    fn take_matching(
+        pending: &mut HashMap<Key, (i64, i64)>,
+        matches: impl Fn(&str) -> bool,
+    ) -> Vec<Used> {
+        pending
+            .extract_if(|key, _| matches(&key.service))
             .map(|(key, (calls, last))| key.row(calls, last))
-            .partition(here);
-        (self.flight.lock().take(local), rest)
+            .collect()
     }
 
     /// Drop what generation `generation` took.
