@@ -32,11 +32,13 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     let send = move |at: Callsite, request: Request| {
         let fetch = fetch.clone();
         async move {
-            let size = request.size();
-            at.meter(Meter {
-                sent: size as u64,
-                ..Meter::default()
-            });
+            // Rotating traffic is metered as `proxied` and kept out of `sent`.
+            if request.rotation.is_none() {
+                at.meter(Meter {
+                    sent: request.size() as u64,
+                    ..Meter::default()
+                });
+            }
             let host = request.host.clone();
             let timeout = request.timeout;
             let within = timeout.map(|timeout| Instant::now() + timeout);

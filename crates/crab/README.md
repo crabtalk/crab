@@ -96,7 +96,7 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab plans` lists Cloud plans. On a local context it asks you to sign in with `crab login`.
 
-`crab billing` shows Purchased credit separately from Trial credit, including trial expiry, the recovery deadline and funds reserved for running or unsettled work. Trial credit runs services; priced tools require Purchased credit.
+`crab billing` shows purchased credit separately from compute credit, including compute credit's expiry, the recovery deadline and funds reserved for running or unsettled work. Compute credit pays runs, CPU, memory held and rows; priced tools and rotating IPs require purchased credit.
 
 GitHub verification on CrabTalk issues one $1 trial grant, valid for 30 days. The deployment can configure the amount and terms. `crab plans` and verification expose its lifetime and recovery terms. Storage is included, the trial never refills each month, and plan changes never create another grant. After it ends, services pause and data is kept for 30 days; upgrade or download each service before the recovery deadline with `crab export OWNER/NAME` or Download in its Settings. The SQLite file contains SQL and key-value data, excluding workflow runs and checkpoints. Accounts returning from a paid plan also enter recovery when they have no execution funding.
 

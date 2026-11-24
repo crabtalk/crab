@@ -71,6 +71,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0045.sql"),
     include_str!("migrations/0046.sql"),
     include_str!("migrations/0047.sql"),
+    include_str!("migrations/0048.sql"),
 ];
 
 /// The connection that writes, shared, and connections that only read.

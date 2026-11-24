@@ -210,7 +210,7 @@ pub(crate) async fn sample(
     database: Option<DatabaseUsage>,
     day: i32,
 ) -> Result<()> {
-    let stored = stored(store, service, databases, code).await?;
+    let kept = stored(store, service, databases, code).await?;
     let (scope, name) = host::split(service);
     let (scope, name) = (scope.to_owned(), name.to_owned());
     let database = database
@@ -219,26 +219,34 @@ pub(crate) async fn sample(
     store
         .run(move |conn| {
             conn.execute(
-                "INSERT INTO service_meters (scope, name, tool, day, stored, database_usage)
-                 SELECT ?1, ?2, '', ?3, ?4, ?5
+                "INSERT INTO service_meters (scope, name, tool, day, stored, logs, database_usage)
+                 SELECT ?1, ?2, '', ?3, ?4, ?5, ?6
                   WHERE EXISTS (SELECT 1 FROM services WHERE scope = ?1 AND name = ?2)
-                 ON CONFLICT (scope, name, tool, day) DO UPDATE SET stored = excluded.stored, database_usage = excluded.database_usage",
-                params![scope, name, day, stored as i64, database],
+                 ON CONFLICT (scope, name, tool, day) DO UPDATE SET stored = excluded.stored, logs = excluded.logs, database_usage = excluded.database_usage",
+                params![scope, name, day, kept.stored as i64, kept.logs as i64, database],
             )?;
             Ok(())
         })
         .await
 }
 
-/// The bytes `service` keeps now: its database file and its write-ahead log,
-/// if any, in `databases`, its state, the logs and tapes kept, and `code`, its
-/// image and compiled code.
+/// The bytes `service` keeps now.
+pub(crate) struct Kept {
+    /// Its database file and its write-ahead log, if any, its state, the logs
+    /// and tapes kept, and its image and compiled code.
+    pub stored: u64,
+    /// Of `stored`, its logs kept.
+    pub logs: u64,
+}
+
+/// What `service` keeps now, its database files in `databases` and `code`
+/// bytes of image and compiled code.
 pub(crate) async fn stored(
     store: &Store,
     service: &str,
     databases: &Databases,
     code: u64,
-) -> Result<u64> {
+) -> Result<Kept> {
     let files = [databases.path(service), databases.wal(service)];
     let file: u64 = task::spawn_blocking(move || {
         files
@@ -250,19 +258,22 @@ pub(crate) async fn stored(
     .await?;
     let (scope, name) = host::split(service);
     let (scope, name) = (scope.to_owned(), name.to_owned());
-    let state: i64 = store
+    let (state, logs): (i64, i64) = store
         .read(move |conn| {
             conn.query_row(
                 "SELECT (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) FROM service_state
                           WHERE scope = ?1 AND name = ?2)
-                      + COALESCE((SELECT log_bytes + tape_bytes FROM services
-                                   WHERE scope = ?1 AND name = ?2), 0)",
+                      + COALESCE((SELECT tape_bytes FROM services WHERE scope = ?1 AND name = ?2), 0),
+                        COALESCE((SELECT log_bytes FROM services WHERE scope = ?1 AND name = ?2), 0)",
                 params![scope, name],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
         })
         .await?;
-    Ok(file + state as u64 + code)
+    Ok(Kept {
+        stored: file + state as u64 + logs as u64 + code,
+        logs: logs as u64,
+    })
 }
 
 /// `scope/name`'s meters over the [`usage::WINDOW`] days to `today`, as
@@ -280,7 +291,7 @@ pub(crate) async fn read(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT day, calls, cpu, memory, read, written, proxied, stored,
-                        logged, failed, sent, runs, held, tool, sql_cpu, database_usage
+                        logged, failed, sent, runs, held, tool, sql_cpu, database_usage, logs
                    FROM service_meters
                   WHERE scope = ?1 AND name = ?2 AND day > ?3",
             )?;
@@ -313,6 +324,7 @@ pub(crate) async fn read(
                     runs: row.get::<_, i64>(11)? as u64,
                     held: row.get::<_, i64>(12)? as u64,
                     sql_cpu: row.get::<_, i64>(14)? as u64,
+                    logs: row.get::<_, i64>(16)? as u64,
                 })
             })?;
             let mut metered = rows.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -429,7 +441,7 @@ pub(crate) async fn since(
         .read(move |conn| {
             let mut statement = conn.prepare(
                 "SELECT scope, name, day, calls, cpu, memory, read, written, proxied,
-                        stored, logged, failed, sent, runs, held, tool, sql_cpu, database_usage
+                        stored, logged, failed, sent, runs, held, tool, sql_cpu, database_usage, logs
                    FROM service_meters
                   WHERE day >= ?1",
             )?;
@@ -465,6 +477,7 @@ pub(crate) async fn since(
                         runs: row.get::<_, i64>(13)? as u64,
                         held: row.get::<_, i64>(14)? as u64,
                         sql_cpu: row.get::<_, i64>(16)? as u64,
+                        logs: row.get::<_, i64>(18)? as u64,
                     },
                 ))
             })?;

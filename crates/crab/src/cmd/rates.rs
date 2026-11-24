@@ -1,4 +1,4 @@
-//! `crab rates` — what use past the included amounts costs.
+//! `crab rates` — what compute costs, paid from compute credit, then credit.
 
 use crate::{runtime, terminal};
 use anyhow::Result;
@@ -24,8 +24,14 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
     println!("rows read     {}", per_million(rates.read));
     println!("rows written  {}", per_million(rates.written));
     println!(
-        "memory held   ${} per GB-hour, waiting included",
-        rates.held as f64 * meta::GB_HOUR as f64 / 1e15
+        "memory held   ${} per million GB-s, waiting included",
+        rates.held as f64 * meta::GB_SECOND as f64 / 1e9
     );
+    if let Some(rotating) = rates.rotating {
+        println!(
+            "rotating IPs  ${} per GB, paid from purchased credit",
+            rotating as f64 / 1e6
+        );
+    }
     Ok(())
 }

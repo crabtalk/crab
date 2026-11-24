@@ -289,6 +289,7 @@ pub struct MeteredDay {
 impl std::ops::AddAssign for MeteredDay {
     fn add_assign(&mut self, other: Self) {
         self.used.stored = self.used.stored.max(other.used.stored);
+        self.used.logs = self.used.logs.max(other.used.logs);
         if let Some(sample) = other.used.database
             && self.used.database.is_none_or(|kept| sample.at > kept.at)
         {

@@ -26,44 +26,22 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         println!("{}  {price}  for {audience}", plan.slug);
         if plan.credit_micros > 0 {
             println!(
-                "  {} Credit per paid period",
+                "  {} compute credit a period",
                 format::usd(plan.credit_micros as f64)
             );
         }
-        let included = &plan.included;
         if let Some(offer) = &plan.trial {
             println!(
-                "  {} trial credit once after GitHub verification, valid {} days",
+                "  {} compute credit once after GitHub verification, valid {} days; data kept {} days after it ends",
                 format::usd(offer.amount_micros as f64),
-                offer.lifetime_days
-            );
-            println!(
-                "  {} storage included; data kept {} days after credit ends",
-                display::bytes(included.stored),
+                offer.lifetime_days,
                 offer.retention_days
             );
-            println!("  {} of memory held at once", display::bytes(plan.memory));
-            continue;
-        }
-        if included.runs
-            + included.cpu
-            + included.read
-            + included.written
-            + included.held
-            + included.stored
-            == 0
-        {
-            println!("  includes no amounts");
-            continue;
         }
         println!(
-            "  {} runs, {} CPU µs, {} rows read, {} rows written, {} memory held, {}",
-            format::count(included.runs),
-            format::count(included.cpu),
-            format::count(included.read),
-            format::count(included.written),
-            format::gb_hours(included.held),
-            display::bytes(included.stored)
+            "  {} storage, {} outbound data a period",
+            display::bytes(plan.included.stored),
+            display::bytes(plan.included.sent)
         );
         match plan.memory {
             0 => println!("  no limit on memory held"),

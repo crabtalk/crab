@@ -246,7 +246,7 @@ enum Command {
     },
     /// The plans Cloud sells, and what each includes.
     Plans,
-    /// What use past a plan's included amounts costs.
+    /// What compute costs at the rates.
     Rates,
     /// What an error code means and what to do about it, as `E0001`.
     Explain { code: String },

@@ -117,7 +117,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
             display::decimal_bytes(sum.rotating_bytes)
         );
     }
-    println!("over the last 30 days, at the rates, before included amounts");
+    println!("over the last 30 days, at the rates");
     println!();
     println!(
         "plan {}, {} through {}",
@@ -125,72 +125,48 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         format::day(period.since.into()),
         format::day(i64::from(period.until) - 1)
     );
-    // A unit's label, what was used of it and what is included, how it reads,
-    // and the unit its cost past the included amount is kept under.
-    type Line = (&'static str, u64, u64, fn(u64) -> String, Unit);
-    let included: [Line; 6] = [
-        (
-            "runs",
-            period.used.runs,
-            period.included.runs,
-            format::count,
-            Unit::Runs,
-        ),
-        (
-            "CPU µs",
-            period.used.cpu,
-            period.included.cpu,
-            format::count,
-            Unit::Cpu,
-        ),
-        (
-            "rows read",
-            period.used.read,
-            period.included.read,
-            format::count,
-            Unit::Read,
-        ),
+    // A unit's label, what was used of it, how it reads, and the unit its cost
+    // is kept under.
+    type Line = (&'static str, u64, fn(u64) -> String, Unit);
+    let compute: [Line; 5] = [
+        ("runs", period.used.runs, format::count, Unit::Runs),
+        ("CPU µs", period.used.cpu, format::count, Unit::Cpu),
+        ("rows read", period.used.read, format::count, Unit::Read),
         (
             "rows written",
             period.used.written,
-            period.included.written,
             format::count,
             Unit::Written,
         ),
         (
             "memory held",
             period.used.held,
-            period.included.held,
             format::gb_hours,
             Unit::Held,
         ),
-        (
-            "storage",
-            period.used.stored,
-            period.included.stored,
-            display::bytes,
-            Unit::Stored,
-        ),
     ];
-    let mut any = false;
-    for (label, used, of, size, unit) in included.into_iter().filter(|unit| unit.2 > 0) {
-        any = true;
+    for (label, used, size, unit) in compute {
         println!(
-            "  {label:<14}  {:>10} of {:<10}  {:>5}  {}",
+            "  {label:<14}  {:>10}  {}",
             size(used),
-            size(of),
-            format::percent(used as f64 / of as f64),
             format::usd(period.costs.get(&unit).copied().unwrap_or(0) as f64)
         );
     }
-    if any {
+    println!(
+        "  compute        {:>10}  paid from compute credit, then credit",
+        format::usd(period.charge as f64)
+    );
+    let limits = [
+        ("storage", period.used.stored, period.included.stored),
+        ("outbound data", period.used.sent, period.included.sent),
+    ];
+    for (label, used, of) in limits.into_iter().filter(|limit| limit.2 > 0) {
         println!(
-            "  past the included amounts  {}",
-            format::usd(period.charge as f64)
+            "  {label:<14}  {:>10} of {:<10}  {:>5}",
+            display::bytes(used),
+            display::bytes(of),
+            format::percent(used as f64 / of as f64)
         );
-    }
-    if !any {
-        println!("  includes no amounts: it runs no services of its own");
     }
     for warning in &period.warnings {
         println!("  warned: {} at {}%", warning.unit, warning.threshold);

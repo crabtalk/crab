@@ -11,11 +11,13 @@ pub struct PublicPlan {
     /// Identifier used in `POST /orgs/{org}/billing/checkout?plan=<slug>`.
     pub slug: String,
     pub accounts: Vec<Kind>,
+    /// Compute credit deposited each paid period, in USD micros. It pays
+    /// runs, CPU, memory held and rows, and expires when the period ends.
     pub credit_micros: u64,
     /// Monthly gross price in microdollars — what the customer is charged.
     /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,
-    /// What the plan includes each billing period.
+    /// The plan's storage and outbound data limits.
     pub included: Included,
     /// Bytes of memory the account's services may hold at once, their images
     /// and their calls running; `0` is no limit.
@@ -24,7 +26,7 @@ pub struct PublicPlan {
     pub trial: Option<TrialOffer>,
 }
 
-/// Verification offer terms.
+/// Hobby's compute credit, granted once after GitHub verification.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrialOffer {
@@ -33,12 +35,15 @@ pub struct TrialOffer {
     pub retention_days: u32,
 }
 
-/// Bytes allocated against the account's storage allowance.
+/// Bytes held against the account's storage limit.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StorageAllocation {
     pub databases: u64,
     pub objects: u64,
+    /// Logs kept, as their nodes last sampled them.
+    #[serde(default)]
+    pub logs: u64,
 }
 
 /// An account's billing period: what its plan includes, what it used, and
@@ -54,22 +59,22 @@ pub struct Period {
     pub since: i32,
     pub until: i32,
     pub included: Included,
-    /// In the units of `included`; `stored` includes database reservations, images and pending uploads.
-    pub used: Included,
+    /// `stored` includes database reservations, images and pending uploads.
+    pub used: Usage,
     /// Legacy storage aggregate; not database allocation.
     pub stored: u64,
-    /// What its services used since `since` past the included amounts costs
-    /// at the rates: what credit pays, in USD micros.
+    /// What its services used since `since` costs at the rates: what compute
+    /// credit, then credit, pays, in USD micros.
     #[serde(default)]
     pub charge: i64,
-    /// What `charge` is made of, by unit past its included amount, in USD
-    /// micros, each rounded down; a unit within it is left out.
+    /// What `charge` is made of, by unit, in USD micros, each rounded down; a
+    /// unit costing nothing is left out.
     #[serde(default)]
     pub costs: BTreeMap<Unit, i64>,
     /// Credit drawn since `since`, in USD micros.
     #[serde(default)]
     pub drawn: i64,
-    /// Each share of an included amount reached, and running out of credit.
+    /// Each share of a limit reached, and running out of credit.
     pub warnings: Vec<Warning>,
     /// Prices paid to other accounts since `since`, by operation, the most first.
     #[serde(default)]
@@ -92,7 +97,7 @@ pub struct Spent {
     pub micros: i64,
 }
 
-/// A share of an included amount an account reached in a period.
+/// A share of a limit an account reached in a period.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Warning {
@@ -101,8 +106,7 @@ pub struct Warning {
     pub threshold: u32,
 }
 
-/// What a warning is about: a field of [`Included`], or `credit` when credit
-/// ran out.
+/// A metered unit: a field of [`Usage`], or `credit` when credit ran out.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -158,12 +162,26 @@ pub enum InvoiceStatus {
 
 berm_api::text_enum!(InvoiceStatus);
 
-/// What a plan includes each billing period, summed over the account's
-/// services.
+/// What a plan includes besides compute credit: limits summed over the
+/// account's services.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Included {
+    /// Bytes the account's services reserve for their databases together, and
+    /// their logs. A deploy that would reserve past it is refused.
+    pub stored: u64,
+    /// Bytes sent off the nodes: answers to outside callers and requests to
+    /// other sites, rotating traffic left out. Past it the account's services
+    /// take no calls until the period ends; `0` is no cap.
+    pub sent: u64,
+}
+
+/// What an account's services used in a period, summed over them.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Usage {
     pub runs: u64,
     /// CPU microseconds past each run's first
     /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU).
@@ -174,38 +192,11 @@ pub struct Included {
     pub written: u64,
     /// MiB-microseconds of memory budget the account's calls held, each from
     /// its start to its return, waiting included.
-    #[serde(default)]
     pub held: u64,
-    /// Bytes the account's services reserve for their databases together. A
-    /// deploy that would reserve past it is refused.
+    /// Bytes held against [`Included::stored`].
     pub stored: u64,
-    /// Bytes sent off the nodes: answers to outside callers and requests to
-    /// other sites. Past it the account's services take no calls until the
-    /// period ends; `0` is no cap.
+    /// Bytes counted against [`Included::sent`].
     pub sent: u64,
-}
-
-impl Included {
-    pub fn resource_limits(self) -> Self {
-        Self {
-            stored: self.stored,
-            sent: self.sent,
-            ..Self::default()
-        }
-    }
-}
-
-impl From<Included> for [u64; 6] {
-    fn from(included: Included) -> Self {
-        [
-            included.runs,
-            included.cpu,
-            included.read,
-            included.written,
-            included.held,
-            0,
-        ]
-    }
 }
 
 /// A person's verification, which lets an account on Hobby deploy.
@@ -235,10 +226,11 @@ pub struct SubscribeResponse {
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credit {
-    /// Purchased credit, eligible for tool/workflow prices and paid-plan overage.
+    /// Purchased credit: pays compute past compute credit, rotating traffic
+    /// and tool and workflow prices.
     pub micros: i64,
     #[serde(default)]
-    pub trial: Option<TrialCredit>,
+    pub compute: Option<ComputeCredit>,
     #[serde(default)]
     pub recovery_until: Option<i64>,
     /// The most refills may deposit in a UTC calendar month; `0` is off.
@@ -247,11 +239,13 @@ pub struct Credit {
     pub refill_micros: i64,
 }
 
-/// Trial funds pay execution, excluding tool/workflow prices and subscriptions.
+/// Compute credit: a plan's grants, which pay runs, CPU, memory held and rows
+/// and never tool or workflow prices or rotating traffic.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrialCredit {
+pub struct ComputeCredit {
     pub micros: i64,
+    /// What its grants still live were granted.
     pub granted_micros: i64,
     pub reserved_micros: i64,
     /// Next grant expiration, or the last expiration when all grants expired.
@@ -267,10 +261,12 @@ pub struct CreditHistory {
     /// The purchases and refills still holding credit, soonest to expire
     /// first.
     pub grants: Vec<Grant>,
+    /// [`CreditHistory::months`] of compute credit.
     #[serde(default)]
-    pub trial_months: Vec<CreditMonth>,
+    pub compute_months: Vec<CreditMonth>,
+    /// [`CreditHistory::grants`] of compute credit.
     #[serde(default)]
-    pub trial_grants: Vec<Grant>,
+    pub compute_grants: Vec<Grant>,
 }
 
 /// One month of [`CreditHistory`], in USD micros, each figure positive.

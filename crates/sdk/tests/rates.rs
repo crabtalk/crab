@@ -66,7 +66,7 @@ fn exact_charges_preserve_fractions_below_a_micro() {
         ..Meter::default()
     };
     assert_eq!(rates.call_cost(&meter, 0), 0);
-    assert_eq!(rates.call_charge(&meter, 0), 150_000_000);
+    assert_eq!(rates.call_charge(&meter, 0), 100_000_000);
 }
 
 #[test]

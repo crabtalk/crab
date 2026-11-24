@@ -18,6 +18,9 @@ pub const INCLUDED_CPU: u64 = 100;
 /// MiB-microseconds of memory held in a GB-hour.
 pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
 
+/// MiB-microseconds of memory held in a GB-second.
+pub const GB_SECOND: u64 = 1024 * 1_000_000;
+
 /// `GET /meta/errors/{code}`: what an error code means and what to do about
 /// it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -98,8 +101,8 @@ pub struct Rates {
 /// [`Rates::metered`] takes them.
 const UNITS: [&str; 6] = ["runs", "overage", "read", "written", "held", "rotating"];
 
-/// The [`Unit`] a plan includes in each accounting slot.
-pub const INCLUDED: [Option<Unit>; 6] = [
+/// The [`Unit`] each rate in [`UNITS`] is charged as; rotating traffic has none.
+pub const CHARGED: [Option<Unit>; 6] = [
     Some(Unit::Runs),
     Some(Unit::Cpu),
     Some(Unit::Read),
@@ -119,11 +122,10 @@ impl Rates {
         (self.metered(units) / RATE_SCALE).min(i64::MAX as u128) as i64
     }
 
-    /// What `units` of [`UNITS`] past a plan's included amounts cost, by the
-    /// [`Unit`] each is included as, in USD micros, each rounded down; a unit
-    /// costing nothing is left out.
+    /// What `units` of [`UNITS`] cost, by the [`Unit`] each is charged as, in
+    /// USD micros, each rounded down; a unit costing nothing is left out.
     pub fn costs(&self, units: [u64; 6]) -> BTreeMap<Unit, i64> {
-        INCLUDED
+        CHARGED
             .into_iter()
             .zip(units)
             .zip(self.rates())
@@ -198,11 +200,11 @@ impl Rates {
 impl Default for Rates {
     fn default() -> Self {
         Self {
-            runs: 150_000_000,
+            runs: 100_000_000,
             overage: 20_000,
-            read: 1_000_000,
-            written: 1_000_000_000,
-            held: 12,
+            read: 100_000,
+            written: 100_000_000,
+            held: 10,
             rotating: None,
         }
     }

@@ -1,15 +1,12 @@
 //! What services emit: each log taken as it is emitted, whatever its call
 //! ends as, held in memory and written in batches to `service_logs` beside
-//! the call it was emitted in, kept [`usage::WINDOW`] days or until its fleet
-//! stores it and the call it was emitted in.
+//! the call it was emitted in, kept [`WINDOW`] days or until its fleet stores
+//! it and the call it was emitted in.
 
 use crate::{
     env::Env,
     host::{self, Inner},
-    record::{
-        flight::{Flight, Table, Taken, Unflushed},
-        usage,
-    },
+    record::flight::{Flight, Table, Taken, Unflushed},
     state::store::Store,
 };
 use anyhow::Result;
@@ -18,6 +15,9 @@ use berm_api::host as wire;
 use parking_lot::Mutex;
 use rusqlite::{OptionalExtension, Params, Row, Transaction, params};
 use std::{collections::HashMap, mem, sync::Weak};
+
+/// Days a log is kept.
+pub(crate) const WINDOW: i32 = 7;
 
 /// `berm.emit`: each log taken into `host`'s pending logs as it is emitted.
 pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>) -> Syscall {
@@ -183,7 +183,7 @@ pub(crate) async fn write(store: &Store, logs: Taken<Emitted>) -> Result<()> {
 }
 
 pub(crate) async fn prune(store: &Store, now: u64) -> Result<()> {
-    let since = now.saturating_sub(usage::WINDOW as u64 * 86_400_000);
+    let since = now.saturating_sub(WINDOW as u64 * 86_400_000);
     store
         .run(move |conn| {
             let tx = conn.transaction()?;

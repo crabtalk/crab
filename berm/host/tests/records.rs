@@ -532,3 +532,19 @@ async fn a_failed_calls_tape_keeps_the_upstream_reply_and_hashes_before_injectio
     assert_eq!(digests[0], digests[1]);
     Ok(())
 }
+
+#[tokio::test]
+async fn logs_are_kept_seven_days_and_calls_thirty() -> Result<()> {
+    const DAY: u64 = 86_400_000;
+    let host = fixture().await?;
+    note(&host, "one").await?;
+    host.flush().await?;
+    host.advance(7 * DAY);
+    host.flush().await?;
+    assert_eq!(host.logs(FIXTURE, None).await?.len(), 1);
+    host.advance(1);
+    host.flush().await?;
+    assert!(host.logs(FIXTURE, None).await?.is_empty());
+    assert_eq!(records(&host, 0, 0, 10).await?.calls.len(), 1);
+    Ok(())
+}

@@ -761,7 +761,9 @@ impl<E: Env> Host<E> {
             database: self.database_usage(service).await?,
             running,
             memory,
-            stored: meter::stored(&self.store, service, &self.databases, deployed.bytes).await?,
+            stored: meter::stored(&self.store, service, &self.databases, deployed.bytes)
+                .await?
+                .stored,
             cpu: count(used.all.cpu, used.on.cpu),
             read: count(used.all.read, used.on.read),
             written: count(used.all.written, used.on.written),

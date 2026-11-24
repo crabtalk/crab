@@ -924,6 +924,9 @@ pub struct Metered {
     /// its write-ahead log, its state, its logs kept, and its image and
     /// compiled code.
     pub stored: u64,
+    /// Of `stored`, the bytes of its logs kept.
+    #[serde(default)]
+    pub logs: u64,
 }
 
 impl std::ops::AddAssign<Meter> for Metered {

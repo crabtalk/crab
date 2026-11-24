@@ -45,16 +45,16 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
             format::date(until)
         );
     }
-    if let Some(trial) = credit.trial {
+    if let Some(compute) = credit.compute {
         println!(
-            "trial credit      {}, expires {}",
-            format::usd(trial.micros as f64),
-            format::day(trial.expires_at)
+            "compute credit    {}, expires {}",
+            format::usd(compute.micros as f64),
+            format::day(compute.expires_at)
         );
-        if trial.reserved_micros > 0 {
+        if compute.reserved_micros > 0 {
             println!(
-                "reserved trial    {} for running or unsettled work",
-                format::usd(trial.reserved_micros as f64)
+                "reserved compute  {} for running or unsettled work",
+                format::usd(compute.reserved_micros as f64)
             );
         }
     }
@@ -128,7 +128,7 @@ pub fn verify(client: &Client, context: &str, json: bool) -> Result<()> {
     println!("verified {}", format::date(at));
     if let Some(offer) = verification.trial {
         println!(
-            "trial offer       {} once, valid {} days; data retained {} days after credit ends",
+            "compute credit    {} once, valid {} days; data retained {} days after it ends",
             format::usd(offer.amount_micros as f64),
             offer.lifetime_days,
             offer.retention_days
