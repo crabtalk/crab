@@ -57,7 +57,7 @@ pub(crate) fn audit_start(site: String) -> Result<Site> {
     let acquired = caller_storage::rows::<(String,)>(
         "INSERT INTO runs (site, run, expires_at) VALUES (?1, ?2, ?3)
          ON CONFLICT (site) DO UPDATE SET run = excluded.run, expires_at = excluded.expires_at,
-           robots = NULL, sitemap_complete = 0, unlisted = NULL, analysis = NULL
+           robots = NULL, sitemap_complete = 0, unlisted = NULL, analysis = NULL, root_markdown = 0
          WHERE runs.run <> excluded.run AND runs.expires_at <= ?4
          RETURNING run",
         &(&site, &run.id, now + LEASE_MS, now),
