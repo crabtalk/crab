@@ -2,7 +2,11 @@
 
 use crate::{Refused, code::Code};
 use anyhow::{Result, bail};
-use berm_api::{Meter, host::Memory};
+use berm_api::{
+    Meter,
+    host::{Busy, Memory},
+    workflow::run::Failure,
+};
 use parking_lot::Mutex;
 use std::{
     collections::BTreeMap,
@@ -207,9 +211,10 @@ impl Held {
         reserve: Arc<Pool>,
         budget: u64,
     ) -> Result<Self> {
-        reserve
-            .grow(budget)
-            .map_err(|_| Refused("the host holds as much memory as it may; retry".to_owned()))?;
+        reserve.grow(budget).map_err(|_| {
+            let busy = Busy::Memory;
+            anyhow::Error::new(Refused(busy.message().to_owned())).context(Failure::from(busy))
+        })?;
         running.calls.fetch_add(1, Ordering::Relaxed);
         Ok(Self {
             running,

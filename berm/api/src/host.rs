@@ -1,6 +1,6 @@
 //! What a host's daemons and peers send it, and what it answers with.
 
-use crate::{Logged, Meter, Output};
+use crate::{Logged, Meter, Output, workflow::run::Failure};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, net::IpAddr};
 
@@ -16,6 +16,34 @@ pub const LAUNCHED: &str = "berm-launched";
 pub const SECRET_ACCESS: &str = "E0089";
 /// Explanation for a refused outbound HTTP destination.
 pub const HTTP_DESTINATION: &str = "E0091";
+
+/// The node cannot admit a call until it has capacity again.
+#[derive(Clone, Copy, Debug)]
+pub enum Busy {
+    Memory,
+    Calls,
+}
+
+impl Busy {
+    pub const EXPLANATION: &str = "E0098";
+
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::Memory => "the host holds as much memory as it may; retry",
+            Self::Calls => "every call slot is taken; retry",
+        }
+    }
+}
+
+impl From<Busy> for Failure {
+    fn from(busy: Busy) -> Self {
+        Self {
+            status: 503,
+            headers: BTreeMap::new(),
+            body: serde_json::json!({"error":busy.message(), "explain":Busy::EXPLANATION}),
+        }
+    }
+}
 
 /// Response header set to `1` when a tool refused its caller.
 pub const DENIED: &str = "berm-denied";
