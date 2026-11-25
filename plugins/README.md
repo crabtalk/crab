@@ -16,6 +16,6 @@ python3 plugins/bundle.py
 
 The command assembles `plugins/build/crabtalk` from the package configuration and canonical skill, then writes `plugins/crabtalk.zip`, replacing the previous build and bundle. Both generated outputs are ignored by Git. The release workflow builds this archive and uploads it to the draft release before publication.
 
-The manifest includes five positive and three negative review cases under `extensions.com.openai.review.test_cases`. They were drafted from the live public service definitions and have not been run through the native plugin. Release notes are under `extensions.com.openai.publication`. The plugin version stays `0.1.0`.
+The manifest includes four positive and three negative review cases under `extensions.com.openai.review.test_cases`. They were drafted from the live public service definitions and have not been run through the native plugin. Release notes are under `extensions.com.openai.publication`. The plugin version stays `0.1.0`.
 
 OAuth discovery and listing URLs were checked against live endpoints. End-to-end OAuth and authenticated tool use remain unverified. Supporting content still needs a reviewer-accessible demo recording; reviewer access belongs in the secure portal form. Country targeting and any saved recording are omitted from the ZIP so existing portal values are preserved.

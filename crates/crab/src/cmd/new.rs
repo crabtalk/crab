@@ -40,7 +40,7 @@ pub fn run(name: &str) -> Result<()> {
     println!();
     println!("  cd {name}");
     println!("  crab build");
-    println!("  crab deploy");
+    println!("  crab up");
     Ok(())
 }
 

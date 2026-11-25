@@ -1,0 +1,4 @@
+interface:
+  display_name: "CrabTalk: wrap an API"
+  short_description: "turn an HTTP API into CrabTalk tools"
+  default_prompt: "Use $crab-wrap to turn this API into a CrabTalk service: "

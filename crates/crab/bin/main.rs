@@ -371,7 +371,7 @@ enum BillingCommand {
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Verify the account on GitHub, which lets it deploy on Hobby: here when
+    /// Verify the account on GitHub, which lets it deploy on Free: here when
     /// the check passes, else a code whose page the person verifies at.
     Verify {
         /// What it is for, shown to the person who verifies.
@@ -512,7 +512,7 @@ enum OrgCommand {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Assign an owner as the org's Hobby sponsor.
+    /// Assign an owner as the org's Free sponsor.
     Sponsor { org: String, member_id: String },
     /// Delete an org.
     Rm { org: String },

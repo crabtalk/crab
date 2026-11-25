@@ -28,7 +28,7 @@ pub enum RequestKind {
     /// Approve a deploy of the account's services, which runs as the person
     /// approving it.
     Deploy,
-    /// Verify the person on GitHub, which lets their account deploy on Hobby.
+    /// Verify the person on GitHub, which lets their account deploy on Free.
     Verify,
     /// Let an API key call other accounts' priced services, or spend more in a
     /// day.

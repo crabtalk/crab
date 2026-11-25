@@ -1,0 +1,4 @@
+interface:
+  display_name: "CrabTalk: build"
+  short_description: "write and run a CrabTalk service"
+  default_prompt: "Use $crab-build to write a CrabTalk service that "
