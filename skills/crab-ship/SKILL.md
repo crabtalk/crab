@@ -17,7 +17,7 @@ For CLI refusals that name an explanation code, use `crab-debug`.
 
 ## Signing in
 
-Sign in with `crab login --device`. The command prints a link and code, then waits up to 30 minutes while the person reviews the connection name, account, permissions and daily budget and approves a dedicated key. They can also enter the code at `crabtalk.ai/device` and later manage the key in Settings → API keys. Plain `crab login` tries to open a browser on the CLI machine.
+Sign in with `crab login --device`. The command prints a link and code, then waits up to 30 minutes while the person reviews the connection name, account, permissions and daily budget and approves a dedicated key. They can also enter the code at `crabtalk.ai/device` and later manage the key in Settings → API keys. Plain `crab login` requests a personal session and opens the approval page in a browser.
 
 ## Plans and credit
 
@@ -32,7 +32,7 @@ Sign in with `crab login --device`. The command prints a link and code, then wai
 - Personal CLI sessions always need browser approval. For direct deployment, the owner can grant the device key `deployments:write`. `--yes` requires an API key with `deployments:write`; use it only when the person asked you to deploy without their review. When asking through the API, the deploy request's `context` is one short sentence describing the change, at most 160 characters.
 - For pending approvals and recorded outcomes, use `crab-debug`.
 - When redeploying a published image on Cloud, the host keeps a compatible existing storage reservation. A source redeploy sends the reservation from its build. See `crab-build` for storage sizing and tool budgets.
-- `crab stop <service>` and `crab start <service>` stop and serve a service, keeping its data; `crab rm <service>` removes it and its data after asking. Stop only when the person asks.
+- `crab stop <service>` and `crab start <service>` stop and serve a service, keeping its data; `crab rm <service>` removes it and its data. A Cloud CLI session opens an owner approval request. An API key with `services:write` removes it directly. Stop only when the person asks.
 
 ## Secrets
 

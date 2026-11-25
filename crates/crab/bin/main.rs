@@ -47,13 +47,8 @@ enum Command {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
         host: String,
-        /// Sign in with GitHub in place of Google.
+        /// Request a dedicated agent key. A person approves it at the printed link.
         #[arg(long)]
-        github: bool,
-        /// Ask the person for a dedicated key instead, approved at the printed
-        /// `/device` link. Use it when they are not at this machine. Org and
-        /// account changes need a personal session, which this key is not.
-        #[arg(long, conflicts_with = "github")]
         device: bool,
         /// The context to keep the credential as.
         #[arg(long, default_value = "cloud")]
@@ -635,12 +630,7 @@ fn run() -> Result<ExitCode> {
 
     match &args.command {
         Command::Workflow(workflow) => return workflow.run(&client()?, json, yes),
-        Command::Login {
-            host,
-            github,
-            device,
-            name,
-        } => cmd::login::run(name, host, *github, *device)?,
+        Command::Login { host, device, name } => cmd::login::run(name, host, *device)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
         Command::Request {
             code, expire: true, ..

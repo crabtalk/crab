@@ -2,6 +2,8 @@
 #![no_std]
 extern crate alloc;
 use alloc::{format, string::String};
+// Linked for its kit only; the build test expects crabkit-auth among the kits.
+use auth as _;
 use berm_lang::{Result, tool};
 use github::api as github_api;
 use posthog::{

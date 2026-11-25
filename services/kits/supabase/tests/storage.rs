@@ -45,6 +45,7 @@ fn upload_posts_the_bytes_under_their_type() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "POST".into(),
             url: OBJECT.into(),
             headers: headers(&[("Content-Type", "image/png"), ("x-upsert", "false")]),
@@ -80,6 +81,7 @@ fn download_answers_the_bytes() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "GET".into(),
             url: OBJECT.into(),
             headers: headers(&[]),
@@ -106,6 +108,7 @@ fn delete_deletes_the_one_object() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "DELETE".into(),
             url: OBJECT.into(),
             headers: headers(&[]),
