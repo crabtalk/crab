@@ -44,6 +44,7 @@ fn the_most_a_run_costs_spends_its_whole_budget() {
         rates: rates(),
         included_cpu: 100,
         max_log: 4096,
+        budget: None,
     };
     let budget = Budget {
         cpu: 100_100,

@@ -59,6 +59,10 @@ pub struct Metering {
     pub included_cpu: u64,
     /// Bytes one log holds at most.
     pub max_log: usize,
+    /// What a tool that declares no budget may use; a plan's memory at once
+    /// divided by its `memory` is how many such calls run at once.
+    #[serde(default)]
+    pub budget: Option<Budget>,
 }
 
 impl Metering {

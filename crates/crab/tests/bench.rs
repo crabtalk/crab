@@ -11,6 +11,7 @@ fn metering() -> Metering {
         rates: Rates::default(),
         included_cpu: meta::INCLUDED_CPU,
         max_log: berm_api::MAX_LOG,
+        budget: Some(berm_api::Budget::DEFAULT),
     }
 }
 
@@ -56,7 +57,7 @@ async fn fixture_waits_hold_the_declared_memory_and_are_priced_by_the_sdk() -> R
     .await?;
     assert!(report.passed, "{report:?}");
     let sample = &report.cases[0].samples[0];
-    assert!(sample.chain.held >= 128 * 20_000);
+    assert!(sample.chain.held >= (berm_api::Budget::DEFAULT.memory >> 20) * 20_000);
     assert_eq!(
         report.statistics.max_cost_micros_decimal,
         rates.rates.cost_decimal(

@@ -84,12 +84,7 @@ impl Default for Config {
             cpu: Duration::from_millis(100),
             read: 1_000_000,
             written: 1_000_000,
-            budget: Budget {
-                cpu: 100_000,
-                read: 1_000_000,
-                written: 10_000,
-                memory: 128 << 20,
-            },
+            budget: Budget::DEFAULT,
             deadline: watchdog::TIMEOUT,
         }
     }

@@ -507,6 +507,7 @@ pub fn run(cloud: &Client, bench: &Bench, json: bool) -> Result<ExitCode> {
         rates: Rates::default(),
         included_cpu: meta::INCLUDED_CPU,
         max_log: berm_api::MAX_LOG,
+        budget: Some(berm_api::Budget::DEFAULT),
     });
     let mut report = runtime::wait(Report::measure(
         &image,

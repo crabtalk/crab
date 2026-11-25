@@ -201,6 +201,14 @@ pub struct Budget {
 }
 
 impl Budget {
+    /// The budget of a tool that declares none.
+    pub const DEFAULT: Self = Self {
+        cpu: 100_000,
+        read: 1_000_000,
+        written: 10_000,
+        memory: 32 << 20,
+    };
+
     pub fn maximum(&self, deadline_ms: u64) -> Meter {
         Meter {
             runs: 1,
