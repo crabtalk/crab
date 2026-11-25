@@ -1,0 +1,10 @@
+id = "9a269a085fd74b68a368154ec36e8a14"
+buffer = 1048576
+
+[storage.caller]
+migrations = "caller"
+
+[image]
+name = "crabtalk/artifacts"
+public = true
+publish = true

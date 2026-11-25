@@ -16,6 +16,7 @@ const PACKAGES: &[&str] = &[
     "berm-keeper",
     "berm-site",
     "crab-agent-relay",
+    "crab-agent-artifacts",
     "berm-openapi",
     "crab-resend",
     "crab-github",
