@@ -84,7 +84,7 @@ impl Metering {
 }
 
 /// What an owner is charged for its services' meters, each in USD micros per
-/// billion units. Cloud's `[fleet.rates]` config table, and what it serves.
+/// billion units unless otherwise specified.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]

@@ -239,9 +239,9 @@ enum Command {
         #[command(subcommand)]
         action: Option<InvitesCommand>,
     },
-    /// The plans Cloud sells, and what each includes.
+    /// Cloud plans, their allowances and their compute rates.
     Plans,
-    /// What compute costs at the rates.
+    /// List rates and compute rates by Cloud plan.
     Rates,
     /// What an error code means and what to do about it, as `E0001`.
     Explain { code: String },

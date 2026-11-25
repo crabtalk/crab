@@ -36,7 +36,7 @@ async fn main() -> Result<(), Error> {
 
 The token is a session token or an API key. Without `owner`, the client addresses a local host at `base`, and account calls return `Error::Host`.
 
-`Client::health` probes `/meta/health` on Cloud and the local host. `Client::plans` requires a Cloud owner; local clients return `Error::Host` with login guidance.
+`Client::health` probes `/meta/health` on Cloud and the local host. `Client::plans` returns Cloud plans with their own compute rates in `PublicPlan::rates`. Local clients return `Error::Host` with login guidance.
 
 `Client::deployment_status` returns pending approvals and recorded deploy attempts, including before a service exists. `Client::deploys` returns recorded attempts only.
 

@@ -1,8 +1,13 @@
-//! `crab rates` — what compute costs, paid from compute credit, then credit.
+//! `crab rates` — deployment and plan rates.
 
 use crate::{runtime, terminal};
 use anyhow::Result;
-use crabtalk_sdk::{client::Client, system::meta};
+use crabtalk_sdk::{
+    client::Client,
+    system::meta::{self, Metering, Rates},
+};
+use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// USD micros per billion units, as USD per million.
 fn per_million(rate: u64) -> String {
@@ -10,28 +15,56 @@ fn per_million(rate: u64) -> String {
 }
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let metering = runtime::wait(client.rates())?;
+    let (metering, plans) = runtime::wait(async {
+        if client.owner.is_some() {
+            tokio::try_join!(client.rates(), client.plans())
+        } else {
+            Ok((client.rates().await?, Vec::new()))
+        }
+    })?;
     if json {
-        return terminal::json(&metering);
+        #[derive(Serialize)]
+        struct Pricing<'a> {
+            #[serde(flatten)]
+            metering: &'a Metering,
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            plans: BTreeMap<&'a str, &'a Rates>,
+        }
+        return terminal::json(&Pricing {
+            metering: &metering,
+            plans: plans
+                .iter()
+                .map(|plan| (plan.slug.as_str(), &plan.rates))
+                .collect(),
+        });
     }
-    let rates = &metering.rates;
-    println!("runs          {}", per_million(rates.runs));
+    if !plans.is_empty() {
+        println!("list");
+    }
+    print(&metering.rates, metering.included_cpu, "");
+    for plan in &plans {
+        println!("\n{}", plan.slug);
+        print(&plan.rates, metering.included_cpu, "");
+    }
+    Ok(())
+}
+
+pub(super) fn print(rates: &Rates, included_cpu: u64, indent: &str) {
+    println!("{indent}runs          {}", per_million(rates.runs));
     println!(
-        "compute       ${} per million CPU-ms past each run's first {}µs",
-        rates.overage as f64 / 1e6,
-        metering.included_cpu
+        "{indent}compute       ${} per million CPU-ms past each run's first {included_cpu}µs",
+        rates.overage as f64 / 1e6
     );
-    println!("rows read     {}", per_million(rates.read));
-    println!("rows written  {}", per_million(rates.written));
+    println!("{indent}rows read     {}", per_million(rates.read));
+    println!("{indent}rows written  {}", per_million(rates.written));
     println!(
-        "memory held   ${} per million GB-s, waiting included",
+        "{indent}memory held   ${} per million GB-s, waiting included",
         rates.held as f64 * meta::GB_SECOND as f64 / 1e9
     );
     if let Some(rotating) = rates.rotating {
         println!(
-            "rotating IPs  ${} per GB, paid from purchased credit",
+            "{indent}rotating IPs  ${} per GB, paid from purchased credit",
             rotating as f64 / 1e6
         );
     }
-    Ok(())
 }

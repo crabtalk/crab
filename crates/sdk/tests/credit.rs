@@ -14,7 +14,7 @@ fn billing_responses_without_compute_credit_fields_remain_readable() {
         serde_json::from_str(r#"{"verified_at":1,"reason":null,"github":true}"#).unwrap();
     assert!(verification.trial.is_none());
     let plan: PublicPlan = serde_json::from_str(
-        r#"{"slug":"hobby","accounts":["user","org"],"credit_micros":0,"price_micros":null,"included":{},"memory":134217728}"#,
+        r#"{"slug":"hobby","accounts":["user","org"],"credit_micros":0,"price_micros":null,"included":{},"memory":134217728,"rates":{"runs":100000000,"overage":20000,"read":100000,"written":100000000,"held":10}}"#,
     )
     .unwrap();
     assert!(plan.trial.is_none());

@@ -1,8 +1,8 @@
-//! `crab plans` — the plans the deployment sells, and what each includes.
+//! `crab plans` — the plans the deployment sells, their limits and rates.
 
-use crate::{format, runtime, terminal};
+use crate::{cmd::rates, format, runtime, terminal};
 use anyhow::Result;
-use crabtalk_sdk::{account::org::Kind, client::Client, format as display};
+use crabtalk_sdk::{account::org::Kind, client::Client, format as display, system::meta};
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
     let plans = runtime::wait(client.plans())?;
@@ -47,6 +47,7 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             0 => println!("  no limit on memory held"),
             memory => println!("  {} of memory held at once", display::bytes(memory)),
         }
+        rates::print(&plan.rates, meta::INCLUDED_CPU, "    ");
     }
     Ok(())
 }

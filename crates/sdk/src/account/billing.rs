@@ -1,6 +1,6 @@
 //! Billing, plan-catalog, and invoice wire types.
 
-use crate::{account::org::Kind, services::price::Kind as PriceKind};
+use crate::{account::org::Kind, services::price::Kind as PriceKind, system::meta::Rates};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -17,6 +17,8 @@ pub struct PublicPlan {
     /// Monthly gross price in microdollars — what the customer is charged.
     /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,
+    /// The rates at which the plan's compute is charged.
+    pub rates: Rates,
     /// The plan's storage and outbound data limits.
     pub included: Included,
     /// Bytes of memory the account's services may hold at once, their images

@@ -94,7 +94,7 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab login --device` requests a dedicated agent key. It prints a link and a code and waits while a person signed in to Cloud reviews the connection name, account, permissions and daily budget. The default name is `crab (<context>)`; `--name` chooses the context. The key initially requests the standard read permissions and a $5 daily budget. Manage or revoke it under Settings → API keys. Existing personal sessions remain active; reconnect the agent and revoke its old session under Settings → Security to switch it to a key.
 
-`crab plans` lists Cloud plans. On a local context it asks you to sign in with `crab login`.
+`crab plans` lists Cloud plans with their allowances and compute rates. On a local context it asks you to sign in with `crab login`. `crab rates` shows list rates alongside each plan's rates. On Cloud, `crab rates --json` includes a `plans` object keyed by plan slug when the catalog contains plans.
 
 `crab billing` shows purchased credit separately from compute credit, including compute credit's expiry, the recovery deadline and funds reserved for running or unsettled work. Compute credit pays runs, CPU, memory held and rows; priced tools and rotating IPs require purchased credit.
 
