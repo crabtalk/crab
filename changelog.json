@@ -2,23 +2,27 @@
   {
     "version": "0.1.10",
     "date": "2026-11-25",
-    "summary": "Share articles and boards between agents with Artifacts, start from the Hello service, send requests through rotating egress, and see compute credit and plan limits in the CLI.",
+    "summary": "Share articles and boards between agents with Artifacts, send requests through rotating egress, and see compute credit and plan limits in the CLI.",
     "new": [
-      "Deploy Artifacts from source to give agents on one account shared projects, Markdown articles and boards, kept in the calling account's storage",
-      "Call or deploy crabtalk/hello, a stateless greeting service, as the smallest service to start from",
-      "Send a single request through the host's rotating egress pool with Request::rotating; its destination still needs [http] fetch permission",
-      "Check Content Signals and discovery links for AI crawlers with crabtalk/seo.ai_access, and audit Markdown coverage of sitemap pages",
-      "Install the crab-build, crab-wrap, crab-ship and crab-debug skills, split from the crab skill"
+      "Deploy Artifacts from source to give agents on one account shared projects, Markdown articles and boards, kept in the calling account's storage; calls are free and stored data counts toward the caller's storage",
+      "Start from Hello, a stateless example service with no provider or credentials, in services/hello",
+      "Send a single request through the rotating egress pool with Request::rotating on supported hosted deployments; its destination still needs [http] fetch permission, crab dev sends it directly with a warning, and rotating traffic is paid from purchased Credit outside the outbound data limit; crab usage reports rotating bytes separately in its service and account views",
+      "Check Content Signals and discovery links for AI crawlers with crabtalk/seo.ai_access, and see missing or newly available Markdown pages in crabtalk/seo.audit when the site's root offers Markdown",
+      "Install crab-build, crab-wrap, crab-ship and crab-debug separately to build services, wrap existing APIs, deploy, and debug; the crab skill remains and is the one in the release plugin",
+      "Capture committed SQLite WAL frames and let host embedders defer checkpoints through an opt-in callback"
     ],
     "changed": [
-      "Show compute credit, storage and outbound data limits in crab plans, crab usage and crab rates; compute is paid from compute credit, then credit",
-      "Give a tool that declares no budget a default of 100 ms CPU, 1,000,000 rows read, 10,000 rows written and 32 MiB of memory, served in crab rates and used by crab bench",
-      "Keep service logs for seven days"
+      "Show compute credit and storage, memory and outbound data limits in crab plans, compute costs and usage against limits in crab usage, and the compute credit balance and expiry in crab billing; eligible compute is paid from compute credit first, then purchased Credit",
+      "Lower the default rates for runs, rows read, rows written and memory held; crab rates shows the host's effective rates, including the rotation price when the host supplies it",
+      "Rename billing fields in the SDK and JSON output: trial is now compute, compute history fields are renamed, and usage is reported separately from included limits",
+      "Lower the default memory budget of a tool that declares none from 128 MiB to 32 MiB; the 100 ms CPU, 1,000,000 rows read and 10,000 rows written defaults are unchanged; crab bench measures with the local runtime defaults, and crab rates --json reports the host's default budget when supplied",
+      "Keep service logs for seven days; call records stay 30 days, and kept logs count toward storage",
+      "Print crab up for source deployment from crab new"
     ],
     "fixed": [
       "Refuse outside calls with HTTP 503 and E0098 when a node has no free call slot or memory reservation",
-      "Include caller storage databases in the host's replication inventory",
-      "Persist local calls, logs and usage every second or every 512 calls, in small batches"
+      "List active and retained caller storage databases in the host's replication inventory",
+      "Persist local calls, logs, usage and meter records in small batches on a one-second timer or when 512 call records are pending"
     ]
   },
   {

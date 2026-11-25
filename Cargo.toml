@@ -51,7 +51,7 @@ sitemap = { package = "crab-sitemap", path = "crates/sitemap", version = "0.1.10
 berm-kit = { path = "fixtures/kit" }
 
 # services
-cydonia-artifact = { path = "../cydonia/crates/artifact", default-features = false }
+cydonia-artifact = { git = "https://github.com/crabtalk/cydonia", rev = "9a79401874c9f1870c72421020aef8d76294405a", default-features = false }
 github = { package = "crab-github", path = "services/connect/github", version = "0.1.10", default-features = false }
 osv = { package = "crab-osv", path = "services/connect/osv", version = "0.1.10", default-features = false }
 posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.10", default-features = false }

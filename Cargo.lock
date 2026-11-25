@@ -1649,6 +1649,7 @@ dependencies = [
 [[package]]
 name = "cydonia-acp"
 version = "0.2.13"
+source = "git+https://github.com/crabtalk/cydonia?rev=9a79401874c9f1870c72421020aef8d76294405a#9a79401874c9f1870c72421020aef8d76294405a"
 dependencies = [
  "cydonia-acp-proto",
 ]
@@ -1656,6 +1657,7 @@ dependencies = [
 [[package]]
 name = "cydonia-acp-proto"
 version = "0.2.13"
+source = "git+https://github.com/crabtalk/cydonia?rev=9a79401874c9f1870c72421020aef8d76294405a#9a79401874c9f1870c72421020aef8d76294405a"
 dependencies = [
  "serde",
  "serde_json",
@@ -1664,6 +1666,7 @@ dependencies = [
 [[package]]
 name = "cydonia-artifact"
 version = "0.2.13"
+source = "git+https://github.com/crabtalk/cydonia?rev=9a79401874c9f1870c72421020aef8d76294405a#9a79401874c9f1870c72421020aef8d76294405a"
 dependencies = [
  "anyhow",
  "bezel-canvas",
