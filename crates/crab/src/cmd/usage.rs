@@ -153,9 +153,17 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         );
     }
     println!(
-        "  compute        {:>10}  paid from credit",
-        format::usd(period.charge as f64)
+        "  compute        {:>10}  of {} included",
+        format::usd(period.compute_micros as f64),
+        format::usd(period.included_micros as f64)
     );
+    if period.overage_micros > 0 {
+        println!(
+            "  overage        {:>10}  {} collected",
+            format::usd(period.overage_micros as f64),
+            format::usd(period.collected_micros as f64)
+        );
+    }
     let limits = [
         ("storage", period.used.stored, period.included.stored),
         ("outbound data", period.used.sent, period.included.sent),

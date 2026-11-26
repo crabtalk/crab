@@ -11,30 +11,24 @@ pub struct PublicPlan {
     /// Identifier used in `POST /orgs/{org}/billing/checkout?plan=<slug>`.
     pub slug: String,
     pub accounts: Vec<Kind>,
-    /// Credit deposited each paid period, in USD micros. It expires when the
-    /// period ends.
+    /// Usage included each period, in USD micros at the list rates. It pays
+    /// compute only and resets with the period.
+    #[serde(default)]
+    pub usage_micros: u64,
+    /// `usage_micros` under its earlier name, sent for clients that require it.
+    #[serde(default)]
     pub credit_micros: u64,
     /// Monthly gross price in microdollars — what the customer is charged.
     /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,
-    /// The rates at which the plan's compute is charged.
+    /// The list rates `/meta/rates` serves, sent for clients that require them.
+    #[serde(default)]
     pub rates: Rates,
     /// The plan's storage and outbound data limits.
     pub included: Included,
     /// Bytes of memory the account's services may hold at once, their images
     /// and their calls running; `0` is no limit.
     pub memory: u64,
-    #[serde(default)]
-    pub trial: Option<TrialOffer>,
-}
-
-/// Free's Credit, added once after GitHub verification. It pays compute only.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrialOffer {
-    pub amount_micros: i64,
-    pub lifetime_days: u32,
-    pub retention_days: u32,
 }
 
 /// Bytes held against the account's storage limit.
@@ -55,28 +49,38 @@ pub struct StorageAllocation {
 pub struct Period {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<StorageAllocation>,
-    /// The plan's slug: comped, else bought, else Hobby.
+    /// The plan's slug.
     pub plan: String,
     /// Days since the Unix epoch, `until` excluded.
     pub since: i32,
     pub until: i32,
+    /// When the period begins and ends, in Unix seconds, `ends_at` excluded.
+    #[serde(default)]
+    pub starts_at: i64,
+    #[serde(default)]
+    pub ends_at: i64,
     pub included: Included,
     /// `stored` includes database reservations, images and pending uploads.
     pub used: Usage,
     /// Legacy storage aggregate; not database allocation.
     pub stored: u64,
-    /// What its services used since `since` costs at the rates: what compute
-    /// credit, then credit, pays, in USD micros.
+    /// What the plan includes this period, in USD micros; it pays compute only.
     #[serde(default)]
-    pub charge: i64,
-    /// What `charge` is made of, by unit, in USD micros, each rounded down; a
-    /// unit costing nothing is left out.
+    pub included_micros: i64,
+    /// What its services' compute cost this period at the rates, in USD micros.
+    #[serde(default)]
+    pub compute_micros: i64,
+    /// `compute_micros` past `included_micros`.
+    #[serde(default)]
+    pub overage_micros: i64,
+    /// Overage charged to the card and paid.
+    #[serde(default)]
+    pub collected_micros: i64,
+    /// What `compute_micros` is made of, by unit, in USD micros, each rounded
+    /// down; a unit costing nothing is left out.
     #[serde(default)]
     pub costs: BTreeMap<Unit, i64>,
-    /// Credit drawn since `since`, in USD micros.
-    #[serde(default)]
-    pub drawn: i64,
-    /// Each share of a limit reached, and running out of credit.
+    /// Each share of a limit reached, and an overage charge that failed.
     pub warnings: Vec<Warning>,
     /// Prices paid to other accounts since `since`, by operation, the most first.
     #[serde(default)]
@@ -108,7 +112,7 @@ pub struct Warning {
     pub threshold: u32,
 }
 
-/// A metered unit: a field of [`Usage`], or `credit` when credit ran out.
+/// A metered unit: a field of [`Usage`], or `Owed` when an overage charge failed.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -120,7 +124,9 @@ pub enum Unit {
     Held,
     Stored,
     Sent,
-    Credit,
+    /// Spelled `credit` on the wire, which released clients know.
+    #[serde(rename = "credit")]
+    Owed,
 }
 
 berm_api::text_enum!(Unit);
@@ -201,7 +207,7 @@ pub struct Usage {
     pub sent: u64,
 }
 
-/// A person's verification, which lets an account on Hobby deploy.
+/// A person's verification, which lets an account on Free deploy.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verification {
@@ -212,8 +218,6 @@ pub struct Verification {
     /// The person signs in with GitHub.
     #[serde(default)]
     pub github: bool,
-    #[serde(default)]
-    pub trial: Option<TrialOffer>,
 }
 
 /// A plan subscribed: the Checkout URL to pay at, or `None` when an active
@@ -224,42 +228,26 @@ pub struct SubscribeResponse {
     pub url: Option<String>,
 }
 
-/// An account's Credit, in USD micros.
+/// An account's prepaid balance and auto-refill, in USD micros.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credit {
-    /// Credit that pays everything: compute, rotating traffic and tool and
-    /// workflow prices.
+    /// Prepaid: what purchases and refills have left. It pays priced tools and
+    /// rotating traffic.
     pub micros: i64,
+    /// What of `micros` expires within 30 days.
     #[serde(default)]
-    pub compute: Option<ComputeCredit>,
+    pub expiring_micros: i64,
+    /// When a held account's services are retired, in Unix seconds.
     #[serde(default)]
     pub recovery_until: Option<i64>,
     /// The most refills may deposit in a UTC calendar month; `0` is off.
     pub refill_cap_micros: i64,
     /// What one refill buys; `0` when never set.
     pub refill_micros: i64,
-}
-
-impl Credit {
-    /// The whole balance: [`Credit::micros`] and what is left of
-    /// [`Credit::compute`].
-    pub fn balance(&self) -> i64 {
-        self.micros + self.compute.as_ref().map_or(0, |compute| compute.micros)
-    }
-}
-
-/// Free's verification Credit, which pays runs, CPU, memory held and rows and
-/// never tool or workflow prices or rotating traffic.
-#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComputeCredit {
-    pub micros: i64,
-    /// What its grants still live were granted.
-    pub granted_micros: i64,
-    pub reserved_micros: i64,
-    /// Next grant expiration, or the last expiration when all grants expired.
-    pub expires_at: i64,
+    /// The prepaid balance below which a refill is charged.
+    #[serde(default = "RefillRequest::below")]
+    pub refill_below_micros: i64,
 }
 
 /// Where an account's credit came from and went.
@@ -271,12 +259,6 @@ pub struct CreditHistory {
     /// The purchases and refills still holding credit, soonest to expire
     /// first.
     pub grants: Vec<Grant>,
-    /// [`CreditHistory::months`] of Free's verification Credit.
-    #[serde(default)]
-    pub compute_months: Vec<CreditMonth>,
-    /// [`CreditHistory::grants`] of Free's verification Credit.
-    #[serde(default)]
-    pub compute_grants: Vec<Grant>,
 }
 
 /// One month of [`CreditHistory`], in USD micros, each figure positive.
@@ -449,6 +431,16 @@ pub struct RefillRequest {
     /// `cap_micros` is `0`.
     #[serde(default)]
     pub amount_micros: i64,
+    /// The prepaid balance below which a refill is charged.
+    #[serde(default = "RefillRequest::below")]
+    pub below_micros: i64,
+}
+
+impl RefillRequest {
+    /// The balance a refill is charged below when none is set: $5.
+    pub fn below() -> i64 {
+        5_000_000
+    }
 }
 
 /// Which single action the portal opens on.

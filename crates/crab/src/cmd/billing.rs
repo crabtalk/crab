@@ -38,31 +38,37 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
         format::day(period.since.into()),
         format::day(i64::from(period.until) - 1)
     );
-    println!("credit            {}", format::usd(credit.balance() as f64));
-    if let Some(until) = credit.recovery_until {
+    println!(
+        "usage   {} of {}",
+        format::usd(period.compute_micros as f64),
+        format::usd(period.included_micros as f64)
+    );
+    if period.overage_micros > 0 {
         println!(
-            "hosting paused    data kept until {}; verify if eligible, upgrade or use `crab export OWNER/NAME` or Download in service Settings before deletion; excludes workflow runs and checkpoints",
-            format::date(until)
+            "overage {}, {} collected",
+            format::usd(period.overage_micros as f64),
+            format::usd(period.collected_micros as f64)
         );
     }
-    if let Some(compute) = credit.compute {
+    println!("prepaid {}", format::usd(credit.micros as f64));
+    if credit.expiring_micros > 0 {
         println!(
-            "                  {} of it from GitHub verification runs services only, expires {}",
-            format::usd(compute.micros as f64),
-            format::day(compute.expires_at)
+            "        {} expires in the next 30 days",
+            format::usd(credit.expiring_micros as f64)
         );
-        if compute.reserved_micros > 0 {
-            println!(
-                "reserved          {} for running or unsettled work",
-                format::usd(compute.reserved_micros as f64)
-            );
-        }
+    }
+    if let Some(until) = credit.recovery_until {
+        println!(
+            "held    services retired {} unless the account fits Free's limits; use `crab export OWNER/NAME` or Download in service Settings; excludes workflow runs and checkpoints",
+            format::date(until)
+        );
     }
     match credit.refill_cap_micros {
         0 => println!("refill  off"),
         cap => println!(
-            "refill  {} at a time, at most {} a month",
+            "refill  {} when under {}, at most {} a month",
             format::usd(credit.refill_micros as f64),
+            format::usd(credit.refill_below_micros as f64),
             format::usd(cap as f64)
         ),
     }
@@ -90,19 +96,20 @@ pub fn ask(
     request::asked(&asked, json)
 }
 
-/// Refill `amount` USD when credit runs low, at most `cap` USD a month; a cap
-/// of 0 turns it off.
-pub fn refill(client: &Client, amount: u32, cap: u32) -> Result<()> {
+/// Refill `amount` USD when prepaid falls under `below` USD, at most `cap` USD
+/// a month; a cap of 0 turns it off.
+pub fn refill(client: &Client, amount: u32, below: u32, cap: u32) -> Result<()> {
     if cap > 0 && amount < 20 {
         bail!("a refill buys $20 or more");
     }
     runtime::wait(client.set_refill(&RefillRequest {
         cap_micros: i64::from(cap) * 1_000_000,
         amount_micros: i64::from(amount) * 1_000_000,
+        below_micros: i64::from(below) * 1_000_000,
     }))?;
     match cap {
         0 => eprintln!("refill off"),
-        cap => eprintln!("refill ${amount} at a time, at most ${cap} a month"),
+        cap => eprintln!("refill ${amount} when under ${below}, at most ${cap} a month"),
     }
     Ok(())
 }
@@ -126,15 +133,6 @@ pub fn verify(client: &Client, context: &str, json: bool) -> Result<()> {
         return terminal::json(&verification);
     }
     println!("verified {}", format::date(at));
-    if let Some(offer) = verification.trial {
-        println!(
-            "credit            {} once for running services, valid {} days; data retained {} days after it ends",
-            format::usd(offer.amount_micros as f64),
-            offer.lifetime_days,
-            offer.retention_days
-        );
-        println!("                  `crab billing` shows the issued balance and expiry");
-    }
     Ok(())
 }
 

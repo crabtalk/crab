@@ -1,8 +1,8 @@
-//! `crab plans` — the plans the deployment sells, their limits and rates.
+//! `crab plans` — the plans the deployment sells and their limits.
 
-use crate::{cmd::rates, format, runtime, terminal};
+use crate::{format, runtime, terminal};
 use anyhow::Result;
-use crabtalk_sdk::{account::org::Kind, client::Client, format as display, system::meta};
+use crabtalk_sdk::{account::org::Kind, client::Client, format as display};
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
     let plans = runtime::wait(client.plans())?;
@@ -24,18 +24,10 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             .collect::<Vec<_>>()
             .join(" and ");
         println!("{}  {price}  for {audience}", plan.slug);
-        if plan.credit_micros > 0 {
+        if plan.usage_micros > 0 {
             println!(
-                "  {} credit a period",
-                format::usd(plan.credit_micros as f64)
-            );
-        }
-        if let Some(offer) = &plan.trial {
-            println!(
-                "  {} credit once after GitHub verification for running services, valid {} days; data kept {} days after it ends",
-                format::usd(offer.amount_micros as f64),
-                offer.lifetime_days,
-                offer.retention_days
+                "  {} of compute included a period, at the rates `crab rates` shows",
+                format::usd(plan.usage_micros as f64)
             );
         }
         println!(
@@ -47,7 +39,6 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             0 => println!("  no limit on memory held"),
             memory => println!("  {} of memory held at once", display::bytes(memory)),
         }
-        rates::print(&plan.rates, meta::INCLUDED_CPU, "    ");
     }
     Ok(())
 }

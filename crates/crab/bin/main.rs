@@ -380,11 +380,14 @@ enum BillingCommand {
         r#for: String,
     },
 
-    /// Refill credit when it runs low; a cap of 0 turns it off.
+    /// Refill prepaid when it runs low; a cap of 0 turns it off.
     Refill {
         /// USD one refill buys, 20 or more.
         #[arg(long, default_value_t = 20)]
         amount: u32,
+        /// USD of prepaid below which a refill is charged.
+        #[arg(long, default_value_t = 5)]
+        below: u32,
         /// The most USD refills may buy in a UTC month.
         #[arg(long)]
         cap: u32,
@@ -802,8 +805,8 @@ fn run() -> Result<ExitCode> {
                     cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }
 
-                BillingCommand::Refill { amount, cap } => {
-                    cmd::billing::refill(&client, *amount, *cap)?
+                BillingCommand::Refill { amount, below, cap } => {
+                    cmd::billing::refill(&client, *amount, *below, *cap)?
                 }
                 BillingCommand::Invoices => cmd::billing::invoices(&client, json)?,
                 BillingCommand::Portal { card, cancel } => {

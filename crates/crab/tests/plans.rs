@@ -4,23 +4,19 @@ use std::{fs, process::Command};
 use tokio::{net::TcpListener, task};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pricing_commands_show_each_plans_rates() {
+async fn pricing_commands_show_included_usage_and_one_set_of_rates() {
     let list = json!({
         "runs": 120_000_000, "overage": 24_000, "read": 120_000,
         "written": 120_000_000, "held": 16, "rotating": 1_000_000
     });
-    let go = json!({
-        "runs": 75_000_000, "overage": 15_000, "read": 75_000,
-        "written": 75_000_000, "held": 10, "rotating": 1_000_000
-    });
     let catalog = json!([
         {
-            "slug": "free", "accounts": ["user"], "credit_micros": 0,
-            "price_micros": null, "included": {}, "memory": 0, "rates": list
+            "slug": "free", "accounts": ["user"], "usage_micros": 1_000_000,
+            "price_micros": null, "included": {}, "memory": 0
         },
         {
-            "slug": "go", "accounts": ["user", "org"], "credit_micros": 8_000_000,
-            "price_micros": 5_000_000, "included": {}, "memory": 0, "rates": go
+            "slug": "go", "accounts": ["user", "org"], "usage_micros": 5_000_000,
+            "price_micros": 5_000_000, "included": {}, "memory": 0
         }
     ]);
     let metering = json!({"rates": list, "included_cpu": 100, "max_log": 16384});
@@ -67,11 +63,11 @@ owner = {{ user = "test-account" }}
     server.abort();
 
     let plans: Value = serde_json::from_str(&plans_json).unwrap();
-    assert_eq!(plans[0]["rates"], list);
-    assert_eq!(plans[1]["rates"], go);
+    assert_eq!(plans[0]["usage_micros"], 1_000_000);
+    assert_eq!(plans[1]["usage_micros"], 5_000_000);
 
     let rates: Value = serde_json::from_str(&rates_json).unwrap();
     assert_eq!(rates["included_cpu"], 100);
     assert_eq!(rates["rates"], list);
-    assert_eq!(rates["plans"], json!({"free": list, "go": go}));
+    assert!(rates.get("plans").is_none());
 }

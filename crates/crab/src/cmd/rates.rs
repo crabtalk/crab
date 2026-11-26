@@ -1,13 +1,11 @@
-//! `crab rates` — deployment and plan rates.
+//! `crab rates` — the deployment's rates, the same on every plan.
 
 use crate::{runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::{
     client::Client,
-    system::meta::{self, Metering, Rates},
+    system::meta::{self, Rates},
 };
-use serde::Serialize;
-use std::collections::BTreeMap;
 
 /// USD micros per billion units, as USD per million.
 fn per_million(rate: u64) -> String {
@@ -15,41 +13,15 @@ fn per_million(rate: u64) -> String {
 }
 
 pub fn run(client: &Client, json: bool) -> Result<()> {
-    let (metering, plans) = runtime::wait(async {
-        if client.owner.is_some() {
-            tokio::try_join!(client.rates(), client.plans())
-        } else {
-            Ok((client.rates().await?, Vec::new()))
-        }
-    })?;
+    let metering = runtime::wait(client.rates())?;
     if json {
-        #[derive(Serialize)]
-        struct Pricing<'a> {
-            #[serde(flatten)]
-            metering: &'a Metering,
-            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-            plans: BTreeMap<&'a str, &'a Rates>,
-        }
-        return terminal::json(&Pricing {
-            metering: &metering,
-            plans: plans
-                .iter()
-                .map(|plan| (plan.slug.as_str(), &plan.rates))
-                .collect(),
-        });
-    }
-    if !plans.is_empty() {
-        println!("list");
+        return terminal::json(&metering);
     }
     print(&metering.rates, metering.included_cpu, "");
-    for plan in &plans {
-        println!("\n{}", plan.slug);
-        print(&plan.rates, metering.included_cpu, "");
-    }
     Ok(())
 }
 
-pub(super) fn print(rates: &Rates, included_cpu: u64, indent: &str) {
+fn print(rates: &Rates, included_cpu: u64, indent: &str) {
     println!("{indent}runs          {}", per_million(rates.runs));
     println!(
         "{indent}compute       ${} per million CPU-ms past each run's first {included_cpu}µs",
