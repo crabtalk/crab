@@ -26,13 +26,13 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         println!("{}  {price}  for {audience}", plan.slug);
         if plan.credit_micros > 0 {
             println!(
-                "  {} compute credit a period",
+                "  {} credit a period",
                 format::usd(plan.credit_micros as f64)
             );
         }
         if let Some(offer) = &plan.trial {
             println!(
-                "  {} compute credit once after GitHub verification, valid {} days; data kept {} days after it ends",
+                "  {} credit once after GitHub verification for running services, valid {} days; data kept {} days after it ends",
                 format::usd(offer.amount_micros as f64),
                 offer.lifetime_days,
                 offer.retention_days

@@ -38,7 +38,7 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
         format::day(period.since.into()),
         format::day(i64::from(period.until) - 1)
     );
-    println!("purchased credit  {}", format::usd(credit.micros as f64));
+    println!("credit            {}", format::usd(credit.balance() as f64));
     if let Some(until) = credit.recovery_until {
         println!(
             "hosting paused    data kept until {}; verify if eligible, upgrade or use `crab export OWNER/NAME` or Download in service Settings before deletion; excludes workflow runs and checkpoints",
@@ -47,13 +47,13 @@ pub fn status(client: &Client, json: bool) -> Result<()> {
     }
     if let Some(compute) = credit.compute {
         println!(
-            "compute credit    {}, expires {}",
+            "                  {} of it from GitHub verification runs services only, expires {}",
             format::usd(compute.micros as f64),
             format::day(compute.expires_at)
         );
         if compute.reserved_micros > 0 {
             println!(
-                "reserved compute  {} for running or unsettled work",
+                "reserved          {} for running or unsettled work",
                 format::usd(compute.reserved_micros as f64)
             );
         }
@@ -128,7 +128,7 @@ pub fn verify(client: &Client, context: &str, json: bool) -> Result<()> {
     println!("verified {}", format::date(at));
     if let Some(offer) = verification.trial {
         println!(
-            "compute credit    {} once, valid {} days; data retained {} days after it ends",
+            "credit            {} once for running services, valid {} days; data retained {} days after it ends",
             format::usd(offer.amount_micros as f64),
             offer.lifetime_days,
             offer.retention_days

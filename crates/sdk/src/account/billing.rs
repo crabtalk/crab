@@ -11,8 +11,8 @@ pub struct PublicPlan {
     /// Identifier used in `POST /orgs/{org}/billing/checkout?plan=<slug>`.
     pub slug: String,
     pub accounts: Vec<Kind>,
-    /// Compute credit deposited each paid period, in USD micros. It pays
-    /// runs, CPU, memory held and rows, and expires when the period ends.
+    /// Credit deposited each paid period, in USD micros. It expires when the
+    /// period ends.
     pub credit_micros: u64,
     /// Monthly gross price in microdollars — what the customer is charged.
     /// `null` is a plan that is not sold: a granted rung.
@@ -28,7 +28,7 @@ pub struct PublicPlan {
     pub trial: Option<TrialOffer>,
 }
 
-/// Hobby's compute credit, granted once after GitHub verification.
+/// Free's Credit, added once after GitHub verification. It pays compute only.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrialOffer {
@@ -164,7 +164,7 @@ pub enum InvoiceStatus {
 
 berm_api::text_enum!(InvoiceStatus);
 
-/// What a plan includes besides compute credit: limits summed over the
+/// What a plan includes besides Credit: limits summed over the
 /// account's services.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -224,12 +224,12 @@ pub struct SubscribeResponse {
     pub url: Option<String>,
 }
 
-/// An account's credit, in USD micros.
+/// An account's Credit, in USD micros.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credit {
-    /// Purchased credit: pays compute past compute credit, rotating traffic
-    /// and tool and workflow prices.
+    /// Credit that pays everything: compute, rotating traffic and tool and
+    /// workflow prices.
     pub micros: i64,
     #[serde(default)]
     pub compute: Option<ComputeCredit>,
@@ -241,8 +241,16 @@ pub struct Credit {
     pub refill_micros: i64,
 }
 
-/// Compute credit: a plan's grants, which pay runs, CPU, memory held and rows
-/// and never tool or workflow prices or rotating traffic.
+impl Credit {
+    /// The whole balance: [`Credit::micros`] and what is left of
+    /// [`Credit::compute`].
+    pub fn balance(&self) -> i64 {
+        self.micros + self.compute.as_ref().map_or(0, |compute| compute.micros)
+    }
+}
+
+/// Free's verification Credit, which pays runs, CPU, memory held and rows and
+/// never tool or workflow prices or rotating traffic.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputeCredit {
@@ -263,10 +271,10 @@ pub struct CreditHistory {
     /// The purchases and refills still holding credit, soonest to expire
     /// first.
     pub grants: Vec<Grant>,
-    /// [`CreditHistory::months`] of compute credit.
+    /// [`CreditHistory::months`] of Free's verification Credit.
     #[serde(default)]
     pub compute_months: Vec<CreditMonth>,
-    /// [`CreditHistory::grants`] of compute credit.
+    /// [`CreditHistory::grants`] of Free's verification Credit.
     #[serde(default)]
     pub compute_grants: Vec<Grant>,
 }

@@ -63,7 +63,7 @@ pub(super) fn print(rates: &Rates, included_cpu: u64, indent: &str) {
     );
     if let Some(rotating) = rates.rotating {
         println!(
-            "{indent}rotating IPs  ${} per GB, paid from purchased credit",
+            "{indent}rotating IPs  ${} per GB, paid from credit",
             rotating as f64 / 1e6
         );
     }

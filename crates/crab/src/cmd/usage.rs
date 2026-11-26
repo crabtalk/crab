@@ -153,7 +153,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
         );
     }
     println!(
-        "  compute        {:>10}  paid from compute credit, then credit",
+        "  compute        {:>10}  paid from credit",
         format::usd(period.charge as f64)
     );
     let limits = [
