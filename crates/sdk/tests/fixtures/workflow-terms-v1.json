@@ -69,7 +69,6 @@
     "overage": 20000,
     "read": 1000000,
     "written": 1000000000,
-    "held": 12,
-    "proxied": null
+    "held": 12
   }
 }

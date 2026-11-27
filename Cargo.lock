@@ -253,7 +253,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "berm"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "berm-abi"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "berm-account"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "berm-api"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "berm-bare"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "berm-billing"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -359,14 +359,14 @@ dependencies = [
 
 [[package]]
 name = "berm-broken"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-build"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-abi",
@@ -379,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "berm-codegen"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "berm-feed"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "berm-fixture"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm",
@@ -422,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "berm-host"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -452,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "berm-keeper"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -467,14 +467,14 @@ dependencies = [
 
 [[package]]
 name = "berm-kit"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "berm-lang"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -498,19 +498,17 @@ dependencies = [
 
 [[package]]
 name = "berm-linked-services"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
- "crab-github",
- "crab-posthog",
- "crab-resend",
  "crabkit-auth",
+ "crabkit-github",
  "crabkit-upstash",
 ]
 
 [[package]]
 name = "berm-openapi"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
  "crab-openapi",
@@ -534,7 +532,7 @@ dependencies = [
 
 [[package]]
 name = "berm-site"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm-api",
@@ -546,6 +544,16 @@ dependencies = [
  "serde_json",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "bezel-canvas"
+version = "0.2.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "969612dfe314ea447216ae33a4912927a364c3af0c82ecdac05f3d5d4da17219"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -940,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "crab-agent"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -978,8 +986,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "crab-agent-artifacts"
+version = "0.1.10"
+dependencies = [
+ "anyhow",
+ "berm-api",
+ "berm-build",
+ "berm-host",
+ "berm-lang",
+ "berm-rusqlite",
+ "cydonia-artifact",
+ "hex",
+ "tokio",
+]
+
+[[package]]
 name = "crab-agent-relay"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm",
@@ -995,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "crab-analytics"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "berm",
@@ -1012,86 +1035,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-anyapi"
-version = "0.1.9"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-companyenrich"
-version = "0.1.9"
-dependencies = [
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-contextdev"
-version = "0.1.9"
-dependencies = [
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-dataforseo"
-version = "0.1.9"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "serde_json",
- "serde_yaml_ng",
- "url",
-]
-
-[[package]]
-name = "crab-firecrawl"
-version = "0.1.9"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "serde_json",
- "url",
-]
-
-[[package]]
-name = "crab-github"
-version = "0.1.9"
-dependencies = [
- "berm-lang",
- "url",
-]
-
-[[package]]
 name = "crab-html"
-version = "0.1.9"
-
-[[package]]
-name = "crab-litescrape"
-version = "0.1.9"
-dependencies = [
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
+version = "0.1.10"
 
 [[package]]
 name = "crab-openapi"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-api",
  "berm-build",
@@ -1109,47 +1058,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-osv"
-version = "0.1.9"
-dependencies = [
- "berm-lang",
- "url",
-]
-
-[[package]]
-name = "crab-pdl"
-version = "0.1.9"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-posthog"
-version = "0.1.9"
-dependencies = [
- "berm-lang",
-]
-
-[[package]]
-name = "crab-resend"
-version = "0.1.9"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "crab-seo"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
  "crab-sitemap",
@@ -1163,30 +1073,19 @@ dependencies = [
 
 [[package]]
 name = "crab-sitemap"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "crab-html",
  "xmlparser",
 ]
 
 [[package]]
-name = "crab-tinyfish"
-version = "0.1.9"
-dependencies = [
- "base64 0.22.1",
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
 name = "crabkit"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "crabkit-auth",
  "crabkit-crawl",
+ "crabkit-github",
  "crabkit-lake",
  "crabkit-neon",
  "crabkit-stripe",
@@ -1196,17 +1095,17 @@ dependencies = [
 
 [[package]]
 name = "crabkit-auth"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
- "crab-github",
+ "crabkit-github",
  "hex",
  "sha2 0.11.0",
 ]
 
 [[package]]
 name = "crabkit-crawl"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
  "crab-html",
@@ -1215,8 +1114,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "crabkit-github"
+version = "0.1.10"
+dependencies = [
+ "berm-lang",
+ "url",
+]
+
+[[package]]
 name = "crabkit-lake"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
  "crab-html",
@@ -1225,28 +1132,28 @@ dependencies = [
 
 [[package]]
 name = "crabkit-neon"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-stripe"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-supabase"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
 ]
 
 [[package]]
 name = "crabkit-upstash"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
  "url",
@@ -1254,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "crabkit-webpage"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-lang",
  "htmd",
@@ -1267,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "crabtalk-sdk"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "berm-abi",
  "berm-api",
@@ -1619,6 +1526,43 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "cydonia-acp"
+version = "0.2.13"
+source = "git+https://github.com/crabtalk/cydonia?rev=9a79401874c9f1870c72421020aef8d76294405a#9a79401874c9f1870c72421020aef8d76294405a"
+dependencies = [
+ "cydonia-acp-proto",
+]
+
+[[package]]
+name = "cydonia-acp-proto"
+version = "0.2.13"
+source = "git+https://github.com/crabtalk/cydonia?rev=9a79401874c9f1870c72421020aef8d76294405a#9a79401874c9f1870c72421020aef8d76294405a"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cydonia-artifact"
+version = "0.2.13"
+source = "git+https://github.com/crabtalk/cydonia?rev=9a79401874c9f1870c72421020aef8d76294405a#9a79401874c9f1870c72421020aef8d76294405a"
+dependencies = [
+ "anyhow",
+ "bezel-canvas",
+ "cydonia-acp",
+ "pulldown-cmark",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "similar",
+ "thiserror 2.0.20",
+ "toml 0.8.23",
+ "toml_edit",
+ "url",
 ]
 
 [[package]]
@@ -2330,6 +2274,13 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "hello"
+version = "0.1.10"
+dependencies = [
+ "berm-lang",
+]
 
 [[package]]
 name = "hex"
@@ -4509,6 +4460,15 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf41e0cfaf7226dca15e8197172c295a782857fcb97fad1808a166870dee75a3"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "serde_spanned"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
@@ -4526,19 +4486,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "serde_yaml_ng"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
-dependencies = [
- "indexmap",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
 ]
 
 [[package]]
@@ -4655,6 +4602,12 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "siphasher"
@@ -5191,13 +5144,25 @@ dependencies = [
 
 [[package]]
 name = "toml"
+version = "0.8.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
+dependencies = [
+ "serde",
+ "serde_spanned 0.6.9",
+ "toml_datetime 0.6.11",
+ "toml_edit",
+]
+
+[[package]]
+name = "toml"
 version = "0.9.12+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
 dependencies = [
  "indexmap",
  "serde_core",
- "serde_spanned",
+ "serde_spanned 1.1.1",
  "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
  "toml_writer",
@@ -5212,11 +5177,20 @@ checksum = "3aace63f4bbcdfc2c965b059de67119c89c4017a70d633be6c104910f67056f5"
 dependencies = [
  "indexmap",
  "serde_core",
- "serde_spanned",
+ "serde_spanned 1.1.1",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
  "toml_writer",
  "winnow 1.0.4",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "0.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -5238,6 +5212,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml_edit"
+version = "0.22.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_spanned 0.6.9",
+ "toml_datetime 0.6.11",
+ "toml_write",
+ "winnow 0.7.15",
+]
+
+[[package]]
 name = "toml_parser"
 version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5245,6 +5233,12 @@ checksum = "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
 dependencies = [
  "winnow 1.0.4",
 ]
+
+[[package]]
+name = "toml_write"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "toml_writer"
@@ -5457,12 +5451,6 @@ name = "unit-prefix"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81e544489bf3d8ef66c953931f56617f423cd4b5494be343d9b9d3dda037b9a3"
-
-[[package]]
-name = "unsafe-libyaml"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"
@@ -6345,6 +6333,9 @@ name = "winnow"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "winnow"

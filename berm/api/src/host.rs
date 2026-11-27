@@ -1,6 +1,6 @@
 //! What a host's daemons and peers send it, and what it answers with.
 
-use crate::{Logged, Meter, Output};
+use crate::{Logged, Meter, Output, workflow::run::Failure};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, net::IpAddr};
 
@@ -16,6 +16,34 @@ pub const LAUNCHED: &str = "berm-launched";
 pub const SECRET_ACCESS: &str = "E0089";
 /// Explanation for a refused outbound HTTP destination.
 pub const HTTP_DESTINATION: &str = "E0091";
+
+/// The node cannot admit a call until it has capacity again.
+#[derive(Clone, Copy, Debug)]
+pub enum Busy {
+    Memory,
+    Calls,
+}
+
+impl Busy {
+    pub const EXPLANATION: &str = "E0098";
+
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::Memory => "the host holds as much memory as it may; retry",
+            Self::Calls => "every call slot is taken; retry",
+        }
+    }
+}
+
+impl From<Busy> for Failure {
+    fn from(busy: Busy) -> Self {
+        Self {
+            status: 503,
+            headers: BTreeMap::new(),
+            body: serde_json::json!({"error":busy.message(), "explain":Busy::EXPLANATION}),
+        }
+    }
+}
 
 /// Response header set to `1` when a tool refused its caller.
 pub const DENIED: &str = "berm-denied";
@@ -800,8 +828,8 @@ pub struct Live {
     /// Rows read and written in its database and state.
     pub read: Count,
     pub written: Count,
-    /// Reserved for compatibility with earlier usage records.
-    #[serde(skip_deserializing)]
+    /// Request and response bytes through hosted rotating egress.
+    #[serde(default)]
     pub proxied: Count,
     /// Bytes of the logs it emitted.
     pub logged: Count,
@@ -878,8 +906,8 @@ pub struct Metered {
     /// in microseconds; not part of `cpu`.
     #[serde(default)]
     pub sql_cpu: u64,
-    /// Reserved for compatibility with earlier usage records.
-    #[serde(skip_deserializing)]
+    /// Request and response bytes through hosted rotating egress.
+    #[serde(default)]
     pub proxied: u64,
     /// Bytes of the logs those invocations emitted.
     #[serde(default)]
@@ -896,6 +924,9 @@ pub struct Metered {
     /// its write-ahead log, its state, its logs kept, and its image and
     /// compiled code.
     pub stored: u64,
+    /// Of `stored`, the bytes of its logs kept.
+    #[serde(default)]
+    pub logs: u64,
 }
 
 impl std::ops::AddAssign<Meter> for Metered {
@@ -909,6 +940,7 @@ impl std::ops::AddAssign<Meter> for Metered {
         self.read += used.read;
         self.written += used.written;
         self.sql_cpu += used.sql_cpu;
+        self.proxied += used.proxied;
         self.logged += used.logged;
         self.failed += used.failed;
         self.sent += used.sent;
@@ -924,6 +956,7 @@ impl std::ops::SubAssign<Meter> for Metered {
         self.read = self.read.saturating_sub(used.read);
         self.written = self.written.saturating_sub(used.written);
         self.sql_cpu = self.sql_cpu.saturating_sub(used.sql_cpu);
+        self.proxied = self.proxied.saturating_sub(used.proxied);
         self.logged = self.logged.saturating_sub(used.logged);
         self.failed = self.failed.saturating_sub(used.failed);
         self.sent = self.sent.saturating_sub(used.sent);
@@ -941,7 +974,7 @@ impl From<Metered> for Meter {
             read: used.read,
             written: used.written,
             sql_cpu: used.sql_cpu,
-            proxied: 0,
+            proxied: used.proxied,
             logged: used.logged,
             failed: used.failed,
             sent: used.sent,

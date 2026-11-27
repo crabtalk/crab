@@ -1,0 +1,4 @@
+interface:
+  display_name: "CrabTalk: ship"
+  short_description: "deploy and operate on CrabTalk Cloud"
+  default_prompt: "Use $crab-ship to deploy this service to CrabTalk Cloud."

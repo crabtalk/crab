@@ -18,7 +18,10 @@ impl Http {
     /// A name wins over any matching pattern.
     pub fn reach(&self, syscall: &str, host: &str) -> Option<Reach> {
         let declared = match syscall {
-            abi::HTTP_FETCH | abi::HTTP_FETCH_ALL | abi::HTTP_FETCH_ALL_LITERAL_BODY => &self.fetch,
+            abi::HTTP_FETCH
+            | abi::HTTP_FETCH_ROTATING
+            | abi::HTTP_FETCH_ALL
+            | abi::HTTP_FETCH_ALL_LITERAL_BODY => &self.fetch,
             _ => return None,
         };
         if declared.iter().any(|item| item.eq_ignore_ascii_case(host)) {

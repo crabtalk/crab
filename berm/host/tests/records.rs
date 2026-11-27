@@ -21,7 +21,9 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
+use tokio::time;
 
 const FIXTURE: &str = "acct/fixture";
 
@@ -93,6 +95,27 @@ fn stored(records: &Records) -> (u64, u64) {
 
 fn words(logs: &[RecordedLog]) -> Vec<String> {
     logs.iter().map(|log| log.log.data.clone()).collect()
+}
+
+#[tokio::test]
+async fn boot_persists_local_records_without_waiting_for_minute_maintenance() -> Result<()> {
+    let host = fixture().await?;
+    note(&host, "one").await?;
+    assert!(records(&host, 0, 0, 10).await?.calls.is_empty());
+    host.host.boot();
+    let written = time::timeout(Duration::from_secs(5), async {
+        loop {
+            let written = records(&host, 0, 0, 10).await?;
+            if !written.calls.is_empty() {
+                return Ok::<_, anyhow::Error>(written);
+            }
+            time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await??;
+    assert_eq!(written.calls.len(), 1);
+    assert_eq!(words(&written.logs), [r#"{"word":"one","bytes":3}"#]);
+    Ok(())
 }
 
 #[tokio::test]
@@ -507,5 +530,21 @@ async fn a_failed_calls_tape_keeps_the_upstream_reply_and_hashes_before_injectio
         digests.push(entry.asked);
     }
     assert_eq!(digests[0], digests[1]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn logs_are_kept_seven_days_and_calls_thirty() -> Result<()> {
+    const DAY: u64 = 86_400_000;
+    let host = fixture().await?;
+    note(&host, "one").await?;
+    host.flush().await?;
+    host.advance(7 * DAY);
+    host.flush().await?;
+    assert_eq!(host.logs(FIXTURE, None).await?.len(), 1);
+    host.advance(1);
+    host.flush().await?;
+    assert!(host.logs(FIXTURE, None).await?.is_empty());
+    assert_eq!(records(&host, 0, 0, 10).await?.calls.len(), 1);
     Ok(())
 }

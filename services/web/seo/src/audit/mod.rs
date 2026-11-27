@@ -6,9 +6,11 @@ use crate::audit::{
     run::AuditStartCall,
 };
 use berm_lang::{Schema, workflow};
+use std::collections::BTreeSet;
 
 mod check;
 mod discovery;
+mod markdown;
 mod page;
 mod report;
 mod run;
@@ -19,6 +21,8 @@ const MAX_CHECKED: usize = 1_000;
 const CHECK_BATCH: usize = 40;
 const MAX_URL_BYTES: usize = 512;
 const AGENT: &str = "CrabTalkSEO";
+const CHECK_TIMEOUT: u64 = 1_800;
+const FINISH_BUDGET_MS: u64 = 12_000;
 
 #[derive(Schema)]
 pub(crate) struct Input {
@@ -77,13 +81,25 @@ impl Audit {
     }
 
     #[step(each, max = 100)]
-    fn audit(select: &Selection) -> Vec<AuditBatchCall> {
+    fn audit(select: &Selection, discover: &CheckPlan, check: &[bool]) -> Vec<AuditBatchCall> {
+        let checked: BTreeSet<_> = discover
+            .urls
+            .chunks(CHECK_BATCH)
+            .zip(check)
+            .filter(|(_, completed)| **completed)
+            .flat_map(|(urls, _)| urls.iter().map(String::as_str))
+            .collect();
         select
             .urls
             .chunks(AUDIT_BATCH)
             .map(|urls| AuditBatchCall {
                 site: select.site.clone(),
                 urls: urls.to_vec(),
+                checked: urls
+                    .iter()
+                    .filter(|url| checked.contains(url.as_str()))
+                    .cloned()
+                    .collect(),
             })
             .collect()
     }

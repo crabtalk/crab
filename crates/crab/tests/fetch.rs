@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
     net::TcpListener,
+    sync::atomic::Ordering,
     thread,
 };
 use tower::{Service, ServiceExt};
@@ -23,6 +24,7 @@ fn request(host: &str, reach: Reach) -> Request {
         service: "fixture".to_owned(),
         chain: 1,
         span: 0,
+        rotation: None,
         method: "GET".to_owned(),
         url: format!("http://{host}:9/"),
         host: host.trim_matches(['[', ']']).to_owned(),
@@ -81,26 +83,34 @@ async fn a_body_over_the_limit_is_answered_cut() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
     thread::spawn(move || -> Result<()> {
-        let (mut stream, _) = listener.accept()?;
-        let _ = stream.read(&mut [0; 1024])?;
-        let body = vec![b'x'; 1 << 16];
-        write!(
-            stream,
-            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n",
-            body.len()
-        )?;
-        stream.write_all(&body)?;
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept()?;
+            let _ = stream.read(&mut [0; 1024])?;
+            let body = vec![b'x'; 1 << 16];
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            )?;
+            stream.write_all(&body)?;
+        }
         Ok(())
     });
     let mut fetch = Fetch::new()?;
-    let response = fetch
-        .call(Request {
-            url: format!("http://127.0.0.1:{port}/"),
-            limit: Some(10),
-            ..request("127.0.0.1", Reach::Named)
-        })
-        .await?;
-    assert_eq!(response.body, b"xxxxxxxxxx");
+    for rotation in [None, Some(Default::default())] {
+        let response = fetch
+            .call(Request {
+                url: format!("http://127.0.0.1:{port}/"),
+                limit: Some(10),
+                rotation: rotation.clone(),
+                ..request("127.0.0.1", Reach::Named)
+            })
+            .await?;
+        assert_eq!(response.body, b"xxxxxxxxxx");
+        if let Some(rotation) = rotation {
+            assert_eq!(rotation.load(Ordering::Relaxed), 0);
+        }
+    }
     Ok(())
 }
 

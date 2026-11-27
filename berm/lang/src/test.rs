@@ -105,6 +105,7 @@ pub fn forget() {
 /// `{secret:NAME}` as the service wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fetched {
+    pub rotating: bool,
     pub method: String,
     pub url: String,
     pub headers: Vec<(String, String)>,

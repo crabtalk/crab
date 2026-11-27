@@ -18,6 +18,9 @@ pub const INCLUDED_CPU: u64 = 100;
 /// MiB-microseconds of memory held in a GB-hour.
 pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
 
+/// MiB-microseconds of memory held in a GB-second.
+pub const GB_SECOND: u64 = 1024 * 1_000_000;
+
 /// `GET /meta/errors/{code}`: what an error code means and what to do about
 /// it.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -56,6 +59,10 @@ pub struct Metering {
     pub included_cpu: u64,
     /// Bytes one log holds at most.
     pub max_log: usize,
+    /// What a tool that declares no budget may use; a plan's memory at once
+    /// divided by its `memory` is how many such calls run at once.
+    #[serde(default)]
+    pub budget: Option<Budget>,
 }
 
 impl Metering {
@@ -77,7 +84,7 @@ impl Metering {
 }
 
 /// What an owner is charged for its services' meters, each in USD micros per
-/// billion units. Cloud's `[fleet.rates]` config table, and what it serves.
+/// billion units unless otherwise specified.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -89,17 +96,17 @@ pub struct Rates {
     pub written: u64,
     /// MiB-microseconds of a call's memory budget held, waiting included.
     pub held: u64,
-    /// Reserved for compatibility with earlier rate records.
-    #[serde(skip_deserializing)]
-    pub proxied: Option<u64>,
+    /// USD micros per GB of hosted rotating traffic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotating: Option<u64>,
 }
 
 /// The resources charged by the unit, as their rates are named, in the order
 /// [`Rates::metered`] takes them.
-const UNITS: [&str; 5] = ["runs", "overage", "read", "written", "held"];
+const UNITS: [&str; 6] = ["runs", "overage", "read", "written", "held", "rotating"];
 
-/// The [`Unit`] a plan includes in each accounting slot.
-pub const INCLUDED: [Option<Unit>; 6] = [
+/// The [`Unit`] each rate in [`UNITS`] is charged as; rotating traffic has none.
+pub const CHARGED: [Option<Unit>; 6] = [
     Some(Unit::Runs),
     Some(Unit::Cpu),
     Some(Unit::Read),
@@ -119,11 +126,10 @@ impl Rates {
         (self.metered(units) / RATE_SCALE).min(i64::MAX as u128) as i64
     }
 
-    /// What `units` of [`UNITS`] past a plan's included amounts cost, by the
-    /// [`Unit`] each is included as, in USD micros, each rounded down; a unit
-    /// costing nothing is left out.
+    /// What `units` of [`UNITS`] cost, by the [`Unit`] each is charged as, in
+    /// USD micros, each rounded down; a unit costing nothing is left out.
     pub fn costs(&self, units: [u64; 6]) -> BTreeMap<Unit, i64> {
-        INCLUDED
+        CHARGED
             .into_iter()
             .zip(units)
             .zip(self.rates())
@@ -163,6 +169,7 @@ impl Rates {
             .into_iter()
             .zip(counted)
             .zip(self.rates())
+            .filter(|((resource, units), rate)| *resource != "rotating" || *units > 0 || *rate > 0)
             .map(|((resource, units), rate)| Resource {
                 resource: resource.to_owned(),
                 units,
@@ -180,7 +187,7 @@ impl Rates {
             self.read,
             self.written,
             self.held,
-            0,
+            self.rotating.unwrap_or_default(),
         ]
     }
 
@@ -197,12 +204,12 @@ impl Rates {
 impl Default for Rates {
     fn default() -> Self {
         Self {
-            runs: 150_000_000,
+            runs: 100_000_000,
             overage: 20_000,
-            read: 1_000_000,
-            written: 1_000_000_000,
-            held: 12,
-            proxied: None,
+            read: 100_000,
+            written: 100_000_000,
+            held: 10,
+            rotating: None,
         }
     }
 }
@@ -215,7 +222,7 @@ fn day_units(day: &MeteredDay) -> [u64; 6] {
         day.used.read,
         day.used.written,
         day.used.held,
-        0,
+        day.used.proxied,
     ]
 }
 
@@ -227,7 +234,7 @@ pub fn called(meter: &Meter, overage: u64) -> [u64; 6] {
         meter.read,
         meter.written,
         meter.held,
-        0,
+        meter.proxied,
     ]
 }
 

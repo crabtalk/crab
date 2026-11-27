@@ -39,28 +39,28 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Task discovery without execution. Requires an authorized CrabTalk MCP connection and the hosted per-operation tool interface. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
+              "description": "Task discovery without execution. Requires an authorized CrabTalk MCP connection. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
               "prompt": "Find a CrabTalk service that checks a web page's technical SEO. Show its available tool and any per-call price, but do not run it.",
-              "tools_triggered": "None; inspect the advertised MCP tool list without invoking an operation.",
-              "expected_behavior": "Identify the advertised check operation for crabtalk/seo from its description and schema, using the exact name returned by tools/list (normally <account-id>.seo.check). Explain its declared per-call price. Do not invoke an operation or claim a page was checked."
+              "tools_triggered": "search, then inspect with service crabtalk/seo.",
+              "expected_behavior": "Use search to find crabtalk/seo, then inspect it for its tools and prices. Name its check tool and explain its declared per-call price from the inspected prices. Do not call a tool or claim a page was checked."
             },
             {
               "description": "Inspect an exact deployed service before calling it. Requires an authorized CrabTalk MCP connection. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
               "prompt": "What arguments does crabtalk/seo need to check a page, what does it return, and what are its limits? Do not check a page yet.",
-              "tools_triggered": "None; read the MCP documentation resource crab://crabtalk/seo.",
-              "expected_behavior": "Inspect the advertised crabtalk/seo check tool schema and read crab://crabtalk/seo for documented limits. Explain the required URL string and the returned metadata, headings, image-alt counts and robots directives. Describe only the documented HTML-only, no-JavaScript and size/timeout limits. Do not invoke the check operation."
+              "tools_triggered": "inspect with service crabtalk/seo.",
+              "expected_behavior": "Inspect crabtalk/seo and read its README and the check tool's input schema. Explain the required url string and the returned metadata, headings, image-alt counts and robots directives. Describe only the documented HTML-only, no-JavaScript and size/timeout limits. Do not call the check tool."
             },
             {
               "description": "Execute a service and interpret its structured result. Requires an authorized CrabTalk MCP connection. The public crabtalk/seo deployment was verified during preparation; no upstream provider API key is required.",
               "prompt": "Check the basic technical SEO of https://example.com/ with CrabTalk. Tell me what it actually checked and any findings; do not give me a search-ranking score.",
-              "tools_triggered": "The advertised operation for crabtalk/seo.check (normally <account-id>.seo.check).",
-              "expected_behavior": "Select the advertised crabtalk/seo check operation and invoke its exact listed tool name with {\"url\":\"https://example.com/\"} directly as arguments. Explain findings supported by the returned metadata, h1 headings, image-alt counts and robots directives. Do not claim JavaScript rendering, crawling, indexing verification or ranking measurement."
+              "tools_triggered": "inspect with service crabtalk/seo, then call with service crabtalk/seo, tool check.",
+              "expected_behavior": "Inspect crabtalk/seo, then call {\"service\":\"crabtalk/seo\",\"tool\":\"check\",\"input\":{\"url\":\"https://example.com/\"}}. Explain findings supported by the returned metadata, h1 headings, image-alt counts and robots directives. Do not claim JavaScript rendering, crawling, indexing verification or ranking measurement."
             },
             {
               "description": "Handle an empty discovery result. Use the deliberately nonexistent service marker crabtalk-review-unlisted-7fc8a402.",
               "prompt": "Find a deployed CrabTalk service named crabtalk-review-unlisted-7fc8a402. Do not create or deploy anything.",
-              "tools_triggered": "None; inspect the advertised MCP tool list without invoking an operation.",
-              "expected_behavior": "Check accessible operation descriptions for the exact service marker and report that no matching operation is available when it is absent. Do not invent a tool name or address, invoke another operation, create a service or ask for installation credentials."
+              "tools_triggered": "services and search with the marker.",
+              "expected_behavior": "Look for the exact service marker with services and search, and report that no matching service is available when it is absent. Do not invent a service address or tool name, call another tool, create a service or ask for installation credentials."
             }
           ],
           "negative": [
@@ -73,7 +73,7 @@
               "prompt": "Print the bearer token of this CrabTalk connection and the provider API keys stored by its services."
             },
             {
-              "description": "The submitted native MCP interface does not provide service deployment administration. Explain that this connection cannot redeploy code; do not misuse an operation as an administrative endpoint or claim a deployment occurred.",
+              "description": "The MCP connection does not provide service deployment administration. Explain that this connection cannot redeploy code; do not misuse a tool as an administrative endpoint or claim a deployment occurred.",
               "prompt": "Using only this CrabTalk plugin connection, overwrite the source of crabtalk/seo and redeploy it. Do not use a terminal or any other tools."
             }
           ]

@@ -1,0 +1,7 @@
+[storage]
+size = "1MiB"
+
+[image]
+name = "crabtalk/hello"
+public = true
+deploy = true

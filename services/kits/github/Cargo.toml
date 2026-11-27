@@ -1,0 +1,14 @@
+[package]
+name = "crabkit-github"
+version.workspace = true
+description = "GitHub repositories, issues, pull requests, releases and OAuth sign-in for a service's own tools."
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["github", "berm", "wasm", "crabtalk"]
+categories = ["wasm", "web-programming"]
+
+[dependencies]
+berm-lang.workspace = true
+url.workspace = true

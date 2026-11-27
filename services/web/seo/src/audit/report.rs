@@ -28,6 +28,7 @@ enum Kind {
     BrokenLink,
     MissingFromSitemap,
     Metadata(Code),
+    MissingMarkdownCopy,
 }
 
 #[derive(Clone, Schema)]
@@ -99,6 +100,8 @@ struct Page {
     description: Option<String>,
     canonical: Option<String>,
     metadata: Vec<Code>,
+    markdown: Option<bool>,
+    scanned: bool,
 }
 
 impl Page {
@@ -127,6 +130,8 @@ type PageRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<u8>,
+    u8,
 );
 
 fn pages(site: &str, run: &Run, checked: &[CheckRange]) -> Result<BTreeMap<String, Page>> {
@@ -138,7 +143,8 @@ fn pages(site: &str, run: &Run, checked: &[CheckRange]) -> Result<BTreeMap<Strin
                     url NOT IN (SELECT url FROM unlisted_pages WHERE site = ?1), scanned_run IS ?2,
                     hash IS NOT NULL AND hash IS scan_hash AND NOT blocked,
                     scan ->> '$.metadata.title', scan ->> '$.metadata.description',
-                    scan ->> '$.metadata.canonical', scan -> '$.metadata.findings'
+                    scan ->> '$.metadata.canonical', scan -> '$.metadata.findings',
+                    markdown, scan IS NOT NULL
              FROM pages WHERE site = ?1 AND url > ?3 ORDER BY url LIMIT ?4",
             &(site, &run.id, &after, PAGE_BATCH),
         )?;
@@ -156,6 +162,8 @@ fn pages(site: &str, run: &Run, checked: &[CheckRange]) -> Result<BTreeMap<Strin
             description,
             canonical,
             metadata,
+            markdown,
+            scanned,
         ) in batch
         {
             let metadata = metadata
@@ -186,6 +194,8 @@ fn pages(site: &str, run: &Run, checked: &[CheckRange]) -> Result<BTreeMap<Strin
                     description,
                     canonical,
                     metadata,
+                    markdown: markdown.map(|value| value != 0),
+                    scanned: scanned != 0,
                 },
             );
         }
@@ -359,6 +369,9 @@ impl Analysis {
                             && page.problem.is_none()
                     }
                     Kind::Metadata(_) => page.confirmed(),
+                    Kind::MissingMarkdownCopy => {
+                        (page.checked || page.audited) && page.markdown == Some(true)
+                    }
                     Kind::DuplicateTitle | Kind::DuplicateDescription => {
                         page.confirmed() && related_checked(true)
                     }
@@ -398,12 +411,13 @@ pub(crate) fn audit_analyze(
 ) -> Result<AuditSaveCall> {
     let run = Run::owns(&site)?;
     let target = Url::parse(&site).map_err(|_| "Invalid audited site")?;
-    let (robots, sitemap_complete) = caller_storage::rows::<(Option<String>, u8)>(
-        "SELECT robots, sitemap_complete FROM runs WHERE site = ?1",
-        &(&site,),
-    )?
-    .pop()
-    .ok_or("The audit run is missing")?;
+    let (robots, sitemap_complete, root_markdown) =
+        caller_storage::rows::<(Option<String>, u8, u8)>(
+            "SELECT robots, sitemap_complete, root_markdown FROM runs WHERE site = ?1",
+            &(&site,),
+        )?
+        .pop()
+        .ok_or("The audit run is missing")?;
     let robots = robots.as_deref().map(Robots::from);
     let sitemap_complete = sitemap_complete != 0;
     let pages = pages(&site, &run, &checked)?;
@@ -482,6 +496,14 @@ pub(crate) fn audit_analyze(
             finding.status = page.status;
             finding.detail = Some(problem.clone());
             findings.push(finding);
+        }
+        if root_markdown != 0 && page.scanned && !page.blocked && page.markdown == Some(false) {
+            findings.push(Finding::new(
+                Kind::MissingMarkdownCopy,
+                url,
+                None,
+                !page.checked && !page.audited,
+            ));
         }
         for code in &page.metadata {
             findings.push(Finding::new(

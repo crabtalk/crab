@@ -20,7 +20,9 @@ For a group deploy, the host preflights every member, switches members one at a 
 
 `Host::event_page` reads a named `#[tool(events = "name")]` source under the supplied caller's authorization and checks its page framing before returning a resume position. A read without a cursor returns the current checkpoint. Tool authorization refusals return `403`; ordinary source failures return `400`. Native discovery metadata comes from `berm_api::events::Source`. MCP subscription management and callback delivery are not implemented.
 
-`Host::live` returns a fresh `database` snapshot: committed SQLite allocation, the writer's enforced capacity, and an epoch-second measurement time. WAL, logs and code caches are excluded. Recorded database snapshots refresh on deployment and each background flush; history reads do not write samples. The legacy `stored` field remains separate.
+`Host::live` returns a fresh `database` snapshot: committed SQLite allocation, the writer's enforced capacity, and an epoch-second measurement time. WAL, logs and code caches are excluded. Recorded database samples refresh on deployment and during minute maintenance. History reads use those samples. The host persists local calls, logs, usage, and meters every second or when 512 calls have accumulated. The legacy `stored` field remains separate.
+
+Outside calls denied a node call slot or a host memory reservation receive HTTP 503 with E0098.
 
 Service databases share caches of at most 64 idle writer connections and 64 idle read connections per host. Active transactions retain their writer connection. Writer jobs execute in submission order on Tokio's blocking pool; idle services hold no dedicated writer thread. Capacity limits and SQL guards are reapplied when a connection reopens.
 

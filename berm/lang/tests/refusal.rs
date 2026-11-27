@@ -1,7 +1,7 @@
 use berm_lang::{CallError, call, test};
 
 #[test]
-fn legacy_refusals_keep_their_message_and_expose_the_host_code() {
+fn refusal_envelopes_keep_their_message_and_expose_the_host_code() {
     let message = r#"{"status":403,"error":"blocked","explain":"E0091"}: blocked"#;
     test::answer("inner", "fetch", Err(CallError::Refused(message.into())));
     let error = call("inner", "fetch", "{}").unwrap_err();

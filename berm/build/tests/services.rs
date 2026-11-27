@@ -1,4 +1,4 @@
-//! Deployable service images and their use as linked dependencies.
+//! Built service images and the kits they link.
 use berm_api::{Manifest, host};
 use berm_build::fixture;
 
@@ -7,38 +7,7 @@ fn manifest(package: &str) -> Manifest {
 }
 
 #[test]
-fn services_build_standalone_and_link_without_exporting_dependency_tools() {
-    let resend = manifest("crab-resend");
-    assert_eq!(resend.tools.len(), 5);
-    let send = resend
-        .tools
-        .iter()
-        .find(|tool| tool.name == "send")
-        .unwrap();
-    assert_eq!(send.price, None);
-    assert_eq!(send.title.as_deref(), Some("Send email"));
-    assert_eq!(send.idempotency_ms, Some(86_400_000));
-    assert_eq!(send.catalog, None);
-    assert_eq!(resend.buffer, 1048576);
-    assert_eq!(resend.deps.secrets, ["RESEND_API_KEY"]);
-    assert!(!resend.deps.credentials["resend"].optional);
-    let github = manifest("crab-github");
-    assert_eq!(github.tools.len(), 11);
-    assert!(github.deps.credentials["github_api"].optional);
-    let posthog = manifest("crab-posthog");
-    assert_eq!(posthog.tools.len(), 4);
-    assert_eq!(posthog.deps.vars["POSTHOG_REGION"].default, "us");
-    assert!(posthog.deps.credentials["posthog_project"].optional);
-    assert!(posthog.deps.credentials["posthog_private"].optional);
-    let capture = posthog.tools.iter().find(|t| t.name == "capture").unwrap();
-    let schema = &capture.parameters;
-    assert_eq!(
-        schema["properties"]["event"]["properties"]["properties"]["additionalProperties"],
-        serde_json::json!({})
-    );
-    let osv = manifest("crab-osv");
-    assert_eq!(osv.tools.len(), 3);
-    assert!(osv.deps.secrets.is_empty());
+fn kits_link_their_credentials_and_hosts_without_exporting_tools() {
     assert_eq!(manifest("crab-agent-relay").database_size, 64 << 20);
     let linked = manifest("berm-linked-services");
     assert_eq!(
@@ -49,19 +18,17 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
             .collect::<Vec<_>>(),
         ["inspect"]
     );
-    assert!(linked.deps.secrets.iter().any(|s| s == "RESEND_API_KEY"));
     assert!(linked.deps.secrets.iter().any(|s| s == "GITHUB_TOKEN"));
     assert!(linked.deps.vars.is_empty());
     assert_eq!(
         linked.deps.credentials["upstash_redis"].hosts,
         ["your-database.upstash.io"]
     );
-    assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-upstash"));
+    for kit in ["crabkit-upstash", "crabkit-github"] {
+        assert!(linked.kits.iter().any(|linked| linked.name == kit), "{kit}");
+    }
     assert!(linked.kits.iter().any(|kit| kit.name == "crabkit-auth"
         && kit.id.as_deref() == Some("115a99982fc0ce031c0a94fad9aa47a0")));
-    for credential in ["upstash_redis", "posthog_project", "posthog_private"] {
-        assert!(linked.deps.credentials.contains_key(credential));
-    }
     assert!(
         linked
             .deps
@@ -69,25 +36,16 @@ fn services_build_standalone_and_link_without_exporting_dependency_tools() {
             .iter()
             .any(|s| s == "UPSTASH_REDIS_REST_TOKEN")
     );
-    assert!(
-        linked
-            .deps
-            .secrets
-            .iter()
-            .any(|s| s == "POSTHOG_PROJECT_TOKEN")
-    );
     assert_eq!(linked.buffer, berm_api::DEFAULT_BUFFER);
     assert!(linked.deps.credentials.contains_key("github"));
-    assert!(linked.deps.credentials.contains_key("github_api"));
+    assert!(linked.deps.credentials["github_api"].optional);
     assert!(linked.keeps_database());
     assert_eq!(linked.database_size, host::DATABASE_SIZE);
     let required = linked.deps.unset(&[]);
     assert!(required.iter().any(|name| name == "GITHUB_CLIENT_ID"));
     assert!(required.iter().any(|name| name == "GITHUB_CLIENT_SECRET"));
     assert!(!required.iter().any(|name| name == "GITHUB_TOKEN"));
-    let hosts = &linked.deps.http.fetch;
-    assert!(hosts.iter().any(|s| s == "api.github.com"));
-    assert!(hosts.iter().any(|s| s == "api.resend.com"));
+    assert!(linked.deps.http.fetch.iter().any(|s| s == "api.github.com"));
 }
 
 #[test]

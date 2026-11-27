@@ -114,7 +114,7 @@ pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
 /// Revoke `name`'s secret `secret`.
 pub fn rm(client: &Client, name: &str, secret: &str, yes: bool) -> Result<()> {
     terminal::confirm(yes, &format!("revoke {name} {secret}"))?;
-    runtime::wait(client.delete_secret(name, secret))?;
+    request::approve_removal(client, runtime::wait(client.delete_secret(name, secret)))?;
     eprintln!("revoked {name} {secret}");
     Ok(())
 }

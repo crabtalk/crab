@@ -289,6 +289,7 @@ pub struct MeteredDay {
 impl std::ops::AddAssign for MeteredDay {
     fn add_assign(&mut self, other: Self) {
         self.used.stored = self.used.stored.max(other.used.stored);
+        self.used.logs = self.used.logs.max(other.used.logs);
         if let Some(sample) = other.used.database
             && self.used.database.is_none_or(|kept| sample.at > kept.at)
         {
@@ -428,6 +429,10 @@ pub struct Costed {
     /// of USD micros. Its day's storage is charged with the day. `None` for a
     /// call the host refused.
     pub cost_micros_decimal: Option<String>,
+    /// What its caller paid for it, in USD micros; `None` when its tool is
+    /// unpriced or the price was released.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_micros: Option<i64>,
 }
 
 /// What one tool's invocations used over the last 30 days, as its service's
@@ -554,6 +559,49 @@ pub struct AccountCall {
     pub service: String,
     #[serde(flatten)]
     pub call: Costed,
+}
+
+/// How long a service's calls took in one UTC calendar month, from their
+/// hourly counts.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CallMonth {
+    /// Each day of the month with calls, oldest first.
+    pub days: Vec<CallDay>,
+    /// Each tool called in the month, by name.
+    pub tools: Vec<CallTool>,
+}
+
+/// One UTC day of a [`CallMonth`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallDay {
+    /// Counted from the Unix epoch.
+    pub day: i32,
+    pub calls: u64,
+    /// `None` when none of the day's calls was timed into a bucket.
+    pub durations: Option<Durations>,
+}
+
+/// One tool's part of a [`CallMonth`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallTool {
+    pub tool: String,
+    pub calls: u64,
+    /// Calls that ended `failed`.
+    pub failed: u64,
+    pub durations: Option<Durations>,
+}
+
+/// Call durations at three percentiles, in milliseconds: each the upper bound
+/// of the duration bucket holding it, or the slowest call for the last bucket.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Durations {
+    pub p50: u64,
+    pub p95: u64,
+    pub p99: u64,
 }
 
 /// A service's billing in one UTC calendar month.

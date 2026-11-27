@@ -5,6 +5,7 @@ pub mod canonical;
 pub mod crawlers;
 pub mod hreflang;
 pub mod llms;
+mod markdown;
 pub mod report;
 pub mod robots;
 pub mod social;

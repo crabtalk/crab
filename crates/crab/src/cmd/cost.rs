@@ -11,7 +11,7 @@ pub fn run(client: &Client, name: &str, month: Option<&str>, json: bool) -> Resu
     }
     let total: i64 = billing.days.iter().map(|day| day.cost_micros).sum();
     println!(
-        "{name} in {}: {} at the rates, before the account's included amounts",
+        "{name} in {}: {} at the rates",
         billing.month,
         format::usd(total as f64)
     );

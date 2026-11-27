@@ -6,9 +6,9 @@ use crabtalk_sdk::account::{
 use serde_json::json;
 
 #[test]
-fn device_credentials_distinguish_agent_identity_from_legacy_sessions() {
-    let legacy: DeviceToken = serde_json::from_value(json!({"token":"session"})).unwrap();
-    assert!(legacy.account.is_none());
+fn device_credentials_distinguish_agent_identity_from_personal_sessions() {
+    let personal: DeviceToken = serde_json::from_value(json!({"token":"session"})).unwrap();
+    assert!(personal.account.is_none());
     let agent: DeviceToken = serde_json::from_value(json!({
         "token":"ck_agent",
         "account":{"id":"alice","type":"user","handle":"alice","name":"Alice","avatar":null,"bio":null,"links":[],"created_at":1}

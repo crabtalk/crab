@@ -23,6 +23,12 @@ impl Client {
         self.json(self.at(Method::GET, &path)).await
     }
 
+    /// The account's billing periods, newest first, the current one included.
+    pub async fn periods(&self) -> Result<Vec<Period>, Error> {
+        let path = format!("{}/billing/periods", self.account()?.path());
+        self.json(self.at(Method::GET, &path)).await
+    }
+
     /// Each of the account's services over the last 30 days, by name, a day
     /// each, oldest first.
     pub async fn services_usage(&self) -> Result<BTreeMap<String, Vec<CostedDay>>, Error> {

@@ -102,6 +102,10 @@ macro_rules! host_calls {
             /// substitutes; the guest never holds the value.
             HTTP_FETCH = "berm.http.fetch";
 
+            /// A fetch through the host's rotating egress pool. Uses the
+            /// same request and reply fields and permission as HTTP_FETCH.
+            HTTP_FETCH_ROTATING = "berm.http.fetch.rotating";
+
             /// Resource ID and destination host in; the granted resource's owner out,
             /// or no fields if no grant exists. Never returns a value.
             SECRET_RESOURCE = "berm.secret.resource";

@@ -6,6 +6,8 @@
 pub use auth;
 #[cfg(feature = "crawl")]
 pub use crawl;
+#[cfg(feature = "github")]
+pub use github;
 #[cfg(feature = "lake")]
 pub use lake;
 #[cfg(feature = "neon")]

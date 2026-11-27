@@ -29,12 +29,3 @@ fn workflow_profit_and_payable_amount_do_not_charge_account_costs_twice() {
     month += Earned::new(1, 500, 50, 100, 100);
     assert_eq!((month.net, month.payable()), (50, 1250));
 }
-
-#[test]
-fn legacy_earnings_keep_their_payout_balance() {
-    let legacy: Earned = serde_json::from_value(
-        serde_json::json!({"calls":1,"revenue":1000,"cut":100,"compute":50,"net":850}),
-    )
-    .unwrap();
-    assert_eq!(legacy.payable(), 850);
-}

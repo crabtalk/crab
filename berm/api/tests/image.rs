@@ -271,20 +271,6 @@ fn abi_declarations_supply_access_price_title_catalog_and_budget() {
 }
 
 #[test]
-fn legacy_service_tool_maps_are_refused() {
-    let mut service: Value = serde_json::from_slice(&service()).unwrap();
-    service["tools"] = serde_json::json!({});
-    assert!(
-        Manifest::try_from(&*image(
-            &tool("a", "demo"),
-            Some(&serde_json::to_vec(&service).unwrap()),
-            &[]
-        ))
-        .is_err()
-    );
-}
-
-#[test]
 fn a_cron_tool_given_public_access_is_refused() {
     let public_cron = cron("tick").replace("internal", "public");
     let error = Manifest::try_from(&*image(&public_cron, Some(&service()), &[])).unwrap_err();
@@ -373,40 +359,7 @@ fn linked_http_destinations_merge_without_duplicates() {
 }
 
 #[test]
-fn old_image_metadata_keeps_http_destinations_without_inventing_imports() {
-    let mut record: Value = serde_json::from_slice(&service()).unwrap();
-    record["deps"].as_object_mut().unwrap().remove("http");
-    record["deps"]["syscalls"] = serde_json::json!({
-        "berm.http.fetch": ["old.example"],
-        "berm.sql": [],
-        "berm.vouch": []
-    });
-    let mut linked = serde_json::to_value(kit("old")).unwrap();
-    linked["deps"].as_object_mut().unwrap().remove("http");
-    linked["deps"]["http"] = serde_json::json!({"fetch": ["kit.example"], "proxy": []});
-    let base = Image(EMPTY)
-        .with_section(ABI_SECTION, tool("a", "demo").as_bytes())
-        .unwrap();
-    let base = Image(&base)
-        .with_section(SERVICE_SECTION, &serde_json::to_vec(&record).unwrap())
-        .unwrap();
-    let base = Image(&base)
-        .with_section(KITS_SECTION, &serde_json::to_vec(&[linked]).unwrap())
-        .unwrap();
-    let manifest = Manifest::try_from(base.as_slice()).unwrap();
-    assert_eq!(manifest.deps.http.fetch, ["old.example", "kit.example"]);
-    assert!(manifest.imports.is_empty());
-    let mut saved = serde_json::to_value(&manifest).unwrap();
-    saved["deps"].as_object_mut().unwrap().remove("http");
-    saved["deps"]["syscalls"] = record["deps"]["syscalls"].clone();
-    let restored: Manifest = serde_json::from_value(saved).unwrap();
-    assert_eq!(restored.deps.http.fetch, ["old.example"]);
-    let encoded = serde_json::to_value(restored).unwrap();
-    assert!(encoded["deps"].get("syscalls").is_none());
-}
-
-#[test]
-fn image_database_defaults_survive_manifest_storage_and_legacy_images() {
+fn image_database_sizes_survive_manifest_storage() {
     let mut record: Value = serde_json::from_slice(&service()).unwrap();
     record["database_size"] = serde_json::json!(64 << 20);
     let bytes = serde_json::to_vec(&record).unwrap();
@@ -414,10 +367,6 @@ fn image_database_defaults_survive_manifest_storage_and_legacy_images() {
     assert_eq!(manifest.database_size, 64 << 20);
     let stored: Manifest = serde_json::to_string(&manifest).unwrap().parse().unwrap();
     assert_eq!(stored.database_size, manifest.database_size);
-    record.as_object_mut().unwrap().remove("database_size");
-    let bytes = serde_json::to_vec(&record).unwrap();
-    let legacy = Manifest::try_from(&*image(&tool("a", "demo"), Some(&bytes), &[])).unwrap();
-    assert_eq!(legacy.database_size, host::DATABASE_SIZE);
 }
 
 #[test]

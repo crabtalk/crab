@@ -51,22 +51,6 @@ fn the_images_import_every_host_call() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn legacy_images_are_refused_before_applying_the_new_access_default() -> Result<()> {
-    let host = TestHost::open(0).await?;
-    for image in [FIXTURE, KEEPER] {
-        let error = host
-            .deploy("old", image)
-            .await
-            .err()
-            .expect("old ABI refused");
-        let denied = error.downcast_ref::<Denied>().unwrap();
-        assert_eq!(denied.status.as_u16(), 400);
-        assert!(denied.message.contains("ABI version 7"));
-    }
-    Ok(())
-}
-
 #[test]
 fn a_runtime_links_a_call_it_has_no_door_for() -> Result<()> {
     let engine = Engine::new(&Config::default())?;

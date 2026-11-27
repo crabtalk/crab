@@ -1,0 +1,10 @@
+[http]
+fetch = ["github.com"]
+
+[credentials.github_api]
+title = "GitHub access token"
+guide = "Create a fine-grained token at https://github.com/settings/personal-access-tokens for the repositories you need. Repository reads use Metadata, releases use Contents, issues use Issues, and pull requests use Pull requests. Grant Read or Read and write only for the operations you use. Public reads can run without a token, with GitHub's lower anonymous rate limit."
+optional = true
+hosts = ["api.github.com"]
+secrets = [{ name = "GITHUB_TOKEN", label = "Access token" }]
+

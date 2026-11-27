@@ -1,0 +1,4 @@
+interface:
+  display_name: "CrabTalk: debug"
+  short_description: "investigate a failed CrabTalk call"
+  default_prompt: "Use $crab-debug to find out why this CrabTalk call failed: "

@@ -125,6 +125,19 @@ fn respond(host: &TestHost, url: &str, status: u16, html: String, delay: Duratio
     );
 }
 
+fn respond_content(host: &TestHost, url: &str, kind: &str, body: &str) {
+    host.fetch.respond(
+        "GET",
+        url,
+        Response {
+            status: 200,
+            body: body.as_bytes().to_vec(),
+            headers: vec![("content-type".into(), kind.into())],
+        },
+        Duration::ZERO,
+    );
+}
+
 fn html(title: &str, body: &str) -> String {
     format!(
         "<!doctype html><html lang=en><head><title>{title}</title><meta name=description content='{title}'></head><body><h1>{title}</h1>{body}</body></html>"
@@ -417,6 +430,177 @@ async fn incremental_reports_and_priority() -> Result<()> {
     let another = run(&host, "another-caller", json!({"site": SITE, "max": 1})).await?;
     assert_eq!(report(&another)["new"], json!([]));
     assert_eq!(audited_urls(&another).len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn markdown_coverage_tracks_changes_independently_of_html() -> Result<()> {
+    let host = host().await?;
+    let section = format!("{SITE}docs/");
+    let copy = format!("{section}index.html.md");
+    let missing = format!("{section}guide");
+    let missing_copy = format!("{missing}.md");
+    let robots = format!("{SITE}robots.txt");
+    sitemap(&host, [section.clone(), missing.clone()]);
+    host.arrange("GET", &robots, 404, "");
+    host.arrange("GET", &format!("{SITE}index.html.md"), 404, "");
+    host.arrange("GET", SITE, 404, "");
+    respond(&host, &section, 200, html("Docs", ""), Duration::ZERO);
+    respond(&host, &missing, 200, html("Guide", ""), Duration::ZERO);
+
+    let input = json!({"site": section});
+    let has_finding =
+        |report: &Value, field: &str| {
+            report[field].as_array().unwrap().iter().any(|finding| {
+                finding["kind"] == "missing_markdown_copy" && finding["page"] == missing
+            })
+        };
+    let first = run(&host, ACCOUNT, input.clone()).await?;
+    assert!(!has_finding(report(&first), "findings"));
+    assert!(
+        host.fetched()
+            .iter()
+            .all(|request| request.url != copy && request.url != missing_copy)
+    );
+
+    respond_content(&host, SITE, "text/markdown", "# Root");
+    respond_content(&host, &copy, "text/plain", "# Docs");
+    respond_content(
+        &host,
+        &missing_copy,
+        "application/json",
+        r#"{"error":"not found"}"#,
+    );
+    respond(&host, &section, 304, String::new(), Duration::ZERO);
+    let second = run(&host, ACCOUNT, input.clone()).await?;
+    let second = report(&second);
+    assert_eq!(second["audited"], 0);
+    assert!(has_finding(second, "new"));
+    let markdown_findings: Vec<_> = second["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|finding| finding["kind"] == "missing_markdown_copy")
+        .collect();
+    assert_eq!(markdown_findings.len(), 1);
+    assert_eq!(markdown_findings[0]["stale"], false);
+    assert!(host.fetched().iter().any(|request| {
+        request.url == missing
+            && request
+                .headers
+                .iter()
+                .any(|(name, value)| name == "Accept" && value == "text/markdown")
+            && !request
+                .headers
+                .iter()
+                .any(|(name, _)| name.starts_with("If-"))
+    }));
+
+    host.arrange("GET", &missing_copy, 503, "");
+    let uncertain = run(&host, ACCOUNT, input.clone()).await?;
+    assert!(!has_finding(report(&uncertain), "fixed"));
+
+    respond_content(
+        &host,
+        &missing_copy,
+        "text/x-markdown; charset=utf-8",
+        "# Guide",
+    );
+    respond(&host, &missing, 304, String::new(), Duration::ZERO);
+    let fixed = run(&host, ACCOUNT, input).await?;
+    let fixed = report(&fixed);
+    assert_eq!(fixed["audited"], 0);
+    assert!(has_finding(fixed, "fixed"));
+    assert!(!has_finding(fixed, "findings"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn markdown_probes_follow_audit_selection_without_repeating_rechecks() -> Result<()> {
+    let host = host().await?;
+    let a = format!("{SITE}a");
+    let b = format!("{SITE}b");
+    let a_copy = format!("{a}.md");
+    let b_copy = format!("{b}.md");
+    sitemap(&host, [a.clone(), b.clone()]);
+    host.arrange("GET", &format!("{SITE}robots.txt"), 404, "");
+    respond_content(
+        &host,
+        &format!("{SITE}index.html.md"),
+        "text/markdown",
+        "# Root",
+    );
+    for (url, title) in [(&a, "A"), (&b, "B")] {
+        respond(&host, url, 200, html(title, ""), Duration::ZERO);
+    }
+    respond_content(&host, &a_copy, "text/markdown", "# Guide");
+    respond_content(
+        &host,
+        &b_copy,
+        "application/json",
+        r#"{"error":"not found"}"#,
+    );
+
+    let zero = run(&host, ACCOUNT, json!({"site": SITE, "max": 0})).await?;
+    assert_eq!(report(&zero)["pending"], 2);
+    assert!(
+        host.fetched()
+            .iter()
+            .all(|request| request.url != a_copy && request.url != b_copy)
+    );
+
+    let one = run(
+        &host,
+        ACCOUNT,
+        json!({"site": SITE, "max": 1, "pages": [&b]}),
+    )
+    .await?;
+    assert_eq!(report(&one)["pending"], 1);
+    assert_eq!(audited_urls(&one), [b.as_str()]);
+    assert!(
+        report(&one)["new"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| { finding["kind"] == "missing_markdown_copy" && finding["page"] == b })
+    );
+    let fetched = host.fetched();
+    assert!(fetched.iter().all(|request| request.url != a_copy));
+    assert_eq!(
+        fetched
+            .iter()
+            .filter(|request| request.url == b_copy)
+            .count(),
+        1
+    );
+
+    respond(&host, &b, 200, html("B changed", ""), Duration::ZERO);
+    respond_content(&host, &b_copy, "text/markdown", "# Guide");
+    let changed = run(
+        &host,
+        ACCOUNT,
+        json!({"site": SITE, "max": 1, "pages": [&b]}),
+    )
+    .await?;
+    assert_eq!(report(&changed)["pending"], 1);
+    assert_eq!(audited_urls(&changed), [b.as_str()]);
+    assert!(
+        report(&changed)["fixed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| { finding["kind"] == "missing_markdown_copy" && finding["page"] == b })
+    );
+    let rechecked = host.fetched();
+    let rechecked = &rechecked[fetched.len()..];
+    assert!(rechecked.iter().all(|request| request.url != a_copy));
+    assert_eq!(
+        rechecked
+            .iter()
+            .filter(|request| request.url == b_copy)
+            .count(),
+        1
+    );
     Ok(())
 }
 

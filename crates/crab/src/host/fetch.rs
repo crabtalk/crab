@@ -130,6 +130,9 @@ impl Service<Request> for Fetch {
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
+        if request.rotation.is_some() {
+            tracing::warn!(service = %request.service, "rotating egress is unavailable locally; sending directly");
+        }
         let client = match request.reach {
             Reach::Named => self.named.clone(),
             Reach::Pattern => self.pattern.clone(),

@@ -15,7 +15,8 @@ use berm::{
 };
 use berm_api::{
     Output,
-    host::{self as wire, Caller, Kind, Outcome, Source},
+    host::{self as wire, Busy, Caller, Kind, Outcome, Source},
+    workflow::run::Failure,
 };
 use std::{
     future::Future,
@@ -257,16 +258,10 @@ impl<E: Env> Host<E> {
             return Err(Denied::memory());
         }
         if self.reserve.full() {
-            return Err(deny(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "the host holds as much memory as it may; retry",
-            ));
+            return Err(Failure::from(Busy::Memory).into());
         }
         let Ok(_slot) = self.gate.try_acquire() else {
-            return Err(deny(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "every call slot is taken; retry",
-            ));
+            return Err(Failure::from(Busy::Calls).into());
         };
         if query && !headers.contains_key(header::CACHE_CONTROL) {
             let commits = self.commits(&service).await?;

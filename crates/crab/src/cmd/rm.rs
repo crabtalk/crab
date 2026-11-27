@@ -1,6 +1,6 @@
 //! `crab rm` — take services out of service.
 
-use crate::{project, runtime, terminal};
+use crate::{cmd::request, project, runtime, terminal};
 use anyhow::Result;
 use crabtalk_sdk::client::Client;
 
@@ -13,7 +13,7 @@ pub fn run(client: &Client, names: &[String], yes: bool) -> Result<()> {
         &format!("remove {} and what it committed", names.join(", ")),
     )?;
     for name in &names {
-        runtime::wait(client.undeploy(name))?;
+        request::approve_removal(client, runtime::wait(client.undeploy(name)))?;
         eprintln!("removed {name}");
     }
     Ok(())

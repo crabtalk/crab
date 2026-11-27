@@ -2,23 +2,12 @@ use crabtalk_sdk::account::key::{CreateKeyRequest, Scope};
 use serde_json::json;
 
 #[test]
-fn scopes_round_trip_and_exclude_legacy_and_deletion_permissions() {
+fn scopes_round_trip_and_exclude_deletion_permissions() {
     for scope in Scope::ALL {
         let text = scope.to_string();
         assert_eq!(text.parse::<Scope>().unwrap(), scope);
         assert_eq!(serde_json::from_value::<Scope>(json!(text)).unwrap(), scope);
         assert!(!text.ends_with(":delete"));
-    }
-    for text in [
-        "deploy",
-        "auto",
-        "services:delete",
-        "deployments:request",
-        "secrets:write",
-        "schedules:read",
-        "schedules:write",
-    ] {
-        assert!(text.parse::<Scope>().is_err());
     }
 }
 

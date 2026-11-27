@@ -10,7 +10,7 @@ fn rates() -> Rates {
         read: 1_000_000,
         written: 1_000_000_000,
         held: 12,
-        proxied: None,
+        rotating: None,
     }
 }
 
@@ -44,6 +44,7 @@ fn the_most_a_run_costs_spends_its_whole_budget() {
         rates: rates(),
         included_cpu: 100,
         max_log: 4096,
+        budget: None,
     };
     let budget = Budget {
         cpu: 100_100,
@@ -66,5 +67,18 @@ fn exact_charges_preserve_fractions_below_a_micro() {
         ..Meter::default()
     };
     assert_eq!(rates.call_cost(&meter, 0), 0);
-    assert_eq!(rates.call_charge(&meter, 0), 150_000_000);
+    assert_eq!(rates.call_charge(&meter, 0), 100_000_000);
+}
+
+#[test]
+fn rotating_bytes_cost_at_the_configured_rate() {
+    let rates = Rates {
+        rotating: Some(3_000_000),
+        ..Rates::default()
+    };
+    let meter = Meter {
+        proxied: 10_000,
+        ..Meter::default()
+    };
+    assert_eq!(rates.call_cost(&meter, 0), 30);
 }

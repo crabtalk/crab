@@ -10,7 +10,12 @@ use anyhow::{Result, anyhow, bail};
 use berm_abi::secrets::Id;
 use berm_api::workflow::run::Failure;
 use futures_util::future;
-use std::{future::Future, str, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    str,
+    sync::{Arc, atomic::AtomicU64},
+    time::Duration,
+};
 use url::{Host, Url};
 
 /// What opens a secret's name in a header value.
@@ -25,6 +30,8 @@ pub struct Request {
     /// The sending invocation, as `Callsite::chain` and `Callsite::span`.
     pub chain: u64,
     pub span: u32,
+    /// Byte counter present only for a marked request.
+    pub rotation: Option<Arc<AtomicU64>>,
     pub method: String,
     pub url: String,
     /// The host `url` names, lowercased, without port or credentials.
@@ -72,13 +79,33 @@ where
     R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
     Found: Future<Output = Result<Option<String>>> + Send + 'static,
 {
+    serve_fetch(abi::HTTP_FETCH, false, send, secret)
+}
+
+pub fn fetch_rotating<S, Sent, R, Found>(send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
+    serve_fetch(abi::HTTP_FETCH_ROTATING, true, send, secret)
+}
+
+fn serve_fetch<S, Sent, R, Found>(name: &str, rotating: bool, send: S, secret: R) -> Syscall
+where
+    S: Fn(Callsite, Request) -> Sent + Send + Sync + 'static,
+    Sent: Future<Output = Result<Response>> + Send + 'static,
+    R: Fn(Callsite, String, String) -> Found + Send + Sync + 'static,
+    Found: Future<Output = Result<Option<String>>> + Send + 'static,
+{
     let (send, secret) = (Arc::new(send), Arc::new(secret));
     Syscall {
-        name: abi::HTTP_FETCH.to_owned(),
+        name: name.to_owned(),
         call: Arc::new(move |at: Callsite, request: Vec<u8>| {
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
-                let response = answer(&at, false, &request, &*send, &*secret).await?;
+                let response = answer(&at, false, rotating, &request, &*send, &*secret).await?;
                 Ok(write(&response))
             })
         }),
@@ -128,12 +155,11 @@ where
             let (send, secret) = (send.clone(), secret.clone());
             Box::pin(async move {
                 let requests = abi::wire::fields(&batch)?;
-                let answers = future::join_all(
-                    requests
-                        .iter()
-                        .map(|request| answer(&at, literal_body, request, &*send, &*secret)),
-                )
-                .await;
+                let answers =
+                    future::join_all(requests.iter().map(|request| {
+                        answer(&at, literal_body, false, request, &*send, &*secret)
+                    }))
+                    .await;
                 if let Some(abort) = answers
                     .iter()
                     .find_map(|answer| answer.as_ref().err()?.downcast_ref::<Abort>())
@@ -169,6 +195,7 @@ where
 async fn answer<S, Sent, R, Found>(
     at: &Callsite,
     literal_body: bool,
+    rotating: bool,
     request: &[u8],
     send: &S,
     secret: &R,
@@ -179,7 +206,7 @@ where
     R: Fn(Callsite, String, String) -> Found,
     Found: Future<Output = Result<Option<String>>>,
 {
-    let mut request = read(at, request)?;
+    let mut request = read(at, request, rotating)?;
     let mut headers = Vec::with_capacity(request.headers.len());
     for (name, value) in request.headers {
         match substitute(at, secret, &request.host, value.as_bytes()).await? {
@@ -293,7 +320,7 @@ fn headers(headers: &[(String, String)]) -> usize {
 }
 
 /// Decode a fetch request and check the destination against `[http] fetch`.
-fn read(at: &Callsite, request: &[u8]) -> Result<Request> {
+fn read(at: &Callsite, request: &[u8], rotating: bool) -> Result<Request> {
     let fields = abi::wire::fields(request)?;
     let method = wire::text(&fields, 0, "method")?.to_owned();
     let url = wire::text(&fields, 1, "url")?;
@@ -349,6 +376,7 @@ fn read(at: &Callsite, request: &[u8]) -> Result<Request> {
         service: at.service.to_string(),
         chain: at.chain,
         span: at.span,
+        rotation: rotating.then(Arc::default),
         method,
         host,
         reach,

@@ -1,5 +1,36 @@
 [
   {
+    "version": "0.1.10",
+    "date": "2026-11-25",
+    "summary": "Share articles and boards between agents with Artifacts, send requests through rotating egress, and pay compute from each plan's included usage.",
+    "new": [
+      "Deploy Artifacts from source to give agents on one account shared projects, Markdown articles and boards, kept in the calling account's storage; calls are free and stored data counts toward the caller's storage",
+      "Start from Hello, a stateless example service with no provider or credentials, in services/hello",
+      "Send a single request through the rotating egress pool with Request::rotating on supported hosted deployments; its destination still needs [http] fetch permission, crab dev sends it directly with a warning, and rotating traffic is paid from prepaid outside the outbound data limit; crab usage reports rotating bytes separately in its service and account views",
+      "Check Content Signals and discovery links for AI crawlers with crabtalk/seo.ai_access, and see missing or newly available Markdown pages in crabtalk/seo.audit when the site's root offers Markdown",
+      "Install crab-build, crab-wrap, crab-ship and crab-debug separately to build services, wrap existing APIs, deploy, and debug; the crab skill remains and is the one in the release plugin",
+      "Set auto-refill with crab billing refill --amount 20 --below 5 --cap 100: a refill is charged when prepaid falls below the threshold, $5 when none is set, up to the monthly cap",
+      "Read the prices an account paid in the last seven days and what it spent on prices each month, the price paid for a call, and a service's call durations by day and tool for a month in the SDK",
+      "Link GitHub's REST API and OAuth exchange into a service with crabkit's github feature, or the crabkit-github crate",
+      "Capture committed SQLite WAL frames and let host embedders defer checkpoints through an opt-in callback"
+    ],
+    "changed": [
+      "Bill each plan as usage it includes every period at the list rates: crab plans shows what each plan includes and its limits, crab usage shows compute and usage against limits, and crab billing shows included usage used, overage and what of it was collected, prepaid and what of it expires within 30 days, auto-refill and the card; included usage pays compute only, and priced tools and rotating traffic are paid from prepaid",
+      "Lower the default rates for runs, rows read, rows written and memory held; crab rates shows the host's rates, the same on every plan, including the rotation price when the host supplies it",
+      "Rename billing fields in the SDK and JSON output: trial credit and its offer are removed, credit reports prepaid, what of it expires and the refill threshold, the period reports included, compute, overage and collected USD micros, and the rotating rate replaces proxied",
+      "Lower the default memory budget of a tool that declares none from 128 MiB to 32 MiB; the 100 ms CPU, 1,000,000 rows read and 10,000 rows written defaults are unchanged; crab bench measures with the local runtime defaults, and crab rates --json reports the host's default budget when supplied",
+      "Keep service logs and call records for seven days; kept logs count toward storage",
+      "Approve crab login in the browser at a printed link and code, also from another device; --github is removed and --device requests an agent key only when asked. From a CLI session, crab rm and crab secret rm open a browser approval request; API keys with services:write act directly",
+      "Remove the connector services under services/connect; GitHub moves to crabkit",
+      "Print crab up for source deployment from crab new"
+    ],
+    "fixed": [
+      "Refuse outside calls with HTTP 503 and E0098 when a node has no free call slot or memory reservation",
+      "List active and retained caller storage databases in the host's replication inventory",
+      "Persist local calls, logs, usage and meter records in small batches on a one-second timer or when 512 call records are pending"
+    ]
+  },
+  {
     "version": "0.1.9",
     "date": "2026-11-23",
     "summary": "Report website traffic and Stripe revenue with Analytics, share Relay deployments across accounts, and use typed key-value storage in services.",

@@ -4,11 +4,10 @@ Each crate is a member of the root Cargo workspace. Deployable services build bo
 
 ## Catalogs
 
-- [Connect](connect/README.md): third-party API integrations.
 - [Agents](agents/README.md): agent identities and conversations.
 - [Web](web/README.md): SEO checks, site audits and revenue attribution.
 
-The catalog directories are `connect`, `agents` and `web`. CrabTalk service images use the `crabtalk` account. See each service’s README for its deployment and publication settings. A context supplies the server and credentials, which must authorize publication to the `[image]` address.
+The catalog directories are `agents` and `web`. CrabTalk service images use the `crabtalk` account. See each service’s README for its deployment and publication settings. A context supplies the server and credentials, which must authorize publication to the `[image]` address.
 
 Call an accessible running deployment or deploy a published image as a private copy. Catalog membership does not make a deployment public. SEO and Analytics are configured as public services. Private copies can be built from source. Each service documents its setup and state ownership.
 
@@ -16,7 +15,7 @@ Tools declare their discovery classification with `catalog` in `#[tool]`. See th
 
 Library-only packages live under [services/kits](kits/) and are listed in [crabkit](../crates/crabkit/README.md).
 
-`crab build` operates on one service directory. `crab deploy [dir]` and `crab push [dir]` also accept a catalog directory, selecting only its descendant services, and `crab push` skips those that set `publish = false`; the directory defaults to `.`. For example, run `crab push services/connect` from the repository root or `crab push` inside `services/connect`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
+`crab build` operates on one service directory. `crab deploy [dir]` and `crab push [dir]` also accept a catalog directory, selecting only its descendant services, and `crab push` skips those that set `publish = false`; the directory defaults to `.`. For example, run `crab push services/web` from the repository root or `crab push` inside `services/web`. No catalog-level `crab.toml` is needed. Use repeatable `-p <name>` to select services anywhere in the Cargo workspace instead. Agents call deployed tools through MCP.
 
 To reuse a deployable service as a library, pin it to the same release tag as `berm-lang` and set `default-features = false`. This disables its standalone `tools` exports. Call the Rust functions from your own tools. `berm-build` inherits the dependency's credentials, host permissions and migrations, while its deployment name, logo, tool access, cron settings, variables and database sizing stay with its own deployment. A dependency keeping migrations needs a stable migration ID.
 
@@ -28,29 +27,22 @@ Calling an existing deployment or deploying a published image needs no local bui
 
 ```sh
 git clone --branch main --single-branch https://github.com/crabtalk/crab
-cd crab/services/connect/github
+cd crab/services/web/seo
 crab login
 crab up --build
 ```
 
-Choose a service directory from a catalog, such as `services/connect/github` or `services/web/seo`. `crab up --build` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README. Generated integrations may need `curl` and network access to fetch their pinned provider specifications during the build.
+Choose a service directory from a catalog, such as `services/web/seo`. `crab up --build` builds the image, adds the WebAssembly target through rustup if needed, and asks for approval on Cloud. Set the credentials and variables documented in the service's README.
 
-For local development, start the host with `crab dev -d`, use `crab --context default deploy --build` in the selected service directory, set local credentials with `crab --context default secret fill github`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crabtalk.ai/docs/guides/local).
+For local development, start the host with `crab dev -d`, use `crab --context default deploy --build` in the selected service directory, set local credentials with `crab --context default secret fill <credential>`, and call tools as the default caller `local`. Use `--caller` to override it or `--anonymous` to call without a caller. See [local development](https://crabtalk.ai/docs/guides/local).
 
 ## Checking changes
 
-From the repository root, `cargo nextest run --release` and `cargo clippy` use Cargo’s default members: every workspace member except the integrations under `connect/`, which are checked explicitly.
-
-When changing or publishing a generated adapter, refetch and review its upstream specification, then run its native tests and build the service image. For example:
-
-```sh
-cargo nextest run --release -p crab-contextdev
-crab build services/connect/contextdev
-```
+From the repository root, `cargo nextest run` and `cargo clippy` check every workspace member.
 
 Before publishing or requesting deployment, use `crab bench <service-directory> <tool> --cases cases.jsonl --runs 10` ([case format](https://crabtalk.ai/docs/guides/bench)) to profile the built WebAssembly image with representative and largest supported workloads, including error paths. Add headroom, check every budget key against the destination host's ceilings, then rebuild and repeat the workload under the chosen budgets. Native tests and image builds do not establish valid runtime budgets; `crab budget` suggestions do not check ceilings. See [Sizing a budget](https://crabtalk.ai/docs/guides/budgets#size-a-budget-before-deployment).
 
-`cargo nextest run --workspace --release` includes every package. Generator Wasm export and schema coverage lives in `crab-openapi` with a local fixture.
+Generator Wasm export and schema coverage lives in `crab-openapi` with a local fixture.
 
 ## Documentation
 

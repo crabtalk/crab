@@ -38,6 +38,9 @@ tokio::task_local! {
     pub(crate) static SCHEDULED: bool;
 }
 
+const CALLERS: &str = "callers";
+const RETAINED: &str = "retained";
+
 pub(crate) fn authenticated_account() -> Option<String> {
     ACCOUNT.try_with(Clone::clone).ok().flatten()
 }
@@ -158,7 +161,7 @@ impl Storage {
             .await
             .map_err(|_| Expired)?;
         anyhow::ensure!(
-            !self.directory("retained", id).exists(),
+            self.location(id) == CALLERS,
             "service caller storage was retired"
         );
         let file = match &key {
@@ -195,13 +198,47 @@ impl Storage {
         self.databases.root().join(root).join(id)
     }
 
-    fn located(&self, key: &Key) -> String {
-        let root = if self.directory("retained", &key.storage_id).exists() {
-            "retained"
+    fn location(&self, storage_id: &str) -> &'static str {
+        if self.directory(RETAINED, storage_id).exists() {
+            RETAINED
         } else {
-            "callers"
-        };
-        name(root, key)
+            CALLERS
+        }
+    }
+
+    fn located(&self, key: &Key) -> String {
+        name(self.location(&key.storage_id), key)
+    }
+
+    pub(crate) async fn inventory(self: &Arc<Self>) -> Result<Vec<(String, String)>> {
+        let files: Vec<(String, String)> = self
+            .store
+            .read(|conn| {
+                conn.prepare_cached("SELECT name, id FROM caller_files")?
+                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                    .collect()
+            })
+            .await?;
+        let storage = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut locations = HashMap::new();
+            files
+                .iter()
+                .map(|(name, id)| {
+                    let (root, relative) =
+                        name.split_once('/').context("invalid caller filename")?;
+                    let (storage_id, _) = relative
+                        .split_once('/')
+                        .filter(|_| root == CALLERS)
+                        .context("invalid caller filename")?;
+                    let location = locations
+                        .entry(storage_id)
+                        .or_insert_with(|| storage.location(storage_id));
+                    Ok((format!("{location}/{relative}"), id.clone()))
+                })
+                .collect()
+        })
+        .await?
     }
 
     pub(crate) async fn retain(&self, id: &str) -> Result<()> {
@@ -210,9 +247,9 @@ impl Storage {
             .service(id)
             .try_write_owned()
             .context("caller storage is in use")?;
-        let from = self.directory("callers", id);
-        let to = self.directory("retained", id);
-        self.databases.close_under(&format!("callers/{id}"))?;
+        let from = self.directory(CALLERS, id);
+        let to = self.directory(RETAINED, id);
+        self.databases.close_under(&format!("{CALLERS}/{id}"))?;
         if from.exists() {
             fs::create_dir_all(to.parent().expect("retained directory"))?;
             fs::rename(from, to)?;

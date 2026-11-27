@@ -179,9 +179,9 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
                 host.result.len() as u64
             })
         }
-        abi::HTTP_FETCH => {
+        abi::HTTP_FETCH | abi::HTTP_FETCH_ROTATING => {
             let request = bytes(a0, a1);
-            let Some(response) = respond(request) else {
+            let Some(response) = respond(request, name == abi::HTTP_FETCH_ROTATING) else {
                 no_host(name)
             };
             with(|host| {
@@ -197,7 +197,7 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
             let answers: Vec<Vec<u8>> = requests
                 .into_iter()
                 .map(|request| {
-                    let Some(response) = respond(request) else {
+                    let Some(response) = respond(request, false) else {
                         no_host(name)
                     };
                     frame_response(&response, true)
@@ -215,13 +215,14 @@ pub fn call(name: &str, a0: u64, a1: u64) -> u64 {
 
 /// The response arranged for one framed HTTP request, kept as
 /// fetched; `None` when it is not framed as one.
-fn respond(request: &[u8]) -> Option<crate::http::Response> {
+fn respond(request: &[u8], rotating: bool) -> Option<crate::http::Response> {
     let fields = abi::wire::fields(request).ok()?;
     let [method, url, body, _timeout, limit, headers @ ..] = fields.as_slice() else {
         return None;
     };
     let text = |field: &[u8]| String::from_utf8_lossy(field).into_owned();
     let fetched = Fetched {
+        rotating,
         method: text(method),
         url: text(url),
         headers: headers

@@ -26,9 +26,11 @@ crab call crabtalk/seo ai_access '{"site":"https://example.com/"}'
 ```
 
 - Each of GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Googlebot, Google-Extended, Google-CloudVertexBot, bingbot, Applebot, Applebot-Extended, Bytespider, meta-externalagent, meta-externalfetcher, FacebookBot, Amazonbot, DuckAssistBot, MistralAI-User and CCBot is `allowed`, `blocked` or `unspecified` for the root page's path, with the `robots.txt` group that applied: the crawler's own, else `*`. Rules are read as RFC 9309 reads them: the longest matching pattern wins, `allow` wins a tie, and `*` and a final `$` match. `unspecified` means no group names the crawler and there is no `*` group, or `robots.txt` did not answer 2xx.
+- Each crawler's `Content-Signal` values for `search`, `ai-input` and `ai-train` come from the same selected groups as its crawl rule. If selected groups disagree, `no` takes precedence. The tool warns once per applicable group for each `ai-input=no` or `search=no` signal and names the affected crawlers.
 - `/llms.txt`: its status, the H1 it opens with, its Markdown link count, and which of its first ten links did not answer 2xx.
 - Characters of visible text and script elements in the root page's HTML response; a page with under 200 characters that runs scripts is reported as needing JavaScript for its content.
-- Whether the root page answers at its URL with `.md` appended (`index.html.md` for a path ending in `/`), and whether it answers `Accept: text/markdown` with Markdown.
+- Whether the root page answers at its URL with `.md` appended (`index.html.md` for a path ending in `/`), and whether it answers `Accept: text/markdown` with Markdown. A negotiated Markdown response without `Vary: Accept` triggers a warning because shared caches can serve it to browsers.
+- Agent discovery links from the root HTML response's `Link` headers include `api-catalog`, `service-desc`, `service-doc`, `describedby` and Markdown `alternate`. An informational finding indicates when none are present.
 - The root page's `check` report.
 
 Informational findings identify things to review; an absent canonical or multiple h1 headings are not automatically errors. Title and description lengths are not pass/fail rules.
@@ -43,7 +45,7 @@ Pass the site's root for the whole site or a path for one section. The audit rea
 
 Use the optional `pages` array to prioritize sitemap URLs you know changed. The audit fills the remaining slots with never-scanned pages, then changed pages with the most incoming internal links, then the oldest remaining scans. The optional `max` defaults to 1,000 and is capped at 1,000. A page beyond the limit stays pending for a later run.
 
-The report opens with new and fixed findings. It also shows the full findings within the report limit and the counts of listed, checked, audited and pending pages. Cross-page checks cover duplicate titles and descriptions, canonical targets, broken internal links and reachable HTML pages missing from a complete sitemap. A cross-page fix requires current checks of the pages involved. Findings that rely on earlier scans are marked stale. The first completed audit establishes the baseline.
+The report opens with new and fixed findings. It also shows the full findings within the report limit and the counts of listed, checked, audited and pending pages. Cross-page checks cover duplicate titles and descriptions, canonical targets, broken internal links and reachable HTML pages missing from a complete sitemap. A cross-page fix requires current checks of the pages involved. Findings that rely on earlier scans are marked stale. The first completed audit establishes the baseline. When the origin's root offers Markdown, the report also flags audited sitemap pages without a Markdown copy and reports when those pages gain one, even if the HTML is unchanged.
 
 The audit keeps scans and the latest report for each site or section in your caller storage. Download or delete the data under Storage in your CrabTalk settings. Each caller can run one audit for a given site at a time.
 
@@ -54,6 +56,8 @@ Audits are free to run.
 The page checks inspect the returned UTF-8 HTML and response headers. `ai_access` reads `robots.txt` and `llms.txt` at the root page's origin without following their redirects, up to 512 KiB each, and checks the root path. The checks use static HTTP responses. Use `audit` to check same-origin canonical and internal link targets. Hreflang reciprocity, HTTP-header and sitemap hreflang annotations, and remote JSON-LD contexts are outside the page checks.
 
 Accepts at most 12,000 DOM nodes, 12,000 start tags, 12,000 total attributes, depth 128 and 128 attributes per element. Fetches at most 512 KiB of HTML with up to three redirects and a ten-second timeout per request. Unsupported content types and unsuccessful HTTP responses fail explicitly. Reports include at most twenty h1 texts and twenty missing-alt image samples beside their full counts; metadata reports over 256 KiB fail explicitly. Image sample positions are one-based among all img elements; JSON-LD block positions are one-based among matching scripts. Other evidence lists are complete within the report limit.
+
+Markdown coverage adds up to two GETs at the root and up to two per page the run audits or rechecks after a prior audit. The audit tries the method that worked at the root first, then falls back to the other: a `.md` URL (`index.html.md` for a trailing slash) or `Accept: text/markdown`.
 
 This service is configured for public use without deployable private copies. Call an accessible running deployment, or use the source deployment instructions to build and deploy your own service.
 

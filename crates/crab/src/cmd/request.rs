@@ -5,13 +5,29 @@ use crate::{format, runtime, terminal};
 use anyhow::{Result, bail};
 use crabtalk_sdk::{
     account::request::{Purchase, Request, RequestKind, RequestStatus},
-    client::Client,
+    client::{Client, Error},
 };
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
 /// Seconds Cloud holds each ask of `--wait` while the request is pending.
 const HOLD: u64 = 60;
+
+pub fn approve_removal(client: &Client, result: Result<(), Error>) -> Result<()> {
+    match result {
+        Err(Error::Api {
+            explain: Some(explain),
+            request: Some(link),
+            ..
+        }) if explain == "E0105" => {
+            terminal::open(&link.url);
+            let request = runtime::wait(client.request(&link.code, 0))?;
+            let timeout = request.expires_at.saturating_sub(request.created_at) as u64;
+            run(client, &link.code, true, timeout, false)
+        }
+        other => Ok(other?),
+    }
+}
 
 /// Print a request just made: its page, what it asks, and how to wait for it.
 pub fn asked(request: &Request, json: bool) -> Result<()> {
@@ -178,6 +194,15 @@ pub fn run(client: &Client, code: &str, wait: bool, timeout: u64, json: bool) ->
         }
         RequestStatus::Pending | RequestStatus::Deploying | RequestStatus::Running => Ok(()),
         RequestStatus::Declined => bail!("the person declined it"),
+        RequestStatus::Failed if request.explain.as_deref() == Some("E0106") => {
+            bail!(
+                "{}",
+                request
+                    .failure
+                    .as_deref()
+                    .unwrap_or("create a new removal request")
+            )
+        }
         RequestStatus::Failed => bail!(
             "{}; reopen {} to resume the same request",
             request.failure.as_deref().unwrap_or("the action failed"),

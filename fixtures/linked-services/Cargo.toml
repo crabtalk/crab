@@ -11,7 +11,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 berm-lang.workspace = true
 auth.workspace = true
-resend.workspace = true
 github.workspace = true
 upstash.workspace = true
-posthog.workspace = true

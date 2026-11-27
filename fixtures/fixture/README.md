@@ -3,7 +3,7 @@
 The reference guest: the smallest real service, and what berm is measured and tested against. Its tools each price or prove one thing — see the module doc in `src/lib.rs`.
 
 ```sh
-cargo nextest run --release -p berm-fixture
+cargo nextest run -p berm-fixture
 cargo run -p berm --example measure    # reads the numbers off it
 ```
 

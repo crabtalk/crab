@@ -75,6 +75,7 @@ fn get_sends_columns_filters_order_and_range() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "GET".into(),
             url,
             headers: headers(&[]),
@@ -132,6 +133,7 @@ fn insert_posts_rows_and_answers_them() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "POST".into(),
             url,
             headers: headers(&[
@@ -165,6 +167,7 @@ fn update_patches_the_filtered_rows() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "PATCH".into(),
             url,
             headers: headers(&[
@@ -197,6 +200,7 @@ fn delete_answers_the_deleted_rows() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "DELETE".into(),
             url,
             headers: headers(&[("Prefer", "return=representation")]),
@@ -217,6 +221,7 @@ fn rpc_posts_named_arguments() {
     assert_eq!(
         only(),
         Fetched {
+            rotating: false,
             method: "POST".into(),
             url: url.into(),
             headers: headers(&[("Content-Type", "application/json")]),

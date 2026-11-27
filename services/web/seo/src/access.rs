@@ -5,6 +5,7 @@
 use crate::{
     crawlers::{AGENTS, Crawler, Robots, Rule},
     llms::{self, CHECKED_LINKS, LlmsTxt},
+    markdown,
     report::{Level, Report},
 };
 use berm_lang::{Result, Schema, http};
@@ -26,6 +27,9 @@ pub enum Code {
     BrokenLlmsTxtLink,
     ContentNeedsJavaScript,
     NoMarkdownCopy,
+    RestrictiveContentSignal,
+    MissingAgentLinks,
+    MarkdownMissingVaryAccept,
 }
 
 #[derive(Debug, Schema)]
@@ -36,14 +40,23 @@ pub struct Finding {
 }
 
 #[derive(Debug, Schema)]
+pub struct AgentLink {
+    pub rel: String,
+    pub target: String,
+    pub context: String,
+    pub media_type: Option<String>,
+}
+
+#[derive(Debug, Schema)]
 pub struct Access {
     /// The root page's final URL.
     pub url: String,
     /// The HTTP status `/robots.txt` answered; absent when nothing answered.
     pub robots_status: Option<u16>,
-    /// Each AI crawler's rule for the root page's path.
+    /// Each AI crawler's rule and Content Signals for the root page's path.
     pub crawlers: Vec<Crawler>,
     pub llms: LlmsTxt,
+    pub agent_links: Vec<AgentLink>,
     /// Characters of visible text in the root page's HTML response.
     pub text: usize,
     /// Script elements in it, JSON-LD left out.
@@ -59,17 +72,24 @@ pub struct Access {
 
 impl Access {
     pub fn inspect(site: &str) -> Result<Self> {
-        let page = Page::fetch(site)?;
-        let report = Report::try_from(&page)?;
+        Self::try_from(&Page::fetch(site)?)
+    }
+}
+
+impl TryFrom<&Page> for Access {
+    type Error = berm_lang::Error;
+
+    fn try_from(page: &Page) -> Result<Self> {
+        let report = Report::try_from(page)?;
         let url = page.url.clone();
         let at = |path| url.join(path).map_err(|_| "The page URL has no origin");
         let (robots_url, llms_url) = (at("/robots.txt")?, at("/llms.txt")?);
-        let suffix_url = markdown_copy(&url);
+        let suffix_url = markdown::copy_url(&url);
         let mut answers = http::fetch_all(&[
             get(&robots_url, &[], MAX_TEXT_FILE),
             get(&llms_url, &[], MAX_TEXT_FILE),
             get(&suffix_url, &[], 1),
-            get(&url, &[("Accept", "text/markdown")], 1),
+            get(&url, &[markdown::ACCEPT], 1),
         ])?
         .into_iter()
         .map(Result::ok);
@@ -88,6 +108,7 @@ impl Access {
                     agent: (*agent).into(),
                     rule: Rule::Unspecified,
                     group: None,
+                    content_signals: Default::default(),
                 },
             })
             .collect();
@@ -112,19 +133,12 @@ impl Access {
             }
         }
 
-        let (text, scripts) = content(&page);
-        let markdown_suffix = suffix.is_some_and(|response| {
-            response.is_success()
-                && !response
-                    .header("content-type")
-                    .is_some_and(|kind| kind.contains("html"))
-        });
-        let markdown_accept = accept.is_some_and(|response| {
-            response.is_success()
-                && response
-                    .header("content-type")
-                    .is_some_and(|kind| kind.contains("markdown"))
-        });
+        let (text, scripts) = content(page);
+        let markdown_suffix = suffix.as_ref().is_some_and(markdown::has_copy);
+        let markdown_response = accept
+            .as_ref()
+            .filter(|response| markdown::negotiated(response));
+        let agent_links = AgentLink::inspect(page);
 
         let mut findings = Vec::new();
         for crawler in crawlers
@@ -141,6 +155,26 @@ impl Access {
                     crawler.group.as_deref().unwrap_or("*")
                 ),
             });
+        }
+        if let Some(rules) = &rules {
+            for (group, agents) in rules.restrictive_groups() {
+                let group_names = group.agents.join(", ");
+                let crawler_names = agents.join(", ");
+                for (signal, use_case, value) in [
+                    ("ai-input", "AI answers", group.content_signals.ai_input),
+                    ("search", "search", group.content_signals.search),
+                ] {
+                    if value == Some(false) {
+                        findings.push(Finding {
+                            code: Code::RestrictiveContentSignal,
+                            level: Level::Warning,
+                            message: format!(
+                                "The robots.txt group [{group_names}] asks {crawler_names} to exclude this content from {use_case} ({signal}=no)."
+                            ),
+                        });
+                    }
+                }
+            }
         }
         if !llms.found() {
             findings.push(Finding {
@@ -171,11 +205,33 @@ impl Access {
                 ),
             });
         }
-        if !markdown_suffix && !markdown_accept {
+        if !markdown_suffix && markdown_response.is_none() {
             findings.push(Finding {
                 code: Code::NoMarkdownCopy,
                 level: Level::Info,
                 message: "The root page has no Markdown copy at its .md URL or for Accept: text/markdown.".into(),
+            });
+        }
+
+        if agent_links.is_empty() {
+            findings.push(Finding {
+                code: Code::MissingAgentLinks,
+                level: Level::Info,
+                message: "The root page sends no agent-useful Link relations.".into(),
+            });
+        }
+        if markdown_response.is_some_and(|response| {
+            !response.headers.iter().any(|(name, value)| {
+                name.eq_ignore_ascii_case("vary")
+                    && value
+                        .split(',')
+                        .any(|field| field.trim().eq_ignore_ascii_case("accept"))
+            })
+        }) {
+            findings.push(Finding {
+                code: Code::MarkdownMissingVaryAccept,
+                level: Level::Warning,
+                message: "The Markdown response lacks Vary: Accept. A shared cache can serve it to browsers.".into(),
             });
         }
 
@@ -184,10 +240,11 @@ impl Access {
             robots_status: robots.map(|response| response.status),
             crawlers,
             llms,
+            agent_links,
             text,
             scripts,
             markdown_suffix,
-            markdown_accept,
+            markdown_accept: markdown_response.is_some(),
             findings,
             page: report,
         })
@@ -205,18 +262,34 @@ fn get<'a>(url: &'a Url, headers: &'a [(&'a str, &'a str)], limit: usize) -> htt
     }
 }
 
-/// The page's Markdown copy as llmstxt.org names it: its URL with `.md`
-/// appended, `index.html.md` for a path ending in `/`.
-fn markdown_copy(url: &Url) -> Url {
-    let mut copy = url.clone();
-    copy.set_query(None);
-    let path = if url.path().ends_with('/') {
-        format!("{}index.html.md", url.path())
-    } else {
-        format!("{}.md", url.path())
-    };
-    copy.set_path(&path);
-    copy
+impl AgentLink {
+    fn inspect(page: &Page) -> Vec<Self> {
+        page.response
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("link"))
+            .filter_map(|(_, value)| http_link::parse_link_header(value, &page.url).ok())
+            .flatten()
+            .filter_map(|link| {
+                let media_type = link
+                    .attributes
+                    .into_iter()
+                    .find(|param| param.name == "type")
+                    .map(|param| param.value);
+                let useful = match link.rel.as_str() {
+                    "api-catalog" | "service-desc" | "service-doc" | "describedby" => true,
+                    "alternate" => media_type.as_deref().is_some_and(markdown::is_markdown),
+                    _ => false,
+                };
+                useful.then(|| Self {
+                    rel: link.rel,
+                    target: link.target.into(),
+                    context: link.context.into(),
+                    media_type,
+                })
+            })
+            .collect()
+    }
 }
 
 /// Characters of visible text in the body, and its script elements other than

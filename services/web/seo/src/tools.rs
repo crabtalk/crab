@@ -21,9 +21,8 @@ pub fn check(
 
 /// Check AI crawler access
 ///
-/// Read a site's robots.txt rules for AI crawlers, its llms.txt, whether its
-/// root page's content is in the HTML response, and whether that page has a
-/// Markdown copy. Does not render JavaScript or crawl the site.
+/// Read robots.txt rules and Content Signals for AI crawlers, check llms.txt,
+/// and inspect the root page for readable HTML, discovery links and Markdown.
 #[tool(
     catalog = "web.seo",
     example = "check whether AI crawlers like GPTBot and ClaudeBot can read https://example.com",

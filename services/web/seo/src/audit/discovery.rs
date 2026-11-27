@@ -1,5 +1,9 @@
 use crate::{
-    audit::{AGENT, MAX_CHECKED, MAX_URL_BYTES, run::Run},
+    audit::{
+        AGENT, MAX_CHECKED, MAX_URL_BYTES,
+        markdown::{Coverage, Method},
+        run::Run,
+    },
     crawlers::{Robots, Rule},
 };
 use berm_lang::{Result, Schema, caller_storage, http, tool};
@@ -139,7 +143,7 @@ pub(crate) fn audit_discover(site: String) -> Result<CheckPlan> {
         }
     }
 
-    let urls = if robots.is_some() {
+    let urls: Vec<String> = if robots.is_some() {
         let cursor = caller_storage::rows::<(Option<String>,)>(
             "SELECT cursor FROM reports WHERE site = ?1",
             &(&site,),
@@ -156,10 +160,19 @@ pub(crate) fn audit_discover(site: String) -> Result<CheckPlan> {
     } else {
         Vec::new()
     };
+    let root_markdown = if urls.is_empty() {
+        0
+    } else {
+        let root = target.join("/").expect("site has an origin");
+        match Method::Suffix.coverage(&[root], &rules, HTTP_TIMEOUT)?[0] {
+            Coverage::Available(method) => method as u8,
+            _ => 0,
+        }
+    };
     caller_storage::rows::<()>(
-        "UPDATE runs SET robots = ?2, sitemap_complete = ?3, unlisted = NULL
+        "UPDATE runs SET robots = ?2, sitemap_complete = ?3, unlisted = NULL, root_markdown = ?5
          WHERE site = ?1 AND run = ?4",
-        &(&site, robots.as_ref(), complete, &run.id),
+        &(&site, robots.as_ref(), complete, &run.id, root_markdown),
     )?;
     reconcile(&site, listed, complete)?;
     Ok(CheckPlan { site, urls })

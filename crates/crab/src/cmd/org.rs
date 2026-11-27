@@ -69,7 +69,7 @@ pub fn info(client: &Client, org: &str, json: bool) -> Result<()> {
         println!("  you are {}", private.role);
         println!("  plan {}", private.plan);
         if let Some(sponsor) = &private.sponsor_id {
-            println!("  Hobby sponsor {sponsor}");
+            println!("  Free sponsor {sponsor}");
         }
         if let Some(until) = private.paused_until {
             println!("  paused; recovery ends {}", format::date(until));
@@ -188,6 +188,6 @@ pub fn uninvite(client: &Client, org: &str, token: &str) -> Result<()> {
 
 pub fn sponsor(client: &Client, org: &str, member: &str) -> Result<()> {
     runtime::wait(client.transfer_org_sponsor(org, member))?;
-    eprintln!("Hobby sponsor changed");
+    eprintln!("Free sponsor changed");
     Ok(())
 }

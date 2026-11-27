@@ -126,10 +126,10 @@ pub fn fetch(
     headers: &[(&str, &str)],
     body: &[u8],
 ) -> Result<Response, CallError> {
-    send(sys::HTTP_FETCH, method, url, headers, body)
+    send(sys::HTTP_FETCH, &Request::new(method, url, headers, body))
 }
 
-/// One request of a batch [`fetch_all`] sends.
+/// A request for [`fetch_all`] or a single rotating fetch.
 pub struct Request<'a> {
     pub method: &'a str,
     pub url: &'a str,
@@ -140,6 +140,38 @@ pub struct Request<'a> {
     /// The most bytes of the answer's body this service takes; the host cuts
     /// the rest before it reaches it. `None` for all of it.
     pub limit: Option<usize>,
+}
+
+impl<'a> Request<'a> {
+    pub fn new(
+        method: &'a str,
+        url: &'a str,
+        headers: &'a [(&'a str, &'a str)],
+        body: &'a [u8],
+    ) -> Self {
+        Self {
+            method,
+            url,
+            headers,
+            body,
+            timeout: None,
+            limit: None,
+        }
+    }
+
+    /// Ask the host to send this request through its rotating egress pool.
+    /// Its destination still needs `[http] fetch` permission.
+    pub fn rotating(self) -> RotatingRequest<'a> {
+        RotatingRequest(self)
+    }
+}
+
+pub struct RotatingRequest<'a>(Request<'a>);
+
+impl RotatingRequest<'_> {
+    pub fn send(self) -> Result<Response, CallError> {
+        send(sys::HTTP_FETCH_ROTATING, &self.0)
+    }
 }
 
 /// Send `requests` at once, each to a host the manifest declares under
@@ -196,19 +228,9 @@ fn send_all(
 
 fn send(
     import: impl FnOnce(usize, usize) -> u64,
-    method: &str,
-    url: &str,
-    headers: &[(&str, &str)],
-    body: &[u8],
+    request: &Request<'_>,
 ) -> Result<Response, CallError> {
-    let request = frame(&Request {
-        method,
-        url,
-        headers,
-        body,
-        timeout: None,
-        limit: None,
-    });
+    let request = frame(request);
     let reply = host::call(import, &request)?;
     response(&wire::fields(&reply).map_err(|_| unreadable())?)
 }

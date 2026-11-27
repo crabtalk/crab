@@ -1,6 +1,6 @@
 //! How a host is sized.
 
-use berm::{Budget, Calls};
+use berm::{Budget, Calls, database::wal::CommitHook};
 use serde::Deserialize;
 use std::{path::PathBuf, time::Duration};
 
@@ -55,6 +55,9 @@ pub struct Config {
     /// Where the databases of the services that keep one live.
     #[serde(default = "databases")]
     pub databases: PathBuf,
+    /// Optional WAL capture callback for the service writers.
+    #[serde(skip)]
+    pub commit_hook: Option<CommitHook>,
 }
 
 impl Default for Config {
@@ -74,6 +77,7 @@ impl Default for Config {
             code_cache: code_cache(),
             code_idle: code_idle(),
             databases: databases(),
+            commit_hook: None,
         }
     }
 }

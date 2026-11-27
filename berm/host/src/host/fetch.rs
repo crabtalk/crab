@@ -10,13 +10,17 @@ use berm::{
     Callsite, Meter, Syscall,
     syscall::http::{self, Request},
 };
-use std::{sync::Weak, time::Instant};
+use std::{
+    sync::{Weak, atomic::Ordering},
+    time::Instant,
+};
 use tower::ServiceExt;
 
 /// Which of the HTTP syscalls is served.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Door {
     Fetch,
+    Rotating,
     FetchAll,
     FetchAllLiteralBody,
 }
@@ -28,23 +32,31 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     let send = move |at: Callsite, request: Request| {
         let fetch = fetch.clone();
         async move {
-            let size = request.size();
-            at.meter(Meter {
-                sent: size as u64,
-                ..Meter::default()
-            });
+            // Rotating traffic is metered as `proxied` and kept out of `sent`.
+            if request.rotation.is_none() {
+                at.meter(Meter {
+                    sent: request.size() as u64,
+                    ..Meter::default()
+                });
+            }
             let host = request.host.clone();
             let timeout = request.timeout;
             let within = timeout.map(|timeout| Instant::now() + timeout);
             let given_up = within.map_or(at.deadline, |within| within.min(at.deadline));
-            tokio::time::timeout_at(given_up.into(), fetch.oneshot(request))
-                .await
-                .with_context(|| match timeout {
-                    Some(timeout) if Some(given_up) == within => {
-                        format!("{host} did not answer within {}ms", timeout.as_millis())
-                    }
-                    _ => format!("{host} did not answer before the call's deadline"),
-                })?
+            let rotation = request.rotation.clone();
+            let answered = tokio::time::timeout_at(given_up.into(), fetch.oneshot(request)).await;
+            if let Some(rotation) = rotation {
+                at.meter(Meter {
+                    proxied: rotation.load(Ordering::Relaxed),
+                    ..Meter::default()
+                });
+            }
+            answered.with_context(|| match timeout {
+                Some(timeout) if Some(given_up) == within => {
+                    format!("{host} did not answer within {}ms", timeout.as_millis())
+                }
+                _ => format!("{host} did not answer before the call's deadline"),
+            })?
         }
     };
     let host = host.clone();
@@ -54,6 +66,7 @@ pub(crate) fn syscall<E: Env>(host: &Weak<Inner<E>>, fetch: E::Fetch, door: Door
     };
     match door {
         Door::Fetch => http::fetch(send, secret),
+        Door::Rotating => http::fetch_rotating(send, secret),
         Door::FetchAll => http::fetch_all(send, secret),
         Door::FetchAllLiteralBody => http::fetch_all_literal_body(send, secret),
     }

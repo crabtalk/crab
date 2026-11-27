@@ -47,13 +47,8 @@ enum Command {
         /// The Cloud to sign in to.
         #[arg(default_value = cmd::login::CLOUD)]
         host: String,
-        /// Sign in with GitHub in place of Google.
+        /// Request a dedicated agent key. A person approves it at the printed link.
         #[arg(long)]
-        github: bool,
-        /// Ask the person for a dedicated key instead, approved at the printed
-        /// `/device` link. Use it when they are not at this machine. Org and
-        /// account changes need a personal session, which this key is not.
-        #[arg(long, conflicts_with = "github")]
         device: bool,
         /// The context to keep the credential as.
         #[arg(long, default_value = "cloud")]
@@ -173,7 +168,7 @@ enum Command {
     /// What a service used over the last 30 days, a day each; with no
     /// service, what the account's services used and how much of its plan.
     Usage { name: Option<String> },
-    /// A service's calls over the last 30 days, newest first, on Cloud.
+    /// A service's calls over the last 7 days, newest first, on Cloud.
     Calls {
         name: String,
         /// Only calls of this tool.
@@ -244,9 +239,9 @@ enum Command {
         #[command(subcommand)]
         action: Option<InvitesCommand>,
     },
-    /// The plans Cloud sells, and what each includes.
+    /// Cloud plans, their allowances and their compute rates.
     Plans,
-    /// What use past a plan's included amounts costs.
+    /// List rates and compute rates by Cloud plan.
     Rates,
     /// What an error code means and what to do about it, as `E0001`.
     Explain { code: String },
@@ -371,7 +366,7 @@ enum BillingCommand {
         #[arg(long, default_value = "")]
         r#for: String,
     },
-    /// Verify the account on GitHub, which lets it deploy on Hobby: here when
+    /// Verify the account on GitHub, which lets it deploy on Free: here when
     /// the check passes, else a code whose page the person verifies at.
     Verify {
         /// What it is for, shown to the person who verifies.
@@ -385,11 +380,14 @@ enum BillingCommand {
         r#for: String,
     },
 
-    /// Refill credit when it runs low; a cap of 0 turns it off.
+    /// Refill prepaid when it runs low; a cap of 0 turns it off.
     Refill {
         /// USD one refill buys, 20 or more.
         #[arg(long, default_value_t = 20)]
         amount: u32,
+        /// USD of prepaid below which a refill is charged.
+        #[arg(long, default_value_t = 5)]
+        below: u32,
         /// The most USD refills may buy in a UTC month.
         #[arg(long)]
         cap: u32,
@@ -512,7 +510,7 @@ enum OrgCommand {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Assign an owner as the org's Hobby sponsor.
+    /// Assign an owner as the org's Free sponsor.
     Sponsor { org: String, member_id: String },
     /// Delete an org.
     Rm { org: String },
@@ -635,12 +633,7 @@ fn run() -> Result<ExitCode> {
 
     match &args.command {
         Command::Workflow(workflow) => return workflow.run(&client()?, json, yes),
-        Command::Login {
-            host,
-            github,
-            device,
-            name,
-        } => cmd::login::run(name, host, *github, *device)?,
+        Command::Login { host, device, name } => cmd::login::run(name, host, *device)?,
         Command::Logout => cmd::logout::run(args.context.as_deref())?,
         Command::Request {
             code, expire: true, ..
@@ -812,8 +805,8 @@ fn run() -> Result<ExitCode> {
                     cmd::billing::ask(&client, Purchase::Credit, None, r#for, json)?
                 }
 
-                BillingCommand::Refill { amount, cap } => {
-                    cmd::billing::refill(&client, *amount, *cap)?
+                BillingCommand::Refill { amount, below, cap } => {
+                    cmd::billing::refill(&client, *amount, *below, *cap)?
                 }
                 BillingCommand::Invoices => cmd::billing::invoices(&client, json)?,
                 BillingCommand::Portal { card, cancel } => {
