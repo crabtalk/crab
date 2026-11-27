@@ -429,6 +429,10 @@ pub struct Costed {
     /// of USD micros. Its day's storage is charged with the day. `None` for a
     /// call the host refused.
     pub cost_micros_decimal: Option<String>,
+    /// What its caller paid for it, in USD micros; `None` when its tool is
+    /// unpriced or the price was released.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_micros: Option<i64>,
 }
 
 /// What one tool's invocations used over the last 30 days, as its service's

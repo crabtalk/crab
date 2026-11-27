@@ -15,7 +15,7 @@ A refusal that names a code, as `Error: 402 [E0001]: …`, is explained by `crab
 
 | Command | What it reads |
 | --- | --- |
-| `crab calls <service>` | Its calls of the last 30 days, newest first: caller, outcome, duration, what each used and cost. `--tool`, `--outcome done\|failed\|denied\|refused` and `--limit` narrow them. Cloud only. |
+| `crab calls <service>` | Its calls of the last 7 days, newest first: caller, outcome, duration, what each used and cost. `--tool`, `--outcome done\|failed\|denied\|refused` and `--limit` narrow them. Cloud only. |
 | `crab logs <service>` | What it emitted, oldest first. `--after <n>` prints those after a sequence number. See the local loop in `crab-build` for the host's own log. |
 | `crab deploys <service>` | Its last 100 deploys, refused and failed ones included, with pending approval links. An owner calling a service awaiting its first approval receives `E0046`. Cloud only. |
 | `crab wakes <service>` | The wakes armed to call its tools. |
@@ -28,7 +28,7 @@ Cloud reads require account ownership and the matching API-key permission. See [
 
 ## Replay a failed call
 
-A call that failed or trapped can retain its input and a tape of outside answers for 30 days on Cloud. Successful, denied and refused calls omit replay data. A tape can end early at the recording limit.
+A call that failed or trapped can retain its input and a tape of outside answers for 7 days on Cloud. Successful, denied and refused calls omit replay data. A tape can end early at the recording limit.
 
 1. `crab calls <service> --outcome failed` finds its id.
 2. `crab replay <service> <id>` runs it again in the CLI's own process, answered from the tape without live services, printing its logs. It exits `2` when it fails again.

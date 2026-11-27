@@ -1,4 +1,4 @@
-//! `crab calls` — a service's calls over the last 30 days, newest first.
+//! `crab calls` — a service's calls over the last 7 days, newest first.
 
 use crate::{format, runtime, terminal};
 use anyhow::Result;
@@ -17,7 +17,7 @@ pub fn run(
         return terminal::json(&calls);
     }
     if calls.is_empty() {
-        println!("no calls in the last 30 days");
+        println!("no calls in the last 7 days");
         return Ok(());
     }
     println!(

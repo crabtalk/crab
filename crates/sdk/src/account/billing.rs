@@ -103,6 +103,35 @@ pub struct Spent {
     pub micros: i64,
 }
 
+/// One price an account paid, or had held and released.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Purchase {
+    /// When it was held, in epoch seconds.
+    pub at: i64,
+    #[serde(default)]
+    pub kind: PriceKind,
+    /// The service's owner, by handle, else by id.
+    pub owner: String,
+    pub service: String,
+    pub tool: String,
+    /// The API key that made the call; `None` for a session.
+    pub key: Option<String>,
+    /// In USD micros.
+    pub micros: i64,
+    /// Whether the price was given back: the call did not end done.
+    pub released: bool,
+}
+
+/// One UTC calendar month of [`Spent`], by operation, the most first.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpentMonth {
+    /// `YYYY-MM`.
+    pub month: String,
+    pub spent: Vec<Spent>,
+}
+
 /// A share of a limit an account reached in a period.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

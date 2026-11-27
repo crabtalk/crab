@@ -245,7 +245,7 @@ impl Client {
         Ok(())
     }
 
-    /// `name`'s calls over the last 30 days, newest first, at most `limit`,
+    /// `name`'s calls over the last 7 days, newest first, at most `limit`,
     /// only those of `tool` or ended as `outcome` when given. Cloud only.
     pub async fn calls(
         &self,

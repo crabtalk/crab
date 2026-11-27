@@ -168,7 +168,7 @@ enum Command {
     /// What a service used over the last 30 days, a day each; with no
     /// service, what the account's services used and how much of its plan.
     Usage { name: Option<String> },
-    /// A service's calls over the last 30 days, newest first, on Cloud.
+    /// A service's calls over the last 7 days, newest first, on Cloud.
     Calls {
         name: String,
         /// Only calls of this tool.
