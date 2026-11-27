@@ -561,6 +561,49 @@ pub struct AccountCall {
     pub call: Costed,
 }
 
+/// How long a service's calls took in one UTC calendar month, from their
+/// hourly counts.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CallMonth {
+    /// Each day of the month with calls, oldest first.
+    pub days: Vec<CallDay>,
+    /// Each tool called in the month, by name.
+    pub tools: Vec<CallTool>,
+}
+
+/// One UTC day of a [`CallMonth`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallDay {
+    /// Counted from the Unix epoch.
+    pub day: i32,
+    pub calls: u64,
+    /// `None` when none of the day's calls was timed into a bucket.
+    pub durations: Option<Durations>,
+}
+
+/// One tool's part of a [`CallMonth`].
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallTool {
+    pub tool: String,
+    pub calls: u64,
+    /// Calls that ended `failed`.
+    pub failed: u64,
+    pub durations: Option<Durations>,
+}
+
+/// Call durations at three percentiles, in milliseconds: each the upper bound
+/// of the duration bucket holding it, or the slowest call for the last bucket.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Durations {
+    pub p50: u64,
+    pub p95: u64,
+    pub p99: u64,
+}
+
 /// A service's billing in one UTC calendar month.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
