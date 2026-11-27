@@ -51,7 +51,6 @@ fn the_images_import_every_host_call() -> Result<()> {
     Ok(())
 }
 
-
 #[test]
 fn a_runtime_links_a_call_it_has_no_door_for() -> Result<()> {
     let engine = Engine::new(&Config::default())?;

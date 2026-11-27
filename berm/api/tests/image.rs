@@ -270,7 +270,6 @@ fn abi_declarations_supply_access_price_title_catalog_and_budget() {
     assert_eq!(manifest.tools[1].budget, None);
 }
 
-
 #[test]
 fn a_cron_tool_given_public_access_is_refused() {
     let public_cron = cron("tick").replace("internal", "public");
