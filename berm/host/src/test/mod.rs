@@ -48,6 +48,10 @@ use std::{
 };
 use tokio::sync::MutexGuard;
 
+/// Compiled code every test host shares, under the system temp directory;
+/// Wasmtime keys entries by content.
+pub const CACHE: &str = "berm-test-cache";
+
 mod clock;
 mod env;
 pub mod image;
@@ -85,6 +89,10 @@ async fn opened(
 ) -> Result<Host<Test>> {
     let config = crate::Config {
         databases: dir.join("databases"),
+        cache_dir: config
+            .cache_dir
+            .clone()
+            .or_else(|| Some(std::env::temp_dir().join(CACHE))),
         ..config.clone()
     };
     Host::open(

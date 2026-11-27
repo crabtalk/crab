@@ -199,9 +199,9 @@ Deploy history retains the current image and two previous successful images; old
 `[image] public` sets a deployment’s visibility; `[image] deploy` lets others download the image and deploy their own services from it. Both default to `false` and may be enabled together. `crab push` builds and publishes images through Cloud without running an instance. It uses the same directory and `-p` selection as `crab up`. A deploy of another account’s image may set visibility and public-tool prices; these overrides are kept on redeploy and upgrade unless replaced.
 
 
-`[image] name = "connect/tinyfish"` is the publication and pull address; the old `name` key is unsupported. `crab push` requires an image, builds local source and targets its account. The server requires account ownership; an API key must be bound to that account and grant `deployments:write`. The selected context account never replaces the publication address. Mixed-account publication groups are handled separately.
+`[image] name = "acme/weather"` is the publication and pull address; the old `name` key is unsupported. `crab push` requires an image, builds local source and targets its account. The server requires account ownership; an API key must be bound to that account and grant `deployments:write`. The selected context account never replaces the publication address. Mixed-account publication groups are handled separately.
 
-`crab up` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `[image] name = "connect/tinyfish:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
+`crab up` resolves the image at the Cargo package version, including workspace-inherited versions, without invoking Cargo or installing Rust for a directly selected image. `--version` selects another release. A standalone manifest declares an exact suffix, such as `[image] name = "acme/weather:1.2.3"`. A suffix on source publication must match Cargo's version. Workspace group discovery still uses Cargo.
 
 
 

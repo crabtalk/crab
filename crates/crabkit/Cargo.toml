@@ -12,6 +12,7 @@ categories = ["wasm"]
 [features]
 auth = ["dep:auth"]
 crawl = ["dep:crawl"]
+github = ["dep:github"]
 lake = ["dep:lake"]
 neon = ["dep:neon"]
 stripe = ["dep:stripe"]
@@ -21,6 +22,7 @@ webpage = ["dep:webpage"]
 [dependencies]
 auth = { workspace = true, optional = true }
 crawl = { workspace = true, optional = true }
+github = { workspace = true, optional = true }
 lake = { workspace = true, optional = true }
 neon = { workspace = true, optional = true }
 stripe = { workspace = true, optional = true }

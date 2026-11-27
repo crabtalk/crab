@@ -3,16 +3,6 @@ members = [
     "berm/*",
     "crates/*",
     "fixtures/*",
-    "services/connect/*",
-    "services/agents/*",
-    "services/web/*",
-    "services/kits/*",
-    "services/hello",
-]
-default-members = [
-    "berm/*",
-    "crates/*",
-    "fixtures/*",
     "services/agents/*",
     "services/web/*",
     "services/kits/*",
@@ -51,13 +41,11 @@ berm-kit = { path = "fixtures/kit" }
 
 # services
 cydonia-artifact = { git = "https://github.com/crabtalk/cydonia", rev = "9a79401874c9f1870c72421020aef8d76294405a", default-features = false }
-github = { package = "crab-github", path = "services/connect/github", version = "0.1.10", default-features = false }
-posthog = { package = "crab-posthog", path = "services/connect/posthog", version = "0.1.10", default-features = false }
-resend = { package = "crab-resend", path = "services/connect/resend", version = "0.1.10", default-features = false }
 
 # kits
 auth = { package = "crabkit-auth", path = "services/kits/auth", version = "0.1.10" }
 crawl = { package = "crabkit-crawl", path = "services/kits/crawl", version = "0.1.10" }
+github = { package = "crabkit-github", path = "services/kits/github", version = "0.1.10" }
 webpage = { package = "crabkit-webpage", path = "services/kits/webpage", version = "0.1.10" }
 lake = { package = "crabkit-lake", path = "services/kits/lake", version = "0.1.10" }
 neon = { package = "crabkit-neon", path = "services/kits/neon", version = "0.1.10" }
@@ -117,7 +105,6 @@ scraper = { version = "0.27", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["raw_value"] }
 serde_urlencoded = "0.7"
-serde_yaml_ng = "0.10"
 sha2 = "0.11"
 syn = { version = "2", features = ["full"] }
 tempfile = "3.27"
@@ -167,3 +154,18 @@ debug = 0
 
 [profile.release]
 strip = "symbols"
+
+# Unoptimized Cranelift made wasm-heavy tests five times slower: berm-host's
+# residency and workflow_execute took 62 s, 11 s with these (2026-11-27).
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+[profile.dev.package.cranelift-frontend]
+opt-level = 3
+[profile.dev.package.cranelift-entity]
+opt-level = 3
+[profile.dev.package.cranelift-bforest]
+opt-level = 3
+[profile.dev.package.regalloc2]
+opt-level = 3
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3

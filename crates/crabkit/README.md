@@ -11,6 +11,7 @@ crabkit = { version = "0.1", features = ["stripe"] }
 | --- | --- | --- |
 | `auth` | [`crabkit-auth`](../../services/kits/auth/README.md) | Sign-in for a product's users: GitHub and Google logins as sessions kept in its own database |
 | `crawl` | [`crabkit-crawl`](../../services/kits/crawl/README.md) | An incremental crawler: robots.txt, sitemaps, and the pages of the kinds a service names, recrawled when they change |
+| `github` | [`crabkit-github`](../../services/kits/github/README.md) | GitHub repositories, issues, pull requests and releases, and OAuth sign-in |
 | `lake` | [`crabkit-lake`](../../services/kits/lake/README.md) | Feeds a source service follows: items and threads fetched on its schedule into its database, and RSS and Atom reading |
 | `neon` | [`crabkit-neon`](../../services/kits/neon/README.md) | Neon Postgres over HTTP: parameterized statements and transactions |
 | `stripe` | [`crabkit-stripe`](../../services/kits/stripe/README.md) | Stripe subscriptions for a product's users: Checkout, the customer portal, and each user's plan |

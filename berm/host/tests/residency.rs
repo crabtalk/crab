@@ -1,9 +1,9 @@
 use anyhow::Result;
-use berm::{Berm, Calls, Engine, Pool, syscall::http::Response};
+use berm::syscall::http::Response;
 use berm_api::{Output, host::Caller};
 use berm_build::fixture;
 use berm_host::{Config, test::TestHost};
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 const SERVICE: &str = "acct/fixture";
 
@@ -313,43 +313,6 @@ async fn redeployment_keeps_an_active_generation_counted_until_it_finishes() -> 
 }
 
 #[tokio::test]
-async fn legacy_rows_compile_once_and_record_their_footprint() -> Result<()> {
-    let mut host = TestHost::open(0).await?;
-    host.deploy(SERVICE, &fixture::image("berm-fixture")?)
-        .await?;
-    host.host
-        .store
-        .run(|conn| {
-            conn.execute("UPDATE services SET code_bytes = NULL", [])?;
-            Ok(())
-        })
-        .await?;
-    host.reopen().await?;
-    assert_eq!(host.host.memory("acct").loaded, 0);
-    let footprint: i64 = host
-        .host
-        .store
-        .read(|conn| {
-            conn.query_row(
-                "SELECT code_bytes FROM services WHERE scope = 'acct' AND name = 'fixture'",
-                [],
-                |row| row.get(0),
-            )
-        })
-        .await?;
-    assert!(footprint > 0);
-    host.reopen().await?;
-    assert_eq!(host.host.memory("acct").loaded, 0);
-    assert!(matches!(
-        host.call(SERVICE, "echo", br#"{"query":"migrated"}"#)
-            .await?
-            .result,
-        Output::Done(_)
-    ));
-    Ok(())
-}
-
-#[tokio::test]
 async fn an_expired_call_does_not_load_cold_code() -> Result<()> {
     let mut host = TestHost::open_with(
         0,
@@ -423,38 +386,5 @@ async fn concurrent_calls_pin_one_image_when_retention_is_disabled() -> Result<(
     }
     assert_eq!(host.host.memory("acct").loaded, 0);
     assert_eq!(host.host.memory("acct").running, 0);
-    Ok(())
-}
-
-#[tokio::test]
-async fn legacy_restore_keeps_metadata_when_the_scope_limit_is_too_small() -> Result<()> {
-    let pool = Arc::new(Pool::default());
-    pool.limit(1);
-    let mut calls = Calls::by_name(0);
-    let drawing = pool.clone();
-    calls.pool = Arc::new(move |_| drawing.clone());
-    let berm = Berm::new(&Engine::default(), calls, vec![]);
-    let image = fixture::image("berm-fixture")?;
-    let restored = berm.restore("fixture", &image, None)?;
-    assert!(restored.bytes > 1);
-    assert_eq!(pool.now().loaded, 0);
-    assert_eq!(restored.idl("fixture").name, "fixture");
-    let error = berm
-        .call(
-            None,
-            "fixture",
-            "echo",
-            br#"{"query":"over limit"}"#.to_vec(),
-        )
-        .await
-        .unwrap_err();
-    assert!(error.is::<berm::MemoryLimit>());
-    pool.limit(0);
-    assert!(matches!(
-        berm.call(None, "fixture", "echo", br#"{"query":"allowed"}"#.to_vec())
-            .await?
-            .result,
-        Output::Done(_)
-    ));
     Ok(())
 }

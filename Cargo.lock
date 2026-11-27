@@ -501,10 +501,8 @@ name = "berm-linked-services"
 version = "0.1.10"
 dependencies = [
  "berm-lang",
- "crab-github",
- "crab-posthog",
- "crab-resend",
  "crabkit-auth",
+ "crabkit-github",
  "crabkit-upstash",
 ]
 
@@ -1037,82 +1035,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-anyapi"
-version = "0.1.10"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-companyenrich"
-version = "0.1.10"
-dependencies = [
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-contextdev"
-version = "0.1.10"
-dependencies = [
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-dataforseo"
-version = "0.1.10"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "serde_json",
- "serde_yaml_ng",
- "url",
-]
-
-[[package]]
-name = "crab-firecrawl"
-version = "0.1.10"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "serde_json",
- "url",
-]
-
-[[package]]
-name = "crab-github"
-version = "0.1.10"
-dependencies = [
- "berm-lang",
- "url",
-]
-
-[[package]]
 name = "crab-html"
 version = "0.1.10"
-
-[[package]]
-name = "crab-litescrape"
-version = "0.1.10"
-dependencies = [
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
 
 [[package]]
 name = "crab-openapi"
@@ -1131,45 +1055,6 @@ dependencies = [
  "trybuild",
  "url",
  "wasmparser 0.255.0",
-]
-
-[[package]]
-name = "crab-osv"
-version = "0.1.10"
-dependencies = [
- "berm-lang",
- "url",
-]
-
-[[package]]
-name = "crab-pdl"
-version = "0.1.10"
-dependencies = [
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
-name = "crab-posthog"
-version = "0.1.10"
-dependencies = [
- "berm-lang",
-]
-
-[[package]]
-name = "crab-resend"
-version = "0.1.10"
-dependencies = [
- "anyhow",
- "berm-api",
- "berm-build",
- "berm-host",
- "berm-lang",
- "serde_json",
- "tokio",
- "url",
 ]
 
 [[package]]
@@ -1195,23 +1080,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "crab-tinyfish"
-version = "0.1.10"
-dependencies = [
- "base64 0.22.1",
- "berm-api",
- "berm-build",
- "berm-lang",
- "crab-openapi",
- "url",
-]
-
-[[package]]
 name = "crabkit"
 version = "0.1.10"
 dependencies = [
  "crabkit-auth",
  "crabkit-crawl",
+ "crabkit-github",
  "crabkit-lake",
  "crabkit-neon",
  "crabkit-stripe",
@@ -1224,7 +1098,7 @@ name = "crabkit-auth"
 version = "0.1.10"
 dependencies = [
  "berm-lang",
- "crab-github",
+ "crabkit-github",
  "hex",
  "sha2 0.11.0",
 ]
@@ -1236,6 +1110,14 @@ dependencies = [
  "berm-lang",
  "crab-html",
  "crab-sitemap",
+ "url",
+]
+
+[[package]]
+name = "crabkit-github"
+version = "0.1.10"
+dependencies = [
+ "berm-lang",
  "url",
 ]
 
@@ -4607,19 +4489,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_yaml_ng"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
-dependencies = [
- "indexmap",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
 name = "servo_arc"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5582,12 +5451,6 @@ name = "unit-prefix"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81e544489bf3d8ef66c953931f56617f423cd4b5494be343d9b9d3dda037b9a3"
-
-[[package]]
-name = "unsafe-libyaml"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"

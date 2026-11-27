@@ -35,7 +35,7 @@ jobs:
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@nextest
-      - run: cargo nextest run --release
+      - run: cargo nextest run
 
   lint:
     env:

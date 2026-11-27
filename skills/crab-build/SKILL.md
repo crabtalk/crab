@@ -9,7 +9,7 @@ Read the relevant source before writing code; [Where the truth is](references/so
 
 ## Choose how to use a capability
 
-Browse provider integrations in `services/connect/`, agent services in `services/agents/`, and website tools in `services/web/`. Library-only packages live under `services/kits/`. Check [services](https://github.com/crabtalk/crab/blob/main/services/README.md) and [crabkit](https://github.com/crabtalk/crab/blob/main/crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published image, or link its library when those fit the task. Write a product service for its own behavior. Its tools, its database, its secrets and its public surface are the product's.
+Browse agent services in `services/agents/` and website tools in `services/web/`. Library-only packages live under `services/kits/`. Check [services](https://github.com/crabtalk/crab/blob/main/services/README.md) and [crabkit](https://github.com/crabtalk/crab/blob/main/crates/crabkit/README.md) before writing an integration. Call an existing deployment, deploy a published image, or link its library when those fit the task. Write a product service for its own behavior. Its tools, its database, its secrets and its public surface are the product's.
 
 ## A service
 
@@ -80,4 +80,4 @@ Size each tool's `#[tool(budget(...))]` from its built WebAssembly execution bef
   ```
 
 - What a service needs from berm or a library and cannot get is a change to crab, made in crab. What only one product needs stays in that product's service.
-- In the Crab workspace, Nextest 0.9.98 or newer is required and CI uses `cargo nextest run --release`. Workspace Wasm behavior tests read `berm_build::fixture::image(package)`; register images in `berm/build/examples/prepare.rs`. A Nextest setup script prepares the registered images even on focused runs. Only builder and CLI build tests should compile images inside a test. Update affected READMEs, examples, website guides and these skills alongside behavior or layout changes.
+- In the Crab workspace, Nextest 0.9.98 or newer is required and CI uses `cargo nextest run`. Workspace Wasm behavior tests read `berm_build::fixture::image(package)`; register images in `berm/build/examples/prepare.rs`. A Nextest setup script prepares the registered images even on focused runs. Only builder and CLI build tests should compile images inside a test. Update affected READMEs, examples, website guides and these skills alongside behavior or layout changes.

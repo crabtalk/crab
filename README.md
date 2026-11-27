@@ -44,7 +44,7 @@ A repo can declare its published address in `crab.toml`, without a separate name
 
 ```toml
 [image]
-name = "connect/tinyfish"
+name = "acme/weather"
 deploy = true
 ```
 
@@ -62,13 +62,13 @@ For services exporting workflows, `crab workflow inspect owner/service.workflow`
 - [Benchmarking](https://crabtalk.ai/docs/guides/bench) — measure local WebAssembly workloads and estimate execution cost with `crab bench`.
 - [ChatGPT plugin](plugins/README.md) — uploadable bundle for finding and calling deployed services.
 - [CLI reference](crates/crab/README.md) — commands, contexts, and credentials.
-- [Services](services/README.md) — Connect integrations and Utilities to call, deploy or reuse.
+- [Services](services/README.md) — agent and web services to call, deploy or reuse.
 - [Libraries](crates/crabkit/README.md) — libraries to include in your services.
 - [Berm](berm/berm/README.md) — the runtime that runs services.
 
 ## Development
 
-Run `cargo nextest run --release`. One setup prepares all registered test images before tests run, including focused runs; Wasm behavior tests execute those images through Wasmtime. Add images to `berm/build/examples/prepare.rs` and read them with `berm_build::fixture::image(package)`. Cargo caches the separate package builds.
+Run `cargo nextest run`. One setup prepares all registered test images before tests run, including focused runs; Wasm behavior tests execute those images through Wasmtime. Add images to `berm/build/examples/prepare.rs` and read them with `berm_build::fixture::image(package)`. Cargo caches the separate package builds.
 
 ## License
 
