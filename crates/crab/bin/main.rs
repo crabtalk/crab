@@ -458,7 +458,7 @@ enum KeyCommand {
 struct AppFields {
     name: String,
     /// An origin a browser may call from, `scheme://host[:port]`, or `*`.
-    #[arg(long = "origin", required = true)]
+    #[arg(long = "origin", required_unless_present = "mcp")]
     origins: Vec<String>,
     /// A service it may call, `{owner}/{name}`.
     #[arg(long = "service", required = true)]
@@ -469,6 +469,9 @@ struct AppFields {
     /// Calls with no token reach the services' `access = "anonymous"` tools.
     #[arg(long)]
     anonymous: bool,
+    /// Its services' own MCP servers take its issuers' tokens.
+    #[arg(long)]
+    mcp: bool,
 }
 
 #[derive(Subcommand)]
@@ -855,6 +858,7 @@ fn run() -> Result<ExitCode> {
                     &fields.services,
                     &fields.issuers,
                     fields.anonymous,
+                    fields.mcp,
                 )
             };
             match action {
