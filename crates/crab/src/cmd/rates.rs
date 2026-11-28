@@ -18,6 +18,9 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
         return terminal::json(&metering);
     }
     print(&metering.rates, metering.included_cpu, "");
+    if let Some(domain) = metering.domain {
+        println!("custom domain ${} per month", domain as f64 / 1e6);
+    }
     Ok(())
 }
 

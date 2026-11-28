@@ -153,6 +153,7 @@ pub enum Unit {
     Held,
     Stored,
     Sent,
+    Domains,
     /// Spelled `credit` on the wire, which released clients know.
     #[serde(rename = "credit")]
     Owed,
@@ -234,6 +235,8 @@ pub struct Usage {
     pub stored: u64,
     /// Bytes counted against [`Included::sent`].
     pub sent: u64,
+    /// Days custom domains were held, summed over them, each day begun counted.
+    pub domains: u64,
 }
 
 /// A person's verification, which lets an account on Free deploy.

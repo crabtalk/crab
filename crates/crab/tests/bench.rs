@@ -12,6 +12,7 @@ fn metering() -> Metering {
         included_cpu: meta::INCLUDED_CPU,
         max_log: berm_api::MAX_LOG,
         budget: Some(berm_api::Budget::DEFAULT),
+        domain: None,
     }
 }
 

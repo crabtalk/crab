@@ -63,6 +63,10 @@ pub struct Metering {
     /// divided by its `memory` is how many such calls run at once.
     #[serde(default)]
     pub budget: Option<Budget>,
+    /// USD micros per custom domain held a whole period, when the deployment
+    /// serves custom domains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<u64>,
 }
 
 impl Metering {
