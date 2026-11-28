@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 /// Seconds Cloud holds each ask of `--wait` while the request is pending.
 const HOLD: u64 = 60;
 
-pub fn approve_removal(client: &Client, result: Result<(), Error>) -> Result<()> {
+/// `result`'s value, or `None` once the request a session must approve in the
+/// browser, `E0105`, is approved and done: its page is opened and waited on.
+pub fn approved<T>(client: &Client, result: Result<T, Error>) -> Result<Option<T>> {
     match result {
         Err(Error::Api {
             explain: Some(explain),
@@ -23,9 +25,10 @@ pub fn approve_removal(client: &Client, result: Result<(), Error>) -> Result<()>
             terminal::open(&link.url);
             let request = runtime::wait(client.request(&link.code, 0))?;
             let timeout = request.expires_at.saturating_sub(request.created_at) as u64;
-            run(client, &link.code, true, timeout, false)
+            run(client, &link.code, true, timeout, false)?;
+            Ok(None)
         }
-        other => Ok(other?),
+        other => Ok(Some(other?)),
     }
 }
 

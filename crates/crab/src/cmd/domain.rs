@@ -1,7 +1,7 @@
 //! `crab domain` — a service's custom domains: listed, added, removed.
 
-use crate::{runtime, terminal};
-use anyhow::Result;
+use crate::{cmd::request, runtime, terminal};
+use anyhow::{Context, Result};
 use crabtalk_sdk::{
     client::Client,
     services::domain::{Domain, DomainStatus},
@@ -22,7 +22,13 @@ pub fn ls(client: &Client, name: &str, json: bool) -> Result<()> {
 }
 
 pub fn add(client: &Client, name: &str, host: &str, json: bool) -> Result<()> {
-    let domain = runtime::wait(client.add_domain(name, host))?;
+    let domain = match request::approved(client, runtime::wait(client.add_domain(name, host)))? {
+        Some(domain) => domain,
+        None => runtime::wait(client.domains(name))?
+            .into_iter()
+            .find(|domain| domain.host.eq_ignore_ascii_case(host.trim_end_matches('.')))
+            .context("the approved domain is not listed")?,
+    };
     if json {
         return terminal::json(&domain);
     }

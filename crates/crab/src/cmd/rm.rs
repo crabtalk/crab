@@ -13,7 +13,7 @@ pub fn run(client: &Client, names: &[String], yes: bool) -> Result<()> {
         &format!("remove {} and what it committed", names.join(", ")),
     )?;
     for name in &names {
-        request::approve_removal(client, runtime::wait(client.undeploy(name)))?;
+        request::approved(client, runtime::wait(client.undeploy(name)))?;
         eprintln!("removed {name}");
     }
     Ok(())
