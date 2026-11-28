@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.1.11",
+    "date": "2026-11-28",
+    "summary": "Serve a service's own MCP server at a custom domain with your users' own sign-in, and price crab bench at the deployment's rates.",
+    "new": [
+      "Serve a service's MCP server at a hostname of your own with crab domain add; crab domain ls shows each domain's status and the DNS records it needs, and crab domain rm stops serving it",
+      "Let an app's identity providers sign in to its services' own MCP servers with crab app create --mcp; --origin is optional on such an app",
+      "Grant API keys the domains:write scope to add and remove custom domains, and domains:read to list them",
+      "Read the custom domain rate in crab rates and the days each domain was held in crab usage"
+    ],
+    "changed": [
+      "Lower the default memory budget of a tool that declares none from 32 MiB to 8 MiB; a tool that needs more declares it with budget(memory = …)",
+      "From a terminal session, crab domain add and crab billing refill open a browser approval page where an owner approves the charge",
+      "Price crab bench at the rates of the context it is signed in to; offline or signed out, it reports measurements with no cost. The SDK no longer carries built-in rates, and reads the host's included CPU, budget ceilings, overage maximum and GitHub verification terms from Cloud",
+      "Show Free's GitHub verification terms, the account age and stars it needs, in crab plans"
+    ],
+    "fixed": []
+  },
+  {
     "version": "0.1.10",
     "date": "2026-11-25",
     "summary": "Share articles and boards between agents with Artifacts, send requests through rotating egress, and pay compute from each plan's included usage.",

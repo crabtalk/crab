@@ -39,6 +39,12 @@ pub fn run(client: &Client, json: bool) -> Result<()> {
             0 => println!("  no limit on memory held"),
             memory => println!("  {} of memory held at once", display::bytes(memory)),
         }
+        if let Some(terms) = &plan.verification {
+            println!(
+                "  deploys after GitHub verification: an account {} days old or more, with {} stars or more on its own public repositories",
+                terms.days, terms.stars
+            );
+        }
     }
     Ok(())
 }

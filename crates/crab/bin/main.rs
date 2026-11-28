@@ -116,11 +116,11 @@ enum Command {
     Push(cmd::push::Push),
     /// Download an image into the local host's image store.
     Pull { image: String },
-    /// Serve stopped services again: those named, or those `crab deploy`
-    /// would deploy here.
+    /// Serve stopped services again: those named, or those `crab up` would
+    /// deploy here.
     Start { names: Vec<String> },
     /// Stop serving services, keeping what they committed: those named, or
-    /// those `crab deploy` would deploy here.
+    /// those `crab up` would deploy here.
     Stop { names: Vec<String> },
     /// Call one of a service's tools.
     Call(cmd::call::Call),
@@ -156,7 +156,7 @@ enum Command {
         out: PathBuf,
     },
     /// Remove services and what they committed: those named, or those `crab
-    /// deploy` would deploy here.
+    /// up` would deploy here.
     Rm { names: Vec<String> },
     /// Print what a service emitted, oldest first.
     Logs {
