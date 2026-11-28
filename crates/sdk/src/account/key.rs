@@ -71,6 +71,8 @@ pub enum Scope {
     ServicesRead,
     #[serde(rename = "services:write")]
     ServicesWrite,
+    #[serde(rename = "domains:read")]
+    DomainsRead,
     #[serde(rename = "domains:write")]
     DomainsWrite,
     #[serde(rename = "secrets:read")]
@@ -125,6 +127,7 @@ impl Scope {
             || matches!(
                 (self, required),
                 (Self::ServicesWrite, Self::ServicesRead)
+                    | (Self::DomainsWrite, Self::DomainsRead)
                     | (Self::DeploymentsWrite, Self::DeploymentsRead)
                     | (Self::AppsWrite, Self::AppsRead)
                     | (Self::OrgsWrite, Self::OrgsRead)
@@ -135,9 +138,10 @@ impl Scope {
             )
     }
 
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::ServicesRead,
         Self::ServicesWrite,
+        Self::DomainsRead,
         Self::DomainsWrite,
         Self::SecretsRead,
         Self::DeploymentsRead,
