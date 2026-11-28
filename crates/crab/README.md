@@ -188,7 +188,7 @@ crab bench services/web/seo check --cases cases.jsonl --runs 10
 
 `bench DIRECTORY TOOL` builds and runs JSON Lines workloads on a temporary local host. Cases supply argument objects and HTTP responses, including headers, body files and optional response delays. Each case starts with a fresh migrated database; repetitions share its state. `--live-http` sends real requests instead of fixtures. The command uploads nothing.
 
-The report separates the tool's own CPU, rows and peak memory from whole-chain cost, prices with the selected Cloud's rates, and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. `--json` gives structured measurements, and `--offline` uses labeled SDK default rates. [Case format and limits](https://crabtalk.ai/docs/guides/bench).
+The report measures the tool's own CPU, rows and peak memory and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. The whole-chain cost estimate uses rates from the signed-in Cloud context. With `--offline`, without a Cloud login, or when the rates request fails, the report gives measurements only. `--json` gives structured measurements with null costs when rates are unavailable. [Case format and limits](https://crabtalk.ai/docs/guides/bench).
 
 ## Publication and images
 

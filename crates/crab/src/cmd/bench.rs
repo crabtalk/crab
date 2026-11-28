@@ -18,7 +18,7 @@ use clap::Args;
 use crabtalk_sdk::{
     client::Client,
     format as display,
-    system::meta::{self, Metering, Rates},
+    system::meta::{self, Metering},
 };
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ pub struct Bench {
     /// Send real HTTP requests instead of using fixtures.
     #[arg(long)]
     pub live_http: bool,
-    /// Price with SDK defaults without requesting Cloud's current rates.
+    /// Skip fetching Cloud rates and report measurements without cost estimates.
     #[arg(long)]
     pub offline: bool,
 }
@@ -196,8 +196,8 @@ pub struct Statistics {
     pub own_memory_bytes: Distribution,
     pub elapsed_us: Distribution,
     /// Whole-chain cost in USD micros, before plan inclusions.
-    pub median_cost_micros_decimal: String,
-    pub max_cost_micros_decimal: String,
+    pub median_cost_micros_decimal: Option<String>,
+    pub max_cost_micros_decimal: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -280,7 +280,7 @@ impl Report {
         cases: &[Case],
         runs: u32,
         live_http: bool,
-        metering: &Metering,
+        metering: Option<&Metering>,
         size: u64,
     ) -> Result<Self> {
         ensure!(
@@ -444,17 +444,22 @@ impl Report {
                 .map(|sample| sample.elapsed_us)
                 .collect::<Vec<_>>(),
         )?;
-        let mut costs: Vec<_> = samples
-            .iter()
-            .map(|sample| {
-                let overage = sample.chain.cpu.saturating_sub(metering.included_cpu);
+        let (median_cost, max_cost) = metering
+            .map(|metering| {
+                let mut costs: Vec<_> = samples
+                    .iter()
+                    .map(|sample| {
+                        let overage = sample.chain.cpu.saturating_sub(metering.included_cpu);
+                        metering.rates.call_charge(&sample.chain, overage)
+                    })
+                    .collect();
+                costs.sort_unstable();
                 (
-                    metering.rates.call_charge(&sample.chain, overage),
-                    metering.rates.cost_decimal(&sample.chain, overage),
+                    meta::decimal(costs[(costs.len() - 1) / 2]),
+                    meta::decimal(costs[costs.len() - 1]),
                 )
             })
-            .collect();
-        costs.sort_by_key(|(cost, _)| *cost);
+            .unzip();
         let complete = samples
             .iter()
             .all(|sample| sample.matched && sample.complete && sample.own.memory > 0);
@@ -468,7 +473,12 @@ impl Report {
             tool: tool.to_owned(),
             digest: digest::of(image),
             http: if live_http { "live" } else { "fixtures" },
-            rates_source: "supplied rates".to_owned(),
+            rates_source: if metering.is_some() {
+                "supplied rates"
+            } else {
+                "no rates supplied"
+            }
+            .to_owned(),
             declared,
             ceilings: defaults.most(),
             statistics: Statistics {
@@ -477,8 +487,8 @@ impl Report {
                 own_written: written,
                 own_memory_bytes: memory,
                 elapsed_us: elapsed,
-                median_cost_micros_decimal: costs[(costs.len() - 1) / 2].1.clone(),
-                max_cost_micros_decimal: costs.last().unwrap().1.clone(),
+                median_cost_micros_decimal: median_cost,
+                max_cost_micros_decimal: max_cost,
             },
             cases: measured,
             recommended,
@@ -493,30 +503,25 @@ pub fn run(cloud: &Client, bench: &Bench, json: bool) -> Result<ExitCode> {
     let project = project::read(&bench.dir)?;
     let image = fs::read(berm_build::build(&bench.dir, None)?)?;
     let (metering, source) = if bench.offline {
-        (None, "SDK defaults (--offline)")
+        (None, "unpriced (--offline)")
+    } else if cloud.owner.is_none() || cloud.token.is_none() {
+        (None, "unpriced (no Cloud login)")
     } else {
         match runtime::wait(cloud.rates()) {
             Ok(rates) => (Some(rates), "Cloud rates"),
             Err(error) => {
-                eprintln!("Cloud rates unavailable: {error}; using SDK defaults");
-                (None, "SDK defaults (Cloud unavailable)")
+                eprintln!("Cloud rates unavailable: {error}");
+                (None, "unpriced (Cloud rates unavailable)")
             }
         }
     };
-    let metering = metering.unwrap_or(Metering {
-        rates: Rates::default(),
-        included_cpu: meta::INCLUDED_CPU,
-        max_log: berm_api::MAX_LOG,
-        budget: Some(berm_api::Budget::DEFAULT),
-        domain: None,
-    });
     let mut report = runtime::wait(Report::measure(
         &image,
         &bench.tool,
         &cases,
         bench.runs,
         bench.live_http,
-        &metering,
+        metering.as_ref(),
         project.storage.size(),
     ))?;
     report.rates_source = source.to_owned();
@@ -527,9 +532,7 @@ pub fn run(cloud: &Client, bench: &Bench, json: bool) -> Result<ExitCode> {
             "{}.{} · {} · {}",
             report.service, report.tool, report.http, report.rates_source
         );
-        println!(
-            "Local measurements; ceilings are runtime defaults. Costs are whole-chain estimates before plan inclusions."
-        );
+        println!("Local measurements; ceilings are runtime defaults.");
         println!(
             "Initial memory reservation: {}. Rerun after changing budgets.",
             display::bytes(report.declared.memory)
@@ -544,11 +547,16 @@ pub fn run(cloud: &Client, bench: &Bench, json: bool) -> Result<ExitCode> {
         ] {
             println!("{label:<20} {:>14} {:>14}", value.median, value.max);
         }
-        println!(
-            "estimated cost       {} median, {} maximum",
-            format::usd(report.statistics.median_cost_micros_decimal.parse()?),
-            format::usd(report.statistics.max_cost_micros_decimal.parse()?)
-        );
+        if let (Some(median), Some(max)) = (
+            &report.statistics.median_cost_micros_decimal,
+            &report.statistics.max_cost_micros_decimal,
+        ) {
+            println!(
+                "estimated cost       {} median, {} maximum (whole chain before plan inclusions)",
+                format::usd(median.parse()?),
+                format::usd(max.parse()?)
+            );
+        }
         for case in &report.cases {
             let failed = case.samples.iter().filter(|sample| !sample.matched).count();
             let incomplete = case

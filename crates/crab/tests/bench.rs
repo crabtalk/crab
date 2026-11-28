@@ -2,16 +2,24 @@ use anyhow::Result;
 use berm_api::host;
 use berm_build::fixture;
 use crab_agent::cmd::bench::{Case, Report};
-use crabtalk_sdk::system::meta::{self, Metering, Rates};
+use crabtalk_sdk::system::meta::{Metering, Rates};
 use serde_json::json;
 use std::fs;
 
 fn metering() -> Metering {
     Metering {
-        rates: Rates::default(),
-        included_cpu: meta::INCLUDED_CPU,
+        rates: Rates {
+            runs: 150_000_000,
+            overage: 20_000,
+            read: 1_000_000,
+            written: 1_000_000_000,
+            held: 12,
+            rotating: None,
+        },
+        included_cpu: 250,
         max_log: berm_api::MAX_LOG,
         budget: Some(berm_api::Budget::DEFAULT),
+        ceiling: None,
         domain: None,
     }
 }
@@ -25,12 +33,14 @@ async fn measures_the_image_and_recommends_an_unclipped_budget() -> Result<()> {
         &[case],
         3,
         false,
-        &metering(),
+        None,
         host::DATABASE_SIZE,
     )
     .await?;
     assert!(report.passed, "{report:?}");
     assert_eq!(report.cases[0].samples.len(), 3);
+    assert!(report.statistics.median_cost_micros_decimal.is_none());
+    assert!(report.statistics.max_cost_micros_decimal.is_none());
     assert!(report.statistics.own_memory_bytes.max > 0);
     assert!(report.recommended.unwrap().cpu.unwrap() >= report.statistics.own_cpu_us.max);
     for sample in &report.cases[0].samples {
@@ -41,7 +51,7 @@ async fn measures_the_image_and_recommends_an_unclipped_budget() -> Result<()> {
 }
 
 #[tokio::test]
-async fn fixture_waits_hold_the_declared_memory_and_are_priced_by_the_sdk() -> Result<()> {
+async fn fixture_waits_hold_the_declared_memory_and_are_priced_at_supplied_rates() -> Result<()> {
     let case = serde_json::from_value(
         json!({"name":"fetch", "args":{"url":"http://127.0.0.1/page"}, "http":[{"method":"GET", "url":"http://127.0.0.1/page", "status":200, "headers":{"content-type":"text/html"}, "body":"hello", "delay_ms":20}]}),
     )?;
@@ -52,7 +62,7 @@ async fn fixture_waits_hold_the_declared_memory_and_are_priced_by_the_sdk() -> R
         &[case],
         1,
         false,
-        &rates,
+        Some(&rates),
         host::DATABASE_SIZE,
     )
     .await?;
@@ -61,10 +71,10 @@ async fn fixture_waits_hold_the_declared_memory_and_are_priced_by_the_sdk() -> R
     assert!(sample.chain.held >= (berm_api::Budget::DEFAULT.memory >> 20) * 20_000);
     assert_eq!(
         report.statistics.max_cost_micros_decimal,
-        rates.rates.cost_decimal(
+        Some(rates.rates.cost_decimal(
             &sample.chain,
             sample.chain.cpu.saturating_sub(rates.included_cpu)
-        )
+        ))
     );
     Ok(())
 }
@@ -80,7 +90,7 @@ async fn a_missing_fixture_cannot_be_accepted_as_an_expected_tool_error() -> Res
         &[case],
         1,
         false,
-        &metering(),
+        None,
         host::DATABASE_SIZE,
     )
     .await?;
@@ -101,7 +111,7 @@ async fn tool_errors_are_measured_but_budget_stopped_calls_are_incomplete() -> R
         &[returned],
         1,
         false,
-        &metering(),
+        None,
         host::DATABASE_SIZE,
     )
     .await?;
@@ -116,7 +126,7 @@ async fn tool_errors_are_measured_but_budget_stopped_calls_are_incomplete() -> R
         &[stopped],
         1,
         false,
-        &metering(),
+        None,
         host::DATABASE_SIZE,
     )
     .await?;

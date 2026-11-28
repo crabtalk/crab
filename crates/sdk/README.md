@@ -36,7 +36,7 @@ async fn main() -> Result<(), Error> {
 
 The token is a session token or an API key. Without `owner`, the client addresses a local host at `base`, and account calls return `Error::Host`.
 
-`Client::health` probes `/meta/health` on Cloud and the local host. `Client::plans` returns Cloud plans with their own compute rates in `PublicPlan::rates`. Local clients return `Error::Host` with login guidance.
+`Client::health` probes `/meta/health` on Cloud and the local host. `Client::plans` returns Cloud plans. Local clients return `Error::Host` with login guidance. `Client::rates` returns the deployment's compute rates, included CPU and budget ceilings when supplied.
 
 `Client::deployment_status` returns pending approvals and recorded deploy attempts, including before a service exists. `Client::deploys` returns recorded attempts only.
 
@@ -46,7 +46,7 @@ The token is a session token or an API key. Without `owner`, the client addresse
 
 A `429` that names its `Retry-After` is sent again after that wait, up to three times, unless its body streams. `Error::retryable` is true for transport failures, `429` and `5xx` only. A structured refusal carries its stable `code` (e.g. `orgs_closed`); branch on that rather than on the status.
 
-`PublicPlan::usage_micros` is the compute a plan includes each period, at the list rates `/meta/rates` serves. `Period` answers what the period's compute cost (`compute_micros`) against what the plan includes (`included_micros`), the overage past it and what of that was collected. `Credit::micros` is prepaid, which pays priced tools and rotating IPs, with `expiring_micros` due within 30 days and the auto-refill settings. `Credit::recovery_until` is when a held account's services are retired.
+`PublicPlan::usage_micros` is the compute a plan includes each period, at the list rates `/meta/rates` serves. Plans may also carry an overage maximum and GitHub verification terms. `Period` answers what the period's compute cost (`compute_micros`) against what the plan includes (`included_micros`), the overage past it and what of that was collected. `Credit::micros` is prepaid, which pays priced tools and rotating IPs, with `expiring_micros` due within 30 days and the auto-refill settings. `Credit::recovery_until` is when a held account's services are retired.
 
 Workflow commercial contracts live in `services::workflow`. `Terms` keeps the fixed customer task price, conservative direct-call quote, and cumulative owner cap separate, with accepted execution bindings, an immutable rate snapshot and revision, and independently billed providers. `Spend` retains incurred and reserved USD micros as exact decimal strings; `Settlement` carries reservation or transaction identities. Execution contracts are in `berm_api::workflow`. Consumer inspection and run responses omit private owner accounting unless the authenticated caller manages the service.
 

@@ -705,7 +705,7 @@ fn run() -> Result<ExitCode> {
         Command::Callers { service } => cmd::storage::callers(&client()?, service, json)?,
         Command::Storage { action } => cmd::storage::run(&client()?, action.as_ref(), json, yes)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
+        Command::Bench(bench) => return cmd::bench::run(&client()?, bench, json),
         Command::Up(up) => up.run(&client()?, yes)?,
         Command::Deploy(deploy) => deploy.run(&client()?, &image_cloud()?, yes)?,
         Command::Push(push) => push.run(&client()?)?,

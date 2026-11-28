@@ -1,7 +1,11 @@
 //! What meters cost at the rates.
 
 use berm_api::{Budget, Meter};
-use crabtalk_sdk::system::meta::{Metering, Rates};
+use crabtalk_sdk::{
+    account::billing::PublicPlan,
+    system::meta::{Metering, Rates},
+};
+use serde_json::json;
 
 fn rates() -> Rates {
     Rates {
@@ -45,6 +49,7 @@ fn the_most_a_run_costs_spends_its_whole_budget() {
         included_cpu: 100,
         max_log: 4096,
         budget: None,
+        ceiling: None,
         domain: None,
     };
     let budget = Budget {
@@ -62,24 +67,65 @@ fn the_most_a_run_costs_spends_its_whole_budget() {
 
 #[test]
 fn exact_charges_preserve_fractions_below_a_micro() {
-    let rates = Rates::default();
+    let rates = rates();
     let meter = Meter {
         runs: 1,
         ..Meter::default()
     };
     assert_eq!(rates.call_cost(&meter, 0), 0);
-    assert_eq!(rates.call_charge(&meter, 0), 100_000_000);
+    assert_eq!(rates.call_charge(&meter, 0), 150_000_000);
 }
 
 #[test]
 fn rotating_bytes_cost_at_the_configured_rate() {
     let rates = Rates {
         rotating: Some(3_000_000),
-        ..Rates::default()
+        ..rates()
     };
     let meter = Meter {
         proxied: 10_000,
         ..Meter::default()
     };
     assert_eq!(rates.call_cost(&meter, 0), 30);
+}
+
+#[test]
+fn metering_requires_compute_rates_and_accepts_an_absent_ceiling() -> serde_json::Result<()> {
+    let mut response = json!({
+        "rates": rates(),
+        "included_cpu": 100,
+        "max_log": 4096
+    });
+    let metering: Metering = serde_json::from_value(response.clone())?;
+    assert!(metering.ceiling.is_none());
+    assert!(metering.rates.rotating.is_none());
+
+    response["rates"].as_object_mut().unwrap().remove("overage");
+    assert!(serde_json::from_value::<Metering>(response).is_err());
+    Ok(())
+}
+
+#[test]
+fn plans_accept_legacy_rates_and_optional_terms() -> serde_json::Result<()> {
+    let mut response = json!({
+        "slug": "free",
+        "accounts": ["user"],
+        "included": {},
+        "memory": 1,
+        "rates": rates()
+    });
+    let plan: PublicPlan = serde_json::from_value(response.clone())?;
+    assert_eq!(plan.rates.unwrap().runs, rates().runs);
+    assert!(plan.overage_max_micros.is_none());
+    assert!(plan.verification.is_none());
+
+    response.as_object_mut().unwrap().remove("rates");
+    response["overage_max_micros"] = json!(25_000_000);
+    response["verification"] = json!({"days": 365, "stars": 10});
+    let plan: PublicPlan = serde_json::from_value(response)?;
+    assert!(plan.rates.is_none());
+    assert_eq!(plan.overage_max_micros, Some(25_000_000));
+    let verification = plan.verification.unwrap();
+    assert_eq!((verification.days, verification.stars), (365, 10));
+    Ok(())
 }
