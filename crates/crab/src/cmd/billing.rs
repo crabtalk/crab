@@ -102,11 +102,12 @@ pub fn refill(client: &Client, amount: u32, below: u32, cap: u32) -> Result<()> 
     if cap > 0 && amount < 20 {
         bail!("a refill buys $20 or more");
     }
-    runtime::wait(client.set_refill(&RefillRequest {
+    let set = runtime::wait(client.set_refill(&RefillRequest {
         cap_micros: i64::from(cap) * 1_000_000,
         amount_micros: i64::from(amount) * 1_000_000,
         below_micros: i64::from(below) * 1_000_000,
-    }))?;
+    }));
+    request::approved(client, set)?;
     match cap {
         0 => eprintln!("refill off"),
         cap => eprintln!("refill ${amount} when under ${below}, at most ${cap} a month"),

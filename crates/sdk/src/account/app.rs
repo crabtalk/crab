@@ -23,6 +23,10 @@ pub struct App {
     pub services: Vec<String>,
     /// Calls with no token reach the services' `access = "anonymous"` tools.
     pub anonymous: bool,
+    /// Its services' own MCP servers take its issuers' tokens, and with
+    /// `anonymous`, calls with none.
+    #[serde(default)]
+    pub mcp: bool,
     pub created_at: i64,
 }
 
@@ -69,4 +73,6 @@ pub struct AppRequest {
     pub services: Vec<String>,
     #[serde(default)]
     pub anonymous: bool,
+    #[serde(default)]
+    pub mcp: bool,
 }

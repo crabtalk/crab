@@ -386,8 +386,8 @@ pub fn boom() -> Result<()> {
 /// Flaky
 ///
 /// Fetches `url`, draws 4 random bytes, then fails with the body it got and
-/// the bytes, to exercise a tape.
-#[tool]
+/// the bytes, to exercise a tape. Its budget holds a 3 MiB body.
+#[tool(budget(memory = 32))]
 pub fn flaky(url: String) -> Result<()> {
     let response = berm_lang::http::fetch("GET", &url, &[], b"")?;
     let mut bytes = [0; 4];

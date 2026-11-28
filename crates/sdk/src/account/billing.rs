@@ -22,13 +22,27 @@ pub struct PublicPlan {
     /// `null` is a plan that is not sold: a granted rung.
     pub price_micros: Option<i64>,
     /// The list rates `/meta/rates` serves, sent for clients that require them.
-    #[serde(default)]
-    pub rates: Rates,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rates: Option<Rates>,
+    /// The largest overage allowance the plan permits, in USD micros.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overage_max_micros: Option<u64>,
+    /// GitHub verification terms when the plan requires verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<VerificationTerms>,
     /// The plan's storage and outbound data limits.
     pub included: Included,
     /// Bytes of memory the account's services may hold at once, their images
     /// and their calls running; `0` is no limit.
     pub memory: u64,
+}
+
+/// Minimum GitHub account age in days and stars across its own public repositories.
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationTerms {
+    pub days: u32,
+    pub stars: u32,
 }
 
 /// Bytes held against the account's storage limit.
@@ -153,6 +167,7 @@ pub enum Unit {
     Held,
     Stored,
     Sent,
+    Domains,
     /// Spelled `credit` on the wire, which released clients know.
     #[serde(rename = "credit")]
     Owed,
@@ -221,7 +236,7 @@ pub struct Included {
 pub struct Usage {
     pub runs: u64,
     /// CPU microseconds past each run's first
-    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU).
+    /// [`Metering::included_cpu`](crate::system::meta::Metering::included_cpu).
     pub cpu: u64,
     /// Rows read.
     pub read: u64,
@@ -234,6 +249,8 @@ pub struct Usage {
     pub stored: u64,
     /// Bytes counted against [`Included::sent`].
     pub sent: u64,
+    /// Days custom domains were held, summed over them, each day begun counted.
+    pub domains: u64,
 }
 
 /// A person's verification, which lets an account on Free deploy.

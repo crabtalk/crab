@@ -3,10 +3,13 @@
 
 use crate::{
     client::{Client, Error},
-    services::service::{
-        Billing, Costed, DeployRequest, DeployResult, DeploySetRequest, Deployment,
-        DeploymentStatus, Image, ImageSummary, MeteredDay, Secret, SetSecret, Terms, ToolCosted,
-        UpgradePolicy, Upload, UploadRequest,
+    services::{
+        domain::{AddDomain, Domain},
+        service::{
+            Billing, Costed, DeployRequest, DeployResult, DeploySetRequest, Deployment,
+            DeploymentStatus, Image, ImageSummary, MeteredDay, Secret, SetSecret, Terms,
+            ToolCosted, UpgradePolicy, Upload, UploadRequest,
+        },
     },
 };
 use berm_api::{
@@ -320,6 +323,29 @@ impl Client {
     /// Revoke `name`'s secret `secret`.
     pub async fn delete_secret(&self, name: &str, secret: &str) -> Result<(), Error> {
         let path = format!("{}/{secret}", self.secrets_path(name));
+        self.ok(self.at(Method::DELETE, &path)).await?;
+        Ok(())
+    }
+
+    /// `name`'s custom domains. Cloud only.
+    pub async fn domains(&self, name: &str) -> Result<Vec<Domain>, Error> {
+        let path = format!("{}/domains", self.service(name)?);
+        self.json(self.at(Method::GET, &path)).await
+    }
+
+    /// Serve `name`'s MCP server at `host` too, once its records are set. Cloud
+    /// only.
+    pub async fn add_domain(&self, name: &str, host: &str) -> Result<Domain, Error> {
+        let path = format!("{}/domains", self.service(name)?);
+        self.json(self.at(Method::POST, &path).json(&AddDomain {
+            host: host.to_owned(),
+        }))
+        .await
+    }
+
+    /// Stop serving `name` at `host`. Cloud only.
+    pub async fn remove_domain(&self, name: &str, host: &str) -> Result<(), Error> {
+        let path = format!("{}/domains/{host}", self.service(name)?);
         self.ok(self.at(Method::DELETE, &path)).await?;
         Ok(())
     }

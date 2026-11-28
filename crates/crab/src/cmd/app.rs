@@ -22,6 +22,9 @@ pub fn ls(client: &Client, json: bool) -> Result<()> {
         if app.anonymous {
             println!("  anonymous calls reach tools with access = \"anonymous\"");
         }
+        if app.mcp {
+            println!("  mcp       its services' own MCP servers take its issuers' tokens");
+        }
     }
     Ok(())
 }
@@ -33,6 +36,7 @@ pub fn request(
     services: &[String],
     issuers: &[String],
     anonymous: bool,
+    mcp: bool,
 ) -> Result<AppRequest> {
     let issuers = issuers
         .iter()
@@ -50,6 +54,7 @@ pub fn request(
         issuers,
         services: services.to_vec(),
         anonymous,
+        mcp,
     })
 }
 

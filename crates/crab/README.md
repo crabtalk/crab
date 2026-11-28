@@ -98,9 +98,9 @@ Contexts are kept in `~/.crab/contexts.toml`.
 
 `crab billing` shows the plan's compute used of what it includes, any overage and what of it was collected, prepaid and what of it expires within 30 days, auto-refill, the card, and when a held account's services are retired. A plan's included usage pays compute only; priced tools and rotating IPs are paid from prepaid. `crab billing refill --amount 20 --below 5 --cap 100` refills prepaid under $5, at most $100 a month.
 
-GitHub verification on CrabTalk issues one $1 trial grant, valid for 30 days. The deployment can configure the amount and terms. `crab plans` and verification expose its lifetime and recovery terms. Storage is included, the trial never refills each month, and plan changes never create another grant. After it ends, services pause and data is kept for 30 days; upgrade or download each service before the recovery deadline with `crab export OWNER/NAME` or Download in its Settings. The SQLite file contains SQL and key-value data, excluding workflow runs and checkpoints. Accounts returning from a paid plan also enter recovery when they have no execution funding.
+Verified on GitHub, Free runs your services on the compute it includes each UTC month; once that is used, calls wait for the next month, and services and data are kept. `crab plans` shows the current amounts and verification terms.
 
-`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Free: the GitHub account is a year old or more, its own public repositories hold 10 stars or more, and it has verified no other account. When the check fails, it prints a link instead, `https://crabtalk.ai/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crabtalk.ai/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crabtalk.ai/pay`, and lasts 30 minutes. A refusal from Cloud that names a code, as `Error: 402 [E0001]: …`, ends with `crab explain E0001`, which prints what it means and what to do about it; the same explanations are at `https://crabtalk.ai/docs/errors/introduction`. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
+`crab billing verify` verifies the account on the GitHub account it signs in with, which lets it deploy on Free: the GitHub account meets the age and stars `crab plans` shows, counting its own public repositories, and has verified no other account. When the check fails, it prints a link instead, `https://crabtalk.ai/verify/WDJB-MJHT`, whose page connects GitHub to the account and verifies it, or says why it cannot. `crab billing plan` and `credit` ask a person to pay: each prints a link, `https://crabtalk.ai/pay/WDJB-MJHT`, whose page shows the account, the price and `--for`, and takes the payment or a decline. The code also works typed at `https://crabtalk.ai/pay`, and lasts 30 minutes. A refusal from Cloud that names a code, as `Error: 402 [E0001]: …`, ends with `crab explain E0001`, which prints what it means and what to do about it; the same explanations are at `https://crabtalk.ai/docs/errors/introduction`. `crab request <code> --wait` follows a request: it returns once the request is done, declined or expired, and fails unless it was done. `crab request <code> --expire` ends one now, as if its time had run out; secrets already saved through it stay set.
 
 ```sh
 crab login
@@ -118,9 +118,12 @@ crab explain E0001             # what an error's code means and what to do about
 crab billing portal            # opens Stripe's portal in the browser
 crab key create ci --days 90
 crab app ls
+crab domain add acme/search mcp.acme.dev   # serve a service's MCP server at a hostname of yours
 crab org create acme
 crab --org acme billing
 ```
+
+`crab export owner/service` downloads a consistent SQLite snapshot of the service's SQL and key-value data as `service.sqlite`, `-o PATH` choosing the file; local contexts take `crab export service`. Workflow runs and checkpoints are left out, and an export can seed a new Cloud deployment of the same service. `crab storage` lists the SQLite files services hold for the signed-in caller, `crab storage download ID` and `crab storage delete ID` manage one, and `crab callers owner/service` shows a service's owner its callers.
 
 A service's calls, cost, crons, wakes and sunset have their own commands. `--org` acts for an org in place of the context's account. Output is JSON with `--json`, and whenever stdout is not a terminal. A command that removes something asks first, and without a terminal refuses unless given `--yes`.
 
@@ -188,7 +191,7 @@ crab bench services/web/seo check --cases cases.jsonl --runs 10
 
 `bench DIRECTORY TOOL` builds and runs JSON Lines workloads on a temporary local host. Cases supply argument objects and HTTP responses, including headers, body files and optional response delays. Each case starts with a fresh migrated database; repetitions share its state. `--live-http` sends real requests instead of fixtures. The command uploads nothing.
 
-The report separates the tool's own CPU, rows and peak memory from whole-chain cost, prices with the selected Cloud's rates, and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. `--json` gives structured measurements, and `--offline` uses labeled SDK default rates. [Case format and limits](https://crabtalk.ai/docs/guides/bench).
+The report measures the tool's own CPU, rows and peak memory and suggests a budget with 1.5× headroom. Checks use runtime default ceilings. Incomplete runs and unexpected failures prevent a suggestion; an over-ceiling suggestion is reported without clipping. Exit `2` means the workload or budget did not pass. The whole-chain cost estimate uses rates from the signed-in Cloud context. With `--offline`, without a Cloud login, or when the rates request fails, the report gives measurements only. `--json` gives structured measurements with null costs when rates are unavailable. [Case format and limits](https://crabtalk.ai/docs/guides/bench).
 
 ## Publication and images
 

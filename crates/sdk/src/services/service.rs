@@ -281,7 +281,7 @@ pub struct MeteredDay {
     #[serde(flatten)]
     pub used: berm_api::host::Metered,
     /// The CPU microseconds each run spent in the service past the run's first
-    /// [`INCLUDED_CPU`](crate::system::meta::INCLUDED_CPU), summed.
+    /// [`Metering::included_cpu`](crate::system::meta::Metering::included_cpu), summed.
     #[serde(default)]
     pub overage: u64,
 }

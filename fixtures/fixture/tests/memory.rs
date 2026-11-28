@@ -2,7 +2,7 @@
 //! Each call reserves and is metered for its memory budget.
 
 use anyhow::Result;
-use berm_api::{Budget, Output};
+use berm_api::{Budget, Meter, Output};
 use berm_build::fixture;
 use berm_host::{Denied, test::TestHost};
 use std::collections::HashMap;
@@ -122,7 +122,14 @@ async fn a_call_is_metered_its_budget_not_what_it_used() -> Result<()> {
         .meter;
     assert!(unset.memory > 0 && unset.held > 0, "{unset:?}");
     assert_eq!(unset.memory, budgeted.memory);
-    assert!(budgeted.held * 8 < unset.held, "{unset:?} {budgeted:?}");
+    // Held per CPU microsecond is the budget in MiB, within twice for wall time
+    // past CPU time.
+    let rate = |meter: &Meter| meter.held as f64 / meter.cpu as f64;
+    let ratio = (berm_host::Config::default().budget.memory / (2 << 20)) as f64;
+    assert!(
+        rate(&budgeted) * ratio < rate(&unset) * 2.0,
+        "{unset:?} {budgeted:?}"
+    );
     Ok(())
 }
 
@@ -187,8 +194,12 @@ async fn a_call_lowers_its_memory_once_and_is_metered_the_lower_after() -> Resul
         "{:?}",
         lowered.result
     );
+    // Held per CPU microsecond is the budget in MiB, within twice for wall time
+    // past CPU time.
+    let rate = |meter: &Meter| meter.held as f64 / meter.cpu as f64;
+    let ratio = (berm_host::Config::default().budget.memory / (2 << 20)) as f64;
     assert!(
-        lowered.meter.held * 4 < kept.meter.held,
+        rate(&lowered.meter) * ratio < rate(&kept.meter) * 2.0,
         "{:?} {:?}",
         kept.meter,
         lowered.meter

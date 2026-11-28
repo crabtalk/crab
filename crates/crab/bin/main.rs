@@ -116,11 +116,11 @@ enum Command {
     Push(cmd::push::Push),
     /// Download an image into the local host's image store.
     Pull { image: String },
-    /// Serve stopped services again: those named, or those `crab deploy`
-    /// would deploy here.
+    /// Serve stopped services again: those named, or those `crab up` would
+    /// deploy here.
     Start { names: Vec<String> },
     /// Stop serving services, keeping what they committed: those named, or
-    /// those `crab deploy` would deploy here.
+    /// those `crab up` would deploy here.
     Stop { names: Vec<String> },
     /// Call one of a service's tools.
     Call(cmd::call::Call),
@@ -156,7 +156,7 @@ enum Command {
         out: PathBuf,
     },
     /// Remove services and what they committed: those named, or those `crab
-    /// deploy` would deploy here.
+    /// up` would deploy here.
     Rm { names: Vec<String> },
     /// Print what a service emitted, oldest first.
     Logs {
@@ -219,6 +219,10 @@ enum Command {
     /// A service's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
     Secret(SecretCommand),
+    /// A service's custom domains on Cloud, its MCP server served at a
+    /// hostname of your own: listed, added, removed.
+    #[command(subcommand)]
+    Domain(DomainCommand),
     /// The account's plan, credit and payments; with no subcommand, where it
     /// stands.
     Billing {
@@ -256,6 +260,18 @@ enum Command {
 enum CronCommand {
     /// List a service's cron tools, each with its expression and next run.
     Ls { name: String },
+}
+
+#[derive(Subcommand)]
+enum DomainCommand {
+    /// List a service's custom domains, each with its status and, until it
+    /// is active, the DNS records it needs.
+    Ls { name: String },
+    /// Serve a service's MCP server at a hostname of your own, such as
+    /// `mcp.example.com`, once the records it prints are set.
+    Add { name: String, host: String },
+    /// Stop serving a service at a custom domain.
+    Rm { name: String, host: String },
 }
 
 #[derive(Subcommand)]
@@ -458,7 +474,7 @@ enum KeyCommand {
 struct AppFields {
     name: String,
     /// An origin a browser may call from, `scheme://host[:port]`, or `*`.
-    #[arg(long = "origin", required = true)]
+    #[arg(long = "origin", required_unless_present = "mcp")]
     origins: Vec<String>,
     /// A service it may call, `{owner}/{name}`.
     #[arg(long = "service", required = true)]
@@ -469,6 +485,9 @@ struct AppFields {
     /// Calls with no token reach the services' `access = "anonymous"` tools.
     #[arg(long)]
     anonymous: bool,
+    /// Its services' own MCP servers take its issuers' tokens.
+    #[arg(long)]
+    mcp: bool,
 }
 
 #[derive(Subcommand)]
@@ -686,7 +705,7 @@ fn run() -> Result<ExitCode> {
         Command::Callers { service } => cmd::storage::callers(&client()?, service, json)?,
         Command::Storage { action } => cmd::storage::run(&client()?, action.as_ref(), json, yes)?,
         Command::Build { dir } => cmd::build::run(dir)?,
-        Command::Bench(bench) => return cmd::bench::run(&cloud()?, bench, json),
+        Command::Bench(bench) => return cmd::bench::run(&client()?, bench, json),
         Command::Up(up) => up.run(&client()?, yes)?,
         Command::Deploy(deploy) => deploy.run(&client()?, &image_cloud()?, yes)?,
         Command::Push(push) => push.run(&client()?)?,
@@ -728,6 +747,13 @@ fn run() -> Result<ExitCode> {
             action: Some(EarningsCommand::Dashboard),
         } => cmd::earnings::dashboard(&client()?)?,
         Command::Cron(CronCommand::Ls { name }) => cmd::cron::ls(&client()?, name, json)?,
+        Command::Domain(DomainCommand::Ls { name }) => cmd::domain::ls(&client()?, name, json)?,
+        Command::Domain(DomainCommand::Add { name, host }) => {
+            cmd::domain::add(&client()?, name, host, json)?
+        }
+        Command::Domain(DomainCommand::Rm { name, host }) => {
+            cmd::domain::rm(&client()?, name, host)?
+        }
         Command::Var(VarCommand::Ls { name }) => cmd::var::ls(&client()?, name, json)?,
         Command::Var(VarCommand::Set { name, var, value }) => {
             cmd::var::set(&client()?, name, var, Some(value))?
@@ -855,6 +881,7 @@ fn run() -> Result<ExitCode> {
                     &fields.services,
                     &fields.issuers,
                     fields.anonymous,
+                    fields.mcp,
                 )
             };
             match action {

@@ -11,10 +11,6 @@ use std::collections::BTreeMap;
 /// Billionths of one USD micro in the billing numerator.
 pub const RATE_SCALE: u128 = 1_000_000_000;
 
-/// CPU microseconds a run spends, over every call in it, before those past
-/// them are charged as overage.
-pub const INCLUDED_CPU: u64 = 100;
-
 /// MiB-microseconds of memory held in a GB-hour.
 pub const GB_HOUR: u64 = 1024 * 3_600_000_000;
 
@@ -63,6 +59,13 @@ pub struct Metering {
     /// divided by its `memory` is how many such calls run at once.
     #[serde(default)]
     pub budget: Option<Budget>,
+    /// The largest budget a tool may declare on the deployment's hosts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<Budget>,
+    /// USD micros per custom domain held a whole period, when the deployment
+    /// serves custom domains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<u64>,
 }
 
 impl Metering {
@@ -87,17 +90,16 @@ impl Metering {
 /// billion units unless otherwise specified.
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
 pub struct Rates {
     pub runs: u64,
-    /// CPU microseconds past each run's first [`INCLUDED_CPU`].
+    /// CPU microseconds past each run's first [`Metering::included_cpu`].
     pub overage: u64,
     pub read: u64,
     pub written: u64,
     /// MiB-microseconds of a call's memory budget held, waiting included.
     pub held: u64,
     /// USD micros per GB of hosted rotating traffic.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotating: Option<u64>,
 }
 
@@ -198,19 +200,6 @@ impl Rates {
             .zip(self.rates())
             .map(|(units, rate)| *units as u128 * rate as u128)
             .sum()
-    }
-}
-
-impl Default for Rates {
-    fn default() -> Self {
-        Self {
-            runs: 100_000_000,
-            overage: 20_000,
-            read: 100_000,
-            written: 100_000_000,
-            held: 10,
-            rotating: None,
-        }
     }
 }
 

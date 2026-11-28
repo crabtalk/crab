@@ -206,7 +206,7 @@ impl Budget {
         cpu: 100_000,
         read: 1_000_000,
         written: 10_000,
-        memory: 32 << 20,
+        memory: 8 << 20,
     };
 
     pub fn maximum(&self, deadline_ms: u64) -> Meter {

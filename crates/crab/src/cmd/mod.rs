@@ -11,6 +11,7 @@ pub mod cron;
 pub mod deploy;
 pub mod deploys;
 pub mod dev;
+pub mod domain;
 pub mod earnings;
 pub mod explain;
 pub mod export;

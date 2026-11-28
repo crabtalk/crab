@@ -128,7 +128,7 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
     // A unit's label, what was used of it, how it reads, and the unit its cost
     // is kept under.
     type Line = (&'static str, u64, fn(u64) -> String, Unit);
-    let compute: [Line; 5] = [
+    let compute: [Line; 6] = [
         ("runs", period.used.runs, format::count, Unit::Runs),
         ("CPU µs", period.used.cpu, format::count, Unit::Cpu),
         ("rows read", period.used.read, format::count, Unit::Read),
@@ -143,6 +143,12 @@ pub fn account(client: &Client, json: bool) -> Result<()> {
             period.used.held,
             format::gb_hours,
             Unit::Held,
+        ),
+        (
+            "domain-days",
+            period.used.domains,
+            format::count,
+            Unit::Domains,
         ),
     ];
     for (label, used, size, unit) in compute {
