@@ -46,7 +46,7 @@ pub fn list(domain: String, urls: Vec<String>, bytes: Option<u64>) -> Result<u64
 /// Reads the sites due and fetches the pages due
 ///
 /// Reads the sites due and fetches the pages due.
-#[tool(cron, access = "internal")]
+#[tool(cron, access = "internal", budget(memory = 32))]
 pub fn tick() -> Result<()> {
     crawl::tick::<Pages>()
 }
