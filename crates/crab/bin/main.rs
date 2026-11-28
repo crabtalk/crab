@@ -219,6 +219,10 @@ enum Command {
     /// A service's secrets on Cloud: set, listed by name, revoked.
     #[command(subcommand)]
     Secret(SecretCommand),
+    /// A service's custom domains on Cloud, its MCP server served at a
+    /// hostname of your own: listed, added, removed.
+    #[command(subcommand)]
+    Domain(DomainCommand),
     /// The account's plan, credit and payments; with no subcommand, where it
     /// stands.
     Billing {
@@ -256,6 +260,18 @@ enum Command {
 enum CronCommand {
     /// List a service's cron tools, each with its expression and next run.
     Ls { name: String },
+}
+
+#[derive(Subcommand)]
+enum DomainCommand {
+    /// List a service's custom domains, each with its status and, until it
+    /// is active, the DNS records it needs.
+    Ls { name: String },
+    /// Serve a service's MCP server at a hostname of your own, such as
+    /// `mcp.example.com`, once the records it prints are set.
+    Add { name: String, host: String },
+    /// Stop serving a service at a custom domain.
+    Rm { name: String, host: String },
 }
 
 #[derive(Subcommand)]
@@ -731,6 +747,13 @@ fn run() -> Result<ExitCode> {
             action: Some(EarningsCommand::Dashboard),
         } => cmd::earnings::dashboard(&client()?)?,
         Command::Cron(CronCommand::Ls { name }) => cmd::cron::ls(&client()?, name, json)?,
+        Command::Domain(DomainCommand::Ls { name }) => cmd::domain::ls(&client()?, name, json)?,
+        Command::Domain(DomainCommand::Add { name, host }) => {
+            cmd::domain::add(&client()?, name, host, json)?
+        }
+        Command::Domain(DomainCommand::Rm { name, host }) => {
+            cmd::domain::rm(&client()?, name, host)?
+        }
         Command::Var(VarCommand::Ls { name }) => cmd::var::ls(&client()?, name, json)?,
         Command::Var(VarCommand::Set { name, var, value }) => {
             cmd::var::set(&client()?, name, var, Some(value))?
